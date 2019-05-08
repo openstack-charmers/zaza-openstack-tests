@@ -3,7 +3,7 @@
 build/
 dist/
 .local
-zaza.egg-info/
+zaza.openstack.egg-info/
 .coverage
 .vscode/
 # Sphinx

@@ -1,3 +1,4 @@
+
 aiounittest
 async_generator
 juju
@@ -35,3 +36,4 @@ paramiko
 # Documentation requirements
 sphinx
 sphinxcontrib-asyncio
+git+https://github.com/openstack-charmers/zaza#egg=zaza

@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Module used to setup the zaza framework."""
+"""Module used to setup the zaza framework tests."""
 
 from __future__ import print_function
 
@@ -41,6 +41,7 @@ install_require = [
     'python-octaviaclient',
     'python-cinderclient',
     'python-swiftclient',
+    'zaza@git+https://github.com/openstack-charmers/zaza.git#egg=zaza',
 ]
 
 tests_require = [
@@ -92,19 +93,6 @@ if sys.argv[-1] == 'tag':
 
 
 setup(
-    entry_points={
-        'console_scripts': [
-            'functest-run-suite = zaza.charm_lifecycle.func_test_runner:main',
-            'functest-deploy = zaza.charm_lifecycle.deploy:main',
-            'functest-configure = zaza.charm_lifecycle.configure:main',
-            'functest-destroy = zaza.charm_lifecycle.destroy:main',
-            'functest-prepare = zaza.charm_lifecycle.prepare:main',
-            'functest-test = zaza.charm_lifecycle.test:main',
-            'current-apps = zaza.model:main',
-            'tempest-config = zaza.tempest_config:main',
-            'remove-placement = zaza.openstack.utilities.bundle:main',
-        ]
-    },
     license='Apache-2.0: http://www.apache.org/licenses/LICENSE-2.0',
     packages=find_packages(exclude=["unit_tests"]),
     zip_safe=False,
