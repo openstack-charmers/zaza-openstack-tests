@@ -1,17 +1,26 @@
-# ZAZA
-A Python3-only functional test framework for OpenStack Charms.
+# Zaza OpenStack Tests
 
-Source code: https://github.com/openstack-charmers/zaza
+This is a test library designed to be shared between the OpenStack Charms to improve code-reuse among the various components.
 
-Bug reports: https://github.com/openstack-charmers/zaza/issues
+## Usage
 
-Documentation: https://zaza.readthedocs.io/en/latest/
+This example is taken from the pacemaker-remote charm's tests.yaml:
 
-#### Execute Python Unit Tests
-```tox -e py3```
+```yaml
+charm_name: pacemaker-remote
+tests:
+  - zaza.openstack.charm_tests.pacemaker_remote.tests.PacemakerRemoteTest
+configure:
+  - zaza.openstack.charm_tests.noop.setup.basic_setup
+gate_bundles:
+  - basic
+smoke_bundles:
+  - basic
+```
 
-#### Execute Python PEP-8 Tests
-```tox -e pep8```
+test-requirements.txt:
 
-#### Build the Docs
-```tox -e docs```
+```
+git+https://github.com/openstack-charmers/zaza.git#egg=zaza
+git+https://github.com/openstack-charmers/zaza-openstack-tests.git#egg=zaza.openstack
+```
