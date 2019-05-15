@@ -694,3 +694,19 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
 
         self.assertEqual(target_content.decode('UTF-8'),
                          source_content.decode('UTF-8'))
+
+
+class CephProxyTest(unittest.TestCase):
+    """Test ceph via proxy."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running tests."""
+        super(CephProxyTest, cls).setUpClass()
+
+    def test_ceph_health(self):
+        """Make sure ceph-proxy can communicate with ceph."""
+        self.assertEqual(
+            zaza_model.run_on_leader("ceph-proxy", "sudo ceph health")["Code"],
+            "0"
+        )
