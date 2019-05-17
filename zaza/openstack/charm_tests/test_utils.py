@@ -217,13 +217,12 @@ class OpenStackBaseTest(unittest.TestCase):
                 services,
                 model_name=self.model_name)
 
-            logging.debug(
-                'Waiting for updates to propagate to '.format(config_file))
-            model.block_until_oslo_config_entries_match(
-                self.application_name,
-                config_file,
-                default_entry,
-                model_name=self.model_name)
+        logging.debug('Waiting for updates to propagate to '.format(config_file))
+        model.block_until_oslo_config_entries_match(
+            self.application_name,
+            config_file,
+            default_entry,
+            model_name=self.model_name)
 
     @contextlib.contextmanager
     def pause_resume(self, services):
