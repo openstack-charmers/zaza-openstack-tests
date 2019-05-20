@@ -21,7 +21,7 @@ import tempfile
 
 import zaza.charm_lifecycle.utils as charm_lifecycle_utils
 import zaza.model
-from zaza.utilities import (
+from zaza.openstack.utilities import (
     cert as cert_utils,
     cli as cli_utils,
     openstack as openstack_utils,
@@ -148,13 +148,16 @@ def attach_saml_resources(application="keystone-saml-mellon"):
 
     (key, cert) = cert_utils.generate_cert('SP Signing Key')
 
+    cert = cert.decode().strip("-----BEGIN CERTIFICATE-----")
+    cert = cert.strip("-----END CERTIFICATE-----")
+
     with tempfile.NamedTemporaryFile(mode='w', suffix='.pem') as fp:
         fp.write(key.decode())
         fp.flush()
         zaza.model.attach_resource(application, sp_private_key_name, fp.name)
 
     with tempfile.NamedTemporaryFile(mode='w', suffix='.xml') as fp:
-        fp.write(SP_SIGNING_KEY_INFO_XML_TEMPLATE.format(key.decode()))
+        fp.write(SP_SIGNING_KEY_INFO_XML_TEMPLATE.format(cert))
         fp.flush()
         zaza.model.attach_resource(
             application, sp_signing_keyinfo_name, fp.name)

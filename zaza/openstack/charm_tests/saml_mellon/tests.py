@@ -19,7 +19,7 @@ from lxml import etree
 import requests
 
 import zaza.model
-from zaza.charm_tests.keystone import BaseKeystoneTest
+from zaza.openstack.charm_tests.keystone import BaseKeystoneTest
 
 
 class FailedToReachIDP(Exception):
