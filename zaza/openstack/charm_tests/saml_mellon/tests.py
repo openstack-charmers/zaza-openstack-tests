@@ -39,10 +39,10 @@ class CharmKeystoneSAMLMellonTest(BaseKeystoneTest):
 
     def test_run_get_sp_metadata_action(self):
         """Validate the get-sp-metadata action."""
+        unit = zaza.model.get_units(self.application_name)[0]
         if self.vip:
             ip = self.vip
         else:
-            unit = zaza.model.get_units(self.application_name)[0]
             ip = unit.public_address
 
         action = zaza.model.run_action(unit.entity_id, self.action)
