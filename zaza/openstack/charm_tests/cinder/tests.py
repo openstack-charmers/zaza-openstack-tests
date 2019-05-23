@@ -215,13 +215,15 @@ class SecurityTests(test_utils.OpenStackBaseTest):
             'validate-uses-keystone',
         ]
 
-        logging.info('Running `security-checklist` action'
-                     ' on Keystone leader unit')
-        test_utils.audit_assertions(
-            zaza.model.run_action_on_leader(
-                'cinder',
-                'security-checklist',
-                action_params={}),
-            expected_passes,
-            expected_failures,
-            expected_to_pass=False)
+        for unit in zaza.model.get_units('cinder', model_name=self.model_name):
+            logging.info('Running `security-checklist` action'
+                         ' on  unit {}'.format(unit.entity_id))
+            test_utils.audit_assertions(
+                zaza.model.run_action(
+                    unit.entity_id,
+                    'security-checklist',
+                    model_name=self.model_name,
+                    action_params={}),
+                expected_passes,
+                expected_failures,
+                expected_to_pass=False)
