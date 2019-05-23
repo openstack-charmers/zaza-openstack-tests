@@ -1593,9 +1593,7 @@ def resource_reaches_status(resource,
         msg)
 
 
-@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
-                reraise=True, stop=tenacity.stop_after_attempt(2))
-def resource_removed(resource, resource_id, msg="resource"):
+def _resource_removed(resource, resource_id, msg="resource"):
     """Wait for an openstack resource to no longer be present.
 
     :param resource: pointer to os resource type, ex: heat_client.stacks
@@ -1603,12 +1601,50 @@ def resource_removed(resource, resource_id, msg="resource"):
     :param resource_id: unique id for the openstack resource
     :type resource_id: str
     :param msg: text to identify purpose in logging
-    :type msy: str
+    :type msg: str
     :raises: AssertionError
     """
     matching = [r for r in resource.list() if r.id == resource_id]
     logging.debug("Resource {} still present".format(resource_id))
     assert len(matching) == 0, "Resource {} still present".format(resource_id)
+
+
+def resource_removed(resource,
+                     resource_id,
+                     msg='resource',
+                     wait_exponential_multiplier=1,
+                     wait_iteration_max_time=60,
+                     stop_after_attempt=8):
+    """Wait for an openstack resource to no longer be present.
+
+    :param resource: pointer to os resource type, ex: heat_client.stacks
+    :type resource: str
+    :param resource_id: unique id for the openstack resource
+    :type resource_id: str
+    :param msg: text to identify purpose in logging
+    :type msg: str
+    :param wait_exponential_multiplier: Wait 2^x * wait_exponential_multiplier
+                                        seconds between each retry
+    :type wait_exponential_multiplier: int
+    :param wait_iteration_max_time: Wait a max of wait_iteration_max_time
+                                    between retries.
+    :type wait_iteration_max_time: int
+    :param stop_after_attempt: Stop after stop_after_attempt retires.
+    :type stop_after_attempt: int
+    :raises: AssertionError
+    """
+    retryer = tenacity.Retrying(
+        wait=tenacity.wait_exponential(
+            multiplier=wait_exponential_multiplier,
+            max=wait_iteration_max_time),
+        reraise=True,
+        stop=tenacity.stop_after_attempt(stop_after_attempt))
+    print(retryer)
+    retryer(
+        _resource_removed,
+        resource,
+        resource_id,
+        msg)
 
 
 def delete_resource(resource, resource_id, msg="resource"):

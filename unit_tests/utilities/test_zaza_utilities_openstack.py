@@ -406,18 +406,60 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             wait_exponential_multiplier=2,
             wait_iteration_max_time=20)
 
-    def test_resource_removed(self):
+    def test__resource_removed(self):
         resource_mock = mock.MagicMock()
         resource_mock.list.return_value = [mock.MagicMock(id='ba8204b0')]
-        openstack_utils.resource_removed(resource_mock, 'e01df65a')
+        openstack_utils._resource_removed(resource_mock, 'e01df65a')
 
-    def test_resource_removed_fail(self):
-        openstack_utils.resource_removed.retry.wait = \
-            tenacity.wait_none()
+    def test__resource_removed_fail(self):
         resource_mock = mock.MagicMock()
         resource_mock.list.return_value = [mock.MagicMock(id='e01df65a')]
         with self.assertRaises(AssertionError):
-            openstack_utils.resource_removed(resource_mock, 'e01df65a')
+            openstack_utils._resource_removed(resource_mock, 'e01df65a')
+
+    def test_resource_removed(self):
+        self.patch_object(openstack_utils, "_resource_removed")
+        self._resource_removed.return_value = True
+        openstack_utils.resource_removed('resource', 'e01df65a')
+        self._resource_removed.assert_called_once_with(
+            'resource',
+            'e01df65a',
+            'resource')
+
+    def test_resource_removed_custom_retry(self):
+        self.patch_object(openstack_utils, "_resource_removed")
+
+        def _retryer(f, arg1, arg2, arg3):
+            f(arg1, arg2, arg3)
+        self.patch_object(
+            openstack_utils.tenacity,
+            "Retrying",
+            return_value=_retryer)
+        saa_mock = mock.MagicMock()
+        self.patch_object(
+            openstack_utils.tenacity,
+            "stop_after_attempt",
+            return_value=saa_mock)
+        we_mock = mock.MagicMock()
+        self.patch_object(
+            openstack_utils.tenacity,
+            "wait_exponential",
+            return_value=we_mock)
+        self._resource_removed.return_value = True
+        openstack_utils.resource_removed(
+            'resource',
+            'e01df65a',
+            wait_exponential_multiplier=2,
+            wait_iteration_max_time=20,
+            stop_after_attempt=2)
+        self._resource_removed.assert_called_once_with(
+            'resource',
+            'e01df65a',
+            'resource')
+        self.Retrying.assert_called_once_with(
+            wait=we_mock,
+            reraise=True,
+            stop=saa_mock)
 
     def test_delete_resource(self):
         resource_mock = mock.MagicMock()
