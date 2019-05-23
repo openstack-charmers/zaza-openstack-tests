@@ -17,8 +17,11 @@
 """Encapsulate Cinder testing."""
 
 import logging
+
+import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
+import zaza.openstack.charm_tests.glance.setup as glance_setup
 
 
 class CinderTests(test_utils.OpenStackBaseTest):
@@ -31,6 +34,8 @@ class CinderTests(test_utils.OpenStackBaseTest):
         """Run class setup for running tests."""
         super(CinderTests, cls).setUpClass()
         cls.cinder_client = openstack_utils.get_cinder_session_client(
+            cls.keystone_session)
+        cls.nova_client = openstack_utils.get_nova_session_client(
             cls.keystone_session)
 
     @classmethod
@@ -66,6 +71,20 @@ class CinderTests(test_utils.OpenStackBaseTest):
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_new.id,
+            expected_status="available",
+            msg="Volume status wait")
+
+    def test_105_volume_create_from_img(self):
+        """Test creating a volume from an image."""
+        image = self.nova_client.glance.find_image(
+            glance_setup.LTS_IMAGE_NAME)
+        vol_img = self.cinder_client.volumes.create(
+            name='{}-105-vol-from-img'.format(self.RESOURCE_PREFIX),
+            size=3,
+            imageRef=image.id)
+        openstack_utils.resource_reaches_status(
+            self.cinder_client.volumes,
+            vol_img.id,
             expected_status="available",
             msg="Volume status wait")
 
@@ -166,3 +185,45 @@ class CinderTests(test_utils.OpenStackBaseTest):
             services.append('cinder-api')
         with self.pause_resume(services):
             logging.info("Testing pause resume")
+
+
+class SecurityTests(test_utils.OpenStackBaseTest):
+    """Keystone security tests tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running Keystone aa-tests."""
+        super(SecurityTests, cls).setUpClass()
+
+    def test_security_checklist(self):
+        """Verify expected state with security-checklist."""
+        # Changes fixing the below expected failures will be made following
+        # this initial work to get validation in. There will be bugs targeted
+        # to each one and resolved independently where possible.
+
+        expected_failures = [
+            'check-max-request-body-size',
+            'is-volume-encryption-enabled',
+            'uses-tls-for-glance',
+            'uses-tls-for-nova',
+            'validate-uses-tls-for-keystone',
+        ]
+        expected_passes = [
+            'validate-file-ownership',
+            'validate-file-permissions',
+            'validate-nas-uses-secure-environment',
+            'validate-uses-keystone',
+        ]
+
+        for unit in zaza.model.get_units('cinder', model_name=self.model_name):
+            logging.info('Running `security-checklist` action'
+                         ' on  unit {}'.format(unit.entity_id))
+            test_utils.audit_assertions(
+                zaza.model.run_action(
+                    unit.entity_id,
+                    'security-checklist',
+                    model_name=self.model_name,
+                    action_params={}),
+                expected_passes,
+                expected_failures,
+                expected_to_pass=False)
