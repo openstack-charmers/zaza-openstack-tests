@@ -1639,7 +1639,6 @@ def resource_removed(resource,
             max=wait_iteration_max_time),
         reraise=True,
         stop=tenacity.stop_after_attempt(stop_after_attempt))
-    print(retryer)
     retryer(
         _resource_removed,
         resource,
