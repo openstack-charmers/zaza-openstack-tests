@@ -20,6 +20,7 @@ import zaza.model
 import zaza.model as model
 import zaza.charm_lifecycle.utils as lifecycle_utils
 import zaza.openstack.utilities.openstack as openstack_utils
+import zaza.openstack.utilities.generic as generic_utils
 
 
 def skipIfNotHA(service_name):
@@ -86,7 +87,7 @@ class OpenStackBaseTest(unittest.TestCase):
 
     @contextlib.contextmanager
     def config_change(self, default_config, alternate_config,
-                      application_name=None):
+                      application_name=None, check_application_states=True):
         """Run change config tests.
 
         Change config to `alternate_config`, wait for idle workload status,
@@ -106,6 +107,9 @@ class OpenStackBaseTest(unittest.TestCase):
                                  by a charm under test other than the object's
                                  application.
         :type application_name: str
+        :param check_application_states: Whether to check the applications
+                                         workload states.
+        :type check_application_states: bool
         """
         if not application_name:
             application_name = self.application_name
@@ -143,11 +147,12 @@ class OpenStackBaseTest(unittest.TestCase):
                 'Waiting for units to execute config-changed hook')
             model.wait_for_agent_status(model_name=self.model_name)
 
-            logging.debug(
-                'Waiting for units to reach target states')
-            model.wait_for_application_states(
-                model_name=self.model_name,
-                states=self.test_config.get('target_deploy_status', {}))
+            if check_application_states:
+                logging.debug(
+                    'Waiting for units to reach target states')
+                model.wait_for_application_states(
+                    model_name=self.model_name,
+                    states=self.test_config.get('target_deploy_status', {}))
             # TODO: Optimize with a block on a specific application until idle.
             model.block_until_all_units_idle()
 
@@ -159,11 +164,12 @@ class OpenStackBaseTest(unittest.TestCase):
             default_config,
             model_name=self.model_name)
 
-        logging.debug(
-            'Waiting for units to reach target states')
-        model.wait_for_application_states(
-            model_name=self.model_name,
-            states=self.test_config.get('target_deploy_status', {}))
+        if check_application_states:
+            logging.debug(
+                'Waiting for units to reach target states')
+            model.wait_for_application_states(
+                model_name=self.model_name,
+                states=self.test_config.get('target_deploy_status', {}))
         # TODO: Optimize with a block on a specific application until idle.
         model.block_until_all_units_idle()
 
@@ -199,7 +205,7 @@ class OpenStackBaseTest(unittest.TestCase):
         logging.debug('Remote unit timestamp {}'.format(mtime))
 
         with self.config_change(default_config, alternate_config):
-            logging.debug(
+            logging.info(
                 'Waiting for updates to propagate to {}'.format(config_file))
             model.block_until_oslo_config_entries_match(
                 self.application_name,
@@ -209,7 +215,7 @@ class OpenStackBaseTest(unittest.TestCase):
 
             # Config update has occured and hooks are idle. Any services should
             # have been restarted by now:
-            logging.debug(
+            logging.info(
                 'Waiting for services ({}) to be restarted'.format(services))
             model.block_until_services_restarted(
                 self.application_name,
@@ -217,13 +223,40 @@ class OpenStackBaseTest(unittest.TestCase):
                 services,
                 model_name=self.model_name)
 
-        logging.debug(
+        logging.info(
             'Waiting for updates to propagate to '.format(config_file))
         model.block_until_oslo_config_entries_match(
             self.application_name,
             config_file,
             default_entry,
             model_name=self.model_name)
+
+    def restart_on_changed_paused(self, default_config, alternate_config,
+                                  services):
+        """Run restart on change tests when unit is paused.
+
+        Test that changing config when the unit is paused does not result
+        in services being started. Return config to default_config afterwards
+
+        :param default_config: Dict of charm settings to set on completion
+        :type default_config: dict
+        :param alternate_config: Dict of charm settings to change to
+        :type alternate_config: dict
+        :param services: Services expected to be restarted when config_file is
+                         changed.
+        :type services: list
+        """
+        with self.pause_resume(services):
+            with self.config_change(default_config, alternate_config,
+                                    check_application_states=False):
+                for unit in model.get_units(self.application_name,
+                                            model_name=self.model_name):
+                        for service in services:
+                            current_pids = generic_utils.get_process_id_list(
+                                unit.entity_id,
+                                service,
+                                expect_success=False)
+                            self.assertFalse(current_pids)
 
     @contextlib.contextmanager
     def pause_resume(self, services):

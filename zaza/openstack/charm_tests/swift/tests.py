@@ -40,6 +40,33 @@ class SwiftImageCreateTest(test_utils.OpenStackBaseTest):
         cls.glance_client = openstack_utils.get_glance_session_client(
             cls.keystone_session)
 
+    @property
+    def services(self):
+        """List of services controlled by the charm."""
+        return ['swift-proxy-server', 'haproxy', 'apache2', 'memcached']
+
+    def get_charm_test_config_options(self):
+        """Return current & alternate charm option & expected config entry."""
+        current_value = zaza.model.get_application_config(
+            'swift-proxy')['debug']['value']
+        if bool(current_value):
+            config = {
+                'default': {
+                    'log_entry': {'DEFAULT': {'log_level': ['DEBUG']}},
+                    'charm_config': {'debug': 'True'}},
+                'alternate': {
+                    'log_entry': {'DEFAULT': {'log_level': ['INFO']}},
+                    'charm_config': {'debug': 'False'}}}
+        else:
+            config = {
+                'default': {
+                    'log_entry': {'DEFAULT': {'log_level': ['INFO']}},
+                    'charm_config': {'debug': 'False'}},
+                'alternate': {
+                    'log_entry': {'DEFAULT': {'log_level': ['DEBUG']}},
+                    'charm_config': {'debug': 'True'}}}
+        return config
+
     def test_100_create_image(self):
         """Create an image and do simple validation of image in swift."""
         glance_setup.add_lts_image(image_name=self.image_name)
@@ -68,11 +95,33 @@ class SwiftImageCreateTest(test_utils.OpenStackBaseTest):
         Pause service and check services are stopped then resume and check
         they are started
         """
-        with self.pause_resume(['swift-proxy-server', 'haproxy', 'apache2',
-                                'memcached']):
+        with self.pause_resume(self.services):
             logging.info("Testing pause resume")
 
-    def test_903_disk_usage_action(self):
+    def test_920_restart_on_change(self):
+        """Checking restart happens on config change.
+
+        Change disk format and assert then change propagates to the correct
+        file and that services are restarted as a result
+        """
+        config = self.get_charm_test_config_options()
+        self.restart_on_changed(
+            '/etc/swift/proxy-server.conf',
+            config['default']['charm_config'],
+            config['alternate']['charm_config'],
+            config['default']['log_entry'],
+            config['alternate']['log_entry'],
+            ['swift-proxy-server'])
+
+    def test_930_restart_on_change_paused(self):
+        """Check service is not started when unit is paused."""
+        config = self.get_charm_test_config_options()
+        self.restart_on_changed_paused(
+            config['default']['charm_config'],
+            config['alternate']['charm_config'],
+            ['swift-proxy-server'])
+
+    def test_940_disk_usage_action(self):
         """Check diskusage action runs."""
         logging.info('Running diskusage action on leader')
         action = zaza.model.run_action_on_leader(
