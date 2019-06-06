@@ -696,6 +696,31 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             password='reallyhardpassord',
             username='bob')
 
+    def test_ssh_command(self):
+        paramiko_mock = mock.MagicMock()
+        self.patch_object(openstack_utils.paramiko, 'SSHClient',
+                          return_value=paramiko_mock)
+        self.patch_object(openstack_utils.paramiko, 'AutoAddPolicy',
+                          return_value='some_policy')
+        stdout = io.StringIO("myvm")
+
+        paramiko_mock.exec_command.return_value = ('stdin', stdout, 'stderr')
+
+        def verifier(_stdin, stdout, _stderr):
+            self.assertEqual('myvm', stdout.readlines()[0].strip())
+
+        openstack_utils.ssh_command(
+            'bob',
+            '10.0.0.10',
+            'myvm',
+            'uname -n',
+            password='reallyhardpassord',
+            verify=verifier)
+        paramiko_mock.connect.assert_called_once_with(
+            '10.0.0.10',
+            password='reallyhardpassord',
+            username='bob')
+
     def test_ssh_test_wrong_server(self):
         paramiko_mock = mock.MagicMock()
         self.patch_object(openstack_utils.paramiko, 'SSHClient',
