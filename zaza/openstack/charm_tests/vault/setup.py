@@ -14,6 +14,7 @@
 
 """Run configuration phase."""
 
+import functools
 import requests
 import tempfile
 
@@ -54,7 +55,7 @@ def basic_setup(cacert=None, unseal_and_authorize=False):
         vault_utils.run_charm_authorize(vault_creds['root_token'])
 
 
-def auto_inititialize(cacert=None):
+def auto_initialize(cacert=None, validation_application='keystone'):
     """Auto initialize vault for testing.
 
     Generate a csr and uploading a signed certificate.
@@ -63,6 +64,9 @@ def auto_inititialize(cacert=None):
 
     :param cacert: Path to CA cert used for vault's api cert.
     :type cacert: str
+    :param validation_application: Name of application to be used as a
+                                   client for validation.
+    :type validation_application: str
     :returns: None
     :rtype: None
     """
@@ -83,7 +87,13 @@ def auto_inititialize(cacert=None):
         root_ca=cacertificate,
         allowed_domains='openstack.local')
 
-    validate_ca(cacertificate)
+    if validation_application:
+        validate_ca(cacertificate, application=validation_application)
+
+
+auto_initialize_no_validation = functools.partial(
+    auto_initialize,
+    validation_application=None)
 
 
 def validate_ca(cacertificate, application="keystone", port=5000):
