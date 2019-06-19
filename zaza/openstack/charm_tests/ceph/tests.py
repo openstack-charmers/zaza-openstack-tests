@@ -710,3 +710,119 @@ class CephProxyTest(unittest.TestCase):
             zaza_model.run_on_leader("ceph-proxy", "sudo ceph health")["Code"],
             "0"
         )
+
+
+class CephMonReweightActionsTest(unittest.TestCase):
+    """Test ceph mo reweight actions."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running tests."""
+        super(CephMonReweightActionsTest, cls).setUpClass()
+
+    def test_reweight_by_utilization_no_threshold(self):
+        """Test the reweight-by-utilization (no threshold) action.
+
+        The reweight-by-utilization action execute.
+        """
+        logging.info('Checking reweight-by-utilization action...')
+        unit_name = 'ceph-mon/0'
+
+        zaza_model.block_until_unit_wl_status(
+            unit_name,
+            'active'
+        )
+
+        action_obj = zaza_model.run_action(
+            unit_name=unit_name,
+            action_name='reweight-by-utilization',
+        )
+        self.assertEqual('completed', action_obj.status)
+        zaza_model.block_until_unit_wl_status(
+            unit_name,
+            'active'
+        )
+        logging.debug('OK')
+
+    def test_reweight_by_utilization(self):
+        """Test the reweight-by-utilization action.
+
+        The reweight-by-utilization action execute.
+        """
+        logging.info('Checking reweight-by-utilization action...')
+        unit_name = 'ceph-mon/0'
+
+        zaza_model.block_until_unit_wl_status(
+            unit_name,
+            'active'
+        )
+        reweight_params = {
+            'threshold': 120
+        }
+        action_obj = zaza_model.run_action(
+            unit_name=unit_name,
+            action_name='reweight-by-utilization',
+            action_params=reweight_params
+        )
+        self.assertEqual('completed', action_obj.status)
+        zaza_model.block_until_unit_wl_status(
+            unit_name,
+            'active'
+        )
+        logging.debug('OK')
+
+    def test_reweight(self):
+        """Test the reweight action.
+
+        The reweight action execute.
+        """
+        logging.info('Checking reweight action...')
+        unit_name = 'ceph-mon/0'
+
+        zaza_model.block_until_unit_wl_status(
+            unit_name,
+            'active'
+        )
+        reweight_params = {
+            'name': 'osd.1',
+            'weight': 0.5
+        }
+        action_obj = zaza_model.run_action(
+            unit_name=unit_name,
+            action_name='reweight',
+            action_params=reweight_params
+        )
+        self.assertEqual('completed', action_obj.status)
+        zaza_model.block_until_unit_wl_status(
+            unit_name,
+            'active'
+        )
+        logging.debug('OK')
+
+    def test_crush_reweight(self):
+        """Test the crush reweight action.
+
+        The crush reweight action execute.
+        """
+        logging.info('Checking crush reweight action...')
+        unit_name = 'ceph-mon/0'
+
+        zaza_model.block_until_unit_wl_status(
+            unit_name,
+            'active'
+        )
+        reweight_params = {
+            'name': 'osd.1',
+            'weight': 0.5
+        }
+        action_obj = zaza_model.run_action(
+            unit_name=unit_name,
+            action_name='crush-reweight',
+            action_params=reweight_params
+        )
+        self.assertEqual('completed', action_obj.status)
+        zaza_model.block_until_unit_wl_status(
+            unit_name,
+            'active'
+        )
+        logging.debug('OK')
