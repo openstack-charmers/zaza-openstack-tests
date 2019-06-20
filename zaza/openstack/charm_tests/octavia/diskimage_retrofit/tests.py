@@ -53,10 +53,12 @@ class OctaviaDiskimageRetrofitTest(test_utils.OpenStackBaseTest):
         """Run ``retrofit-image`` action specifying source image."""
         session = openstack.get_overcloud_keystone_session()
         glance = openstack.get_glance_session_client(session)
-        source_image = glance.images.list(filters={'os_distro': 'ubuntu',
-                                                   'os_version': '18.04'})
-        action = zaza.mode.run_action(
-            'octavia-diskimage-retrofit/0',
-            'retrofit-image',
-            action_params={'source-image': source_image.id})
-        self.assertEqual(action.status, 'completed')
+
+        for image in glance.images.list(filters={'os_distro': 'ubuntu',
+                                                 'os_version': '18.04'}):
+            action = zaza.model.run_action(
+                'octavia-diskimage-retrofit/0',
+                'retrofit-image',
+                action_params={'source-image': image.id})
+            self.assertEqual(action.status, 'completed')
+            break
