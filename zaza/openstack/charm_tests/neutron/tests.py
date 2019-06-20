@@ -16,14 +16,20 @@
 
 """Encapsulating `neutron-openvswitch` testing."""
 
+
 import logging
 import unittest
 
 import zaza
+import zaza.openstack.charm_tests.glance.setup as glance_setup
+import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
+import zaza.openstack.configure.guest as guest
+import zaza.openstack.utilities.openstack as openstack_utils
 
 
 class NeutronApiTest(test_utils.OpenStackBaseTest):
+    """Test basic Neutron API Charm functionality."""
 
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change.
@@ -103,3 +109,162 @@ class SecurityTest(test_utils.OpenStackBaseTest):
                 expected_passes,
                 expected_failures,
                 expected_to_pass=False)
+
+
+class NeutronNetworkingTest(unittest.TestCase):
+    """Ensure that openstack instances have valid networking."""
+
+    RESOURCE_PREFIX = 'zaza-neutrontests'
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running Neutron API Networking tests."""
+        cls.keystone_session = openstack_utils. \
+            get_overcloud_keystone_session()
+        cls.nova_client = openstack_utils. \
+            get_nova_session_client(cls.keystone_session)
+
+    @classmethod
+    def tearDown(cls):
+        """Remove test resources."""
+        logging.info('Running teardown')
+        for server in cls.nova_client.servers.list():
+            if server.name.startswith(cls.RESOURCE_PREFIX):
+                openstack_utils.delete_resource(
+                    cls.nova_client.servers,
+                    server.id,
+                    msg="server")
+
+    def test_instances_have_networking(self):
+        """Validate North/South and East/West networking."""
+        guest.launch_instance(
+            glance_setup.LTS_IMAGE_NAME,
+            vm_name='{}-ins-1'.format(self.RESOURCE_PREFIX))
+        guest.launch_instance(
+            glance_setup.LTS_IMAGE_NAME,
+            vm_name='{}-ins-2'.format(self.RESOURCE_PREFIX))
+
+        instance_1 = self.nova_client.servers.find(
+            name='{}-ins-1'.format(self.RESOURCE_PREFIX))
+
+        instance_2 = self.nova_client.servers.find(
+            name='{}-ins-2'.format(self.RESOURCE_PREFIX))
+
+        def verify(stdin, stdout, stderr):
+            """Validate that the SSH command exited 0."""
+            self.assertEqual(stdout.channel.recv_exit_status(), 0)
+
+        # Verify network from 1 to 2
+        self.validate_instance_can_reach_other(instance_1, instance_2, verify)
+
+        # Verify network from 2 to 1
+        self.validate_instance_can_reach_other(instance_2, instance_1, verify)
+
+        # Validate tenant to external network routing
+        self.validate_instance_can_reach_router(instance_1, verify)
+        self.validate_instance_can_reach_router(instance_2, verify)
+
+    def validate_instance_can_reach_other(self,
+                                          instance_1,
+                                          instance_2,
+                                          verify):
+        """
+        Validate that an instance can reach a fixed and floating of another.
+
+        :param instance_1: The instance to check networking from
+        :type instance_1: nova_client.Server
+
+        :param instance_2: The instance to check networking from
+        :type instance_2: nova_client.Server
+        """
+        floating_1 = floating_ips_from_instance(instance_1)[0]
+
+        floating_2 = floating_ips_from_instance(instance_2)[0]
+        address_2 = fixed_ips_from_instance(instance_2)[0]
+
+        username = guest.boot_tests['bionic']['username']
+        password = guest.boot_tests['bionic'].get('password')
+        privkey = openstack_utils.get_private_key(nova_utils.KEYPAIR_NAME)
+
+        openstack_utils.ssh_command(
+            username, floating_1,
+            'instance-1', 'ping -c 1 {}'.format(address_2),
+            password=password, privkey=privkey, verify=verify)
+
+        openstack_utils.ssh_command(
+            username, floating_1,
+            'instance-1', 'ping -c 1 {}'.format(floating_2),
+            password=password, privkey=privkey, verify=verify)
+
+    def validate_instance_can_reach_router(self, instance, verify):
+        """
+        Validate that an instance can reach it's primary gateway.
+
+        We make the assumption that the router's IP is 192.168.0.1
+        as that's the network that is setup in
+        neutron.setup.basic_overcloud_network which is used in all
+        Zaza Neutron validations.
+
+        :param instance: The instance to check networking from
+        :type instance: nova_client.Server
+        """
+        address = floating_ips_from_instance(instance)[0]
+
+        username = guest.boot_tests['bionic']['username']
+        password = guest.boot_tests['bionic'].get('password')
+        privkey = openstack_utils.get_private_key(nova_utils.KEYPAIR_NAME)
+
+        openstack_utils.ssh_command(
+            username, address, 'instance', 'ping -c 1 192.168.0.1',
+            password=password, privkey=privkey, verify=verify)
+        pass
+
+
+def floating_ips_from_instance(self, instance, verify):
+    """
+    Retrieve floating IPs from an instance.
+
+    :param instance: The instance to fetch floating IPs from
+    :type instance: nova_client.Server
+
+    :returns: A list of floating IPs for the specified server
+    :rtype: list[str]
+    """
+    return ips_from_instance('floating')
+
+
+def fixed_ips_from_instance(instance):
+    """
+    Retrieve fixed IPs from an instance.
+
+    :param instance: The instance to fetch fixed IPs from
+    :type instance: nova_client.Server
+
+    :returns: A list of fixed IPs for the specified server
+    :rtype: list[str]
+    """
+    return ips_from_instance('fixed')
+
+
+def ips_from_instance(instance, ip_type):
+    """
+    Retrieve IPs of a certain type from an instance.
+
+    :param instance: The instance to fetch IPs from
+    :type instance: nova_client.Server
+    :param ip_type: the type of IP to fetch, floating or fixed
+    :type ip_type: str
+
+    :returns: A list of IPs for the specified server
+    :rtype: list[str]
+    """
+    if ip_type not in ['floating', 'fixed']:
+        raise RuntimeError(
+            "Only 'floating' and 'fixed' are valid IP types to search for"
+        )
+    return list([
+        ip['addr']
+        for ip
+        in instance.addresses['private']
+        if ip['OS-EXT-IPS:type'] == ip_type
+    ])
