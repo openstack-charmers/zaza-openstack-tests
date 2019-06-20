@@ -23,6 +23,10 @@ def retrofit_amphora_image(unit='octavia-diskimage-retrofit/0',
                            force=False, image_id=None):
     """Run action to retrofit Ubuntu Cloud image into Octavia ``amphora``.
 
+    :param unit: Name of unit to operate on
+    :type: unit: str
+    :param force: Force re-creation of image if it exists
+    :type force: bool
     :param image_id: Glance image ID used as source for retrofitting.
                      (Default is to find it based on image properties.)
     :type image_id: str
@@ -41,7 +45,6 @@ def retrofit_amphora_image(unit='octavia-diskimage-retrofit/0',
     action = zaza.model.run_action(
         unit,
         'retrofit-image',
-        action_params=params)
-    if not action or action.status != 'completed':
-        raise Exception('run-action failed: "{}"'.format(action))
+        action_params=params,
+        raise_on_failure=True)
     return action
