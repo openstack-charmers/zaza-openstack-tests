@@ -75,11 +75,6 @@ class NeutronApiTest(test_utils.OpenStackBaseTest):
 class SecurityTest(test_utils.OpenStackBaseTest):
     """Neutron APIsecurity tests tests."""
 
-    @classmethod
-    def setUpClass(cls):
-        """Run class setup for running Neutron API SecurityTests."""
-        super(SecurityTest, cls).setUpClass()
-
     def test_security_checklist(self):
         """Verify expected state with security-checklist."""
         # Changes fixing the below expected failures will be made following
@@ -119,10 +114,10 @@ class NeutronNetworkingTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Run class setup for running Neutron API Networking tests."""
-        cls.keystone_session = openstack_utils. \
-            get_overcloud_keystone_session()
-        cls.nova_client = openstack_utils. \
-            get_nova_session_client(cls.keystone_session)
+        cls.keystone_session = (
+            openstack_utils.get_overcloud_keystone_session())
+        cls.nova_client = (
+            openstack_utils.get_nova_session_client(cls.keystone_session))
 
     @classmethod
     def tearDown(cls):
@@ -178,7 +173,6 @@ class NeutronNetworkingTest(unittest.TestCase):
         :type instance_2: nova_client.Server
         """
         floating_1 = floating_ips_from_instance(instance_1)[0]
-
         floating_2 = floating_ips_from_instance(instance_2)[0]
         address_2 = fixed_ips_from_instance(instance_2)[0]
 
@@ -187,13 +181,13 @@ class NeutronNetworkingTest(unittest.TestCase):
         privkey = openstack_utils.get_private_key(nova_utils.KEYPAIR_NAME)
 
         openstack_utils.ssh_command(
-            username, floating_1,
-            'instance-1', 'ping -c 1 {}'.format(address_2),
+            username, floating_1, 'instance-1',
+            'ping -c 1 {}'.format(address_2),
             password=password, privkey=privkey, verify=verify)
 
         openstack_utils.ssh_command(
-            username, floating_1,
-            'instance-1', 'ping -c 1 {}'.format(floating_2),
+            username, floating_1, 'instance-1',
+            'ping -c 1 {}'.format(floating_2),
             password=password, privkey=privkey, verify=verify)
 
     def validate_instance_can_reach_router(self, instance, verify):
@@ -220,7 +214,7 @@ class NeutronNetworkingTest(unittest.TestCase):
         pass
 
 
-def floating_ips_from_instance(self, instance, verify):
+def floating_ips_from_instance(instance):
     """
     Retrieve floating IPs from an instance.
 
@@ -230,7 +224,7 @@ def floating_ips_from_instance(self, instance, verify):
     :returns: A list of floating IPs for the specified server
     :rtype: list[str]
     """
-    return ips_from_instance('floating')
+    return ips_from_instance(instance, 'floating')
 
 
 def fixed_ips_from_instance(instance):
@@ -243,7 +237,7 @@ def fixed_ips_from_instance(instance):
     :returns: A list of fixed IPs for the specified server
     :rtype: list[str]
     """
-    return ips_from_instance('fixed')
+    return ips_from_instance(instance, 'fixed')
 
 
 def ips_from_instance(instance, ip_type):
@@ -263,8 +257,5 @@ def ips_from_instance(instance, ip_type):
             "Only 'floating' and 'fixed' are valid IP types to search for"
         )
     return list([
-        ip['addr']
-        for ip
-        in instance.addresses['private']
-        if ip['OS-EXT-IPS:type'] == ip_type
-    ])
+        ip['addr'] for ip in instance.addresses['private']
+        if ip['OS-EXT-IPS:type'] == ip_type])
