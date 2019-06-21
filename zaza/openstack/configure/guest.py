@@ -38,7 +38,8 @@ boot_tests = {
 
 def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
                     private_network_name=None, image_name=None,
-                    flavor_name=None, external_network_name=None, meta=None):
+                    flavor_name=None, external_network_name=None, meta=None,
+                    userdata=None):
     """Launch an instance.
 
     :param instance_key: Key to collect associated config data with.
@@ -59,6 +60,8 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
     :param meta: A dict of arbitrary key/value metadata to store for this
                  server. Both keys and values must be <=255 characters.
     :type meta: dict
+    :param userdata: Configuration to use upon launch, used by cloud-init.
+    :type userdata: str
     """
     keystone_session = openstack_utils.get_overcloud_keystone_session()
     nova_client = openstack_utils.get_nova_session_client(keystone_session)
@@ -102,7 +105,8 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
         flavor=flavor,
         key_name=nova_utils.KEYPAIR_NAME,
         meta=meta,
-        nics=nics)
+        nics=nics,
+        userdata=userdata)
 
     # Test Instance is ready.
     logging.info('Checking instance is active')
