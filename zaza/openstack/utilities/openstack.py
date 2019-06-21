@@ -1031,13 +1031,15 @@ def add_peer_to_bgp_speaker(neutron_client, bgp_speaker, bgp_peer):
                         .format(bgp_peer['name']))
 
 
-def add_neutron_secgroup_rules(neutron_client, project_id):
+def add_neutron_secgroup_rules(neutron_client, project_id, custom_rules=[]):
     """Add neutron security group rules.
 
     :param neutron_client: Authenticated neutronclient
     :type neutron_client: neutronclient.Client object
     :param project_id: Project ID
     :type project_id: string
+    :param custom_rules: List of ``security_group_rule`` dicts to create
+    :type custom_rules: list
     """
     secgroup = None
     for group in neutron_client.list_security_groups().get('security_groups'):
@@ -1078,6 +1080,18 @@ def add_neutron_secgroup_rules(neutron_client, project_id):
                  'direction': 'ingress',
                  }
              })
+
+    for rule in custom_rules:
+        rule_port = rule.get('port_range_min')
+        if rule_port and int(rule_port) in port_rules:
+            logging.warn('Custom security group for port {} appears to '
+                         'already exist, skipping.'.format(rule_port))
+        else:
+            logging.info('Adding custom port {} security group rule'
+                         .format(rule_port))
+            rule.update({'security_group_id': secgroup.get('id')})
+            neutron_client.create_security_group_rule(
+                {'security_group_rule': rule})
 
 
 def create_port(neutron_client, name, network_name):
