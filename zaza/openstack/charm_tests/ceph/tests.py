@@ -21,8 +21,8 @@ from os import (
     path
 )
 import tempfile
-
 import tenacity
+import json
 
 from swiftclient.exceptions import ClientException
 
@@ -723,15 +723,10 @@ class CephMonReweightActionsTest(unittest.TestCase):
     def test_reweight_by_utilization_no_threshold(self):
         """Test the reweight-by-utilization (no threshold) action.
 
-        The reweight-by-utilization action execute.
+        The reweight-by-utilization action is checked for completion.
         """
         logging.info('Checking reweight-by-utilization action...')
         unit_name = 'ceph-mon/0'
-
-        zaza_model.block_until_unit_wl_status(
-            unit_name,
-            'active'
-        )
 
         action_obj = zaza_model.run_action(
             unit_name=unit_name,
@@ -747,15 +742,11 @@ class CephMonReweightActionsTest(unittest.TestCase):
     def test_reweight_by_utilization(self):
         """Test the reweight-by-utilization action.
 
-        The reweight-by-utilization action execute.
+        The reweight-by-utilization action is checked for completion.
         """
         logging.info('Checking reweight-by-utilization action...')
         unit_name = 'ceph-mon/0'
 
-        zaza_model.block_until_unit_wl_status(
-            unit_name,
-            'active'
-        )
         reweight_params = {
             'threshold': 120
         }
@@ -774,15 +765,11 @@ class CephMonReweightActionsTest(unittest.TestCase):
     def test_reweight(self):
         """Test the reweight action.
 
-        The reweight action execute.
+        The osd tree is checked to verify reweight.
         """
         logging.info('Checking reweight action...')
         unit_name = 'ceph-mon/0'
 
-        zaza_model.block_until_unit_wl_status(
-            unit_name,
-            'active'
-        )
         reweight_params = {
             'name': 'osd.1',
             'weight': 0.5
@@ -793,6 +780,14 @@ class CephMonReweightActionsTest(unittest.TestCase):
             action_params=reweight_params
         )
         self.assertEqual('completed', action_obj.status)
+
+        ret = zaza_model.run_on_unit(unit_name, 'ceph osd tree --format=json')
+        output = json.loads(ret['Stdout'])
+        for line in output['nodes']:
+            if line['name'] == 'osd.1':
+                self.assertEqual('0.5', str(line['reweight']))
+                break
+
         zaza_model.block_until_unit_wl_status(
             unit_name,
             'active'
@@ -802,18 +797,14 @@ class CephMonReweightActionsTest(unittest.TestCase):
     def test_crush_reweight(self):
         """Test the crush reweight action.
 
-        The crush reweight action execute.
+        The osd tree is checked to verify crush reweight.
         """
         logging.info('Checking crush reweight action...')
         unit_name = 'ceph-mon/0'
 
-        zaza_model.block_until_unit_wl_status(
-            unit_name,
-            'active'
-        )
         reweight_params = {
             'name': 'osd.1',
-            'weight': 0.5
+            'weight': 1.0
         }
         action_obj = zaza_model.run_action(
             unit_name=unit_name,
@@ -821,6 +812,14 @@ class CephMonReweightActionsTest(unittest.TestCase):
             action_params=reweight_params
         )
         self.assertEqual('completed', action_obj.status)
+
+        ret = zaza_model.run_on_unit(unit_name, 'ceph osd tree --format=json')
+        output = json.loads(ret['Stdout'])
+        for line in output['nodes']:
+            if line['name'] == 'osd.1':
+                self.assertEqual('1.0', str(line['crush_weight']))
+                break
+
         zaza_model.block_until_unit_wl_status(
             unit_name,
             'active'
