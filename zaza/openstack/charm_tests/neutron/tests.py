@@ -54,13 +54,19 @@ class NeutronApiTest(test_utils.OpenStackBaseTest):
         # Make config change, check for service restarts
         logging.info(
             'Setting verbose on neutron-api {}'.format(set_alternate))
+        bionic_stein = openstack_utils.get_os_release('bionic_stein')
+        if openstack_utils.get_os_release() >= bionic_stein:
+            pgrep_full = True
+        else:
+            pgrep_full = False
         self.restart_on_changed(
             conf_file,
             set_default,
             set_alternate,
             default_entry,
             alternate_entry,
-            ['neutron-server'])
+            ['neutron-server'],
+            pgrep_full=pgrep_full)
 
     def test_901_pause_resume(self):
         """Run pause and resume tests.
@@ -68,7 +74,14 @@ class NeutronApiTest(test_utils.OpenStackBaseTest):
         Pause service and check services are stopped then resume and check
         they are started
         """
-        with self.pause_resume(["neutron-server", "apache2", "haproxy"]):
+        bionic_stein = openstack_utils.get_os_release('bionic_stein')
+        if openstack_utils.get_os_release() >= bionic_stein:
+            pgrep_full = True
+        else:
+            pgrep_full = False
+        with self.pause_resume(
+                ["neutron-server", "apache2", "haproxy"],
+                pgrep_full=pgrep_full):
             logging.info("Testing pause resume")
 
 
