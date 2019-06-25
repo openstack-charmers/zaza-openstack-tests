@@ -1769,6 +1769,63 @@ def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[]):
     return image
 
 
+def create_volume(cinder, size, name=None, image=None):
+    """Create cinder volume.
+    :param cinder: Authenticated cinderclient
+    :type cinder: cinder.Client
+    :param size: Size of the volume
+    :type size: int
+    :param name: display name for new volume
+    :type name: Option[str, None]
+    :param image: Image to download to volume.
+    :type image: Option[str, None]
+    :returns: cinder volume pointer
+    :rtype: cinderclient.common.utils.RequestIdProxy
+    """
+    logging.debug('Creating volume')
+    if not size:
+        raise Exception("Size for volume not specified")
+    # Create volume
+    volume = cinder.volumes.create(
+        size=size,
+        name=name,
+        imageRef=image)
+
+    resource_reaches_status(
+        cinder.volumes,
+        volume.id,
+        expected_status='available',
+        msg='Volume status wait')
+    return volume
+
+
+def create_volume_backup(cinder, volume_id, name=None):
+    """Create cinder volume backup.
+    :param cinder: Authenticated cinderclient
+    :type cinder: cinder.Client
+    :param volume_id: the source volume's id for backup
+    :type volume_id: str
+    :param name: display name for new volume backup
+    :type name: Option[str, None]
+    :returns: cinder volume backup pointer
+    :rtype: cinderclient.common.utils.RequestIdProxy
+    """
+    logging.debug('Creating volume backup')
+    if not volume_id:
+        raise Exception("volume_id not specified")
+    # Create volume backup
+    volume_backup = cinder.backups.create(
+        volume_id,
+        name=name)
+
+    resource_reaches_status(
+        cinder.backups,
+        volume_backup.id,
+        expected_status='available',
+        msg='Volume status wait')
+    return volume_backup
+
+
 def create_ssh_key(nova_client, keypair_name, replace=False):
     """Create ssh key.
 
