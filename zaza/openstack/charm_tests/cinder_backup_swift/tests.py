@@ -47,8 +47,8 @@ class CinderBackupSwiftTest(test_utils.OpenStackBaseTest):
             volume.id)
         # Delete volume backup
         logging.info('Deleting volume backup')
-        openstack_utils.delete_resource(
+        openstack_utils.delete_volume_backup(
             self.cinder_client,
             volume_backup.id)
         logging.info('Deleting volume')
-        openstack_utils.delete_resource(self.cinder_client, volume.id)
+        openstack_utils.delete_volume(self.cinder_client, volume.id)
