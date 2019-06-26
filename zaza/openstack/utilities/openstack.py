@@ -1690,6 +1690,8 @@ def delete_image(glance, img_id):
     delete_resource(glance.images, img_id, msg="glance image")
 
 
+@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
+                reraise=True, stop=tenacity.stop_after_attempt(5))
 def delete_volume(cinder, vol_id):
     """Delete the given volume from cinder.
     :param cinder: Authenticated cinderclient
@@ -1697,10 +1699,11 @@ def delete_volume(cinder, vol_id):
     :param vol_id: unique name or id for the openstack resource
     :type vol_id: str
     """
-    resource_removed.retry.stop = tenacity.stop_after_attempt(5)
     delete_resource(cinder.volumes, vol_id, msg="deleting cinder volume")
 
 
+@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
+                reraise=True, stop=tenacity.stop_after_attempt(5))
 def delete_volume_backup(cinder, vol_backup_id):
     """Delete the given volume from cinder.
     :param cinder: Authenticated cinderclient
@@ -1708,7 +1711,6 @@ def delete_volume_backup(cinder, vol_backup_id):
     :param vol_backup_id: unique name or id for the openstack resource
     :type vol_backup_id: str
     """
-    resource_removed.retry.stop = tenacity.stop_after_attempt(5)
     delete_resource(cinder.backups, vol_backup_id,
                     msg="deleting cinder volume backup")
 
