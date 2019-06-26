@@ -168,7 +168,7 @@ class OpenStackBaseTest(unittest.TestCase):
         model.block_until_all_units_idle()
 
     def restart_on_changed(self, config_file, default_config, alternate_config,
-                           default_entry, alternate_entry, services):
+                           default_entry, alternate_entry, services, pgrep_full=False):
         """Run restart on change tests.
 
         Test that changing config results in config file being updates and
@@ -189,6 +189,9 @@ class OpenStackBaseTest(unittest.TestCase):
         :param services: Services expected to be restarted when config_file is
                          changed.
         :type services: list
+        :param pgrep_full: Should pgrep be used rather than pidof to identify
+                           a service.
+        :type  pgrep_full: bool
         """
         # lead_unit is only useed to grab a timestamp, the assumption being
         # that all the units times are in sync.
@@ -215,7 +218,8 @@ class OpenStackBaseTest(unittest.TestCase):
                 self.application_name,
                 mtime,
                 services,
-                model_name=self.model_name)
+                model_name=self.model_name,
+                pgrep_full=pgrep_full)
 
         logging.debug(
             'Waiting for updates to propagate to '.format(config_file))
@@ -226,7 +230,7 @@ class OpenStackBaseTest(unittest.TestCase):
             model_name=self.model_name)
 
     @contextlib.contextmanager
-    def pause_resume(self, services):
+    def pause_resume(self, services, pgrep_full=False):
         """Run Pause and resume tests.
 
         Pause and then resume a unit checking that services are in the
@@ -235,12 +239,16 @@ class OpenStackBaseTest(unittest.TestCase):
         :param services: Services expected to be restarted when config_file is
                          changed.
         :type services: list
+        :param pgrep_full: Should pgrep be used rather than pidof to identify
+                           a service.
+        :type  pgrep_full: bool
         """
         model.block_until_service_status(
             self.lead_unit,
             services,
             'running',
-            model_name=self.model_name)
+            model_name=self.model_name,
+            pgrep_full=pgrep_full)
         model.block_until_unit_wl_status(
             self.lead_unit,
             'active',
@@ -258,7 +266,8 @@ class OpenStackBaseTest(unittest.TestCase):
             self.lead_unit,
             services,
             'stopped',
-            model_name=self.model_name)
+            model_name=self.model_name,
+            pgrep_full=pgrep_full)
         yield
         model.run_action(
             self.lead_unit,
@@ -273,4 +282,5 @@ class OpenStackBaseTest(unittest.TestCase):
             self.lead_unit,
             services,
             'running',
-            model_name=self.model_name)
+            model_name=self.model_name,
+            pgrep_full=pgrep_full)
