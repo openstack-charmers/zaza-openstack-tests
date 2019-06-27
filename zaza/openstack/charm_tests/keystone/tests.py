@@ -247,6 +247,23 @@ class AuthenticationAuthorizationTest(BaseKeystoneTest):
                 try:
                     # expect failure
                     keystone_client.domains.list()
+                except keystoneauth1.exceptions.http.Unauthorized as e:
+                    # This is to handle LP bug 1834287. We handle this error
+                    # separately because it's a case of the client not being
+                    # authenticated whereas the test is about checking if the
+                    # client is authenticated but not authorized. We catch it
+                    # so that we can log it properly and then re-raise it to
+                    # indicate an underlying error that this test is unable
+                    # to handle.
+                    #
+                    # Note that without catching this, the test will fail
+                    # anyway but why it failed is not immediately obvious.
+                    # This puts the reason front and center for the sake of
+                    # efficiency
+                    logging.error('Client is not authenticated. Test cannot '
+                                  'continue...ERROR ({})'
+                                  .format(e))
+                    raise e
                 except keystoneauth1.exceptions.http.Forbidden as e:
                     logging.debug('Retrieve domain list as end-user domain '
                                   'admin NOT allowed...OK ({})'.format(e))
