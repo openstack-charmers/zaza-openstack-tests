@@ -45,13 +45,14 @@ class CinderBackupSwiftTest(test_utils.OpenStackBaseTest):
         volume_backup = openstack_utils.create_volume_backup(
             self.cinder_client,
             volume.id)
+
+        # Check if backup was created via Swift
         record = openstack_utils.get_volume_backup_metadata(
             self.cinder_client,
             volume_backup.id
         )
-
-        #Check if backup was created via Swift
-        assert record['backup_service'] == 'cinder.backup.drivers.swift.SwiftBackupDriver'
+        swift_driver = 'cinder.backup.drivers.swift.SwiftBackupDriver'
+        assert record['backup_service'] == swift_driver
 
         # Delete volume backup
         logging.info('Deleting volume backup')

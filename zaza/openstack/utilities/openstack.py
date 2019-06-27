@@ -1692,6 +1692,7 @@ def delete_image(glance, img_id):
 
 def delete_volume(cinder, vol_id):
     """Delete the given volume from cinder.
+
     :param cinder: Authenticated cinderclient
     :type cinder: cinderclient.Client
     :param vol_id: unique name or id for the openstack resource
@@ -1702,6 +1703,7 @@ def delete_volume(cinder, vol_id):
 
 def delete_volume_backup(cinder, vol_backup_id):
     """Delete the given volume from cinder.
+
     :param cinder: Authenticated cinderclient
     :type cinder: cinderclient.Client
     :param vol_backup_id: unique name or id for the openstack resource
@@ -1709,6 +1711,7 @@ def delete_volume_backup(cinder, vol_backup_id):
     """
     delete_resource(cinder.backups, vol_backup_id,
                     msg="deleting cinder volume backup")
+
 
 def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
                            visibility='public', container_format='bare'):
@@ -1791,6 +1794,7 @@ def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[]):
 
 def create_volume(cinder, size, name=None, image=None):
     """Create cinder volume.
+
     :param cinder: Authenticated cinderclient
     :type cinder: cinder.Client
     :param size: Size of the volume
@@ -1819,6 +1823,7 @@ def create_volume(cinder, size, name=None, image=None):
 
 def create_volume_backup(cinder, volume_id, name=None):
     """Create cinder volume backup.
+
     :param cinder: Authenticated cinderclient
     :type cinder: cinder.Client
     :param volume_id: the source volume's id for backup
@@ -1843,7 +1848,8 @@ def create_volume_backup(cinder, volume_id, name=None):
 
 
 def get_volume_backup_metadata(cinder, backup_id):
-    """Get cinder volume backup record
+    """Get cinder volume backup record.
+
     :param cinder: Authenticated cinderclient
     :type cinder: cinder.Client
     :param backup_id: the source backup id

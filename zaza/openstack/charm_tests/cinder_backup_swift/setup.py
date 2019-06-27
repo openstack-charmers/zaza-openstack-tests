@@ -17,6 +17,7 @@
 import zaza.model as zaza_model
 import zaza.openstack.charm_tests.test_utils
 
+
 def configure_cinder_backup():
     """Configure cinder-backup-swift."""
     keystone_ip = zaza_model.get_app_ips(
@@ -40,6 +41,7 @@ def configure_cinder_backup():
     zaza_model.wait_for_application_states()
     _singleton = zaza.openstack.charm_tests.test_utils.OpenStackBaseTest()
     _singleton.setUpClass()
-    with _singleton.config_change(cinder_backup_swift_conf, cinder_backup_swift_conf):
+    with _singleton.config_change(cinder_backup_swift_conf,
+                                  cinder_backup_swift_conf):
         # wait for configuration to be applied then return
         pass
