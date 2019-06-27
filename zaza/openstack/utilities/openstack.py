@@ -1690,8 +1690,6 @@ def delete_image(glance, img_id):
     delete_resource(glance.images, img_id, msg="glance image")
 
 
-@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
-                reraise=True, stop=tenacity.stop_after_attempt(5))
 def delete_volume(cinder, vol_id):
     """Delete the given volume from cinder.
     :param cinder: Authenticated cinderclient
@@ -1702,8 +1700,6 @@ def delete_volume(cinder, vol_id):
     delete_resource(cinder.volumes, vol_id, msg="deleting cinder volume")
 
 
-@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
-                reraise=True, stop=tenacity.stop_after_attempt(5))
 def delete_volume_backup(cinder, vol_backup_id):
     """Delete the given volume from cinder.
     :param cinder: Authenticated cinderclient
@@ -1807,8 +1803,6 @@ def create_volume(cinder, size, name=None, image=None):
     :rtype: cinderclient.common.utils.RequestIdProxy
     """
     logging.debug('Creating volume')
-    if not size:
-        raise Exception("Size for volume not specified")
     # Create volume
     volume = cinder.volumes.create(
         size=size,
@@ -1835,8 +1829,6 @@ def create_volume_backup(cinder, volume_id, name=None):
     :rtype: cinderclient.common.utils.RequestIdProxy
     """
     logging.debug('Creating volume backup')
-    if not volume_id:
-        raise Exception("volume_id not specified")
     # Create volume backup
     volume_backup = cinder.backups.create(
         volume_id,
@@ -1848,6 +1840,20 @@ def create_volume_backup(cinder, volume_id, name=None):
         expected_status='available',
         msg='Volume status wait')
     return volume_backup
+
+
+def get_volume_backup_metadata(cinder, backup_id):
+    """Get cinder volume backup record
+    :param cinder: Authenticated cinderclient
+    :type cinder: cinder.Client
+    :param backup_id: the source backup id
+    """
+    logging.debug('Request volume backup record')
+    # Request volume backup record
+    volume_backup_record = cinder.backups.export_record(
+        backup_id)
+
+    return volume_backup_record
 
 
 def create_ssh_key(nova_client, keypair_name, replace=False):

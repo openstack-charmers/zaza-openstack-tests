@@ -15,17 +15,7 @@
 """Code for configuring cinder-backup-swift."""
 
 import zaza.model as zaza_model
-import time
-
-
-def basic_setup():
-    """Run setup for testing cinder-backup-swift.
-
-    Cinder backup setup for testing cinder-backup is currently part of
-    cinder-backup functional tests.
-    Volume backup setup for other tests to use should go here.
-    """
-
+import zaza.openstack.charm_tests.test_utils
 
 def configure_cinder_backup():
     """Configure cinder-backup-swift."""
@@ -48,4 +38,8 @@ def configure_cinder_backup():
     juju_service = 'cinder-backup-swift'
     zaza_model.set_application_config(juju_service, cinder_backup_swift_conf)
     zaza_model.wait_for_application_states()
-    time.sleep(300)
+    _singleton = zaza.openstack.charm_tests.test_utils.OpenStackBaseTest()
+    _singleton.setUpClass()
+    with _singleton.config_change(cinder_backup_swift_conf, cinder_backup_swift_conf):
+        # wait for configuration to be applied then return
+        pass

@@ -33,7 +33,7 @@ class CinderBackupSwiftTest(test_utils.OpenStackBaseTest):
             cls.keystone_session)
 
     def test_cinder_volume_backup_create_delete(self):
-        """Create an volume backup and then delete it."""
+        """Create volume backup and then delete it."""
         # Create volume
         logging.info('Creating volume')
         size = 1
@@ -45,6 +45,14 @@ class CinderBackupSwiftTest(test_utils.OpenStackBaseTest):
         volume_backup = openstack_utils.create_volume_backup(
             self.cinder_client,
             volume.id)
+        record = openstack_utils.get_volume_backup_metadata(
+            self.cinder_client,
+            volume_backup.id
+        )
+
+        #Check if backup was created via Swift
+        assert record['backup_service'] == 'cinder.backup.drivers.swift.SwiftBackupDriver'
+
         # Delete volume backup
         logging.info('Deleting volume backup')
         openstack_utils.delete_volume_backup(
