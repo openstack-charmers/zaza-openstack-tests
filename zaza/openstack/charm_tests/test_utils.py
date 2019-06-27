@@ -168,7 +168,8 @@ class OpenStackBaseTest(unittest.TestCase):
         model.block_until_all_units_idle()
 
     def restart_on_changed(self, config_file, default_config, alternate_config,
-                           default_entry, alternate_entry, services, pgrep_full=False):
+                           default_entry, alternate_entry, services,
+                           pgrep_full=False):
         """Run restart on change tests.
 
         Test that changing config results in config file being updates and

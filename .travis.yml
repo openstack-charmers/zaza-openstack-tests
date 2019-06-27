@@ -1,10 +1,17 @@
 sudo: true
 dist: xenial
 language: python
-python:
-  - "3.6"
 install: pip install tox-travis
-env:
-  - ENV=pep8
+matrix:
+  include:
+    - name: "Python 3.5"
+      python: 3.5
+      env: ENV=pep8,py3
+    - name: "Python 3.6"
+      python: 3.6
+      env: ENV=pep8,py3
+    - name: "Python 3.7"
+      python: 3.7
+      env: ENV=pep8,py3
 script:
   - tox -c tox.ini -e $ENV
