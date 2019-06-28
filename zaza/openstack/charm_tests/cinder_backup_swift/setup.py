@@ -38,6 +38,7 @@ def configure_cinder_backup():
     }
     juju_service = 'cinder-backup-swift'
     zaza_model.set_application_config(juju_service, cinder_backup_swift_conf)
+    zaza_model.wait_for_agent_status()
     zaza_model.wait_for_application_states()
     _singleton = zaza.openstack.charm_tests.test_utils.OpenStackBaseTest()
     _singleton.setUpClass()
