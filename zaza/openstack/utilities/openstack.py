@@ -1690,6 +1690,29 @@ def delete_image(glance, img_id):
     delete_resource(glance.images, img_id, msg="glance image")
 
 
+def delete_volume(cinder, vol_id):
+    """Delete the given volume from cinder.
+
+    :param cinder: Authenticated cinderclient
+    :type cinder: cinderclient.Client
+    :param vol_id: unique name or id for the openstack resource
+    :type vol_id: str
+    """
+    delete_resource(cinder.volumes, vol_id, msg="deleting cinder volume")
+
+
+def delete_volume_backup(cinder, vol_backup_id):
+    """Delete the given volume from cinder.
+
+    :param cinder: Authenticated cinderclient
+    :type cinder: cinderclient.Client
+    :param vol_backup_id: unique name or id for the openstack resource
+    :type vol_backup_id: str
+    """
+    delete_resource(cinder.backups, vol_backup_id,
+                    msg="deleting cinder volume backup")
+
+
 def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
                            visibility='public', container_format='bare'):
     """Upload the given image to glance and apply the given label.
@@ -1767,6 +1790,76 @@ def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[]):
             'applying tag to image: glance.image_tags.update({}, {}) = {}'
             .format(image.id, tags, result))
     return image
+
+
+def create_volume(cinder, size, name=None, image=None):
+    """Create cinder volume.
+
+    :param cinder: Authenticated cinderclient
+    :type cinder: cinder.Client
+    :param size: Size of the volume
+    :type size: int
+    :param name: display name for new volume
+    :type name: Option[str, None]
+    :param image: Image to download to volume.
+    :type image: Option[str, None]
+    :returns: cinder volume pointer
+    :rtype: cinderclient.common.utils.RequestIdProxy
+    """
+    logging.debug('Creating volume')
+    # Create volume
+    volume = cinder.volumes.create(
+        size=size,
+        name=name,
+        imageRef=image)
+
+    resource_reaches_status(
+        cinder.volumes,
+        volume.id,
+        expected_status='available',
+        msg='Volume status wait')
+    return volume
+
+
+def create_volume_backup(cinder, volume_id, name=None):
+    """Create cinder volume backup.
+
+    :param cinder: Authenticated cinderclient
+    :type cinder: cinder.Client
+    :param volume_id: the source volume's id for backup
+    :type volume_id: str
+    :param name: display name for new volume backup
+    :type name: Option[str, None]
+    :returns: cinder volume backup pointer
+    :rtype: cinderclient.common.utils.RequestIdProxy
+    """
+    logging.debug('Creating volume backup')
+    # Create volume backup
+    volume_backup = cinder.backups.create(
+        volume_id,
+        name=name)
+
+    resource_reaches_status(
+        cinder.backups,
+        volume_backup.id,
+        expected_status='available',
+        msg='Volume status wait')
+    return volume_backup
+
+
+def get_volume_backup_metadata(cinder, backup_id):
+    """Get cinder volume backup record.
+
+    :param cinder: Authenticated cinderclient
+    :type cinder: cinder.Client
+    :param backup_id: the source backup id
+    """
+    logging.debug('Request volume backup record')
+    # Request volume backup record
+    volume_backup_record = cinder.backups.export_record(
+        backup_id)
+
+    return volume_backup_record
 
 
 def create_ssh_key(nova_client, keypair_name, replace=False):
