@@ -73,12 +73,15 @@ class OpenStackBaseTest(unittest.TestCase):
     """Generic helpers for testing OpenStack API charms."""
 
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls, application_name=None):
         """Run setup for test class to create common resourcea."""
         cls.keystone_session = openstack_utils.get_overcloud_keystone_session()
         cls.model_name = model.get_juju_model()
         cls.test_config = lifecycle_utils.get_charm_config()
-        cls.application_name = cls.test_config['charm_name']
+        if application_name:
+            cls.application_name = application_name
+        else:
+            cls.application_name = cls.test_config['charm_name']
         cls.lead_unit = model.get_lead_unit_name(
             cls.application_name,
             model_name=cls.model_name)

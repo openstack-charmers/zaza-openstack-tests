@@ -32,7 +32,7 @@ class BaseKeystoneTest(test_utils.OpenStackBaseTest):
     @classmethod
     def setUpClass(cls):
         """Run class setup for running Keystone charm operation tests."""
-        super(BaseKeystoneTest, cls).setUpClass()
+        super(BaseKeystoneTest, cls).setUpClass(application_name='keystone')
         # Check if we are related to Vault TLS certificates
         cls.tls_rid = zaza.model.get_relation_id(
             'keystone', 'vault', remote_interface_name='certificates')
