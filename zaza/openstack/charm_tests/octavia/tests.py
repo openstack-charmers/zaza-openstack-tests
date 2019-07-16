@@ -52,12 +52,13 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         keystone_session = openstack_utils.get_overcloud_keystone_session()
         neutron_client = openstack_utils.get_neutron_session_client(
             keystone_session)
+        nova_client = openstack_utils.get_nova_session_client(
+            keystone_session)
 
         # Get IP of the prepared payload instances
-        resp = neutron_client.list_ports(device_owner='compute:nova')
         payload_ips = []
-        for port in resp['ports']:
-            payload_ips.append(port['fixed_ips'][0]['ip_address'])
+        for server in nova_client.servers.list():
+            payload_ips.append(server.networks['private'][0])
         self.assertTrue(len(payload_ips) > 0)
 
         resp = neutron_client.list_networks(name='private')
@@ -175,4 +176,8 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
                 ['wget', '-O', '-',
                  'http://{}/'.format(lb_fp['floating_ip_address'])],
                 universal_newlines=True)
-        assert 'This is the default welcome page' in get_payload()
+        snippet = 'This is the default welcome page'
+        assert snippet in get_payload()
+        logging.info('Found "{}" in page retrieved through load balancer at '
+                     '"http://{}/"'
+                     .format(snippet, lb_fp['floating_ip_address']))
