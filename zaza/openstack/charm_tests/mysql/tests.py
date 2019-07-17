@@ -17,8 +17,6 @@
 import logging
 import os
 import re
-import socket
-import telnetlib
 import time
 
 import zaza.charm_lifecycle.utils as lifecycle_utils
@@ -26,6 +24,7 @@ import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.juju as juju_utils
 import zaza.openstack.utilities.openstack as openstack_utils
+import zaza.openstack.utilities.generic as generic_utils
 
 
 class MySQLTest(test_utils.OpenStackBaseTest):
@@ -111,43 +110,18 @@ class PerconaClusterTest(test_utils.OpenStackBaseTest):
         :rtype: str
         """
         for unit in zaza.model.get_units(self.application):
-            # is the vip running here?
-            cmd = 'sudo ip a | grep "inet {}/"'.format(self.vip)
-            result = zaza.model.run_on_unit(unit.entity_id, cmd)
-            code = result.get("Code")
-            output = result.get("Stdout").strip()
             logging.info("Checking {}".format(unit.entity_id))
+            # is the vip running here?
+            cmd = "ip -br addr"
+            result = zaza.model.run_on_unit(unit.entity_id, cmd)
+            output = result.get("Stdout").strip()
             logging.debug(output)
-            if code == "0":
+            if self.vip in output:
                 logging.info("vip ({}) running in {}".format(
                     self.vip,
                     unit.entity_id)
                 )
                 return unit.entity_id
-
-    def is_port_open(self, port="3306", address=None):
-        """Determine if MySQL is accessible.
-
-        Connect to the MySQL port on the VIP.
-
-        :param port: Port number
-        :type port: str
-        :param address: IP address
-        :type port: str
-        :returns: True if port is reachable
-        :rtype: boolean
-        """
-        try:
-            telnetlib.Telnet(address, port)
-            return True
-        except socket.error as e:
-            if e.errno == 113:
-                self.log.error("could not connect to %s:%s" % (address, port))
-            if e.errno == 111:
-                self.log.error("connection refused connecting"
-                               " to %s:%s" % (address,
-                                              port))
-            return False
 
     def update_leaders_and_non_leaders(self):
         """Get leader node and non-leader nodes of percona.
@@ -190,11 +164,11 @@ class PerconaClusterCharmTests(PerconaClusterTest):
         msg = "Percona cluster failed to bootstrap"
         assert self.is_pxc_bootstrapped(), msg
 
-        logging.info("Checking PXC cluster size == {}".format(self.units))
-        got = int(self.get_cluster_size())
+        logging.info("Checking PXC cluster size >= {}".format(self.units))
+        cluster_size = int(self.get_cluster_size())
         msg = ("Percona cluster unexpected size"
-               " (wanted=%s, got=%s)" % (self.units, got))
-        assert got == self.units, msg
+               " (wanted=%s, cluster_size=%s)" % (self.units, cluster_size))
+        assert cluster_size >= self.units, msg
 
     def test_110_restart_on_config_change(self):
         """Checking restart happens on config change.
@@ -272,12 +246,16 @@ class PerconaClusterColdStartTest(PerconaClusterTest):
         cls.machines = (
             juju_utils.get_machine_uuids_for_application(cls.application))
 
-    def test_100_cold_stop(self):
-        """Stop all percona-cluster hosts."""
+    def test_100_cold_start_bootstrap(self):
+        """Bootstrap a non-leader node.
+
+        After bootstrapping a non-leader node, notify bootstrapped on the
+        leader node.
+        """
+        # Stop Nodes
         self.machines.sort()
         # Avoid hitting an update-status hook
         logging.debug("Wait till model is idle ...")
-        time.sleep(30)
         zaza.model.block_until_all_units_idle()
         logging.info("Stopping instances: {}".format(self.machines))
         for uuid in self.machines:
@@ -290,29 +268,22 @@ class PerconaClusterColdStartTest(PerconaClusterTest):
         logging.debug("Wait till model is idle ...")
         zaza.model.block_until_all_units_idle()
 
-    def test_101_cold_start(self):
-        """Start all percona-cluster hosts in a different order."""
+        # Start nodes
         self.machines.sort(reverse=True)
         logging.info("Starting instances: {}".format(self.machines))
         for uuid in self.machines:
             self.nova_client.servers.start(uuid)
-        logging.debug("Sleep ...")
-        time.sleep(60)
+
         logging.debug("Wait till model is idle ...")
         zaza.model.block_until_all_units_idle()
-
         logging.debug("Wait for application states ...")
+        for unit in zaza.model.get_units(self.application):
+            zaza.model.run_on_unit(unit.entity_id, "hooks/update-status")
         states = {"percona-cluster": {
             "workload-status": "blocked",
             "workload-status-message": "MySQL is down"}}
         zaza.model.wait_for_application_states(states=states)
 
-    def test_102_cold_start_bootstrap(self):
-        """Bootstrap a non-leader node.
-
-        After bootstrapping a non-leader node, notify bootstrapped on the
-        leader node.
-        """
         # Update which node is the leader and which are not
         self.update_leaders_and_non_leaders()
         # We want to test the worst possible scenario which is the
@@ -325,6 +296,8 @@ class PerconaClusterColdStartTest(PerconaClusterTest):
             "bootstrap-pxc",
             action_params={})
         logging.debug("Wait for application states ...")
+        for unit in zaza.model.get_units(self.application):
+            zaza.model.run_on_unit(unit.entity_id, "hooks/update-status")
         states = {"percona-cluster": {
             "workload-status": "waiting",
             "workload-status-message": "Unit waiting for cluster bootstrap"}}
@@ -336,9 +309,9 @@ class PerconaClusterColdStartTest(PerconaClusterTest):
             self.application,
             "notify-bootstrapped",
             action_params={})
-        logging.info("Wait till model is idle ...")
-        zaza.model.block_until_all_units_idle()
         logging.debug("Wait for application states ...")
+        for unit in zaza.model.get_units(self.application):
+            zaza.model.run_on_unit(unit.entity_id, "hooks/update-status")
         test_config = lifecycle_utils.get_charm_config()
         zaza.model.wait_for_application_states(
             states=test_config.get("target_deploy_status", {}))
@@ -372,8 +345,7 @@ class PerconaClusterScaleTests(PerconaClusterTest):
 
         logging.info("looking for the new crm_master")
         i = 0
-        changed = False
-        while i < 10 and not changed:
+        while i < 10:
             i += 1
             time.sleep(5)  # give some time to pacemaker to react
             new_crm_master = self.get_crm_master()
@@ -383,8 +355,12 @@ class PerconaClusterScaleTests(PerconaClusterTest):
                     "New crm_master unit detected"
                     " on {}".format(new_crm_master)
                 )
-                changed = True
+                break
+        else:
+            assert False, "The crm_master didn't change"
 
-        assert changed, "The crm_master didn't change"
-
-        assert self.is_port_open(address=self.vip), "cannot connect to vip"
+        # Check connectivity on the VIP
+        # \ is required due to pep8 and parenthesis would make the assertion
+        # always true.
+        assert generic_utils.is_port_open("3306", self.vip), \
+            "Cannot connect to vip"

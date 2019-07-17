@@ -16,7 +16,9 @@
 
 import logging
 import os
+import socket
 import subprocess
+import telnetlib
 import yaml
 
 from zaza import model
@@ -669,3 +671,28 @@ def get_ubuntu_release(ubuntu_name):
                format(ubuntu_name, UBUNTU_OPENSTACK_RELEASE))
         raise zaza_exceptions.UbuntuReleaseNotFound(msg)
     return index
+
+
+def is_port_open(port, address):
+        """Determine if TCP port is accessible.
+
+        Connect to the MySQL port on the VIP.
+
+        :param port: Port number
+        :type port: str
+        :param address: IP address
+        :type port: str
+        :returns: True if port is reachable
+        :rtype: boolean
+        """
+        try:
+            telnetlib.Telnet(address, port)
+            return True
+        except socket.error as e:
+            if e.errno == 113:
+                logging.error("could not connect to {}:{}"
+                              .format(address, port))
+            if e.errno == 111:
+                logging.error("connection refused connecting"
+                              " to {}:{}".format(address, port))
+            return False
