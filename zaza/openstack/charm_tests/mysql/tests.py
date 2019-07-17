@@ -57,7 +57,8 @@ class PerconaClusterTest(test_utils.OpenStackBaseTest):
     def get_root_password(self):
         """Get the MySQL root password.
 
-        :returns: str password
+        :returns: Password
+        :rtype: str
         """
         return zaza.model.run_on_leader(
             self.application,
@@ -68,7 +69,8 @@ class PerconaClusterTest(test_utils.OpenStackBaseTest):
 
         :param attr: Attribute to query
         :type attr: str
-        :returns: str wsrep value
+        :returns: wsrep value
+        :rtype: str
         """
         root_password = self.get_root_password()
         cmd = ("mysql -uroot -p{} -e\"show status like '{}';\"| "
@@ -84,7 +86,8 @@ class PerconaClusterTest(test_utils.OpenStackBaseTest):
 
         Query the wsrep_ready status in the DB.
 
-        :returns: boolean
+        :returns: True if bootstrapped
+        :rtype: boolean
         """
         value = self.get_wsrep_value("wsrep_ready")
         return value.lower() in ["on", "ready"]
@@ -94,7 +97,8 @@ class PerconaClusterTest(test_utils.OpenStackBaseTest):
 
         Query the wsrep_cluster size in the DB.
 
-        :returns: str Numeric cluster size
+        :returns: Numeric cluster size
+        :rtype: str
         """
         return self.get_wsrep_value("wsrep_cluster_size")
 
@@ -103,7 +107,8 @@ class PerconaClusterTest(test_utils.OpenStackBaseTest):
 
         Query CRM to determine which node hosts the VIP.
 
-        :returns: str Unit name
+        :returns: Unit name
+        :rtype: str
         """
         for unit in zaza.model.get_units(self.application):
             # is the vip running here?
@@ -129,7 +134,8 @@ class PerconaClusterTest(test_utils.OpenStackBaseTest):
         :type port: str
         :param address: IP address
         :type port: str
-        :returns: boolean
+        :returns: True if port is reachable
+        :rtype: boolean
         """
         try:
             telnetlib.Telnet(address, port)
@@ -149,8 +155,8 @@ class PerconaClusterTest(test_utils.OpenStackBaseTest):
         Update and set on the object the leader node and list of non-leader
         nodes.
 
-        :side effect: sets self.leader and self.non_leaders
         :returns: None
+        :rtype: None
         """
         status = zaza.model.get_status().applications[self.application]
         # Reset
@@ -166,7 +172,7 @@ class PerconaClusterTest(test_utils.OpenStackBaseTest):
 class PerconaClusterCharmTests(PerconaClusterTest):
     """Base for percona-cluster charm tests.
 
-    Note: these have tests have been ported from amulet tests
+    .. note:: these have tests have been ported from amulet tests
     """
 
     @classmethod
@@ -330,6 +336,8 @@ class PerconaClusterColdStartTest(PerconaClusterTest):
             self.application,
             "notify-bootstrapped",
             action_params={})
+        logging.info("Wait till model is idle ...")
+        zaza.model.block_until_all_units_idle()
         logging.debug("Wait for application states ...")
         test_config = lifecycle_utils.get_charm_config()
         zaza.model.wait_for_application_states(
@@ -343,7 +351,7 @@ class PerconaClusterScaleTests(PerconaClusterTest):
     def setUpClass(cls):
         """Run class setup for running percona scale tests.
 
-        Note: these have tests have been ported from amulet tests
+        .. note:: these have tests have been ported from amulet tests
         """
         super(PerconaClusterScaleTests, cls).setUpClass()
 
