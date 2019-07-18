@@ -545,3 +545,19 @@ class TestGenericUtils(ut_utils.BaseTestCase):
         bad_name = 'bad_name'
         with self.assertRaises(zaza_exceptions.UbuntuReleaseNotFound):
             generic_utils.get_ubuntu_release(bad_name)
+
+    def test_is_port_open(self):
+        self.patch(
+            'zaza.openstack.utilities.generic.telnetlib.Telnet',
+            new_callable=mock.MagicMock(),
+            name='telnet'
+        )
+
+        _port = "80"
+        _addr = "10.5.254.20"
+
+        self.assertTrue(generic_utils.is_port_open(_port, _addr))
+        self.telnet.assert_called_with(_addr, _port)
+
+        self.telnet.side_effect = generic_utils.socket.error
+        self.assertFalse(generic_utils.is_port_open(_port, _addr))

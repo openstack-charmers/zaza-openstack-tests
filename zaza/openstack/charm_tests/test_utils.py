@@ -206,13 +206,18 @@ class OpenStackBaseTest(unittest.TestCase):
         logging.debug('Remote unit timestamp {}'.format(mtime))
 
         with self.config_change(default_config, alternate_config):
-            logging.debug(
-                'Waiting for updates to propagate to {}'.format(config_file))
-            model.block_until_oslo_config_entries_match(
-                self.application_name,
-                config_file,
-                alternate_entry,
-                model_name=self.model_name)
+            # If this is not an OSLO config file set default_config={}
+            if alternate_entry:
+                logging.debug(
+                    'Waiting for updates to propagate to {}'
+                    .format(config_file))
+                model.block_until_oslo_config_entries_match(
+                    self.application_name,
+                    config_file,
+                    alternate_entry,
+                    model_name=self.model_name)
+            else:
+                model.block_until_all_units_idle(model_name=self.model_name)
 
             # Config update has occured and hooks are idle. Any services should
             # have been restarted by now:
@@ -225,13 +230,17 @@ class OpenStackBaseTest(unittest.TestCase):
                 model_name=self.model_name,
                 pgrep_full=pgrep_full)
 
-        logging.debug(
-            'Waiting for updates to propagate to '.format(config_file))
-        model.block_until_oslo_config_entries_match(
-            self.application_name,
-            config_file,
-            default_entry,
-            model_name=self.model_name)
+        # If this is not an OSLO config file set default_config={}
+        if default_entry:
+            logging.debug(
+                'Waiting for updates to propagate to '.format(config_file))
+            model.block_until_oslo_config_entries_match(
+                self.application_name,
+                config_file,
+                default_entry,
+                model_name=self.model_name)
+        else:
+            model.block_until_all_units_idle(model_name=self.model_name)
 
     @contextlib.contextmanager
     def pause_resume(self, services, pgrep_full=False):
