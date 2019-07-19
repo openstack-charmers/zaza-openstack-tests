@@ -61,6 +61,8 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
             payload_ips.append(server.networks['private'][0])
         self.assertTrue(len(payload_ips) > 0)
 
+        resp = neutron_client.list_networks(name='private_lb_fip_network')
+        vip_subnet_id = resp['networks'][0]['subnets'][0]
         resp = neutron_client.list_networks(name='private')
         subnet_id = resp['networks'][0]['subnets'][0]
         octavia_client = openstack_utils.get_octavia_session_client(
@@ -70,7 +72,7 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
                 'loadbalancer': {
                     'description': 'Created by Zaza',
                     'admin_state_up': True,
-                    'vip_subnet_id': subnet_id,
+                    'vip_subnet_id': vip_subnet_id,
                     'name': 'zaza-lb-0',
                 }})
         lb_id = result['loadbalancer']['id']
