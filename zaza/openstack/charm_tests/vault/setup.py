@@ -89,6 +89,18 @@ def auto_initialize(cacert=None, validation_application='keystone'):
 
     if validation_application:
         validate_ca(cacertificate, application=validation_application)
+        # Once validation has completed restart nova-compute to work around
+        # bug #1826382
+        try:
+            cmd = 'systemctl restart nova-compute'
+            for unit in zaza.model.get_units('nova-compute'):
+                result = zaza.model.run_on_unit(unit.entity_id, cmd)
+                assert int(result['Code']) == 0, (
+                    'Restart of nova-compute on {} failed'.format(
+                        unit.entity_id))
+        except KeyError:
+            # Nothing todo if there are no nova-compute units
+            pass
 
 
 auto_initialize_no_validation = functools.partial(
