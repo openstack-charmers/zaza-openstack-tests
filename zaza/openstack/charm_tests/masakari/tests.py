@@ -18,6 +18,7 @@
 
 from datetime import datetime
 import logging
+import tenacity
 
 import novaclient
 
@@ -101,6 +102,7 @@ class MasakariTest(test_utils.OpenStackBaseTest):
         :type model_name: str
         :returns: PID of qemu process
         :rtype: int
+        :raises: ValueError
         """
         pid_find_cmd = 'pgrep -u libvirt-qemu -f {}'.format(vm_uuid)
         out = zaza.model.run_on_unit(
@@ -108,6 +110,27 @@ class MasakariTest(test_utils.OpenStackBaseTest):
             pid_find_cmd,
             model_name=self.model_name)
         return int(out['Stdout'].strip())
+
+    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=2, max=60),
+                    reraise=True, stop=tenacity.stop_after_attempt(5),
+                    retry=tenacity.retry_if_exception_type(ValueError))
+    def wait_for_guest_pid(self, compute_unit_name, vm_uuid, model_name=None):
+        """Wait for the qemu process running guest to appear & return its pid.
+
+        :param compute_unit_name: Juju unit name of hypervisor running guest
+        :type compute_unit_name: str
+        :param vm_uuid: Guests UUID
+        :type vm_uuid: str
+        :param model_name: Name of model running cloud.
+        :type model_name: str
+        :returns: PID of qemu process
+        :rtype: int
+        :raises: ValueError
+        """
+        return self.get_guest_qemu_pid(
+            compute_unit_name,
+            vm_uuid,
+            model_name=self.model_name)
 
     def test_instance_failover(self):
         """Test masakari managed guest migration."""
@@ -165,7 +188,7 @@ class MasakariTest(test_utils.OpenStackBaseTest):
             self.nova_client,
             vm_name,
             inital_update_time)
-        new_guest_pid = self.get_guest_qemu_pid(
+        new_guest_pid = self.wait_for_guest_pid(
             unit_name,
             vm.id,
             model_name=self.model_name)
