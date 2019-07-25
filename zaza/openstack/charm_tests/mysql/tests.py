@@ -275,7 +275,15 @@ class PerconaClusterColdStartTest(PerconaClusterTest):
             self.nova_client.servers.start(uuid)
 
         logging.debug("Wait till model is idle ...")
-        zaza.model.block_until_all_units_idle()
+        # XXX If a hook was executing on a unit when it was powered off
+        #     it comes back in an error state.
+        try:
+            zaza.model.block_until_all_units_idle()
+        except zaza.model.UnitError:
+            zaza.model.resolve_units(
+                application_name='percona-cluster',
+                wait=True)
+            zaza.model.block_until_all_units_idle()
         logging.debug("Wait for application states ...")
         for unit in zaza.model.get_units(self.application):
             zaza.model.run_on_unit(unit.entity_id, "hooks/update-status")
