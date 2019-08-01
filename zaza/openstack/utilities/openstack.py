@@ -129,7 +129,12 @@ WORKLOAD_STATUS_EXCEPTIONS = {
         'workload-status': 'unknown',
         'workload-status-message': ''},
     'postgresql': {
-        'workload-status-message': 'Live'}}
+        'workload-status-message': 'Live'},
+    'ceilometer': {
+        'workload-status': 'blocked',
+        'workload-status-message':
+            ('Run the ceilometer-upgrade action on the leader to initialize '
+             'ceilometer and gnocchi')}}
 
 # For vault TLS certificates
 KEYSTONE_CACERT = "keystone_juju_ca_cert.crt"
