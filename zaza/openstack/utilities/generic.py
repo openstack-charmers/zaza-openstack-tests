@@ -291,7 +291,8 @@ def series_upgrade_application(application, pause_non_leader_primary=True,
         if pause_non_leader_subordinate:
             if status["units"][unit].get("subordinates"):
                 for subordinate in status["units"][unit]["subordinates"]:
-                    if subordinate in SUBORDINATE_PAUSE_RESUME_BLACKLIST:
+                    _app = subordinate.split('/')[0]
+                    if _app in SUBORDINATE_PAUSE_RESUME_BLACKLIST:
                         logging.info("Skipping pausing {} - blacklisted"
                                      .format(subordinate))
                     else:
