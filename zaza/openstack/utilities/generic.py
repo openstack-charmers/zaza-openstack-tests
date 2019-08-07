@@ -27,6 +27,11 @@ from zaza.openstack.utilities import exceptions as zaza_exceptions
 from zaza.openstack.utilities.os_versions import UBUNTU_OPENSTACK_RELEASE
 
 
+SUBORDINATE_PAUSE_RESUME_BLACKLIST = [
+    "cinder-ceph",
+]
+
+
 def dict_to_yaml(dict_data):
     """Return YAML from dictionary.
 
@@ -286,8 +291,14 @@ def series_upgrade_application(application, pause_non_leader_primary=True,
         if pause_non_leader_subordinate:
             if status["units"][unit].get("subordinates"):
                 for subordinate in status["units"][unit]["subordinates"]:
-                    logging.info("Pausing {}".format(subordinate))
-                    model.run_action(subordinate, "pause", action_params={})
+                    _app = subordinate.split('/')[0]
+                    if _app in SUBORDINATE_PAUSE_RESUME_BLACKLIST:
+                        logging.info("Skipping pausing {} - blacklisted"
+                                     .format(subordinate))
+                    else:
+                        logging.info("Pausing {}".format(subordinate))
+                        model.run_action(
+                            subordinate, "pause", action_params={})
         if pause_non_leader_primary:
             logging.info("Pausing {}".format(unit))
             model.run_action(unit, "pause", action_params={})
