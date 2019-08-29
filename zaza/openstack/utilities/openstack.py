@@ -1475,14 +1475,14 @@ def get_urllib_opener():
 
     Using urllib.request.urlopen will automatically handle proxies so none
     of this function is needed except we are currently specifying proxies
-    via AMULET_HTTP_PROXY rather than http_proxy so a ProxyHandler is needed
+    via OS_TEST_HTTP_PROXY rather than http_proxy so a ProxyHandler is needed
     explicitly stating the proxies.
 
     :returns: An opener which opens URLs via BaseHandlers chained together
     :rtype: urllib.request.OpenerDirector
     """
-    http_proxy = os.getenv('AMULET_HTTP_PROXY')
-    logging.debug('AMULET_HTTP_PROXY: {}'.format(http_proxy))
+    http_proxy = os.getenv('OS_TEST_HTTP_PROXY')
+    logging.debug('OS_TEST_HTTP_PROXY: {}'.format(http_proxy))
 
     if http_proxy:
         handler = urllib.request.ProxyHandler({'http': http_proxy})
