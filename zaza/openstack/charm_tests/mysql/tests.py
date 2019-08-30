@@ -379,6 +379,8 @@ class PerconaClusterScaleTests(PerconaClusterTest):
         i = 0
         while i < 10:
             i += 1
+            # XXX time.sleep roundup
+            # https://github.com/openstack-charmers/zaza-openstack-tests/issues/46
             time.sleep(5)  # give some time to pacemaker to react
             new_crm_master = self.get_crm_master()
 
