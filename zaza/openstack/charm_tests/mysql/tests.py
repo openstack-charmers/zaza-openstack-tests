@@ -278,8 +278,10 @@ class PerconaClusterColdStartTest(PerconaClusterTest):
             self.nova_client.servers.stop(uuid)
         logging.debug("Wait till all machines are shutoff ...")
         for uuid in self.machines:
-            openstack_utils.resource_reaches_status(self.nova_client.servers, uuid,
-                                                    expected_status='SHUTOFF', stop_after_attempt=16)
+            openstack_utils.resource_reaches_status(self.nova_client.servers,
+                                                    uuid,
+                                                    expected_status='SHUTOFF',
+                                                    stop_after_attempt=16)
 
         # Start nodes
         self.machines.sort(reverse=True)
