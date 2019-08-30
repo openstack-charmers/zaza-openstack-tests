@@ -276,13 +276,12 @@ class PerconaClusterColdStartTest(PerconaClusterTest):
         logging.info("Stopping instances: {}".format(self.machines))
         for uuid in self.machines:
             self.nova_client.servers.stop(uuid)
-        # Unfortunately, juju reports units in workload status "active"
-        # when they are in fact down. So we have to rely on a simple wait
-        # and idle check.
-        logging.debug("Sleep ...")
-        time.sleep(30)
-        logging.debug("Wait till model is idle ...")
-        zaza.model.block_until_all_units_idle()
+        logging.debug("Wait till all machines are shutoff ...")
+        for uuid in self.machines:
+            openstack_utils.resource_reaches_status(self.nova_client.servers,
+                                                    uuid,
+                                                    expected_status='SHUTOFF',
+                                                    stop_after_attempt=16)
 
         # Start nodes
         self.machines.sort(reverse=True)
