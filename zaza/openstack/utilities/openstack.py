@@ -1355,7 +1355,7 @@ def get_undercloud_auth():
             'API_VERSION': 3,
         }
         if domain:
-            auth_settings['OS_DOMAIN_NAME': 'admin_domain'] = domain
+            auth_settings['OS_DOMAIN_NAME'] = domain
         else:
             auth_settings['OS_USER_DOMAIN_NAME'] = (
                 os.environ.get('OS_USER_DOMAIN_NAME'))
