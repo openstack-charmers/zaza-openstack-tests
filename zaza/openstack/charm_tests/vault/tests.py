@@ -132,6 +132,8 @@ class VaultTest(BaseVaultTest):
                 try:
                     self.assertTrue(client.hvac_client.is_authenticated())
                 except hvac.exceptions.InternalServerError:
+                    # XXX time.sleep roundup
+                    # https://github.com/openstack-charmers/zaza-openstack-tests/issues/46
                     time.sleep(2)
                 else:
                     break

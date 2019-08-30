@@ -133,6 +133,8 @@ def is_initialized(client):
                 urllib3.exceptions.NewConnectionError,
                 urllib3.exceptions.MaxRetryError,
                 requests.exceptions.ConnectionError):
+            # XXX time.sleep roundup
+            # https://github.com/openstack-charmers/zaza-openstack-tests/issues/46
             time.sleep(2)
         else:
             break
