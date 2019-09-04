@@ -17,7 +17,8 @@
 import logging
 import os
 import re
-import time
+
+import tenacity
 
 import zaza.charm_lifecycle.utils as lifecycle_utils
 import zaza.model
@@ -349,6 +350,23 @@ class PerconaClusterColdStartTest(PerconaClusterTest):
             states=test_config.get("target_deploy_status", {}))
 
 
+@tenacity.retry(
+    retry=tenacity.retry_if_result(lambda is_new: is_new is False),
+    wait=tenacity.wait_fixed(5),  # interval between retries
+    stop=tenacity.stop_after_attempt(10))  # retry times
+def retry_is_new_crm_master(test, old_crm_master):
+    """Check new crm master with retries.
+
+    Return True if a new crm master detected, retry 10 times if False.
+    """
+    new_crm_master = test.get_crm_master()
+    if new_crm_master and new_crm_master != old_crm_master:
+        logging.info(
+            "New crm_master unit detected on {}".format(new_crm_master))
+        return True
+    return False
+
+
 class PerconaClusterScaleTests(PerconaClusterTest):
     """Percona Cluster scale tests."""
 
@@ -376,22 +394,9 @@ class PerconaClusterScaleTests(PerconaClusterTest):
         zaza.model.run_on_unit(old_crm_master, cmd)
 
         logging.info("looking for the new crm_master")
-        i = 0
-        while i < 10:
-            i += 1
-            # XXX time.sleep roundup
-            # https://github.com/openstack-charmers/zaza-openstack-tests/issues/46
-            time.sleep(5)  # give some time to pacemaker to react
-            new_crm_master = self.get_crm_master()
-
-            if (new_crm_master and new_crm_master != old_crm_master):
-                logging.info(
-                    "New crm_master unit detected"
-                    " on {}".format(new_crm_master)
-                )
-                break
-        else:
-            assert False, "The crm_master didn't change"
+        self.assertTrue(
+            retry_is_new_crm_master(self, old_crm_master),
+            msg="The crm_master didn't change")
 
         # Check connectivity on the VIP
         # \ is required due to pep8 and parenthesis would make the assertion
