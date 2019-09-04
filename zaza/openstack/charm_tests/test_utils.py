@@ -14,12 +14,14 @@
 """Module containg base class for implementing charm tests."""
 import contextlib
 import logging
+import subprocess
 import unittest
 import zaza.model
 
 import zaza.model as model
 import zaza.charm_lifecycle.utils as lifecycle_utils
 import zaza.openstack.utilities.openstack as openstack_utils
+import zaza.openstack.utilities.generic as generic_utils
 
 
 def skipIfNotHA(service_name):
@@ -36,6 +38,25 @@ def skipIfNotHA(service_name):
         return _skipIfNotHA_inner_2
 
     return _skipIfNotHA_inner_1
+
+
+def skipUntilVersion(service, package, release):
+    """Run decorator to skip this test if application version is too low."""
+    def _skipUntilVersion_inner_1(f):
+        def _skipUntilVersion_inner_2(*args, **kwargs):
+            package_version = generic_utils.get_pkg_version(service, package)
+            try:
+                subprocess.check_call(['dpkg', '--compare-versions',
+                                       package_version, 'ge', release],
+                                      stderr=subprocess.STDOUT,
+                                      universal_newlines=True)
+                return f(*args, **kwargs)
+            except subprocess.CalledProcessError as cp:
+                logging.warn("Skipping test for older ({})"
+                             "service {}, requested {}".format(
+                                 package_version, service, release))
+        return _skipUntilVersion_inner_2
+    return _skipUntilVersion_inner_1
 
 
 def audit_assertions(action,

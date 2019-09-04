@@ -15,6 +15,7 @@
 """Ceph Testing."""
 
 import unittest
+import json
 import logging
 from os import (
     listdir,
@@ -56,7 +57,7 @@ class CephLowLevelTest(test_utils.OpenStackBaseTest):
         }
 
         ceph_osd_processes = {
-            'ceph-osd': [2, 3]
+            'ceph-osd': [1, 2, 3]
         }
 
         # Units with process names and PID quantities expected
@@ -94,6 +95,16 @@ class CephLowLevelTest(test_utils.OpenStackBaseTest):
                 services=unit_services,
                 target_status='running'
             )
+
+    @test_utils.skipUntilVersion('ceph-mon', 'ceph', '14.2.0')
+    def test_pg_tuning(self):
+        """Verify that auto PG tuning is enabled for Nautilus+."""
+        unit_name = 'ceph-mon/0'
+        cmd = "ceph osd pool autoscale-status --format=json"
+        result = zaza_model.run_on_unit(unit_name, cmd)
+        self.assertEqual(result['Code'], '0')
+        for pool in json.loads(result['Stdout']):
+            self.assertEqual(pool['pg_autoscale_mode'], 'on')
 
 
 class CephRelationTest(test_utils.OpenStackBaseTest):
@@ -138,7 +149,6 @@ class CephRelationTest(test_utils.OpenStackBaseTest):
         fsid = result.get('Stdout').strip()
         expected = {
             'private-address': remote_ip,
-            'auth': 'none',
             'ceph-public-address': remote_ip,
             'fsid': fsid,
         }
