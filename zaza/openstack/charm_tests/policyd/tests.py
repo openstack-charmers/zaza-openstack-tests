@@ -78,6 +78,7 @@ class PolicydTest(test_utils.OpenStackBaseTest):
         with zipfile.ZipFile(path, "w") as zfp:
             for name, contents in files.items():
                 zfp.writestr(name, contents)
+        return path
 
     def test_policyd_good_yaml(self):
         # Test that the policyd with a good zipped yaml file puts the yaml file
