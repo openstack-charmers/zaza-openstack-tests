@@ -37,12 +37,14 @@ class PolicydTest(test_utils.OpenStackBaseTest):
         service: keystone
     """
 
+    @classmethod
     def setUpClass(cls, application_name=None):
         super(PolicydTest, cls).setUpClass(application_name)
         cls._tmp_dir = tempfile.mkdtemp()
         cls._service_name = \
             cls.test_config['tests_options']['policyd']['service']
 
+    @classmethod
     def tearDownClass(cls):
         super(PolicydTest, cls).tearDownClass()
         try:
