@@ -38,13 +38,13 @@ class PolicydTest(test_utils.OpenStackBaseTest):
     """
 
     def setUpClass(cls, application_name=None):
-        super().setUpClass(application_name)
+        super(PolicydTest, cls).setUpClass(application_name)
         cls._tmp_dir = tempfile.mkdtemp()
         cls._service_name = \
             cls.test_config['tests_options']['policyd']['service']
 
     def tearDownClass(cls):
-        super().tearDownClass()
+        super(PolicydTest, cls).tearDownClass()
         try:
             shutil.rmtree(cls._tmp_dir, ignore_errors=True)
         except Exception as e:
