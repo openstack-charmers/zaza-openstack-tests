@@ -158,6 +158,26 @@ class RmqTests(test_utils.OpenStackBaseTest):
                                                ssl=True, port=5671)
         logging.info('OK\n')
 
+    def test_410_rmq_amqp_messages_all_units_ssl_alt_port(self):
+        """Send amqp messages with ssl on, to every rmq unit and check
+        every rmq unit for messages.  Custom ssl tcp port."""
+        # http://pad.lv/1625044
+        # TODO: exsdev: find out if there's a function to determine unit's release
+        # Otherwise run_on_unit: lsb_release -cs
+        # if (CompareHostReleases(self.client_series) >= 'xenial' and
+        #         CompareHostReleases(self.series) <= 'trusty'):
+        #     logging.info('SKIP')
+        #     logging.info('Skipping SSL tests due to client'
+        #                ' compatibility issues')
+        #     return
+        logging.debug('Checking amqp message publish/get on all units '
+                      '(ssl on)...')
+
+        units = zaza.model.get_units(self.application_name)
+        self._test_rmq_amqp_messages_all_units(units,
+                                               ssl=True, port=5999)
+        logging.info('OK\n')
+
     def test_412_rmq_management_plugin(self):
         """Enable and check management plugin."""
         logging.debug('Checking tcp socket connect to management plugin '
