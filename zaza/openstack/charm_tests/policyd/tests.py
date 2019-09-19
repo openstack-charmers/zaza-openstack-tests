@@ -20,6 +20,8 @@ import shutil
 import tempfile
 import zipfile
 
+from juju.errors import JujuError
+
 import zaza
 import zaza.model as zaza_model
 import zaza.utilities.juju as zaza_juju
@@ -112,10 +114,21 @@ class PolicydTest(test_utils.OpenStackBaseTest):
         logging.info("Disabling policy override ...")
         self._set_config(False)
         # check that the status no longer has "PO:" on it.
+        # we have to do it twice due to async races and that some info lines
+        # erase the PO: bit prior to actuall getting back to idle.  The double
+        # check verifies that the charms have started, the idle waits until it
+        # is finiehed, and then the final check really makes sure they got
+        # switched off.
+        block_until_wl_status_info_starts_with(
+            self.application_name, "PO:", negate_match=True)
+        zaza_model.block_until_all_units_idle()
         block_until_wl_status_info_starts_with(
             self.application_name, "PO:", negate_match=True)
 
         # verify that the file no longer exists
+        logging.info("Checking that {} has been removed".format(path))
+        block_until_file_missing(self.application_name, path)
+
         logging.info("...done")
 
 
@@ -152,3 +165,25 @@ async def async_block_until_wl_status_info_starts_with(
 
 block_until_wl_status_info_starts_with = zaza.sync_wrapper(
     async_block_until_wl_status_info_starts_with)
+
+
+async def async_block_until_file_missing(
+        app, path, model_name=None, timeout=2700):
+    async def _check_for_file(model):
+        units = model.applications[app].units
+        results = []
+        for unit in units:
+            try:
+                output = await unit.run('test -e {}; echo $?'.format(path))
+                contents = output.data.get('results')['Stdout']
+                results.append("1" in contents)
+            # libjuju throws a generic error for connection failure. So we
+            # cannot differentiate between a connectivity issue and a
+            # target file not existing error. For now just assume the
+            # latter.
+            except JujuError:
+                results.append(False)
+        return all(results)
+
+
+block_until_file_missing = zaza.sync_wrapper(async_block_until_file_missing)
