@@ -716,6 +716,11 @@ def get_ubuntu_release(ubuntu_name):
     return index
 
 
+def get_file_contents(unit, f):
+    return model.run_on_unit(unit.entity_id,
+                             "cat {}".format(f))['Stdout']
+
+
 def is_port_open(port, address):
         """Determine if TCP port is accessible.
 
