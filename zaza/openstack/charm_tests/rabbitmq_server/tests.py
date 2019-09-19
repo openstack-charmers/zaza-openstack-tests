@@ -228,6 +228,30 @@ class RmqTests(test_utils.OpenStackBaseTest):
 
         logging.info('OK\n')
 
+    def test_910_pause_and_resume(self):
+        """The services can be paused and resumed. """
+
+        logging.debug('Checking pause and resume actions...')
+
+        unit = zaza.model.get_units(self.application_name)[0]
+        assert unit.workload_status == "active"
+
+        zaza.model.run_action(unit.entity_id, "pause")
+        zaza.model.block_until_unit_wl_status(unit.entity_id, "maintenance")
+        # TODO: investigate possible bug (the following line is
+        # required, otherwise it looks like workload_status is
+        # reporting cached information, no matter how long you sleep)
+        unit = zaza.model.get_unit_from_name(unit.entity_id)
+        assert unit.workload_status == "maintenance"
+
+        zaza.model.run_action(unit.entity_id, "resume")
+        zaza.model.block_until_unit_wl_status(unit.entity_id, "active")
+        unit = zaza.model.get_unit_from_name(unit.entity_id)
+        assert unit.workload_status == "active"
+
+        rmq_utils.wait_for_cluster()
+        logging.debug('OK')
+
     def test_911_cluster_status(self):
         """ rabbitmqctl cluster_status action can be returned. """
         logging.debug('Checking cluster status action...')
