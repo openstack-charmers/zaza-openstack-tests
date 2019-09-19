@@ -38,6 +38,43 @@ def wait_for_cluster(model_name=None, timeout=1200):
                                            timeout=timeout)
 
 
+def add_user(units, username="testuser1", password="changeme"):
+    """Add a user via the first rmq juju unit, check connection as
+    the new user against all units.
+    :param units: list of unit pointers
+    :param username: amqp user name, default to testuser1
+    :param password: amqp user password
+    :returns: None if successful.  Raise on error.
+    """
+    logging.debug('Adding rmq user ({})...'.format(username))
+
+    # Check that user does not already exist
+    cmd_user_list = 'rabbitmqctl list_users'
+    cmd_result = zaza.model.run_on_unit(units[0].entity_id, cmd_user_list)
+    output = cmd_result['Stdout'].strip()
+    if username in output:
+        logging.warning('User ({}) already exists, returning '
+                        'gracefully.'.format(username))
+        return
+
+    perms = '".*" ".*" ".*"'
+    cmds = ['rabbitmqctl add_user {} {}'.format(username, password),
+            'rabbitmqctl set_permissions {} {}'.format(username, perms)]
+
+    # Add user via first unit
+    for cmd in cmds:
+        cmd_result = zaza.model.run_on_unit(units[0].entity_id, cmd)
+        output = cmd_result['Stdout'].strip()
+
+    # Check connection against the other units
+    logging.debug('Checking user connect against units...')
+    for u in units:
+        connection = connect_amqp_by_unit(u, ssl=False,
+                                          username=username,
+                                          password=password)
+        connection.close()
+
+
 def get_cluster_status(unit):
     """Execute rabbitmq cluster status command on a unit and return
     the full output.
