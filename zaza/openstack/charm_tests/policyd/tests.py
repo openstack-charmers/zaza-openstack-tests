@@ -60,8 +60,9 @@ class PolicydTest(test_utils.OpenStackBaseTest):
         self._set_config_and_wait(False)
 
     def _set_config_and_wait(self, state):
+        s = "true" if state else "false"
         zaza_model.set_application_config(self.application_name,
-                                          {"use-policyd-override": state})
+                                          {"use-policyd-override": s})
         zaza_model.block_until_all_units_idle()
 
     def _make_zip_file_from(self, name, files):
