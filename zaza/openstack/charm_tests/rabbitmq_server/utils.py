@@ -174,6 +174,18 @@ def validate_ssl_enabled_units(units, port=None):
     return None
 
 
+def validate_ssl_disabled_units(units):
+    """Check that ssl is enabled on listed rmq juju units.
+    :param units: list of all rmq units
+    :returns: True if successful.  Raise on error.
+    """
+    for u in units:
+        if is_ssl_enabled_on_unit(u):
+            return ('Unexpected condition:  ssl is enabled on unit '
+                    '({})'.format(u.entity_id))
+    return None
+
+
 def is_ssl_enabled_on_unit(unit, port=None):
     """Check a single juju rmq unit for ssl and port in the config file."""
     host = unit.public_address
