@@ -129,6 +129,7 @@ class PolicydTest(test_utils.OpenStackBaseTest):
         wl_stats = [v['workload-status']['info']
                     for k, v in app_status['units'].items()
                     if k.split('/')[0] == self.application_name]
+        logging.info("App status is: {}".format(wl_stats))
         self.assertFalse(any(s.startswith("PO:") for s in wl_stats))
         logging.info("... done")
 
