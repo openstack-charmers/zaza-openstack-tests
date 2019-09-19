@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import logging
 import zaza.model
 
@@ -43,5 +44,24 @@ def get_cluster_status(unit):
     logging.debug('{} cluster_status:\n{}'.format(
         unit.entity_id, output))
     return str(output)
+
+
+def get_cluster_running_nodes(unit):
+    """Parse rabbitmqctl cluster_status output string, return list of
+    running rabbitmq cluster nodes.
+    :param unit: unit pointer
+    :returns: List containing node names of running nodes
+    """
+    # NOTE(beisner): rabbitmqctl cluster_status output is not
+    # json-parsable, do string chop foo, then json.loads that.
+    str_stat = get_cluster_status(unit)
+    if 'running_nodes' in str_stat:
+        pos_start = str_stat.find("{running_nodes,") + 15
+        pos_end = str_stat.find("]},", pos_start) + 1
+        str_run_nodes = str_stat[pos_start:pos_end].replace("'", '"')
+        run_nodes = json.loads(str_run_nodes)
+        return run_nodes
+    else:
+        return []
 
 
