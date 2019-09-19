@@ -136,3 +136,54 @@ class RmqTests(test_utils.OpenStackBaseTest):
         self._test_rmq_amqp_messages_all_units(units, ssl=False)
         logging.info('OK\n')
 
+    def test_412_rmq_management_plugin(self):
+        """Enable and check management plugin."""
+        logging.debug('Checking tcp socket connect to management plugin '
+                      'port on all rmq units...')
+
+        units = zaza.model.get_units(self.application_name)
+        mgmt_port = 15672
+
+        # Enable management plugin
+        logging.debug('Enabling management_plugin charm config option...')
+        config = {'management_plugin': 'True'}
+        zaza.model.set_application_config('rabbitmq-server', config)
+        rmq_utils.wait_for_cluster()
+
+        # Check tcp connect to management plugin port
+        max_wait = 600
+        tries = 0
+        ret = generic_utils.port_knock_units(units, mgmt_port)
+        while ret and tries < (max_wait / 30):
+            time.sleep(30)
+            logging.debug('Attempt {}: {}'.format(tries, ret))
+            ret = generic_utils.port_knock_units(units, mgmt_port)
+            tries += 1
+
+        self.assertIsNone(ret)
+        logging.debug('Connect to all units (OK)\n')
+
+        # Disable management plugin
+        logging.debug('Disabling management_plugin charm config option...')
+        config = {'management_plugin': 'False'}
+        zaza.model.set_application_config('rabbitmq-server', config)
+        rmq_utils.wait_for_cluster()
+
+        # Negative check - tcp connect to management plugin port
+        logging.info('Expect tcp connect fail since charm config '
+                     'option is disabled.')
+        tries = 0
+        ret = generic_utils.port_knock_units(units,
+                                             mgmt_port,
+                                             expect_success=False)
+
+        while ret and tries < (max_wait / 30):
+            time.sleep(30)
+            logging.debug('Attempt {}: {}'.format(tries, ret))
+            ret = generic_utils.port_knock_units(units, mgmt_port,
+                                                 expect_success=False)
+            tries += 1
+
+        self.assertIsNone(ret)
+        logging.info('Confirm mgmt port closed on all units (OK)\n')
+
