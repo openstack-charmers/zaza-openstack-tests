@@ -88,14 +88,19 @@ class PolicydTest(test_utils.OpenStackBaseTest):
             'file1.yaml': "{'rule1': '!'}"
         }
         good_zip_path = self._make_zip_file_from('good.zip', good)
+        logging.info("About to attach the resource")
         zaza_model.attach_resource(self.application_name,
                                    'policyd-override',
                                    good_zip_path)
+        logging.info("... waiting for idle")
         zaza_model.block_until_all_units_idle()
+        logging.info("Now setting config to true")
         self._set_config_and_wait(True)
         # check that the file gets to the right location
         path = os.path.join(
             "/etc", self._service_name, "policy.d", 'file1.yaml')
+        logging.info("Now checking for file contents: {}".format(path))
         zaza_model.block_until_file_has_contents(self.application_name,
                                                  path,
                                                  "'rule1': '!'")
+        logging.info("...done")
