@@ -62,6 +62,7 @@ class PolicydTest(test_utils.OpenStackBaseTest):
         """Ensure that the policyd config is switched off and the charm is
         stable at the end of the test.
         """
+        logging.info("tearDown")
         self._set_config_and_wait(False)
 
     def _set_config_and_wait(self, state):
