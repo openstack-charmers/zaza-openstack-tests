@@ -20,6 +20,7 @@ import shutil
 import tempfile
 import zipfile
 
+import zaza
 import zaza.model as zaza_model
 import zaza.utilities.juju as zaza_juju
 
@@ -58,19 +59,11 @@ class PolicydTest(test_utils.OpenStackBaseTest):
             logging.error("Removing the policyd tempdir/files failed: {}"
                           .format(str(e)))
 
-    def tearDown(self):
-        """Ensure that the policyd config is switched off and the charm is
-        stable at the end of the test.
-        """
-        logging.info("tearDown")
-        self._set_config_and_wait(False)
-
-    def _set_config_and_wait(self, state):
+    def _set_config(self, state):
         s = "True" if state else "False"
         config = {"use-policyd-override": s}
         logging.info("Setting config to {}".format(config))
         zaza_model.set_application_config(self.application_name, config)
-        zaza_model.block_until_all_units_idle()
 
     def _make_zip_file_from(self, name, files):
         """Make a zip file from a dictionary of filename: string.
@@ -102,7 +95,7 @@ class PolicydTest(test_utils.OpenStackBaseTest):
         logging.info("... waiting for idle")
         zaza_model.block_until_all_units_idle()
         logging.info("Now setting config to true")
-        self._set_config_and_wait(True)
+        self._set_config(True)
         # check that the file gets to the right location
         path = os.path.join(
             "/etc", self._service_name, "policy.d", 'file1.yaml')
@@ -110,31 +103,52 @@ class PolicydTest(test_utils.OpenStackBaseTest):
         zaza_model.block_until_file_has_contents(self.application_name,
                                                  path,
                                                  "rule1: '!'")
-        logging.info("... waiting for idle")
-        zaza_model.block_until_all_units_idle()
-        # check that the status includes "PO:" at the beginning of the status
-        # line
-        app_status = zaza_juju.get_application_status(self.application_name)
-        wl_stats = [v['workload-status']['info']
-                    for k, v in app_status['units'].items()
-                    if k.split('/')[0] == self.application_name]
-        logging.info("App status is: {}".format(wl_stats))
-        self.assertTrue(all(s.startswith("PO:") for s in wl_stats))
+        # ensure that the workload status info line starts with PO:
+        logging.info("Checking for workload status line starts with PO:")
+        block_until_wl_status_info_starts_with(self.application_name, "PO:")
         logging.info("App status is valid")
 
         # disable the policy override
         logging.info("Disabling policy override ...")
-        self._set_config_and_wait(False)
-        logging.info("Done setting false?")
+        self._set_config(False)
         # check that the status no longer has "PO:" on it.
-        app_status = zaza_juju.get_application_status(self.application_name)
-        wl_stats = [v['workload-status']['info']
-                    for k, v in app_status['units'].items()
-                    if k.split('/')[0] == self.application_name]
-        logging.info("After App status is: {}".format(wl_stats))
-        self.assertFalse(any(s.startswith("PO:") for s in wl_stats))
-        logging.info("... done")
+        block_until_wl_status_info_starts_with(
+            self.application_name, "PO:", negate_match=True)
 
         # verify that the file no longer exists
         logging.info("...done")
 
+
+async def async_block_until_wl_status_info_starts_with(
+        app, status, model_name=None, negate_match=False, timeout=2700):
+    """Block until the all the units have a desired workload status that starts
+    with status.
+
+    :param app: the application to check against
+    :type app: str
+    :param status: Status to wait for at the start of the string
+    :type status: str
+    :param model_name: Name of model to query.
+    :type model_name: Union[None, str]
+    :param negate_match: Wait until the match is not true; i.e. none match
+    :type negate_match: Union[None, bool]
+    :param timeout: Time to wait for unit to achieved desired status
+    :type timeout: float
+    """
+    async def _unit_status():
+        model_status = await zaza_model.async_get_status()
+        wl_infos = [v['workload-status']['info']
+                    for k, v in model_status.applications[app]['units']
+                    if k.split('/')[0] == app]
+        g = (s.startswith(status) for s in wl_infos)
+        if negate_match:
+            return not(any(g))
+        else:
+            return all(g)
+
+    async with zaza_model.run_in_model(model_name):
+        await zaza_model.async_block_until(_unit_status, timeout=timeout)
+
+
+block_until_wl_status_info_starts_with = zaza.sync_wrapper(
+    async_block_until_wl_status_info_starts_with)
