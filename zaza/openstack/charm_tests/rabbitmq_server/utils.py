@@ -75,6 +75,30 @@ def add_user(units, username="testuser1", password="changeme"):
         connection.close()
 
 
+def delete_user(units, username="testuser1"):
+    """Delete a rabbitmq user via the first rmq juju unit.
+    :param units: list of unit pointers
+    :param username: amqp user name, default to testuser1
+    :param password: amqp user password
+    :returns: None if successful or no such user.
+    """
+    logging.debug('Deleting rmq user ({})...'.format(username))
+
+    # Check that the user exists
+    cmd_user_list = 'rabbitmqctl list_users'
+    output = zaza.model.run_on_unit(units[0].entity_id,
+                                    cmd_user_list)['Stdout'].strip()
+
+    if username not in output:
+        logging.warning('User ({}) does not exist, returning '
+                        'gracefully.'.format(username))
+        return
+
+    # Delete the user
+    cmd_user_del = 'rabbitmqctl delete_user {}'.format(username)
+    output = zaza.model.run_on_unit(units[0].entity_id, cmd_user_del)
+
+
 def get_cluster_status(unit):
     """Execute rabbitmq cluster status command on a unit and return
     the full output.
