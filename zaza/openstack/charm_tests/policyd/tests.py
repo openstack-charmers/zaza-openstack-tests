@@ -107,7 +107,8 @@ class PolicydTest(test_utils.OpenStackBaseTest):
                                                  "rule1: '!'")
         # ensure that the workload status info line starts with PO:
         logging.info("Checking for workload status line starts with PO:")
-        block_until_wl_status_info_starts_with(self.application_name, "PO:")
+        zaza_model.block_until_wl_status_info_starts_with(
+            self.application_name, "PO:")
         logging.info("App status is valid")
 
         # disable the policy override
@@ -119,71 +120,14 @@ class PolicydTest(test_utils.OpenStackBaseTest):
         # check verifies that the charms have started, the idle waits until it
         # is finiehed, and then the final check really makes sure they got
         # switched off.
-        block_until_wl_status_info_starts_with(
+        zaza_model.block_until_wl_status_info_starts_with(
             self.application_name, "PO:", negate_match=True)
         zaza_model.block_until_all_units_idle()
-        block_until_wl_status_info_starts_with(
+        zaza_model.block_until_wl_status_info_starts_with(
             self.application_name, "PO:", negate_match=True)
 
         # verify that the file no longer exists
         logging.info("Checking that {} has been removed".format(path))
-        block_until_file_missing(self.application_name, path)
+        zaza_model.block_until_file_missing(self.application_name, path)
 
         logging.info("...done")
-
-
-async def async_block_until_wl_status_info_starts_with(
-        app, status, model_name=None, negate_match=False, timeout=2700):
-    """Block until the all the units have a desired workload status that starts
-    with status.
-
-    :param app: the application to check against
-    :type app: str
-    :param status: Status to wait for at the start of the string
-    :type status: str
-    :param model_name: Name of model to query.
-    :type model_name: Union[None, str]
-    :param negate_match: Wait until the match is not true; i.e. none match
-    :type negate_match: Union[None, bool]
-    :param timeout: Time to wait for unit to achieved desired status
-    :type timeout: float
-    """
-    async def _unit_status():
-        model_status = await zaza_model.async_get_status()
-        wl_infos = [v['workload-status']['info']
-                    for k, v in model_status.applications[app]['units'].items()
-                    if k.split('/')[0] == app]
-        g = (s.startswith(status) for s in wl_infos)
-        if negate_match:
-            return not(any(g))
-        else:
-            return all(g)
-
-    async with zaza_model.run_in_model(model_name):
-        await zaza_model.async_block_until(_unit_status, timeout=timeout)
-
-
-block_until_wl_status_info_starts_with = zaza.sync_wrapper(
-    async_block_until_wl_status_info_starts_with)
-
-
-async def async_block_until_file_missing(
-        app, path, model_name=None, timeout=2700):
-    async def _check_for_file(model):
-        units = model.applications[app].units
-        results = []
-        for unit in units:
-            try:
-                output = await unit.run('test -e {}; echo $?'.format(path))
-                contents = output.data.get('results')['Stdout']
-                results.append("1" in contents)
-            # libjuju throws a generic error for connection failure. So we
-            # cannot differentiate between a connectivity issue and a
-            # target file not existing error. For now just assume the
-            # latter.
-            except JujuError:
-                results.append(False)
-        return all(results)
-
-
-block_until_file_missing = zaza.sync_wrapper(async_block_until_file_missing)
