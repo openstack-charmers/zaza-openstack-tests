@@ -126,3 +126,13 @@ class RmqTests(test_utils.OpenStackBaseTest):
 
         logging.info('OK\n')
 
+    def test_406_rmq_amqp_messages_all_units_ssl_off(self):
+        """Send amqp messages to every rmq unit and check every rmq unit
+        for messages.  Standard amqp tcp port, no ssl."""
+        logging.debug('Checking amqp message publish/get on all units '
+                      '(ssl off)...')
+
+        units = zaza.model.get_units(self.application_name)
+        self._test_rmq_amqp_messages_all_units(units, ssl=False)
+        logging.info('OK\n')
+
