@@ -75,6 +75,16 @@ def get_network_config(net_topology, ignore_env_vars=False,
     return net_info
 
 
+def get_unit_hostnames(units):
+    """Return a dict of juju unit names to hostnames."""
+    host_names = {}
+    for unit in units:
+        output = model.run_on_unit(unit.entity_id, 'hostname')
+        hostname = output['Stdout'].strip()
+        host_names[unit.entity_id] = hostname
+    return host_names
+
+
 def get_pkg_version(application, pkg):
     """Return package version.
 
