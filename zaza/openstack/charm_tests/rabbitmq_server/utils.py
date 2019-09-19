@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import zaza.model
 
 
@@ -29,5 +30,18 @@ def wait_for_cluster(model_name=None, timeout=1200):
     zaza.model.wait_for_application_states(model_name=model_name,
                                            states=states,
                                            timeout=timeout)
+
+
+def get_cluster_status(unit):
+    """Execute rabbitmq cluster status command on a unit and return
+    the full output.
+    :param unit: unit
+    :returns: String containing console output of cluster status command
+    """
+    cmd = 'rabbitmqctl cluster_status'
+    output = zaza.model.run_on_unit(unit.entity_id, cmd)['Stdout'].strip()
+    logging.debug('{} cluster_status:\n{}'.format(
+        unit.entity_id, output))
+    return str(output)
 
 
