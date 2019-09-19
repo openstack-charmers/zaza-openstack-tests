@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import logging
 import time
 import uuid
@@ -245,3 +246,31 @@ class RmqTests(test_utils.OpenStackBaseTest):
         action = zaza.model.run_action(unit.entity_id, "check-queues")
         self.assertIsInstance(action, juju.action.Action)
 
+    def test_913_list_unconsumed_queues(self):
+        """ rabbitmqctl list-unconsumed-queues action can be returned. """
+        logging.debug('Checking list-unconsumed-queues action...')
+
+        unit = zaza.model.get_units(self.application_name)[0]
+        self._test_rmq_amqp_messages_all_units([unit])
+        action = zaza.model.run_action(unit.entity_id,
+                                       'list-unconsumed-queues')
+        self.assertIsInstance(action, juju.action.Action)
+
+        queue_count = int(action.results['unconsumed-queue-count'])
+        assert queue_count > 0, 'Did not find any unconsumed queues.'
+
+        queue_name = 'test'  # publish_amqp_message_by_unit default queue name
+        for i in range(queue_count):
+            queue_data = json.loads(
+                action.results['unconsumed-queues'][str(i)])
+            if queue_data['name'] == queue_name:
+                break
+        else:
+            assert False, 'Did not find expected queue in result.'
+
+        # Since we just reused _test_rmq_amqp_messages_all_units, we should
+        # have created the queue if it didn't already exist, but all messages
+        # should have already been consumed.
+        assert queue_data['messages'] == 0, 'Found unexpected message count.'
+
+        logging.debug('OK')
