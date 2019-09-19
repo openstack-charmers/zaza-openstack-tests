@@ -124,12 +124,13 @@ class PolicydTest(test_utils.OpenStackBaseTest):
         # disable the policy override
         logging.info("Disabling policy override ...")
         self._set_config_and_wait(False)
+        logging.info("Done setting false?")
         # check that the status no longer has "PO:" on it.
         app_status = zaza_juju.get_application_status(self.application_name)
         wl_stats = [v['workload-status']['info']
                     for k, v in app_status['units'].items()
                     if k.split('/')[0] == self.application_name]
-        logging.info("App status is: {}".format(wl_stats))
+        logging.info("After App status is: {}".format(wl_stats))
         self.assertFalse(any(s.startswith("PO:") for s in wl_stats))
         logging.info("... done")
 
