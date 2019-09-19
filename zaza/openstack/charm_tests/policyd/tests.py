@@ -21,6 +21,7 @@ import tempfile
 import zipfile
 
 import zaza.model as zaza_model
+import zaza.utilities.juju as zaza_juju
 
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
@@ -112,6 +113,8 @@ class PolicydTest(test_utils.OpenStackBaseTest):
         zaza_model.block_until_all_units_idle()
         # check that the status includes "PO:" at the beginning of the status
         # line
+        app_status = zaza_juju.get_application_status(self.application_name)
+        logging.info("App status is: {}".format(app_status))
 
         # disable the policy override
         # verify that the file no longer exists
