@@ -161,6 +161,42 @@ def validate_cluster_running_nodes(units):
         return ''.join(errors)
 
 
+def is_ssl_enabled_on_unit(unit, port=None):
+    """Check a single juju rmq unit for ssl and port in the config file."""
+    host = unit.public_address
+    unit_name = unit.entity_id
+
+    conf_file = '/etc/rabbitmq/rabbitmq.config'
+    conf_contents = str(generic_utils.get_file_contents(unit,
+                                                        conf_file))
+    # Checks
+    conf_ssl = 'ssl' in conf_contents
+    conf_port = str(port) in conf_contents
+
+    # Port explicitly checked in config
+    if port and conf_port and conf_ssl:
+        logging.debug('SSL is enabled  @{}:{} '
+                      '({})'.format(host, port, unit_name))
+        return True
+    elif port and not conf_port and conf_ssl:
+        logging.debug('SSL is enabled @{} but not on port {} '
+                      '({})'.format(host, port, unit_name))
+        return False
+    # Port not checked (useful when checking that ssl is disabled)
+    elif not port and conf_ssl:
+        logging.debug('SSL is enabled  @{}:{} '
+                      '({})'.format(host, port, unit_name))
+        return True
+    elif not conf_ssl:
+        logging.debug('SSL not enabled @{}:{} '
+                      '({})'.format(host, port, unit_name))
+        return False
+    else:
+        msg = ('Unknown condition when checking SSL status @{}:{} '
+               '({})'.format(host, port, unit_name))
+        raise ValueError(msg)
+
+
 def connect_amqp_by_unit(unit, ssl=False,
                          port=None, fatal=True,
                          username="testuser1", password="changeme"):
