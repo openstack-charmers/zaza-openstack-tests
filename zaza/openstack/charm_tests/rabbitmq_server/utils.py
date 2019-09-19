@@ -161,6 +161,19 @@ def validate_cluster_running_nodes(units):
         return ''.join(errors)
 
 
+def validate_ssl_enabled_units(units, port=None):
+    """Check that ssl is enabled on rmq juju units.
+    :param units: list of all rmq units
+    :param port: optional ssl port override to validate
+    :returns: None if successful, otherwise return error message
+    """
+    for u in units:
+        if not is_ssl_enabled_on_unit(u, port=port):
+            return ('Unexpected condition:  ssl is disabled on unit '
+                    '({})'.format(u.info['unit_name']))
+    return None
+
+
 def is_ssl_enabled_on_unit(unit, port=None):
     """Check a single juju rmq unit for ssl and port in the config file."""
     host = unit.public_address
