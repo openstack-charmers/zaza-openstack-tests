@@ -513,6 +513,31 @@ def dist_upgrade(unit_name):
     model.run_on_unit(unit_name, dist_upgrade_cmd)
 
 
+def check_commands_on_units(commands, units):
+    """Check that all commands in a list exit zero on all
+    units in a list.
+    :param commands:  list of bash commands
+    :param units:  list of unit pointers
+    :returns: None if successful; Failure message otherwise
+    """
+    logging.debug('Checking exit codes for {} commands on {} '
+                  'units...'.format(len(commands),
+                                    len(units)))
+
+    for u in units:
+        for cmd in commands:
+            output = model.run_on_unit(u.entity_id, cmd)
+            if int(output['Code']) == 0:
+                logging.debug('{} `{}` returned {} '
+                              '(OK)'.format(u.entity_id,
+                                            cmd, output['Code']))
+            else:
+                return ('{} `{}` returned {} '
+                        '{}'.format(u.entity_id,
+                                    cmd, output['Code'], output))
+    return None
+
+
 def do_release_upgrade(unit_name):
     """Run do-release-upgrade noninteractive.
 
