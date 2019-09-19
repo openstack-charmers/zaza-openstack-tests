@@ -19,6 +19,8 @@ import pika
 import zaza.model
 
 import ssl as libssl
+import zaza.openstack.utilities.generic as generic_utils
+
 
 def wait_for_cluster(model_name=None, timeout=1200):
     """Wait for rmq units extended status to show cluster readiness,
@@ -66,6 +68,36 @@ def get_cluster_running_nodes(unit):
         return run_nodes
     else:
         return []
+
+
+def validate_cluster_running_nodes(units):
+    """Check that all rmq unit hostnames are represented in the
+    cluster_status output of all units.
+    :param host_names: dict of juju unit names to host names
+    :param units: list of unit pointers (all rmq units)
+    :returns: None if successful, otherwise return error message
+    """
+    host_names = generic_utils.get_unit_hostnames(units)
+    errors = []
+
+    # Query every unit for cluster_status running nodes
+    for query_unit in units:
+        query_unit_name = query_unit.entity_id
+        running_nodes = get_cluster_running_nodes(query_unit)
+
+        # Confirm that every unit is represented in the queried unit's
+        # cluster_status running nodes output.
+        for validate_unit in units:
+            val_host_name = host_names[validate_unit.entity_id]
+            val_node_name = 'rabbit@{}'.format(val_host_name)
+
+            if val_node_name not in running_nodes:
+                errors.append('Cluster member check failed on {}: {} not '
+                              'in {}\n'.format(query_unit_name,
+                                               val_node_name,
+                                               running_nodes))
+    if errors:
+        return ''.join(errors)
 
 
 def connect_amqp_by_unit(unit, ssl=False,
