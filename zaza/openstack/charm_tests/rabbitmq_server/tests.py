@@ -187,3 +187,42 @@ class RmqTests(test_utils.OpenStackBaseTest):
         self.assertIsNone(ret)
         logging.info('Confirm mgmt port closed on all units (OK)\n')
 
+    def test_414_rmq_nrpe_monitors(self):
+        """Check rabbimq-server nrpe monitor basic functionality."""
+        units = zaza.model.get_units(self.application_name)
+        host_names = generic_utils.get_unit_hostnames(units)
+
+        # check_rabbitmq monitor
+        logging.debug('Checking nrpe check_rabbitmq on units...')
+        cmds = ['egrep -oh /usr/local.* /etc/nagios/nrpe.d/'
+                'check_rabbitmq.cfg']
+        ret = generic_utils.check_commands_on_units(cmds, units)
+        self.assertIsNone(ret)
+
+        logging.debug('Sleeping 2ms for 1m cron job to run...')
+        time.sleep(120)
+
+        # check_rabbitmq_queue monitor
+        logging.debug('Checking nrpe check_rabbitmq_queue on units...')
+        cmds = ['egrep -oh /usr/local.* /etc/nagios/nrpe.d/'
+                'check_rabbitmq_queue.cfg']
+        ret = generic_utils.check_commands_on_units(cmds, units)
+        self.assertIsNone(ret)
+
+        # check dat file existence
+        logging.debug('Checking nrpe dat file existence on units...')
+        for u in units:
+            unit_host_name = host_names[u.entity_id]
+
+            cmds = [
+                'stat /var/lib/rabbitmq/data/{}_general_stats.dat'.format(
+                    unit_host_name),
+                'stat /var/lib/rabbitmq/data/{}_queue_stats.dat'.format(
+                    unit_host_name)
+            ]
+
+            ret = generic_utils.check_commands_on_units(cmds, [u])
+            self.assertIsNone(ret)
+
+        logging.info('OK\n')
+
