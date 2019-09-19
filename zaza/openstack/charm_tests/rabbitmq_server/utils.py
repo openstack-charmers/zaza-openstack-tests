@@ -224,6 +224,37 @@ def configure_ssl_on(units, model_name=None,
         raise Exception(ret)
 
 
+def configure_ssl_off(units, model_name=None, max_wait=60):
+    """Turn ssl charm config option off, confirm that it is disabled
+    on every unit.
+    :param units: list of units
+    :param max_wait: maximum time to wait in seconds to confirm
+    :returns: None if successful.  Raise on error.
+    """
+    logging.debug('Setting ssl charm config option:  off')
+
+    # Disable RMQ SSL
+    config = {'ssl': 'off'}
+    zaza.model.set_application_config('rabbitmq-server',
+                                      config,
+                                      model_name=model_name)
+
+    # Wait for unit status
+    wait_for_cluster(model_name)
+
+    # Confirm
+    tries = 0
+    ret = validate_ssl_disabled_units(units)
+    while ret and tries < (max_wait / 4):
+        time.sleep(4)
+        logging.debug('Attempt {}: {}'.format(tries, ret))
+        ret = validate_ssl_disabled_units(units)
+        tries += 1
+
+    if ret:
+        raise Exception(ret)
+
+
 def is_ssl_enabled_on_unit(unit, port=None):
     """Check a single juju rmq unit for ssl and port in the config file."""
     host = unit.public_address
