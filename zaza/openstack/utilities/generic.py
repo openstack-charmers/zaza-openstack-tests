@@ -744,3 +744,21 @@ def is_port_open(port, address):
                 logging.error("connection refused connecting"
                               " to {}:{}".format(address, port))
             return False
+
+
+def port_knock_units(units, port=22, expect_success=True):
+    """Open a TCP socket to check for a listening sevice on each
+    listed juju unit.
+    :param units: list of unit pointers
+    :param port: TCP port number, default to 22
+    :param timeout: Connect timeout, default to 15 seconds
+    :expect_success: True by default, set False to invert logic
+    :returns: None if successful, Failure message otherwise
+    """
+    for u in units:
+        host = u.public_address
+        connected = is_port_open(port, host)
+        if not connected and expect_success:
+            return 'Socket connect failed.'
+        elif connected and not expect_success:
+            return 'Socket connected unexpectedly.'
