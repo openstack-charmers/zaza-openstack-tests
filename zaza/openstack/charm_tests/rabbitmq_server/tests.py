@@ -11,3 +11,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+import zaza.openstack.charm_tests.test_utils as test_utils
+
+
+class RmqTests(test_utils.OpenStackBaseTest):
+    """Zaza tests on a basic rabbitmq cluster deployment. Verify
+       relations, service status, users and endpoint service catalog."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running tests."""
+        super(RmqTests, cls).setUpClass()
+
