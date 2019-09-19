@@ -114,7 +114,10 @@ class PolicydTest(test_utils.OpenStackBaseTest):
         # check that the status includes "PO:" at the beginning of the status
         # line
         app_status = zaza_juju.get_application_status(self.application_name)
-        logging.info("App status is: {}".format(app_status))
+        wl_stats = [v['workload-status']['info']
+                    for k, v in app_status['units'].items()
+                    if k.split('/')[0] == self.application_name]
+        logging.info("App status is: {}".format(wl_stats))
 
         # disable the policy override
         # verify that the file no longer exists
