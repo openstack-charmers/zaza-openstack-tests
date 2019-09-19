@@ -138,7 +138,7 @@ async def async_block_until_wl_status_info_starts_with(
     async def _unit_status():
         model_status = await zaza_model.async_get_status()
         wl_infos = [v['workload-status']['info']
-                    for k, v in model_status.applications[app]['units']
+                    for k, v in model_status.applications[app]['units'].items()
                     if k.split('/')[0] == app]
         g = (s.startswith(status) for s in wl_infos)
         if negate_match:
