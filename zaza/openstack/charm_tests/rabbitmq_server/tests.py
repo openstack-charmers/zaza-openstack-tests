@@ -16,6 +16,7 @@ import logging
 import time
 import uuid
 
+import juju
 import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.generic as generic_utils
@@ -225,4 +226,14 @@ class RmqTests(test_utils.OpenStackBaseTest):
             self.assertIsNone(ret)
 
         logging.info('OK\n')
+
+    def test_911_cluster_status(self):
+        """ rabbitmqctl cluster_status action can be returned. """
+        logging.debug('Checking cluster status action...')
+
+        unit = zaza.model.get_units(self.application_name)[0]
+        action = zaza.model.run_action(unit.entity_id, "cluster-status")
+        self.assertIsInstance(action, juju.action.Action)
+
+        logging.debug('OK')
 
