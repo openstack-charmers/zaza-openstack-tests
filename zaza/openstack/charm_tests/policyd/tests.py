@@ -23,6 +23,7 @@ import zipfile
 import zaza.model as zaza_model
 
 import zaza.openstack.charm_tests.test_utils as test_utils
+import zaza.openstack.utilities.openstack as openstack_utils
 
 
 class PolicydTest(test_utils.OpenStackBaseTest):
@@ -40,6 +41,9 @@ class PolicydTest(test_utils.OpenStackBaseTest):
     @classmethod
     def setUpClass(cls, application_name=None):
         super(PolicydTest, cls).setUpClass(application_name)
+        if (openstack_utils.get_os_release() <
+                openstack_utils.get_os_release('xenial_queens')):
+            cls.SkipTest("Test not valid before xenial_queens")
         cls._tmp_dir = tempfile.mkdtemp()
         cls._service_name = \
             cls.test_config['tests_options']['policyd']['service']
@@ -60,9 +64,10 @@ class PolicydTest(test_utils.OpenStackBaseTest):
         self._set_config_and_wait(False)
 
     def _set_config_and_wait(self, state):
-        s = "true" if state else "false"
-        zaza_model.set_application_config(self.application_name,
-                                          {"use-policyd-override": s})
+        s = "True" if state else "False"
+        config = {"user-policyd-override": s}
+        logging.info("Setting config to", config)
+        zaza_model.set_application_config(self.application_name, config)
         zaza_model.block_until_all_units_idle()
 
     def _make_zip_file_from(self, name, files):
@@ -102,5 +107,13 @@ class PolicydTest(test_utils.OpenStackBaseTest):
         logging.info("Now checking for file contents: {}".format(path))
         zaza_model.block_until_file_has_contents(self.application_name,
                                                  path,
-                                                 "'rule1': '!'")
+                                                 "rule1: '!'")
+        logging.info("... waiting for idle")
+        zaza_model.block_until_all_units_idle()
+        # check that the status includes "PO:" at the beginning of the status
+        # line
+
+        # disable the policy override
+        # verify that the file no longer exists
+        # check that the status no longer has "PO:" on it.
         logging.info("...done")
