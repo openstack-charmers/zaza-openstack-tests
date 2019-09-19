@@ -65,7 +65,7 @@ class PolicydTest(test_utils.OpenStackBaseTest):
 
     def _set_config_and_wait(self, state):
         s = "True" if state else "False"
-        config = {"user-policyd-override": s}
+        config = {"use-policyd-override": s}
         logging.info("Setting config to", config)
         zaza_model.set_application_config(self.application_name, config)
         zaza_model.block_until_all_units_idle()
