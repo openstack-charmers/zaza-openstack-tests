@@ -237,3 +237,11 @@ class RmqTests(test_utils.OpenStackBaseTest):
 
         logging.debug('OK')
 
+    def test_912_check_queues(self):
+        """ rabbitmqctl check_queues action can be returned. """
+        logging.debug('Checking cluster status action...')
+
+        unit = zaza.model.get_units(self.application_name)[0]
+        action = zaza.model.run_action(unit.entity_id, "check-queues")
+        self.assertIsInstance(action, juju.action.Action)
+
