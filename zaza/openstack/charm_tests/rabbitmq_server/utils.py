@@ -14,6 +14,7 @@
 
 import json
 import logging
+import time
 
 import pika
 import zaza.model
@@ -184,6 +185,43 @@ def validate_ssl_disabled_units(units):
             return ('Unexpected condition:  ssl is enabled on unit '
                     '({})'.format(u.entity_id))
     return None
+
+
+def configure_ssl_on(units, model_name=None,
+                     port=None, max_wait=60):
+    """Turn ssl charm config option on, with optional non-default
+    ssl port specification.  Confirm that it is enabled on every
+    unit.
+    :param units: list of units
+    :param port: amqp port, use defaults if None
+    :param max_wait: maximum time to wait in seconds to confirm
+    :returns: None if successful.  Raise on error.
+    """
+    logging.debug('Setting ssl charm config option:  on')
+
+    # Enable RMQ SSL
+    config = {'ssl': 'on'}
+    if port:
+        config['ssl_port'] = str(port)
+
+    zaza.model.set_application_config('rabbitmq-server',
+                                      config,
+                                      model_name=model_name)
+
+    # Wait for unit status
+    wait_for_cluster(model_name)
+
+    # Confirm
+    tries = 0
+    ret = validate_ssl_enabled_units(units, port=port)
+    while ret and tries < (max_wait / 4):
+        time.sleep(4)
+        logging.debug('Attempt {}: {}'.format(tries, ret))
+        ret = validate_ssl_enabled_units(units, port=port)
+        tries += 1
+
+    if ret:
+        raise Exception(ret)
 
 
 def is_ssl_enabled_on_unit(unit, port=None):
