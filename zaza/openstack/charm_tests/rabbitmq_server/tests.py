@@ -22,6 +22,10 @@ import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.generic as generic_utils
 
+from charmhelpers.core.host import (
+    lsb_release,
+    CompareHostReleases,
+)
 
 from . import utils as rmq_utils
 
@@ -138,18 +142,26 @@ class RmqTests(test_utils.OpenStackBaseTest):
         self._test_rmq_amqp_messages_all_units(units, ssl=False)
         logging.info('OK\n')
 
+    def _series(self, unit):
+        result = zaza.model.run_on_unit(unit.entity_id,
+                                        "lsb_release -cs")
+        return result['Stdout'].strip()
+
+    def _client_series(self):
+        return lsb_release()['DISTRIB_CODENAME']
+
     def test_408_rmq_amqp_messages_all_units_ssl_on(self):
         """Send amqp messages with ssl enabled, to every rmq unit and
         check every rmq unit for messages.  Standard ssl tcp port."""
+        units = zaza.model.get_units(self.application_name)
+
         # http://pad.lv/1625044
-        # TODO: exsdev: find out if there's a function to determine unit's release
-        # Otherwise run_on_unit: lsb_release -cs
-        # if (CompareHostReleases(self.client_series) >= 'xenial' and
-        #         CompareHostReleases(self.series) <= 'trusty'):
-        #     logging.info('SKIP')
-        #     logging.info('Skipping SSL tests due to client'
-        #                ' compatibility issues')
-        #     return
+        if (CompareHostReleases(self._client_series()) >= 'xenial' and
+                CompareHostReleases(self._series(units[0])) <= 'trusty'):
+            logging.info('SKIP')
+            logging.info('Skipping SSL tests due to client'
+                       ' compatibility issues')
+            return
         logging.debug('Checking amqp message publish/get on all units '
                       '(ssl on)...')
 
@@ -161,15 +173,15 @@ class RmqTests(test_utils.OpenStackBaseTest):
     def test_410_rmq_amqp_messages_all_units_ssl_alt_port(self):
         """Send amqp messages with ssl on, to every rmq unit and check
         every rmq unit for messages.  Custom ssl tcp port."""
+        units = zaza.model.get_units(self.application_name)
+
         # http://pad.lv/1625044
-        # TODO: exsdev: find out if there's a function to determine unit's release
-        # Otherwise run_on_unit: lsb_release -cs
-        # if (CompareHostReleases(self.client_series) >= 'xenial' and
-        #         CompareHostReleases(self.series) <= 'trusty'):
-        #     logging.info('SKIP')
-        #     logging.info('Skipping SSL tests due to client'
-        #                ' compatibility issues')
-        #     return
+        if (CompareHostReleases(self._client_series()) >= 'xenial' and
+                CompareHostReleases(self._series(units[0])) <= 'trusty'):
+            logging.info('SKIP')
+            logging.info('Skipping SSL tests due to client'
+                       ' compatibility issues')
+            return
         logging.debug('Checking amqp message publish/get on all units '
                       '(ssl on)...')
 
