@@ -20,17 +20,13 @@ import shutil
 import tempfile
 import zipfile
 
-from juju.errors import JujuError
-
-import zaza
 import zaza.model as zaza_model
-import zaza.utilities.juju as zaza_juju
 
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 
 
-class PolicydTest(test_utils.OpenStackBaseTest):
+class PolicydTest(object):
     """Charm operation tests.
 
     The policyd test needs some config from the tests.yaml in order to work
@@ -90,13 +86,13 @@ class PolicydTest(test_utils.OpenStackBaseTest):
             'file1.yaml': "{'rule1': '!'}"
         }
         good_zip_path = self._make_zip_file_from('good.zip', good)
-        logging.info("About to attach the resource")
+        logging.info("Attaching a resource.")
         zaza_model.attach_resource(self.application_name,
                                    'policyd-override',
                                    good_zip_path)
-        logging.info("... waiting for idle")
+        logging.debug("... waiting for idle")
         zaza_model.block_until_all_units_idle()
-        logging.info("Now setting config to true")
+        logging.debug("Now setting config to true")
         self._set_config(True)
         # check that the file gets to the right location
         path = os.path.join(
@@ -109,10 +105,10 @@ class PolicydTest(test_utils.OpenStackBaseTest):
         logging.info("Checking for workload status line starts with PO:")
         zaza_model.block_until_wl_status_info_starts_with(
             self.application_name, "PO:")
-        logging.info("App status is valid")
+        logging.debug("App status is valid")
 
         # disable the policy override
-        logging.info("Disabling policy override ...")
+        logging.info("Disabling policy override by setting config to false")
         self._set_config(False)
         # check that the status no longer has "PO:" on it.
         # we have to do it twice due to async races and that some info lines
@@ -131,3 +127,13 @@ class PolicydTest(test_utils.OpenStackBaseTest):
         zaza_model.block_until_file_missing(self.application_name, path)
 
         logging.info("...done")
+
+
+class KeystonePolicydTest(PolicydTest, test_utils.OpenStackBaseTest):
+    pass
+
+
+class GenericPolicydTest(PolicydTest, test_utils.OpenStackBaseTest):
+    pass
+
+
