@@ -92,7 +92,7 @@ class PolicydTest(object):
         zaza_model.block_until_wl_status_info_starts_with(
             self.application_name, "PO:", negate_match=True)
 
-    def test_policyd_good_yaml(self):
+    def test_001_policyd_good_yaml(self):
         # Test that the policyd with a good zipped yaml file puts the yaml file
         # in the right directory
         good = {
@@ -151,7 +151,9 @@ class KeystonePolicydTest(PolicydTest,
         super(KeystonePolicydTest, cls).setUpClass(application_name)
 
     def test_disable_service(self):
-        self._set_policy_with({"identity:get_auth_domains": "!"})
+        logging.info("Doing policyd override to disable listing domains")
+        self._set_policy_with(
+            {'rule.yaml': "{'identity:get_auth_domains': '!'}"})
         with self.config_change(
                 {'preferred-api-version': self.default_api_version},
                 {'preferred-api-version': '3'},
