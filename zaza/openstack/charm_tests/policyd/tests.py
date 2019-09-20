@@ -146,6 +146,10 @@ class KeystonePolicydTest(PolicydTest,
                           ch_keystone.BaseKeystoneTest,
                           test_utils.OpenStackBaseTest):
 
+    @classmethod
+    def setUpClass(cls, application_name=None):
+        super(KeystonePolicydTest, cls).setUpClass(application_name)
+
     def test_disable_service(self):
         self._set_policy_with({"identity:get_auth_domains": "!"})
         with self.config_change(
