@@ -20,10 +20,14 @@ import shutil
 import tempfile
 import zipfile
 
+import keystoneauth1
+
 import zaza.model as zaza_model
 
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
+import zaza.openstack.charm_tests.keystone as ch_keystone
+import zaza.openstack.utilities.exceptions as zaza_exceptions
 
 
 class PolicydTest(object):
@@ -79,6 +83,15 @@ class PolicydTest(object):
                 zfp.writestr(name, contents)
         return path
 
+    def _set_policy_with(self, rules):
+        rules_zip_path = self._make_zip_file_from('rules.zip', rules)
+        zaza_model.attach_resource(self.application_name,
+                                   'policyd-override',
+                                   rules_zip_path)
+        self._set_config(True)
+        zaza_model.block_until_wl_status_info_starts_with(
+            self.application_name, "PO:", negate_match=True)
+
     def test_policyd_good_yaml(self):
         # Test that the policyd with a good zipped yaml file puts the yaml file
         # in the right directory
@@ -129,11 +142,39 @@ class PolicydTest(object):
         logging.info("...done")
 
 
-class KeystonePolicydTest(PolicydTest, test_utils.OpenStackBaseTest):
-    pass
+class KeystonePolicydTest(PolicydTest,
+                          ch_keystone.BaseKeystoneTest,
+                          test_utils.OpenStackBaseTest):
+
+    def test_disable_service(self):
+        self._set_policy_with({"identity:get_auth_domains": "!"})
+        with self.config_change(
+                {'preferred-api-version': self.default_api_version},
+                {'preferred-api-version': '3'},
+                application_name="keystone"):
+            for ip in self.keystone_ips:
+                try:
+                    logging.info('keystone IP {}'.format(ip))
+                    ks_session = openstack_utils.get_keystone_session(
+                        openstack_utils.get_overcloud_auth(address=ip))
+                    ks_client = openstack_utils.get_keystone_session_client(
+                        ks_session)
+                    ks_client.domains.list()
+                    raise zaza_exceptions.PolicydError(
+                        'Retrieve domain list as admin with project scoped '
+                        'token passed and should have failed. IP = {}'
+                        .format(ip))
+                except keystoneauth1.exceptions.http.Forbidden:
+                    logging.info("keystone IP:{} policyd override working"
+                                 .format(ip))
+                finally:
+                    self._set_config(False)
+                    zaza_model.block_until_wl_status_info_starts_with(
+                        self.application_name, "PO:", negate_match=True)
+                    zaza_model.block_until_all_units_idle()
+
+            logging.info('OK')
 
 
 class GenericPolicydTest(PolicydTest, test_utils.OpenStackBaseTest):
     pass
-
-

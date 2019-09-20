@@ -172,3 +172,9 @@ class NovaGuestRestartFailed(Exception):
     """Nova guest restart failed."""
 
     pass
+
+
+class PolicydError(Exception):
+    """Policyd override failed."""
+
+    pass
