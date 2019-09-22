@@ -19,4 +19,4 @@ import zaza.openstack.configure.telemetry
 
 def ceilometer_upgrade():
     """Run ceilometer upgrade action."""
-    zaza.openstack.configure.telemetry.ceilometer_upgrade()
+    zaza.openstack.configure.telemetry.ceilometer_upgrade('ceilometer')
