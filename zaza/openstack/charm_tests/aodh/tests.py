@@ -49,7 +49,7 @@ class AodhTest(test_utils.OpenStackBaseTest):
             services = [
                 ('/usr/bin/python /usr/bin/aodh-api --port 8032 -- '
                  '--config-file=/etc/aodh/aodh.conf '
-                 '--log-file=/var/log/aodh/aodh-api.log').
+                 '--log-file=/var/log/aodh/aodh-api.log'),
                 'aodh-evaluator - AlarmEvaluationService(0)',
                 'aodh-notifier - AlarmNotifierService(0)',
                 'aodh-listener - EventAlarmEvaluationService(0)']
