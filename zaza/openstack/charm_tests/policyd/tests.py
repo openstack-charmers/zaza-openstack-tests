@@ -176,6 +176,7 @@ class KeystonePolicydTest(PolicydTest,
                     logging.info("keystone IP:{} policyd override working"
                                  .format(ip))
                 finally:
+                    return
                     self._set_config(False)
                     zaza_model.block_until_wl_status_info_starts_with(
                         self.application_name, "PO:", negate_match=True)
