@@ -34,6 +34,7 @@ class AodhTest(test_utils.OpenStackBaseTest):
         super(AodhTest, cls).setUpClass()
         cls.xenial_ocata = openstack_utils.get_os_release('xenial_ocata')
         cls.xenial_newton = openstack_utils.get_os_release('xenial_newton')
+        cls.bionic_stein = openstack_utils.get_os_release('bionic_stein')
         cls.release = openstack_utils.get_os_release()
 
     @property
@@ -89,9 +90,7 @@ class AodhTest(test_utils.OpenStackBaseTest):
         Pause service and check services are stopped then resume and check
         they are started
         """
-        xenial_ocata = openstack_utils.get_os_release('xenial_ocata')
-        xenial_newton = openstack_utils.get_os_release('xenial_newton')
-        if self.release >= bionic_stein:
+        if self.release >= self.bionic_stein:
             pgrep_full = True
         else:
             pgrep_full = False
