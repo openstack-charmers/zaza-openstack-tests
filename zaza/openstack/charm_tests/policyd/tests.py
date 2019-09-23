@@ -155,8 +155,10 @@ class KeystonePolicydTest(PolicydTest,
         self._set_policy_with(
             {'rule.yaml': "{'identity:get_auth_domains': '!'}"})
         with self.config_change(
-                {'preferred-api-version': self.default_api_version},
-                {'preferred-api-version': '3'},
+                {'preferred-api-version': self.default_api_version,
+                 'use-policyd-override': 'False'},
+                {'preferred-api-version': '3',
+                 'use-policyd-override': 'True'},
                 application_name="keystone"):
             for ip in self.keystone_ips:
                 try:
