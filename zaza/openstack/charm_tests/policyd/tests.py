@@ -153,21 +153,37 @@ class KeystonePolicydTest(PolicydTest,
     def test_disable_service(self):
         logging.info("Doing policyd override to disable listing domains")
         self._set_policy_with(
-            {'rule.yaml': "{'identity:get_auth_domains': '!'}"})
+            {'rule.yaml': "{'identity:list_projects': '!'}"})
         with self.config_change(
                 {'preferred-api-version': self.default_api_version,
                  'use-policyd-override': 'False'},
                 {'preferred-api-version': '3',
                  'use-policyd-override': 'True'},
                 application_name="keystone"):
+            zaza_model.block_until_all_units_idle()
             for ip in self.keystone_ips:
                 try:
                     logging.info('keystone IP {}'.format(ip))
-                    ks_session = openstack_utils.get_keystone_session(
-                        openstack_utils.get_overcloud_auth(address=ip))
-                    ks_client = openstack_utils.get_keystone_session_client(
-                        ks_session)
-                    ks_client.domains.list()
+                    openrc = {
+                        'API_VERSION': 3,
+                        'OS_USERNAME': DEMO_ADMIN_USER,
+                        'OS_PASSWORD': DEMO_ADMIN_USER_PASSWORD,
+                        'OS_AUTH_URL': 'http://{}:5000/v3'.format(ip),
+                        'OS_USER_DOMAIN_NAME': DEMO_DOMAIN,
+                        'OS_DOMAIN_NAME': DEMO_DOMAIN,
+                    }
+                    if self.tls_rid:
+                        openrc['OS_CACERT'] = \
+                            openstack_utils.KEYSTONE_LOCAL_CACERT
+                        openrc['OS_AUTH_URL'] = (
+                            openrc['OS_AUTH_URL'].replace('http', 'https'))
+                    logging.info('keystone IP {}'.format(ip))
+                    keystone_session = openstack_utils.get_keystone_session(
+                        openrc, scope='DOMAIN')
+                    keystone_client = (
+                        openstack_utils.get_keystone_session_client(
+                            keystone_session))
+                    keystone_client.projects.list()
                     raise zaza_exceptions.PolicydError(
                         'Retrieve domain list as admin with project scoped '
                         'token passed and should have failed. IP = {}'
