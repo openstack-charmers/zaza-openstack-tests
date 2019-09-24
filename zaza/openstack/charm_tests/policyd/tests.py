@@ -166,11 +166,11 @@ class KeystonePolicydTest(PolicydTest,
                     logging.info('keystone IP {}'.format(ip))
                     openrc = {
                         'API_VERSION': 3,
-                        'OS_USERNAME': DEMO_ADMIN_USER,
-                        'OS_PASSWORD': DEMO_ADMIN_USER_PASSWORD,
+                        'OS_USERNAME': ch_keystone.DEMO_ADMIN_USER,
+                        'OS_PASSWORD': ch_keystone.DEMO_ADMIN_USER_PASSWORD,
                         'OS_AUTH_URL': 'http://{}:5000/v3'.format(ip),
-                        'OS_USER_DOMAIN_NAME': DEMO_DOMAIN,
-                        'OS_DOMAIN_NAME': DEMO_DOMAIN,
+                        'OS_USER_DOMAIN_NAME': ch_keystone.DEMO_DOMAIN,
+                        'OS_DOMAIN_NAME': ch_keystone.DEMO_DOMAIN,
                     }
                     if self.tls_rid:
                         openrc['OS_CACERT'] = \
