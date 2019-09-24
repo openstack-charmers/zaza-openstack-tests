@@ -154,6 +154,47 @@ class KeystonePolicydTest(PolicydTest,
         logging.info("Doing policyd override to disable listing domains")
         self._set_policy_with(
             {'rule.yaml': "{'identity:list_projects': '!'}"})
+
+        # verify (with the config off) that we can actually access
+        # these points
+        with self.config_change(
+                {'preferred-api-version': self.default_api_version},
+                {'preferred-api-version': '3'},
+                application_name="keystone"):
+            zaza_model.block_until_all_units_idle()
+            for ip in self.keystone_ips:
+                try:
+                    logging.info('keystone IP {}'.format(ip))
+                    openrc = {
+                        'API_VERSION': 3,
+                        'OS_USERNAME': ch_keystone.DEMO_ADMIN_USER,
+                        'OS_PASSWORD': ch_keystone.DEMO_ADMIN_USER_PASSWORD,
+                        'OS_AUTH_URL': 'http://{}:5000/v3'.format(ip),
+                        'OS_USER_DOMAIN_NAME': ch_keystone.DEMO_DOMAIN,
+                        'OS_DOMAIN_NAME': ch_keystone.DEMO_DOMAIN,
+                    }
+                    if self.tls_rid:
+                        openrc['OS_CACERT'] = \
+                            openstack_utils.KEYSTONE_LOCAL_CACERT
+                        openrc['OS_AUTH_URL'] = (
+                            openrc['OS_AUTH_URL'].replace('http', 'https'))
+                    logging.info('keystone IP {}'.format(ip))
+                    keystone_session = openstack_utils.get_keystone_session(
+                        openrc, scope='DOMAIN')
+                    keystone_client = (
+                        openstack_utils.get_keystone_session_client(
+                            keystone_session))
+                    keystone_client.projects.list()
+                    logging.info("keystone IP:{} without policyd override "
+                                 "projects list working"
+                                 .format(ip))
+                except keystoneauth1.exceptions.http.Forbidden:
+                    raise zaza_exceptions.PolicydError(
+                        'Retrieve project list as demo user with project '
+                        'scoped token passed and should have passed. IP = {}'
+                        .format(ip))
+
+        # now verify that the policy.d override does disable the endpoint
         with self.config_change(
                 {'preferred-api-version': self.default_api_version,
                  'use-policyd-override': 'False'},
@@ -192,7 +233,7 @@ class KeystonePolicydTest(PolicydTest,
                     logging.info("keystone IP:{} policyd override working"
                                  .format(ip))
 
-            logging.info('OK')
+        logging.info('OK')
 
 
 class GenericPolicydTest(PolicydTest, test_utils.OpenStackBaseTest):
