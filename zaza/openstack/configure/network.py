@@ -219,6 +219,17 @@ def setup_gateway_ext_port(network_config, keystone_session=None):
         dvr_mode=network_config.get("dvr_enabled", False),
         net_id=net_id)
 
+    current_release = openstack_utils.get_os_release()
+    bionic_queens = openstack_utils.get_os_release('bionic_queens')
+    if current_release >= bionic_queens:
+        logging.warn("Adding second interface for dataport to guest netplan, \
+                     for bionic-queens and later")
+        openstack_utils.plumb_guest_nic(
+            nova_client,
+            neutron_client,
+            dvr_mode=network_config.get("dvr_enabled", False),
+            net_id=net_id)
+
 
 def run_from_cli(**kwargs):
     """Run network configurations from CLI.

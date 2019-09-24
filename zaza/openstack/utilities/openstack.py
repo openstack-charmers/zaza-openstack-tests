@@ -55,6 +55,7 @@ import sys
 import tempfile
 import tenacity
 import urllib
+import textwrap
 
 from zaza import model
 from zaza.openstack.utilities import (
@@ -481,6 +482,60 @@ def get_admin_net(neutron_client):
     for net in neutron_client.list_networks()['networks']:
         if net['name'].endswith('_admin_net'):
             return net
+
+
+def plumb_guest_nic(novaclient, neutronclient,
+                    dvr_mode=None, net_id=None):
+
+    """Add port associated with net_id to netplan
+
+    :type net_id: string
+    """
+
+    if dvr_mode:
+        uuids = get_ovs_uuids()
+    else:
+        uuids = get_gateway_uuids()
+
+    for uuid in uuids:
+        server = novaclient.servers.get(uuid)
+        ext_port_name = "{}_ext-port".format(server.name)
+        for port in neutronclient.list_ports(device_id=server.id)['ports']:
+            if port['name'] == ext_port_name:
+                logging.info('Adding second port to netplan in guest:\
+                             {}'.format(port['name']))
+                mac_address = port['mac_address']
+                if dvr_mode:
+                    application_name = 'neutron-openvswitch'
+                else:
+                    application_name = 'neutron-gateway'
+                unit_name = juju_utils.get_unit_name_from_ip_address(
+                    server.ip, application_name)
+                interface = model.async_run_on_unit(
+                    unit_name, "ip addr|grep\
+                            {}".format(
+                        mac_address)).split("\n")[0].split(" ")[2]
+                body_value = textwrap.dedent("""\
+                    network:
+                        ethernets:
+                            {}:
+                                dhcp4: false
+                                dhcp6: true
+                                optional: true
+                                match:
+                                    macaddress: {}
+                                set-name: {}
+                        \n
+                        version: 2
+                """.format(interface, mac_address, interface))
+                netplan_file = open("60-dataport.yaml", "w")
+                netplan_file.write(body_value)
+                netplan_file.close()
+                model.async_scp_to_unit(unit_name, './60-dataport.yaml',
+                                        '/etc/netplan/', user="root")
+                subprocess.call("rm 60-dataport.yaml")
+                model.async_run_on_unit(unit_name, "netplan apply",
+                                        user="root")
 
 
 def configure_gateway_ext_port(novaclient, neutronclient,
