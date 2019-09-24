@@ -308,7 +308,10 @@ def connect_amqp_by_unit(unit, ssl=False,
     unit_name = unit.entity_id
 
     if ssl:
-        ssl_options = pika.SSLOptions(libssl.SSLContext())
+        # TODO: when Python3.5 support is removed, investigate
+        # changing protocol to PROTOCOL_TLS
+        context = libssl.SSLContext(protocol=libssl.PROTOCOL_TLSv1_2)
+        ssl_options = pika.SSLOptions(context)
     else:
         ssl_options = None
 
