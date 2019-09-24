@@ -184,13 +184,13 @@ class KeystonePolicydTest(PolicydTest,
                     keystone_client = (
                         openstack_utils.get_keystone_session_client(
                             keystone_session))
-                    keystone_client.projects.list()
+                    keystone_client.services.list()
                     logging.info("keystone IP:{} without policyd override "
-                                 "projects list working"
+                                 "services list working"
                                  .format(ip))
                 except keystoneauth1.exceptions.http.Forbidden:
                     raise zaza_exceptions.PolicydError(
-                        'Retrieve project list as demo user with project '
+                        'Retrieve services list as demo user with project '
                         'scoped token passed and should have passed. IP = {}'
                         .format(ip))
 
