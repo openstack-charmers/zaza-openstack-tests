@@ -16,12 +16,10 @@
 
 """Encapsulate masakari testing."""
 
-from datetime import datetime
 import logging
 
 import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
-import zaza.openstack.utilities.juju as juju_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 
 
@@ -39,13 +37,14 @@ class AodhTest(test_utils.OpenStackBaseTest):
 
     @property
     def services(self):
+        """Return a list of the service that should be running."""
         if self.release >= self.xenial_ocata:
             services = [
                 'apache2',
                 'aodh-evaluator: AlarmEvaluationService worker(0)',
                 'aodh-notifier: AlarmNotifierService worker(0)',
                 ('aodh-listener: EventAlarmEvaluationService'
-                ' worker(0)')]
+                 ' worker(0)')]
         elif self.release >= self.xenial_newton:
             services = [
                 ('/usr/bin/python /usr/bin/aodh-api --port 8032 -- '
@@ -98,3 +97,37 @@ class AodhTest(test_utils.OpenStackBaseTest):
                 self.services,
                 pgrep_full=pgrep_full):
             logging.info("Testing pause resume")
+
+
+class SecurityTest(test_utils.OpenStackBaseTest):
+    """Neutron APIsecurity tests tests."""
+
+    def test_security_checklist(self):
+        """Verify expected state with security-checklist."""
+        # Changes fixing the below expected failures will be made following
+        # this initial work to get validation in. There will be bugs targeted
+        # to each one and resolved independently where possible.
+
+        expected_failures = [
+            'validate-enables-tls',
+            'validate-uses-tls-for-keystone',
+        ]
+        expected_passes = [
+            'validate-file-ownership',
+            'validate-file-permissions',
+            'validate-uses-keystone',
+        ]
+
+        for unit in zaza.model.get_units('aodh',
+                                         model_name=self.model_name):
+            logging.info('Running `security-checklist` action'
+                         ' on  unit {}'.format(unit.entity_id))
+            test_utils.audit_assertions(
+                zaza.model.run_action(
+                    unit.entity_id,
+                    'security-checklist',
+                    model_name=self.model_name,
+                    action_params={}),
+                expected_passes,
+                expected_failures,
+                expected_to_pass=False)

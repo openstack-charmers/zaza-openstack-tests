@@ -18,14 +18,13 @@ Functions for managing masakari resources and simulating compute node loss
 and recovery.
 """
 
-import logging
-
 import zaza.model
 
+
 def ceilometer_upgrade(application_name=None, model_name=None):
+    """Run ceilometer upgrade action."""
     zaza.model.run_action_on_leader(
         application_name,
         'ceilometer-upgrade',
         model_name=model_name,
         action_params={})
-
