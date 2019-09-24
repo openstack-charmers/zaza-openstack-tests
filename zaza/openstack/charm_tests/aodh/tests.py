@@ -18,7 +18,6 @@
 
 import logging
 
-import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 
@@ -89,11 +88,7 @@ class AodhTest(test_utils.OpenStackBaseTest):
         Pause service and check services are stopped then resume and check
         they are started
         """
-        if self.release >= self.bionic_stein:
-            pgrep_full = True
-        else:
-            pgrep_full = False
         with self.pause_resume(
                 self.services,
-                pgrep_full=pgrep_full):
+                pgrep_full=False):
             logging.info("Testing pause resume")
