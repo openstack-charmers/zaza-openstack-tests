@@ -17,11 +17,12 @@
 """Code for configuring Ceilometer."""
 
 import logging
+import unittest
 import zaza.model as zaza_model
 import zaza.openstack.utilities.openstack as openstack_utils
 
 
-def basic_setup(unit='ceilometer/0'):
+def basic_setup():
     """Run setup for testing Ceilometer.
 
     Setup for testing Ceilometer is currently part of functional
@@ -31,12 +32,12 @@ def basic_setup(unit='ceilometer/0'):
     xenial_pike = openstack_utils.get_os_release('xenial_pike')
 
     if current_release < xenial_pike:
-        logging.debug('Not checking ceilometer-upgrade')
-        return
+        raise unittest.SkipTest('Not checking ceilometer-upgrade')
+
     logging.debug('Checking ceilometer-upgrade')
 
-    action = zaza_model.run_action(
-        unit,
+    action = zaza_model.run_action_on_leader(
+        'ceilometer',
         'ceilometer-upgrade',
         raise_on_failure=True)
 

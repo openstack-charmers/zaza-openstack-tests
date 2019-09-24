@@ -25,10 +25,58 @@ import zaza.openstack.charm_tests.test_utils as test_utils
 class CeilometerTest(test_utils.OpenStackBaseTest):
     """Encapsulate Ceilometer tests."""
 
+    CONF_FILE = '/etc/ceilometer/ceilometer.conf'
+
+    XENIAL_PIKE = openstack_utils.get_os_release('xenial_pike')
+    XENIAL_OCATA = openstack_utils.get_os_release('xenial_ocata')
+    XENIAL_NEWTON = openstack_utils.get_os_release('xenial_newton')
+    TRUSTY_MITAKA = openstack_utils.get_os_release('trusty_mitaka')
+    TRUSTY_LIBERTY = openstack_utils.get_os_release('trusty_liberty')
+
     @classmethod
     def setUpClass(cls):
         """Run class setup for running Ceilometer tests."""
         super(CeilometerTest, cls).setUpClass()
+
+    @property
+    def services(self):
+        """Return a list services for Openstack Release."""
+        current_release = openstack_utils.get_os_release()
+        services = []
+
+        if current_release >= CeilometerTest.XENIAL_PIKE:
+            services.append('ceilometer-polling: AgentManager worker(0)')
+            services.append('ceilometer-agent-notification: '
+                            'NotificationService worker(0)')
+        elif current_release >= CeilometerTest.XENIAL_OCATA:
+            services.append('ceilometer-collector: CollectorService worker(0)')
+            services.append('ceilometer-polling: AgentManager worker(0)')
+            services.append('ceilometer-agent-notification: '
+                            'NotificationService worker(0)')
+            services.append('apache2')
+        elif current_release >= CeilometerTest.XENIAL_NEWTON:
+            services.append('ceilometer-collector - CollectorService(0)')
+            services.append('ceilometer-polling - AgentManager(0)')
+            services.append('ceilometer-agent-notification - '
+                            'NotificationService(0)')
+            services.append('ceilometer-api')
+        else:
+            services.append('ceilometer-collector')
+            services.append('ceilometer-api')
+            services.append('ceilometer-agent-notification')
+
+            if current_release < CeilometerTest.TRUSTY_MITAKA:
+                services.append('ceilometer-alarm-notifier')
+                services.append('ceilometer-alarm-evaluator')
+
+            if current_release >= CeilometerTest.TRUSTY_LIBERTY:
+                # Liberty and later
+                services.append('ceilometer-polling')
+            else:
+                # Juno and earlier
+                services.append('ceilometer-agent-central')
+
+        return services
 
     # NOTE(beisner): need to add more functional tests
 
@@ -50,64 +98,14 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
         default_entry = {'DEFAULT': {'debug': [current_value]}}
         alternate_entry = {'DEFAULT': {'debug': [new_value]}}
 
-        # Config file affected by juju set config change
-        conf_file = '/etc/ceilometer/ceilometer.conf'
-        services = {}
-        current_release = openstack_utils.get_os_release()
-        xenial_pike = openstack_utils.get_os_release('xenial_pike')
-        xenial_ocata = openstack_utils.get_os_release('xenial_ocata')
-        xenial_newton = openstack_utils.get_os_release('xenial_newton')
-        trusty_mitaka = openstack_utils.get_os_release('trusty_mitaka')
-        trusty_liberty = openstack_utils.get_os_release('trusty_liberty')
-
-        if current_release >= xenial_pike:
-            services = {
-                'ceilometer-polling: AgentManager worker(0)': conf_file,
-                'ceilometer-agent-notification: NotificationService worker(0)':
-                    conf_file,
-            }
-        elif current_release >= xenial_ocata:
-            services = {
-                'ceilometer-collector: CollectorService worker(0)': conf_file,
-                'ceilometer-polling: AgentManager worker(0)': conf_file,
-                'ceilometer-agent-notification: NotificationService worker(0)':
-                    conf_file,
-                'apache2': conf_file,
-            }
-        elif current_release >= xenial_newton:
-            services = {
-                'ceilometer-collector - CollectorService(0)': conf_file,
-                'ceilometer-polling - AgentManager(0)': conf_file,
-                'ceilometer-agent-notification - NotificationService(0)':
-                    conf_file,
-                'ceilometer-api': conf_file,
-            }
-        else:
-            services = {
-                'ceilometer-collector': conf_file,
-                'ceilometer-api': conf_file,
-                'ceilometer-agent-notification': conf_file,
-            }
-
-            if current_release < trusty_mitaka:
-                services['ceilometer-alarm-notifier'] = conf_file
-                services['ceilometer-alarm-evaluator'] = conf_file
-
-            if current_release >= trusty_liberty:
-                # Liberty and later
-                services['ceilometer-polling'] = conf_file
-            else:
-                # Juno and earlier
-                services['ceilometer-agent-central'] = conf_file
-
         logging.info('changing config: {}'.format(set_alternate))
         self.restart_on_changed(
-            conf_file,
+            CeilometerTest.CONF_FILE,
             set_default,
             set_alternate,
             default_entry,
             alternate_entry,
-            services)
+            self.services)
 
     def test_901_pause_resume(self):
         """Run pause and resume tests.
@@ -115,4 +113,5 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
         Pause service and check services are stopped then resume and check
         they are started.
         """
-        self.pause_resume(['ceilometer'])
+        with self.pause_resume(['ceilometer']):
+            logging.info("Testing pause and resume")
