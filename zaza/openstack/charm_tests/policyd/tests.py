@@ -153,7 +153,7 @@ class KeystonePolicydTest(PolicydTest,
     def test_disable_service(self):
         logging.info("Doing policyd override to disable listing domains")
         self._set_policy_with(
-            {'rule.yaml': "{'identity:list_projects': '!'}"})
+            {'rule.yaml': "{'identity:list_services': '!'}"})
 
         # verify (with the config off) that we can actually access
         # these points
@@ -224,9 +224,9 @@ class KeystonePolicydTest(PolicydTest,
                     keystone_client = (
                         openstack_utils.get_keystone_session_client(
                             keystone_session))
-                    keystone_client.projects.list()
+                    keystone_client.services.list()
                     raise zaza_exceptions.PolicydError(
-                        'Retrieve domain list as admin with project scoped '
+                        'Retrieve service list as admin with project scoped '
                         'token passed and should have failed. IP = {}'
                         .format(ip))
                 except keystoneauth1.exceptions.http.Forbidden:
