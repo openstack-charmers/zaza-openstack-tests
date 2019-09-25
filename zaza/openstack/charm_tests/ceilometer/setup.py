@@ -32,7 +32,8 @@ def basic_setup():
     xenial_pike = openstack_utils.get_os_release('xenial_pike')
 
     if current_release < xenial_pike:
-        raise unittest.SkipTest('Not checking ceilometer-upgrade')
+        raise unittest.SkipTest('Skipping ceilometer-upgrade as it is not '
+                                'supported before Pike')
 
     logging.debug('Checking ceilometer-upgrade')
 
