@@ -484,62 +484,67 @@ def get_admin_net(neutron_client):
             return net
 
 
-def plumb_guest_nic(novaclient, neutronclient,
-                    dvr_mode=None, net_id=None):
+def _plumb_guest_nic(server_name, mac_address, dvr_mode=None):
+    """In guest server_name, add port with mac_address to netplan
 
-    """Add port associated with net_id to netplan
-
-    :type net_id: string
+    :param server_name: Hostname of instance
+    :type server_name: string
+    :param mac_address: mac address of nic to be added to netplan
+    :type mac_address: string
     """
 
     if dvr_mode:
-        uuids = get_ovs_uuids()
+        application_name = 'neutron-openvswitch'
     else:
-        uuids = get_gateway_uuids()
+        application_name = 'neutron-gateway'
 
-    for uuid in uuids:
-        server = novaclient.servers.get(uuid)
-        ext_port_name = "{}_ext-port".format(server.name)
-        for port in neutronclient.list_ports(device_id=server.id)['ports']:
-            if port['name'] == ext_port_name:
-                logging.info('Adding second port to netplan in guest:\
-                             {}'.format(port['name']))
-                mac_address = port['mac_address']
-                if dvr_mode:
-                    application_name = 'neutron-openvswitch'
-                else:
-                    application_name = 'neutron-gateway'
-                unit_name = juju_utils.get_unit_name_from_ip_address(
-                    server.ip, application_name)
-                interface = model.async_run_on_unit(
-                    unit_name, "ip addr|grep\
-                            {}".format(
-                        mac_address)).split("\n")[0].split(" ")[2]
-                body_value = textwrap.dedent("""\
-                    network:
-                        ethernets:
-                            {}:
-                                dhcp4: false
-                                dhcp6: true
-                                optional: true
-                                match:
-                                    macaddress: {}
-                                set-name: {}
-                        \n
-                        version: 2
-                """.format(interface, mac_address, interface))
-                netplan_file = open("60-dataport.yaml", "w")
-                netplan_file.write(body_value)
-                netplan_file.close()
-                model.async_scp_to_unit(unit_name, './60-dataport.yaml',
-                                        '/etc/netplan/', user="root")
-                subprocess.call("rm 60-dataport.yaml")
-                model.async_run_on_unit(unit_name, "netplan apply",
-                                        user="root")
+    unit_name = juju_utils.get_unit_name_from_host_name(
+        server_name, application_name)
+
+    run_cmd_nic = "ip addr|grep {} -B1".format(mac_address)
+    interface = model.run_on_unit(unit_name, run_cmd_nic)
+    interface = interface['Stdout'].split(' ')[1].replace(':', '')
+
+    run_cmd_netplan = """sudo egrep -iR '{}|{}' /etc/netplan/
+                        """.format(mac_address, interface)
+
+    netplancfg = model.run_on_unit(unit_name, run_cmd_netplan)
+
+    if (mac_address in str(netplancfg)) or (interface in str(netplancfg)):
+        logging.warn("mac address {} or nic {} already exists in "
+                     "/etc/netplan".format(mac_address, interface))
+        return
+    body_value = textwrap.dedent("""\
+        network:
+            ethernets:
+                {0}:
+                    dhcp4: false
+                    dhcp6: true
+                    optional: true
+                    match:
+                        macaddress: {1}
+                    set-name: {0}
+            version: 2
+    """.format(interface, mac_address))
+    logging.debug("plumb guest interfae debug info:")
+    logging.debug("body_value: {}\nunit_name: {}\ninterface: {}\nmac_address:"
+                  "{}\nserver_name: {}".format(body_value, unit_name,
+                                               interface, mac_address,
+                                               server_name))
+    netplan_file = open("60-dataport.yaml", "w")
+    netplan_file.write(body_value)
+    netplan_file.close()
+    model.scp_to_unit(unit_name, './60-dataport.yaml',
+                      '/home/ubuntu/', user="ubuntu")
+    run_cmd_mv = "sudo mv /home/ubuntu/60-dataport.yaml /etc/netplan"
+    model.run_on_unit(unit_name, run_cmd_mv)
+    subprocess.call(["rm", "60-dataport.yaml"])
+    model.run_on_unit(unit_name, "sudo netplan apply")
 
 
 def configure_gateway_ext_port(novaclient, neutronclient,
-                               dvr_mode=None, net_id=None):
+                               dvr_mode=None, net_id=None,
+                               plumb_guest_nic=False):
     """Configure the neturong-gateway external port.
 
     :param novaclient: Authenticated novaclient
@@ -586,6 +591,9 @@ def configure_gateway_ext_port(novaclient, neutronclient,
             port = neutronclient.create_port(body=body_value)
             server.interface_attach(port_id=port['port']['id'],
                                     net_id=None, fixed_ip=None)
+            if plumb_guest_nic:
+                _plumb_guest_nic(server.name, mac_address=port['mac_address'],
+                                 dvr_mode=dvr_mode)
     ext_br_macs = []
     for port in neutronclient.list_ports(network_id=net_id)['ports']:
         if 'ext-port' in port['name']:
