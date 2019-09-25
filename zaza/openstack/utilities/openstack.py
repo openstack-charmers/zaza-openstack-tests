@@ -491,6 +491,8 @@ def _plumb_guest_nic(server_name, mac_address, dvr_mode=None):
     :type server_name: string
     :param mac_address: mac address of nic to be added to netplan
     :type mac_address: string
+    :param dvr_mode: Using DVR mode or not
+    :type dvr_mode: boolean
     """
     if dvr_mode:
         application_name = 'neutron-openvswitch'
