@@ -485,14 +485,13 @@ def get_admin_net(neutron_client):
 
 
 def _plumb_guest_nic(server_name, mac_address, dvr_mode=None):
-    """In guest server_name, add port with mac_address to netplan
+    """In guest server_name, add port with mac_address to netplan.
 
     :param server_name: Hostname of instance
     :type server_name: string
     :param mac_address: mac address of nic to be added to netplan
     :type mac_address: string
     """
-
     if dvr_mode:
         application_name = 'neutron-openvswitch'
     else:
