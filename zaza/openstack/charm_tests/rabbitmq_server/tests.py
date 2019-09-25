@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""RabbitMQ Testing."""
+
 import json
 import logging
 import time
@@ -31,8 +33,7 @@ from . import utils as rmq_utils
 
 
 class RmqTests(test_utils.OpenStackBaseTest):
-    """Zaza tests on a basic rabbitmq cluster deployment. Verify
-       relations, service status, users and endpoint service catalog."""
+    """Zaza tests on a basic rabbitmq cluster deployment."""
 
     @classmethod
     def setUpClass(cls):
@@ -40,19 +41,22 @@ class RmqTests(test_utils.OpenStackBaseTest):
         super(RmqTests, cls).setUpClass()
 
     def _get_uuid_epoch_stamp(self):
-        """Returns a stamp string based on uuid4 and epoch time.  Useful in
-        generating test messages which need to be unique-ish."""
+        """Return a string based on uuid4 and epoch time.
+
+        Useful in generating test messages which need to be unique-ish.
+        """
         return '[{}-{}]'.format(uuid.uuid4(), time.time())
 
     def _test_rmq_amqp_messages_all_units(self, units,
                                           ssl=False, port=None):
-        """Reusable test to send amqp messages to every listed rmq unit
-        and check every listed rmq unit for messages.
+        """Reusable test to send/check amqp messages to every listed rmq unit.
 
+        Reusable test to send amqp messages to every listed rmq
+        unit. Checks every listed rmq unit for messages.
         :param units: list of units
         :returns: None if successful.  Raise on error.
-        """
 
+        """
         # Add test user if it does not already exist
         rmq_utils.add_user(units)
 
@@ -120,8 +124,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
         rmq_utils.delete_user(units)
 
     def test_400_rmq_cluster_running_nodes(self):
-        """Verify that cluster status from each rmq juju unit shows
-        every cluster node as a running member in that cluster."""
+        """Verify cluster status shows every cluster node as running member."""
         logging.debug('Checking that all units are in cluster_status '
                       'running nodes...')
 
@@ -133,8 +136,12 @@ class RmqTests(test_utils.OpenStackBaseTest):
         logging.info('OK\n')
 
     def test_406_rmq_amqp_messages_all_units_ssl_off(self):
-        """Send amqp messages to every rmq unit and check every rmq unit
-        for messages.  Standard amqp tcp port, no ssl."""
+        """Send (and check) amqp messages to every rmq unit.
+
+        Sends amqp messages to every rmq unit, and check every rmq
+        unit for messages. Uses Standard amqp tcp port, no ssl.
+
+        """
         logging.debug('Checking amqp message publish/get on all units '
                       '(ssl off)...')
 
@@ -151,8 +158,12 @@ class RmqTests(test_utils.OpenStackBaseTest):
         return lsb_release()['DISTRIB_CODENAME']
 
     def test_408_rmq_amqp_messages_all_units_ssl_on(self):
-        """Send amqp messages with ssl enabled, to every rmq unit and
-        check every rmq unit for messages.  Standard ssl tcp port."""
+        """Send (and check) amqp messages to every rmq unit (ssl enabled).
+
+        Sends amqp messages to every rmq unit, and check every rmq
+        unit for messages. Uses Standard ssl tcp port.
+
+        """
         units = zaza.model.get_units(self.application_name)
 
         # http://pad.lv/1625044
@@ -160,7 +171,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
                 CompareHostReleases(self._series(units[0])) <= 'trusty'):
             logging.info('SKIP')
             logging.info('Skipping SSL tests due to client'
-                       ' compatibility issues')
+                         ' compatibility issues')
             return
         logging.debug('Checking amqp message publish/get on all units '
                       '(ssl on)...')
@@ -171,8 +182,12 @@ class RmqTests(test_utils.OpenStackBaseTest):
         logging.info('OK\n')
 
     def test_410_rmq_amqp_messages_all_units_ssl_alt_port(self):
-        """Send amqp messages with ssl on, to every rmq unit and check
-        every rmq unit for messages.  Custom ssl tcp port."""
+        """Send (and check) amqp messages to every rmq unit (alt ssl port).
+
+        Send amqp messages with ssl on, to every rmq unit and check
+        every rmq unit for messages.  Custom ssl tcp port.
+
+        """
         units = zaza.model.get_units(self.application_name)
 
         # http://pad.lv/1625044
@@ -180,7 +195,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
                 CompareHostReleases(self._series(units[0])) <= 'trusty'):
             logging.info('SKIP')
             logging.info('Skipping SSL tests due to client'
-                       ' compatibility issues')
+                         ' compatibility issues')
             return
         logging.debug('Checking amqp message publish/get on all units '
                       '(ssl on)...')
@@ -281,8 +296,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
         logging.info('OK\n')
 
     def test_910_pause_and_resume(self):
-        """The services can be paused and resumed. """
-
+        """The services can be paused and resumed."""
         logging.debug('Checking pause and resume actions...')
 
         unit = zaza.model.get_units(self.application_name)[0]
@@ -305,7 +319,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
         logging.debug('OK')
 
     def test_911_cluster_status(self):
-        """ rabbitmqctl cluster_status action can be returned. """
+        """Test rabbitmqctl cluster_status action can be returned."""
         logging.debug('Checking cluster status action...')
 
         unit = zaza.model.get_units(self.application_name)[0]
@@ -315,7 +329,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
         logging.debug('OK')
 
     def test_912_check_queues(self):
-        """ rabbitmqctl check_queues action can be returned. """
+        """Test rabbitmqctl check_queues action can be returned."""
         logging.debug('Checking cluster status action...')
 
         unit = zaza.model.get_units(self.application_name)[0]
@@ -323,7 +337,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
         self.assertIsInstance(action, juju.action.Action)
 
     def test_913_list_unconsumed_queues(self):
-        """ rabbitmqctl list-unconsumed-queues action can be returned. """
+        """Test rabbitmqctl list-unconsumed-queues action can be returned."""
         logging.debug('Checking list-unconsumed-queues action...')
 
         unit = zaza.model.get_units(self.application_name)[0]

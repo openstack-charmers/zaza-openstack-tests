@@ -514,8 +514,8 @@ def dist_upgrade(unit_name):
 
 
 def check_commands_on_units(commands, units):
-    """Check that all commands in a list exit zero on all
-    units in a list.
+    """Check that all commands in a list exit zero on all units in a list.
+
     :param commands:  list of bash commands
     :param units:  list of unit pointers
     :returns: None if successful; Failure message otherwise
@@ -742,6 +742,7 @@ def get_ubuntu_release(ubuntu_name):
 
 
 def get_file_contents(unit, f):
+    """Get contents of a file on a remote unit."""
     return model.run_on_unit(unit.entity_id,
                              "cat {}".format(f))['Stdout']
 
@@ -772,8 +773,9 @@ def is_port_open(port, address):
 
 
 def port_knock_units(units, port=22, expect_success=True):
-    """Open a TCP socket to check for a listening sevice on each
-    listed juju unit.
+    """Check if specific port is open on units.
+
+    Open a TCP socket to check for a listening sevice on each listed juju unit.
     :param units: list of unit pointers
     :param port: TCP port number, default to 22
     :param timeout: Connect timeout, default to 15 seconds

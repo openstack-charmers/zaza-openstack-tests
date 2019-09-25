@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""RabbitMQ Testing utility functions."""
+
 import json
 import logging
 import time
@@ -24,10 +26,13 @@ import zaza.openstack.utilities.generic as generic_utils
 
 
 def wait_for_cluster(model_name=None, timeout=1200):
-    """Wait for rmq units extended status to show cluster readiness,
+    """Wait for Rmq cluster status to show cluster readiness.
+
+    Wait for rmq units extended status to show cluster readiness,
     after an optional initial sleep period.  Initial sleep is likely
     necessary to be effective following a config change, as status
-    message may not instantly update to non-ready."""
+    message may not instantly update to non-ready.
+    """
     states = {
         'rabbitmq-server': {
             'workload-status-messages': 'Unit is ready and clustered'
@@ -40,7 +45,9 @@ def wait_for_cluster(model_name=None, timeout=1200):
 
 
 def add_user(units, username="testuser1", password="changeme"):
-    """Add a user via the first rmq juju unit, check connection as
+    """Add a user to a RabbitMQ cluster.
+
+    Add a user via the first rmq juju unit, check connection as
     the new user against all units.
     :param units: list of unit pointers
     :param username: amqp user name, default to testuser1
@@ -77,7 +84,9 @@ def add_user(units, username="testuser1", password="changeme"):
 
 
 def delete_user(units, username="testuser1"):
-    """Delete a rabbitmq user via the first rmq juju unit.
+    """Delete a user from a RabbitMQ cluster.
+
+    Delete a rabbitmq user via the first rmq juju unit.
     :param units: list of unit pointers
     :param username: amqp user name, default to testuser1
     :param password: amqp user password
@@ -101,7 +110,9 @@ def delete_user(units, username="testuser1"):
 
 
 def get_cluster_status(unit):
-    """Execute rabbitmq cluster status command on a unit and return
+    """Get RabbitMQ cluster status output.
+
+    Execute rabbitmq cluster status command on a unit and return
     the full output.
     :param unit: unit
     :returns: String containing console output of cluster status command
@@ -114,7 +125,9 @@ def get_cluster_status(unit):
 
 
 def get_cluster_running_nodes(unit):
-    """Parse rabbitmqctl cluster_status output string, return list of
+    """Get a list of RabbitMQ cluster's running nodes.
+
+    Parse rabbitmqctl cluster_status output string, return list of
     running rabbitmq cluster nodes.
     :param unit: unit pointer
     :returns: List containing node names of running nodes
@@ -133,7 +146,9 @@ def get_cluster_running_nodes(unit):
 
 
 def validate_cluster_running_nodes(units):
-    """Check that all rmq unit hostnames are represented in the
+    """Check all rmq unit hostnames are represented in cluster_status.
+
+    Check that all rmq unit hostnames are represented in the
     cluster_status output of all units.
     :param host_names: dict of juju unit names to host names
     :param units: list of unit pointers (all rmq units)
@@ -164,6 +179,7 @@ def validate_cluster_running_nodes(units):
 
 def validate_ssl_enabled_units(units, port=None):
     """Check that ssl is enabled on rmq juju units.
+
     :param units: list of all rmq units
     :param port: optional ssl port override to validate
     :returns: None if successful, otherwise return error message
@@ -177,6 +193,7 @@ def validate_ssl_enabled_units(units, port=None):
 
 def validate_ssl_disabled_units(units):
     """Check that ssl is enabled on listed rmq juju units.
+
     :param units: list of all rmq units
     :returns: True if successful.  Raise on error.
     """
@@ -189,7 +206,9 @@ def validate_ssl_disabled_units(units):
 
 def configure_ssl_on(units, model_name=None,
                      port=None, max_wait=60):
-    """Turn ssl charm config option on, with optional non-default
+    """Turn RabbitMQ charm SSL config option on.
+
+    Turn ssl charm config option on, with optional non-default
     ssl port specification.  Confirm that it is enabled on every
     unit.
     :param units: list of units
@@ -225,7 +244,9 @@ def configure_ssl_on(units, model_name=None,
 
 
 def configure_ssl_off(units, model_name=None, max_wait=60):
-    """Turn ssl charm config option off, confirm that it is disabled
+    """Turn RabbitMQ charm SSL config option off.
+
+    Turn ssl charm config option off, confirm that it is disabled
     on every unit.
     :param units: list of units
     :param max_wait: maximum time to wait in seconds to confirm
@@ -294,7 +315,9 @@ def is_ssl_enabled_on_unit(unit, port=None):
 def connect_amqp_by_unit(unit, ssl=False,
                          port=None, fatal=True,
                          username="testuser1", password="changeme"):
-    """Establish and return a pika amqp connection to the rabbitmq service
+    """Establish and return a pika amqp connection to the rabbitmq service.
+
+    Establish and return a pika amqp connection to the rabbitmq service
     running on a rmq juju unit.
     :param unit: unit pointer
     :param ssl: boolean, default to False
@@ -352,6 +375,7 @@ def publish_amqp_message_by_unit(unit, message,
                                  password="changeme",
                                  port=None):
     """Publish an amqp message to a rmq juju unit.
+
     :param unit: unit pointer
     :param message: amqp message string
     :param queue: message queue, default to test
@@ -388,6 +412,7 @@ def get_amqp_message_by_unit(unit, queue="test",
                              password="changeme",
                              ssl=False, port=None):
     """Get an amqp message from a rmq juju unit.
+
     :param unit: unit pointer
     :param queue: message queue, default to test
     :param username: amqp user name, default to testuser1
