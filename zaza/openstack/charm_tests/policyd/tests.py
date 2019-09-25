@@ -77,6 +77,7 @@ class PolicydTest(object):
 
     @classmethod
     def setUpClass(cls, application_name=None):
+        """Run class setup for running Policyd charm operation tests."""
         super(PolicydTest, cls).setUpClass(application_name)
         if (openstack_utils.get_os_release() <
                 openstack_utils.get_os_release('xenial_queens')):
@@ -87,6 +88,7 @@ class PolicydTest(object):
 
     @classmethod
     def tearDownClass(cls):
+        """Run class tearDown for running Policyd charm operation tests."""
         super(PolicydTest, cls).tearDownClass()
         try:
             shutil.rmtree(cls._tmp_dir, ignore_errors=True)
@@ -126,8 +128,7 @@ class PolicydTest(object):
             self.application_name, "PO:", negate_match=True)
 
     def test_001_policyd_good_yaml(self):
-        # Test that the policyd with a good zipped yaml file puts the yaml file
-        # in the right directory
+        """Test that the policyd with a good zipped yaml file."""
         good = {
             'file1.yaml': "{'rule1': '!'}"
         }
@@ -174,8 +175,7 @@ class PolicydTest(object):
         logging.info("OK")
 
     def test_002_policyd_bad_yaml(self):
-        # Test that a bad yaml file in the zip file doesn't not put it in the
-        # override and puts up a status message that it is bad
+        """Test bad yaml file in the zip file is handled."""
         bad = {
             "file2.yaml": "{'rule': '!}"
         }
@@ -208,12 +208,15 @@ class PolicydTest(object):
 class KeystonePolicydTest(PolicydTest,
                           ch_keystone.BaseKeystoneTest,
                           test_utils.OpenStackBaseTest):
+    """Specific test for policyd for keystone charm."""
 
     @classmethod
     def setUpClass(cls, application_name=None):
+        """Run class setup for running KeystonePolicydTest tests."""
         super(KeystonePolicydTest, cls).setUpClass(application_name)
 
     def test_disable_service(self):
+        """Test that service can be disabled."""
         logging.info("Doing policyd override to disable listing domains")
         self._set_policy_with(
             {'rule.yaml': "{'identity:list_services': '!'}"})
@@ -301,4 +304,6 @@ class KeystonePolicydTest(PolicydTest,
 
 
 class GenericPolicydTest(PolicydTest, test_utils.OpenStackBaseTest):
+    """Generic policyd test for any charm without a specific test."""
+
     pass

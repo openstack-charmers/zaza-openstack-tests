@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Collection of code for setting up and testing policyd overrides across a
+"""Policyd.
+
+Collection of code for setting up and testing policyd overrides across a
 collection of charms.
 """
