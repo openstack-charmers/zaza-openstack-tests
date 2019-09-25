@@ -25,6 +25,7 @@ from .os_versions import (
 
 from openstack import connection
 
+from aodhclient.v2 import client as aodh_client
 from cinderclient import client as cinderclient
 from glanceclient import Client as GlanceClient
 
@@ -286,6 +287,17 @@ def get_masakari_session_client(session, interface='internal',
                                  interface=interface,
                                  region_name=region_name)
     return conn.instance_ha
+
+
+def get_aodh_session_client(session):
+    """Return aodh client authenticated by keystone session.
+
+    :param session: Keystone session object
+    :type session: keystoneauth1.session.Session object
+    :returns: Authenticated aodh client
+    :rtype: openstack.instance_ha.v1._proxy.Proxy
+    """
+    return aodh_client.Client(session=session)
 
 
 def get_keystone_scope():
