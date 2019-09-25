@@ -527,7 +527,7 @@ def _plumb_guest_nic(server_name, mac_address, dvr_mode=None):
                     set-name: {0}
             version: 2
     """.format(interface, mac_address))
-    logging.debug("plumb guest interfae debug info:")
+    logging.debug("plumb guest interface debug info:")
     logging.debug("body_value: {}\nunit_name: {}\ninterface: {}\nmac_address:"
                   "{}\nserver_name: {}".format(body_value, unit_name,
                                                interface, mac_address,
