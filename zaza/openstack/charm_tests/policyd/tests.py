@@ -12,7 +12,40 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Encapsulate policyd testing."""
+"""Encapsulate policyd testing.
+
+The Policyd Tests test the following:
+
+- Two general tests in the PolicydTest class that check that a policy zip can
+  drop policy files in the correct service policy.d directory.  One test tests
+  that a valid yaml file is dropped; the 2nd that an invalid one is not dropped
+  and the workload info status line shows that it is broken.
+- A custom policyd test that is per charm and tests that a policy zip file
+  attached does actually disable something in the associated service (i.e.
+  verify that the charm has implemented policy overrides and ensured that the
+  service actually picks them up).
+
+In order to use the generic tests, just include them in the specific test
+class.  The KeystonePolicydTest as an example does:
+
+    class KeystonePolicydTest(PolicydTest,
+                              ch_keystone.BaseKeystoneTest,
+                              test_utils.OpenStackBaseTest):
+
+        @classmethod
+        def setUpClass(cls, application_name=None):
+            super(KeystonePolicydTest, cls).setUpClass(application_name)
+
+Note that the generic test class (PolicyDTest) comes first, and then the
+ch_keystone.BaseKeystoneTest, followed by the test_utils.OpenStackBaseTest.
+This is to get the order of super().setUpClass(...) calls to work with
+application_name.
+
+If a charm doesn't require a specific test, then the GenericPolicydTest class
+can be used that just includes the two generic tests.  The config in the
+tests.yaml would stil be required.  See the PolicydTest class docstring for
+further details.
+"""
 
 import logging
 import os
@@ -103,7 +136,6 @@ class PolicydTest(object):
         zaza_model.attach_resource(self.application_name,
                                    'policyd-override',
                                    good_zip_path)
-        logging.debug("... waiting for idle")
         zaza_model.block_until_all_units_idle()
         logging.debug("Now setting config to true")
         self._set_config(True)
@@ -139,7 +171,7 @@ class PolicydTest(object):
         logging.info("Checking that {} has been removed".format(path))
         zaza_model.block_until_file_missing(self.application_name, path)
 
-        logging.info("...done")
+        logging.info("OK")
 
     def test_002_policyd_bad_yaml(self):
         # Test that a bad yaml file in the zip file doesn't not put it in the
@@ -152,13 +184,13 @@ class PolicydTest(object):
         zaza_model.attach_resource(self.application_name,
                                    'policyd-override',
                                    bad_zip_path)
-        logging.debug("... waiting for idle")
         zaza_model.block_until_all_units_idle()
         logging.debug("Now setting config to true")
         self._set_config(True)
         # ensure that the workload status info line starts with PO (broken):
         # to show that it didn't work
-        logging.info("Checking for workload status line starts with PO:")
+        logging.info(
+            "Checking for workload status line starts with PO (broken):")
         zaza_model.block_until_wl_status_info_starts_with(
             self.application_name, "PO (broken):")
         logging.debug("App status is valid for broken yaml file")
@@ -170,7 +202,7 @@ class PolicydTest(object):
         zaza_model.block_until_file_missing(self.application_name, path)
         self._set_config(True)
         zaza_model.block_until_all_units_idle()
-        logging.info("...done")
+        logging.info("OK")
 
 
 class KeystonePolicydTest(PolicydTest,
@@ -222,7 +254,8 @@ class KeystonePolicydTest(PolicydTest,
                         'token passed and should have failed. IP = {}'
                         .format(ip))
                 except keystoneauth1.exceptions.http.Forbidden:
-                    logging.info("keystone IP:{} policyd override working"
+                    logging.info("keystone IP:{} policyd override disabled "
+                                 "services listing by demo user"
                                  .format(ip))
 
         # now verify (with the config off) that we can actually access
