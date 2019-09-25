@@ -99,7 +99,7 @@ class PolicydTest(object):
             'file1.yaml': "{'rule1': '!'}"
         }
         good_zip_path = self._make_zip_file_from('good.zip', good)
-        logging.info("Attaching a resource.")
+        logging.info("Attaching good zip file as a resource.")
         zaza_model.attach_resource(self.application_name,
                                    'policyd-override',
                                    good_zip_path)
@@ -139,6 +139,37 @@ class PolicydTest(object):
         logging.info("Checking that {} has been removed".format(path))
         zaza_model.block_until_file_missing(self.application_name, path)
 
+        logging.info("...done")
+
+    def test_002_policyd_bad_yaml(self):
+        # Test that a bad yaml file in the zip file doesn't not put it in the
+        # override and puts up a status message that it is bad
+        bad = {
+            "file2.yaml": "{'rule': '!}"
+        }
+        bad_zip_path = self._make_zip_file_from('bad.zip', bad)
+        logging.info("Attaching bad zip file as a resource")
+        zaza_model.attach_resource(self.application_name,
+                                   'policyd-override',
+                                   bad_zip_path)
+        logging.debug("... waiting for idle")
+        zaza_model.block_until_all_units_idle()
+        logging.debug("Now setting config to true")
+        self._set_config(True)
+        # ensure that the workload status info line starts with PO (broken):
+        # to show that it didn't work
+        logging.info("Checking for workload status line starts with PO:")
+        zaza_model.block_until_wl_status_info_starts_with(
+            self.application_name, "PO (broken):")
+        logging.debug("App status is valid for broken yaml file")
+        zaza_model.block_until_all_units_idle()
+        # now verify that no file got landed on the machine
+        path = os.path.join(
+            "/etc", self._service_name, "policy.d", 'file2.yaml')
+        logging.info("Now checking that file {} is not present.".format(path))
+        zaza_model.block_until_file_missing(self.application_name, path)
+        self._set_config(True)
+        zaza_model.block_until_all_units_idle()
         logging.info("...done")
 
 
