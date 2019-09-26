@@ -532,15 +532,14 @@ def add_interface_to_netplan(server_name, mac_address, dvr_mode=None):
                   "{}\nserver_name: {}".format(body_value, unit_name,
                                                interface, mac_address,
                                                server_name))
-    netplan_file = open("60-dataport.yaml", "w")
-    netplan_file.write(body_value)
-    netplan_file.close()
-    model.scp_to_unit(unit_name, './60-dataport.yaml',
-                      '/home/ubuntu/', user="ubuntu")
-    run_cmd_mv = "sudo mv /home/ubuntu/60-dataport.yaml /etc/netplan"
-    model.run_on_unit(unit_name, run_cmd_mv)
-    subprocess.call(["rm", "60-dataport.yaml"])
-    model.run_on_unit(unit_name, "sudo netplan apply")
+    with tempfile.NamedTemporaryFile(mode="w") as netplan_file:
+        netplan_file.write(body_value)
+        netplan_file.flush()
+        model.scp_to_unit(unit_name, netplan_file.name,
+                          '/home/ubuntu/60-dataport.yaml', user="ubuntu")
+        run_cmd_mv = "sudo mv /home/ubuntu/60-dataport.yaml /etc/netplan/"
+        model.run_on_unit(unit_name, run_cmd_mv)
+        model.run_on_unit(unit_name, "sudo netplan apply")
 
 
 def configure_gateway_ext_port(novaclient, neutronclient,
