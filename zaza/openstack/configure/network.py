@@ -218,9 +218,9 @@ def setup_gateway_ext_port(network_config, keystone_session=None):
     if current_release >= bionic_queens:
         logging.warn("Adding second interface for dataport to guest netplan "
                      "for bionic-queens and later")
-        plumb_guest_nic = True
+        add_dataport_to_netplan = True
     else:
-        plumb_guest_nic = False
+        add_dataport_to_netplan = False
 
     logging.info("Configuring network for OpenStack undercloud/provider")
     openstack_utils.configure_gateway_ext_port(
@@ -228,7 +228,7 @@ def setup_gateway_ext_port(network_config, keystone_session=None):
         neutron_client,
         dvr_mode=network_config.get("dvr_enabled", False),
         net_id=net_id,
-        plumb_guest_nic=plumb_guest_nic)
+        add_dataport_to_netplan=add_dataport_to_netplan)
 
 
 def run_from_cli(**kwargs):

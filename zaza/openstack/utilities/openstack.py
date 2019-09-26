@@ -484,8 +484,8 @@ def get_admin_net(neutron_client):
             return net
 
 
-def _plumb_guest_nic(server_name, mac_address, dvr_mode=None):
-    """In guest server_name, add port with mac_address to netplan.
+def add_interface_to_netplan(server_name, mac_address, dvr_mode=None):
+    """In guest server_name, add nic with mac_address to netplan.
 
     :param server_name: Hostname of instance
     :type server_name: string
@@ -545,7 +545,7 @@ def _plumb_guest_nic(server_name, mac_address, dvr_mode=None):
 
 def configure_gateway_ext_port(novaclient, neutronclient,
                                dvr_mode=None, net_id=None,
-                               plumb_guest_nic=False):
+                               add_dataport_to_netplan=False):
     """Configure the neturong-gateway external port.
 
     :param novaclient: Authenticated novaclient
@@ -592,9 +592,10 @@ def configure_gateway_ext_port(novaclient, neutronclient,
             port = neutronclient.create_port(body=body_value)
             server.interface_attach(port_id=port['port']['id'],
                                     net_id=None, fixed_ip=None)
-            if plumb_guest_nic:
-                _plumb_guest_nic(server.name, mac_address=port['mac_address'],
-                                 dvr_mode=dvr_mode)
+            if add_dataport_to_netplan:
+                add_interface_to_netplan(server.name,
+                                         mac_address=port['mac_address'],
+                                         dvr_mode=dvr_mode)
     ext_br_macs = []
     for port in neutronclient.list_ports(network_id=net_id)['ports']:
         if 'ext-port' in port['name']:
