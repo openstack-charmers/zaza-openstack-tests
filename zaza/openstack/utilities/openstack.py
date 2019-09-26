@@ -537,9 +537,9 @@ def add_interface_to_netplan(server_name, mac_address, dvr_mode=None):
         netplan_file.flush()
         model.scp_to_unit(unit_name, netplan_file.name,
                           '/home/ubuntu/60-dataport.yaml', user="ubuntu")
-        run_cmd_mv = "sudo mv /home/ubuntu/60-dataport.yaml /etc/netplan/"
-        model.run_on_unit(unit_name, run_cmd_mv)
-        model.run_on_unit(unit_name, "sudo netplan apply")
+    run_cmd_mv = "sudo mv /home/ubuntu/60-dataport.yaml /etc/netplan/"
+    model.run_on_unit(unit_name, run_cmd_mv)
+    model.run_on_unit(unit_name, "sudo netplan apply")
 
 
 def configure_gateway_ext_port(novaclient, neutronclient,
