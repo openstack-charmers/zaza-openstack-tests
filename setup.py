@@ -34,6 +34,7 @@ install_require = [
     'PyYAML',
     'tenacity',
     'oslo.config',
+    'aodhclient',
     'python-glanceclient',
     'python-keystoneclient',
     'python-novaclient',
