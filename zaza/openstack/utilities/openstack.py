@@ -502,11 +502,11 @@ def add_interface_to_netplan(server_name, mac_address, dvr_mode=None):
     unit_name = juju_utils.get_unit_name_from_host_name(
         server_name, application_name)
 
-    run_cmd_nic = "ip addr|grep {} -B1".format(mac_address)
+    run_cmd_nic = "ip -f link -br -o addr|grep {}".format(mac_address)
     interface = model.run_on_unit(unit_name, run_cmd_nic)
-    interface = interface['Stdout'].split(' ')[1].replace(':', '')
+    interface = interface['Stdout'].split(' ')[0]
 
-    run_cmd_netplan = """sudo egrep -iR '{}|{}' /etc/netplan/
+    run_cmd_netplan = """sudo egrep -iR '{}|{}$' /etc/netplan/
                         """.format(mac_address, interface)
 
     netplancfg = model.run_on_unit(unit_name, run_cmd_netplan)
