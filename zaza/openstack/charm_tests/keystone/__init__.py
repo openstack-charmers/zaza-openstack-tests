@@ -30,7 +30,7 @@ class BaseKeystoneTest(test_utils.OpenStackBaseTest):
     """Base for Keystone charm tests."""
 
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls, application_name=None):
         """Run class setup for running Keystone charm operation tests."""
         super(BaseKeystoneTest, cls).setUpClass(application_name='keystone')
         # Check if we are related to Vault TLS certificates
