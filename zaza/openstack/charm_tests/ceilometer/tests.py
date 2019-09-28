@@ -113,5 +113,5 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
         Pause service and check services are stopped then resume and check
         they are started.
         """
-        with self.pause_resume(['ceilometer']):
+        with self.pause_resume(self.services):
             logging.info("Testing pause and resume")
