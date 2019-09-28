@@ -17,7 +17,6 @@
 """Code for configuring Ceilometer."""
 
 import logging
-import unittest
 import zaza.model as zaza_model
 import zaza.openstack.utilities.openstack as openstack_utils
 
@@ -32,8 +31,9 @@ def basic_setup():
     xenial_pike = openstack_utils.get_os_release('xenial_pike')
 
     if current_release < xenial_pike:
-        raise unittest.SkipTest('Skipping ceilometer-upgrade as it is not '
-                                'supported before Pike')
+        logging.info(
+            'Skipping ceilometer-upgrade as it is not supported before Pike')
+        return
 
     logging.debug('Checking ceilometer-upgrade')
 
