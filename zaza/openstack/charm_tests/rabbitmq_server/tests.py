@@ -363,3 +363,44 @@ class RmqTests(test_utils.OpenStackBaseTest):
         assert queue_data['messages'] == 0, 'Found unexpected message count.'
 
         logging.debug('OK')
+
+    def test_921_remove_unit(self):
+        """Test if unit cleans up when removed from Rmq cluster.
+
+        Test if a unit correctly cleans up by removing itself from the
+        RabbitMQ cluster on removal
+
+        """
+        logging.debug('Checking that units correctly clean up after '
+                      'themselves on unit removal...')
+        config = {'min-cluster-size': '2'}
+        zaza.model.set_application_config('rabbitmq-server', config)
+        rmq_utils.wait_for_cluster()
+
+        units = zaza.model.get_units(self.application_name)
+        removed_unit = units[-1]
+        left_units = units[:-1]
+
+        zaza.model.run_on_unit(removed_unit.entity_id, 'hooks/stop')
+        zaza.model.block_until_unit_wl_status(removed_unit.entity_id,
+                                              "waiting")
+
+        unit_host_names = generic_utils.get_unit_hostnames(left_units)
+        unit_node_names = []
+        for unit in unit_host_names:
+            unit_node_names.append('rabbit@{}'.format(unit_host_names[unit]))
+        errors = []
+
+        for u in left_units:
+            e = rmq_utils.check_unit_cluster_nodes(u, unit_node_names)
+            if e:
+                # NOTE: cluster status may not have been updated yet so wait a
+                # little and try one more time. Need to find a better way to do
+                # this.
+                time.sleep(10)
+                e = rmq_utils.check_unit_cluster_nodes(u, unit_node_names)
+                if e:
+                    errors.append(e)
+
+        self.assertFalse(errors)
+        logging.debug('OK')

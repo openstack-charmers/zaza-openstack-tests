@@ -439,3 +439,26 @@ def get_amqp_message_by_unit(unit, queue="test",
     else:
         msg = 'No message retrieved.'
         raise Exception(msg)
+
+
+def check_unit_cluster_nodes(unit, unit_node_names):
+    """Check if unit exists in list of Rmq cluster node names."""
+    unit_name = unit.entity_id
+    nodes = []
+    errors = []
+    str_stat = get_cluster_status(unit)
+    # make the interesting part of rabbitmqctl cluster_status output
+    # json-parseable.
+    if 'nodes,[{disc,' in str_stat:
+        pos_start = str_stat.find('nodes,[{disc,') + 13
+        pos_end = str_stat.find(']}]},', pos_start) + 1
+        str_nodes = str_stat[pos_start:pos_end].replace("'", '"')
+        nodes = json.loads(str_nodes)
+    for node in nodes:
+        if node not in unit_node_names:
+            errors.append('Cluster registration check failed on {}: '
+                          '{} should not be registered with RabbitMQ '
+                          'after unit removal.\n'
+                          ''.format(unit_name, node))
+
+    return errors
