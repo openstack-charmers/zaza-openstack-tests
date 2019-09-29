@@ -125,7 +125,48 @@ class PolicydTest(object):
                                    rules_zip_path)
         self._set_config(True)
         zaza_model.block_until_wl_status_info_starts_with(
-            self.application_name, "PO:", negate_match=True)
+            self.application_name, "PO:", negate_match=False)
+
+    def test_002_policyd_bad_yaml(self):
+        """Test bad yaml file in the zip file is handled."""
+        bad = {
+            "file2.yaml": "{'rule': '!}"
+        }
+        bad_zip_path = self._make_zip_file_from('bad.zip', bad)
+        logging.info("Attaching bad zip file as a resource")
+        zaza_model.attach_resource(self.application_name,
+                                   'policyd-override',
+                                   bad_zip_path)
+        zaza_model.block_until_all_units_idle()
+        logging.debug("Now setting config to true")
+        self._set_config(True)
+        # ensure that the workload status info line starts with PO (broken):
+        # to show that it didn't work
+        logging.info(
+            "Checking for workload status line starts with PO (broken):")
+        zaza_model.block_until_wl_status_info_starts_with(
+            self.application_name, "PO (broken):")
+        logging.debug("App status is valid for broken yaml file")
+        zaza_model.block_until_all_units_idle()
+        # now verify that no file got landed on the machine
+        path = os.path.join(
+            "/etc", self._service_name, "policy.d", 'file2.yaml')
+        logging.info("Now checking that file {} is not present.".format(path))
+        zaza_model.block_until_file_missing(self.application_name, path)
+        self._set_config(False)
+        zaza_model.block_until_all_units_idle()
+        logging.info("OK")
+
+
+class GenericPolicydTest(PolicydTest, test_utils.OpenStackBaseTest):
+    """Generic policyd test for any charm without a specific test.
+
+    It includes a single additional test to test_002_policyd_bad_yaml() in the
+    base class PolicydTest which checks that a good yaml file is placed into
+    the correct directory.  This additional test (test_001_policyd_good_yaml)
+    is not needed in the specialised tests as the feature is implicitly tested
+    when the specialised test fails with the rule overrided.
+    """
 
     def test_001_policyd_good_yaml(self):
         """Test that the policyd with a good zipped yaml file."""
@@ -160,7 +201,7 @@ class PolicydTest(object):
         # we have to do it twice due to async races and that some info lines
         # erase the PO: bit prior to actuall getting back to idle.  The double
         # check verifies that the charms have started, the idle waits until it
-        # is finiehed, and then the final check really makes sure they got
+        # is finished, and then the final check really makes sure they got
         # switched off.
         zaza_model.block_until_wl_status_info_starts_with(
             self.application_name, "PO:", negate_match=True)
@@ -174,40 +215,186 @@ class PolicydTest(object):
 
         logging.info("OK")
 
-    def test_002_policyd_bad_yaml(self):
-        """Test bad yaml file in the zip file is handled."""
-        bad = {
-            "file2.yaml": "{'rule': '!}"
+
+class PolicydOperationFailedException(Exception):
+    """This is raised by the get_client_and_attempt_operation() method.
+
+    This is used to signal that the operation in the
+    get_client_and_attempt_operation() method in the BaseSpecialization class
+    has failed.
+    """
+
+    pass
+
+
+class BasePolicydSpecialization(PolicydTest,
+                                ch_keystone.BaseKeystoneTest,
+                                test_utils.OpenStackBaseTest):
+    """Base test for specialising Policyd override tests
+
+    This class is for specialization of the test to verify that a yaml file
+    placed in the policy.d director is observed.  This is done by first calling
+    the get_client_and_attempt_operation() method and ensuring that it works.
+    This method should attempt an operation on the service that can be blocked
+    by the policy override in the `_rule` class variable.  The method should
+    pass cleanly without the override in place.
+
+    The test_003_test_overide_is_observed will then apply the override and then
+    call get_client_and_attempt_operation() again, and this time it should
+    detect the failure and raise the PolicydOperationFailedException()
+    exception.  This will be detected as the override working and thus the test
+    will pass.
+
+    The test will fail if the first call fails for any reason, or if the 2nd
+    call doesn't raise PolicydOperationFailedException or raises any other
+    exception.
+    """
+
+    # this needs to be defined as the rule that gets placed into a yaml policy
+    # override.  It is a string of the form: 'some-rule: "!"'
+    # i.e. disable some policy and then try and test it.
+    _rule = None
+
+    # the name to log at the beginning of the test
+    _test_name = None
+
+    @classmethod
+    def setUpClass(cls, application_name=None):
+        """Run class setup for running KeystonePolicydTest tests."""
+        super(BasePolicydSpecialization, cls).setUpClass(application_name)
+        if cls._rule is None:
+            cls.SkipTest("Test not valid if {}.rule is not configured"
+                         .format(cls.__name__))
+            return
+
+    def get_client_and_attempt_operation(self, keystone_session):
+        """Override this method to perform the operation.
+
+        This operation should pass normally for the demo_user, and fail when
+        the rule has been overriden (see the `rule` class variable.
+
+        :param keystone_session: the keystone session to use to obtain the
+            client necessary for the test.
+        :type keystone_session: ???
+        :raises: PolicydOperationFailedException if operation fails.
+        """
+        raise NotImplementedError("This method must be overridden")
+
+    def _get_keystone_session(self, ip):
+        """Return the keystone session for the IP address passed.
+
+        :param ip: the IP address to get the session against.
+        :type ip: str
+        :returns: a keystone session to the IP address
+        :rtype: ???
+        """
+        logging.info('keystone IP {}'.format(ip))
+        openrc = {
+            'API_VERSION': 3,
+            'OS_USERNAME': ch_keystone.DEMO_ADMIN_USER,
+            'OS_PASSWORD': ch_keystone.DEMO_ADMIN_USER_PASSWORD,
+            'OS_AUTH_URL': 'http://{}:5000/v3'.format(ip),
+            'OS_USER_DOMAIN_NAME': ch_keystone.DEMO_DOMAIN,
+            'OS_DOMAIN_NAME': ch_keystone.DEMO_DOMAIN,
         }
-        bad_zip_path = self._make_zip_file_from('bad.zip', bad)
-        logging.info("Attaching bad zip file as a resource")
-        zaza_model.attach_resource(self.application_name,
-                                   'policyd-override',
-                                   bad_zip_path)
+        if self.tls_rid:
+            openrc['OS_CACERT'] = \
+                openstack_utils.KEYSTONE_LOCAL_CACERT
+            openrc['OS_AUTH_URL'] = (
+                openrc['OS_AUTH_URL'].replace('http', 'https'))
+        logging.info('keystone IP {}'.format(ip))
+        keystone_session = openstack_utils.get_keystone_session(
+            openrc, scope='DOMAIN')
+        return keystone_session
+
+    def test_003_test_overide_is_observed(self):
+        """Test that the override is observed by the underlying service"""
+        if self._test_name is None:
+            logging.info("Doing policyd override for {}"
+                         .format(self._service_name))
+        else:
+            logging.info(self._test_name)
+        # note policyd override only works with Xenial-queens and so keystone
+        # is already v3
+        # get a keystone session from any keystone unit; we only need one
+        # to check to see if it's working.
+        user_keystone_session = self._get_keystone_session(
+            self.keystone_ips[0])
+
+        # verify that the operation works before performing the policyd
+        # override.
+        try:
+            self.get_client_and_attempt_operation(user_keystone_session)
+        except Exception as e:
+            raise zaza_exceptions.PolicydError(
+                'Retrieve service action as demo user with domain scoped '
+                'token failed and should have passed. "{}"'
+                .format(str(e)))
+
+        # now do the policyd override.
+        logging.info("Doing policyd override with: {}".format(self._rule))
+        self._set_policy_with({'rule.yaml': self._rule})
         zaza_model.block_until_all_units_idle()
-        logging.debug("Now setting config to true")
-        self._set_config(True)
-        # ensure that the workload status info line starts with PO (broken):
-        # to show that it didn't work
-        logging.info(
-            "Checking for workload status line starts with PO (broken):")
+
+        # now make sure the operation fails
+        try:
+            self.get_client_and_attempt_operation(user_keystone_session)
+            raise zaza_exceptions.PolicydError(
+                'Retrieve service action as demo user with domain scoped '
+                'token passed but should have failed due to the policy '
+                'override.')
+        except PolicydOperationFailedException:
+            pass
+        except Exception as e:
+            raise zaza_exceptions.PolicydError(
+                'Retrieve service action as demo user with domain scoped '
+                'token failed: "{}"'
+                .format(str(e)))
+
+        # clean out the policy and wait
+        self._set_config(False)
+        # check that the status no longer has "PO:" on it.
+        # we have to do it twice due to async races and that some info lines
+        # erase the PO: bit prior to actuall getting back to idle.  The double
+        # check verifies that the charms have started, the idle waits until it
+        # is finished, and then the final check really makes sure they got
+        # switched off.
         zaza_model.block_until_wl_status_info_starts_with(
-            self.application_name, "PO (broken):")
-        logging.debug("App status is valid for broken yaml file")
+            self.application_name, "PO:", negate_match=True)
         zaza_model.block_until_all_units_idle()
-        # now verify that no file got landed on the machine
-        path = os.path.join(
-            "/etc", self._service_name, "policy.d", 'file2.yaml')
-        logging.info("Now checking that file {} is not present.".format(path))
-        zaza_model.block_until_file_missing(self.application_name, path)
-        self._set_config(True)
-        zaza_model.block_until_all_units_idle()
-        logging.info("OK")
+        zaza_model.block_until_wl_status_info_starts_with(
+            self.application_name, "PO:", negate_match=True)
+
+    logging.info('OK')
 
 
-class KeystonePolicydTest(PolicydTest,
-                          ch_keystone.BaseKeystoneTest,
-                          test_utils.OpenStackBaseTest):
+class KeystonePolicydTest(BasePolicydSpecialization):
+    """Test the policyd override using the keystone client."""
+
+    _rule = "{'identity:list_services': '!'}"
+
+    def get_client_and_attempt_operation(self, keystone_session):
+        """Override this method to perform the operation.
+
+        This operation should pass normally for the demo_user, and fail when
+        the rule has been overriden (see the `rule` class variable.
+
+        :param keystone_session: the keystone session to use to obtain the
+            client necessary for the test.
+        :type keystone_session: ???
+        :raises: PolicydOperationFailedException if operation fails.
+        """
+        keystone_client = openstack_utils.get_keystone_session_client(
+            keystone_session)
+        try:
+            keystone_client.services.list()
+        except keystoneauth1.exceptions.http.Forbidden:
+            raise PolicydOperationFailedException()
+
+
+class OldKeystonePolicydTest(PolicydTest,
+                             ch_keystone.BaseKeystoneTest,
+                             test_utils.OpenStackBaseTest):
     """Specific test for policyd for keystone charm."""
 
     @classmethod
@@ -303,7 +490,19 @@ class KeystonePolicydTest(PolicydTest,
         logging.info('OK')
 
 
-class GenericPolicydTest(PolicydTest, test_utils.OpenStackBaseTest):
-    """Generic policyd test for any charm without a specific test."""
+# class NeutronAPITest(PolicydTest,
+                     # test_utils.OpenStackBaseTest):
+    # """Specific test for policyd for neutron-api charm."""
 
-    pass
+    # def test_disable_service(self):
+        # """Test that service can be disabled."""
+        # logging.info("Doing policyd override to disable listing domains")
+        # self._set_policy_with(
+            # {'rule.yaml': "{'identity:list_services': '!'}"})
+        # # Get authenticated clients
+        # keystone_client = openstack_utils.get_keystone_session_client(
+            # keystone_session)
+        # neutron_client = openstack_utils.get_neutron_session_client(
+            # keystone_session)
+
+
