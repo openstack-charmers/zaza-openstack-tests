@@ -176,7 +176,6 @@ class RmqTests(test_utils.OpenStackBaseTest):
         logging.debug('Checking amqp message publish/get on all units '
                       '(ssl on)...')
 
-        units = zaza.model.get_units(self.application_name)
         self._test_rmq_amqp_messages_all_units(units,
                                                ssl=True, port=5671)
         logging.info('OK\n')
