@@ -610,7 +610,7 @@ def configure_gateway_ext_port(novaclient, neutronclient,
                                     net_id=None, fixed_ip=None)
             if add_dataport_to_netplan:
                 add_interface_to_netplan(server.name,
-                                         mac_address=get_mac_from_port(port),
+                                         mac_address=get_mac_from_port(port, neutronclient),
                                          dvr_mode=dvr_mode)
     ext_br_macs = []
     for port in neutronclient.list_ports(network_id=net_id)['ports']:
@@ -642,15 +642,20 @@ def configure_gateway_ext_port(novaclient, neutronclient,
 
 @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
                 reraise=True, retry=tenacity.retry_if_exception_type(KeyError))
-def get_mac_from_port(port):
+def get_mac_from_port(port, neutronclient):
     """Get mac address from port, with tenacity due to openstack async.
 
     :param port: neutron port
     :type port: neutron port
+    :param neutronclient: Authenticated neutronclient
+    :type neutronclient: neutronclient.Client object
     :returns: mac address
     :rtype: string
     """
-    return port['mac_address']
+    logging.info("Trying to get mac address from port:"
+                 "{}".format(port['id']))
+    refresh_port = neutronclient.show_port(port['id'])['port']
+    return refresh_port['mac_address']
 
 
 def create_project_network(neutron_client, project_id, net_name='private',
