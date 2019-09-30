@@ -646,7 +646,9 @@ def get_mac_from_port(port):
     """Get mac address from port, with tenacity due to openstack async.
 
     :param port: neutron port
-    :type port: string
+    :type port: neutron port
+    :returns: mac address
+    :rtype: string
     """
     return port['mac_address']
 
