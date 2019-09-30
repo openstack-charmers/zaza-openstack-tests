@@ -559,6 +559,8 @@ def add_interface_to_netplan(server_name, mac_address, dvr_mode=None):
     model.run_on_unit(unit_name, "sudo netplan apply")
 
 
+@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
+                reraise=True, stop=tenacity.stop_after_attempt(12))
 def configure_gateway_ext_port(novaclient, neutronclient,
                                dvr_mode=None, net_id=None,
                                add_dataport_to_netplan=False):
