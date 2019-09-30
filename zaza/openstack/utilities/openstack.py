@@ -559,8 +559,6 @@ def add_interface_to_netplan(server_name, mac_address, dvr_mode=None):
     model.run_on_unit(unit_name, "sudo netplan apply")
 
 
-@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
-                reraise=True, stop=tenacity.stop_after_attempt(12))
 def configure_gateway_ext_port(novaclient, neutronclient,
                                dvr_mode=None, net_id=None,
                                add_dataport_to_netplan=False):
@@ -612,7 +610,7 @@ def configure_gateway_ext_port(novaclient, neutronclient,
                                     net_id=None, fixed_ip=None)
             if add_dataport_to_netplan:
                 add_interface_to_netplan(server.name,
-                                         mac_address=port['mac_address'],
+                                         mac_address=get_mac_from_port(port),
                                          dvr_mode=dvr_mode)
     ext_br_macs = []
     for port in neutronclient.list_ports(network_id=net_id)['ports']:
@@ -640,6 +638,12 @@ def configure_gateway_ext_port(novaclient, neutronclient,
             application_name,
             configuration={config_key: ext_br_macs_str})
         juju_wait.wait(wait_for_workload=True)
+
+
+@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
+                reraise=True, retry=tenacity.retry_if_exception_type(KeyError))
+def get_mac_from_port(port):
+    return port['mac_address']
 
 
 def create_project_network(neutron_client, project_id, net_name='private',
