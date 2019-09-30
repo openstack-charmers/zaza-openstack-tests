@@ -17,6 +17,7 @@
 """Encapsulate Aodh testing."""
 
 import logging
+import tenacity
 
 import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
@@ -58,6 +59,12 @@ class AodhTest(test_utils.OpenStackBaseTest):
         if cache_wait:
             logging.info('Waiting for alarm cache to clear')
             telemetry_utils.alarm_cache_wait()
+
+    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
+                    reraise=True, stop=tenacity.stop_after_attempt(8))
+    def query_aodh_api(self):
+        """Check that aodh api is responding."""
+        self.aodh_client.alarm.list()
 
     @property
     def services(self):
@@ -122,6 +129,7 @@ class AodhTest(test_utils.OpenStackBaseTest):
             {'DEFAULT': {'debug': ['False']}},
             {'DEFAULT': {'debug': ['True']}},
             self.services)
+        self.query_aodh_api()
 
     def test_901_pause_resume(self):
         """Run pause and resume tests.
@@ -133,3 +141,4 @@ class AodhTest(test_utils.OpenStackBaseTest):
                 self.services,
                 pgrep_full=False):
             logging.info("Testing pause resume")
+        self.query_aodh_api()
