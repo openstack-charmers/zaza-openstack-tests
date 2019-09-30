@@ -643,6 +643,11 @@ def configure_gateway_ext_port(novaclient, neutronclient,
 @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
                 reraise=True, retry=tenacity.retry_if_exception_type(KeyError))
 def get_mac_from_port(port):
+    """Get mac address from port, with tenacity due to openstack async.
+
+    :param port: neutron port
+    :type port: string
+    """
     return port['mac_address']
 
 
