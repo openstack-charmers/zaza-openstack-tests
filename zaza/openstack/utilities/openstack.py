@@ -653,9 +653,9 @@ def get_mac_from_port(port, neutronclient):
     :returns: mac address
     :rtype: string
     """
-    logging.info("Trying to get mac address from port:"
-                 "{}".format(port['id']))
     refresh_port = neutronclient.show_port(port['id'])['port']
+    logging.info("Trying to get mac address from port:"
+                 "{}".format(refresh_port['id']))
     return refresh_port['mac_address']
 
 
