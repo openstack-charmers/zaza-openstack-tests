@@ -131,7 +131,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
         units = zaza.model.get_units(self.application_name)
 
         ret = rmq_utils.validate_cluster_running_nodes(units)
-        self.assertIsNone(ret)
+        self.assertIsNone(ret, msg=ret)
 
         logging.info('OK')
 
@@ -228,7 +228,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
             ret = generic_utils.port_knock_units(units, mgmt_port)
             tries += 1
 
-        self.assertIsNone(ret)
+        self.assertIsNone(ret, msg=ret)
         logging.debug('Connect to all units (OK)')
 
         # Disable management plugin
@@ -252,7 +252,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
                                                  expect_success=False)
             tries += 1
 
-        self.assertIsNone(ret)
+        self.assertIsNone(ret, msg=ret)
         logging.info('Confirm mgmt port closed on all units (OK)')
 
     def test_414_rmq_nrpe_monitors(self):
@@ -275,7 +275,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
         cmds = ['egrep -oh /usr/local.* /etc/nagios/nrpe.d/'
                 'check_rabbitmq_queue.cfg']
         ret = generic_utils.check_commands_on_units(cmds, units)
-        self.assertIsNone(ret)
+        self.assertIsNone(ret, msg=ret)
 
         # check dat file existence
         logging.debug('Checking nrpe dat file existence on units...')
@@ -290,7 +290,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
             ]
 
             ret = generic_utils.check_commands_on_units(cmds, [u])
-            self.assertIsNone(ret)
+            self.assertIsNone(ret, msg=ret)
 
         logging.info('OK')
 
