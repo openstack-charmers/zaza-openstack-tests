@@ -303,9 +303,6 @@ class RmqTests(test_utils.OpenStackBaseTest):
 
         zaza.model.run_action(unit.entity_id, "pause")
         zaza.model.block_until_unit_wl_status(unit.entity_id, "maintenance")
-        # TODO: investigate possible bug (the following line is
-        # required, otherwise it looks like workload_status is
-        # reporting cached information, no matter how long you sleep)
         unit = zaza.model.get_unit_from_name(unit.entity_id)
         assert unit.workload_status == "maintenance"
 
