@@ -608,11 +608,9 @@ def configure_gateway_ext_port(novaclient, neutronclient,
             port = neutronclient.create_port(body=body_value)
             server.interface_attach(port_id=port['port']['id'],
                                     net_id=None, fixed_ip=None)
-            if add_dataport_to_netplan:
-                mac_address = get_mac_from_port(port, neutronclient)
-                add_interface_to_netplan(server.name,
-                                         mac_address=mac_address,
-                                         dvr_mode=dvr_mode)
+    # Temporarily disable call to add_interface_to_netplan as it
+    # sometimes throws a KeyError
+    # https://github.com/openstack-charmers/zaza-openstack-tests/issues/72
     ext_br_macs = []
     for port in neutronclient.list_ports(network_id=net_id)['ports']:
         if 'ext-port' in port['name']:
