@@ -133,7 +133,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
         ret = rmq_utils.validate_cluster_running_nodes(units)
         self.assertIsNone(ret)
 
-        logging.info('OK\n')
+        logging.info('OK')
 
     def test_406_rmq_amqp_messages_all_units_ssl_off(self):
         """Send (and check) amqp messages to every rmq unit.
@@ -147,7 +147,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
 
         units = zaza.model.get_units(self.application_name)
         self._test_rmq_amqp_messages_all_units(units, ssl=False)
-        logging.info('OK\n')
+        logging.info('OK')
 
     def _series(self, unit):
         result = zaza.model.run_on_unit(unit.entity_id,
@@ -178,7 +178,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
 
         self._test_rmq_amqp_messages_all_units(units,
                                                ssl=True, port=5671)
-        logging.info('OK\n')
+        logging.info('OK')
 
     def test_410_rmq_amqp_messages_all_units_ssl_alt_port(self):
         """Send (and check) amqp messages to every rmq unit (alt ssl port).
@@ -202,7 +202,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
         units = zaza.model.get_units(self.application_name)
         self._test_rmq_amqp_messages_all_units(units,
                                                ssl=True, port=5999)
-        logging.info('OK\n')
+        logging.info('OK')
 
     def test_412_rmq_management_plugin(self):
         """Enable and check management plugin."""
@@ -229,7 +229,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
             tries += 1
 
         self.assertIsNone(ret)
-        logging.debug('Connect to all units (OK)\n')
+        logging.debug('Connect to all units (OK)')
 
         # Disable management plugin
         logging.debug('Disabling management_plugin charm config option...')
@@ -253,7 +253,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
             tries += 1
 
         self.assertIsNone(ret)
-        logging.info('Confirm mgmt port closed on all units (OK)\n')
+        logging.info('Confirm mgmt port closed on all units (OK)')
 
     def test_414_rmq_nrpe_monitors(self):
         """Check rabbimq-server nrpe monitor basic functionality."""
@@ -292,7 +292,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
             ret = generic_utils.check_commands_on_units(cmds, [u])
             self.assertIsNone(ret)
 
-        logging.info('OK\n')
+        logging.info('OK')
 
     def test_910_pause_and_resume(self):
         """The services can be paused and resumed."""
