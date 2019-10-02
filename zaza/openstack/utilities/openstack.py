@@ -575,6 +575,9 @@ def configure_gateway_ext_port(novaclient, neutronclient,
     """
     if dvr_mode:
         uuids = get_ovs_uuids()
+        # If dvr, do not attempt to persist nic in netplan
+        # https://github.com/openstack-charmers/zaza-openstack-tests/issues/78
+        add_dataport_to_netplan = False
     else:
         uuids = get_gateway_uuids()
 
