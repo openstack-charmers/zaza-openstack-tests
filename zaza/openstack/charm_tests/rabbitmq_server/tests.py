@@ -20,6 +20,7 @@ import time
 import uuid
 
 import juju
+import tenacity
 import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.generic as generic_utils
@@ -32,6 +33,7 @@ from zaza.openstack.utilities.generic import (
 )
 
 from . import utils as rmq_utils
+from .utils import RmqNoMessageException
 
 
 class RmqTests(test_utils.OpenStackBaseTest):
@@ -48,6 +50,15 @@ class RmqTests(test_utils.OpenStackBaseTest):
         Useful in generating test messages which need to be unique-ish.
         """
         return '[{}-{}]'.format(uuid.uuid4(), time.time())
+
+    @tenacity.retry(
+        retry=tenacity.retry_if_exception_type(RmqNoMessageException),
+        wait=tenacity.wait_fixed(10),
+        stop=tenacity.stop_after_attempt(2))
+    def _retry_get_amqp_message(self, check_unit, ssl=None, port=None):
+        return rmq_utils.get_amqp_message_by_unit(check_unit,
+                                                  ssl=ssl,
+                                                  port=port)
 
     def _test_rmq_amqp_messages_all_units(self, units,
                                           ssl=False, port=None):
@@ -97,18 +108,15 @@ class RmqTests(test_utils.OpenStackBaseTest):
                                                        amqp_msg, ssl=ssl,
                                                        port=port)
 
-                # Wait a bit before checking for message
-                time.sleep(10)
-
                 # Get amqp message
                 logging.debug('Get message from:   {} '
                               '({} {})'.format(check_unit_host,
                                                check_unit_name,
                                                check_unit_host_name))
 
-                amqp_msg_rcvd = rmq_utils.get_amqp_message_by_unit(check_unit,
-                                                                   ssl=ssl,
-                                                                   port=port)
+                amqp_msg_rcvd = self._retry_get_amqp_message(check_unit,
+                                                             ssl=ssl,
+                                                             port=port)
 
                 # Validate amqp message content
                 if amqp_msg == amqp_msg_rcvd:

@@ -25,6 +25,12 @@ import ssl as libssl
 import zaza.openstack.utilities.generic as generic_utils
 
 
+class RmqNoMessageException(Exception):
+    """Message retrieval from Rmq resulted in no message."""
+
+    pass
+
+
 def wait_for_cluster(model_name=None, timeout=1200):
     """Wait for Rmq cluster status to show cluster readiness.
 
@@ -438,7 +444,7 @@ def get_amqp_message_by_unit(unit, queue="test",
         return body
     else:
         msg = 'No message retrieved.'
-        raise Exception(msg)
+        raise RmqNoMessageException(msg)
 
 
 def check_unit_cluster_nodes(unit, unit_node_names):
