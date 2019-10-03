@@ -24,9 +24,11 @@ import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.generic as generic_utils
 
-from charmhelpers.core.host import (
-    lsb_release,
-    CompareHostReleases,
+from charmhelpers.core.host import CompareHostReleases
+
+from zaza.openstack.utilities.generic import (
+    get_series,
+    get_client_series,
 )
 
 from . import utils as rmq_utils
@@ -149,14 +151,6 @@ class RmqTests(test_utils.OpenStackBaseTest):
         self._test_rmq_amqp_messages_all_units(units, ssl=False)
         logging.info('OK')
 
-    def _series(self, unit):
-        result = zaza.model.run_on_unit(unit.entity_id,
-                                        "lsb_release -cs")
-        return result['Stdout'].strip()
-
-    def _client_series(self):
-        return lsb_release()['DISTRIB_CODENAME']
-
     def test_408_rmq_amqp_messages_all_units_ssl_on(self):
         """Send (and check) amqp messages to every rmq unit (ssl enabled).
 
@@ -167,8 +161,8 @@ class RmqTests(test_utils.OpenStackBaseTest):
         units = zaza.model.get_units(self.application_name)
 
         # http://pad.lv/1625044
-        if (CompareHostReleases(self._client_series()) >= 'xenial' and
-                CompareHostReleases(self._series(units[0])) <= 'trusty'):
+        if (CompareHostReleases(get_client_series()) >= 'xenial' and
+                CompareHostReleases(get_series(units[0])) <= 'trusty'):
             logging.info('SKIP')
             logging.info('Skipping SSL tests due to client'
                          ' compatibility issues')
@@ -190,8 +184,8 @@ class RmqTests(test_utils.OpenStackBaseTest):
         units = zaza.model.get_units(self.application_name)
 
         # http://pad.lv/1625044
-        if (CompareHostReleases(self._client_series()) >= 'xenial' and
-                CompareHostReleases(self._series(units[0])) <= 'trusty'):
+        if (CompareHostReleases(get_client_series()) >= 'xenial' and
+                CompareHostReleases(get_series(units[0])) <= 'trusty'):
             logging.info('SKIP')
             logging.info('Skipping SSL tests due to client'
                          ' compatibility issues')
