@@ -40,23 +40,28 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
 
     @property
     def services(self):
-        """Return a list services for Openstack Release."""
+        """Return a list services for Openstack Release.
+
+        Note: disabling ceilometer-polling and ceilometer-agent-central due to
+        bug #1846390.
+        https://bugs.launchpad.net/charms/+source/ceilometer/+bug/1846390
+        """
         current_release = openstack_utils.get_os_release()
         services = []
 
         if current_release >= CeilometerTest.XENIAL_PIKE:
-            services.append('ceilometer-polling: AgentManager worker(0)')
+            # services.append('ceilometer-polling: AgentManager worker(0)')
             services.append('ceilometer-agent-notification: '
                             'NotificationService worker(0)')
         elif current_release >= CeilometerTest.XENIAL_OCATA:
             services.append('ceilometer-collector: CollectorService worker(0)')
-            services.append('ceilometer-polling: AgentManager worker(0)')
+            # services.append('ceilometer-polling: AgentManager worker(0)')
             services.append('ceilometer-agent-notification: '
                             'NotificationService worker(0)')
             services.append('apache2')
         elif current_release >= CeilometerTest.XENIAL_NEWTON:
             services.append('ceilometer-collector - CollectorService(0)')
-            services.append('ceilometer-polling - AgentManager(0)')
+            # services.append('ceilometer-polling - AgentManager(0)')
             services.append('ceilometer-agent-notification - '
                             'NotificationService(0)')
             services.append('ceilometer-api')
@@ -69,12 +74,12 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
                 services.append('ceilometer-alarm-notifier')
                 services.append('ceilometer-alarm-evaluator')
 
-            if current_release >= CeilometerTest.TRUSTY_LIBERTY:
+            # if current_release >= CeilometerTest.TRUSTY_LIBERTY:
                 # Liberty and later
-                services.append('ceilometer-polling')
-            else:
+                # services.append('ceilometer-polling')
+            # else:
                 # Juno and earlier
-                services.append('ceilometer-agent-central')
+                # services.append('ceilometer-agent-central')
 
         return services
 
