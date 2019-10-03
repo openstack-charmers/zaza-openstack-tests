@@ -162,6 +162,12 @@ class CephPoolNotFound(Exception):
     pass
 
 
+class CephPoolNotConfigured(Exception):
+    """Ceph pool not configured properly."""
+
+    pass
+
+
 class NovaGuestMigrationFailed(Exception):
     """Nova guest migration failed."""
 
