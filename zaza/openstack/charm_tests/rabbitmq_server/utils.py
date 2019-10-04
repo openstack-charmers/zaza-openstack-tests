@@ -19,6 +19,7 @@ import logging
 import time
 
 import pika
+import tenacity
 import zaza.model
 
 import ssl as libssl
@@ -29,6 +30,11 @@ class RmqNoMessageException(Exception):
     """Message retrieval from Rmq resulted in no message."""
 
     pass
+
+
+def _log_tenacity_retry(retry_state):
+    logging.info('Attempt {}: {}'.format(retry_state.attempt_number,
+                                         retry_state.outcome.result()))
 
 
 def wait_for_cluster(model_name=None, timeout=1200):
@@ -210,8 +216,16 @@ def validate_ssl_disabled_units(units):
     return None
 
 
-def configure_ssl_on(units, model_name=None,
-                     port=None, max_wait=60):
+@tenacity.retry(
+    retry=tenacity.retry_if_result(lambda errors: bool(errors)),
+    wait=tenacity.wait_fixed(4),
+    stop=tenacity.stop_after_attempt(15),
+    after=_log_tenacity_retry)
+def _retry_validate_ssl_enabled_units(units, port=None):
+    return validate_ssl_enabled_units(units, port=port)
+
+
+def configure_ssl_on(units, model_name=None, port=None):
     """Turn RabbitMQ charm SSL config option on.
 
     Turn ssl charm config option on, with optional non-default
@@ -219,7 +233,6 @@ def configure_ssl_on(units, model_name=None,
     unit.
     :param units: list of units
     :param port: amqp port, use defaults if None
-    :param max_wait: maximum time to wait in seconds to confirm
     :returns: None if successful.  Raise on error.
     """
     logging.debug('Setting ssl charm config option:  on')
@@ -236,15 +249,7 @@ def configure_ssl_on(units, model_name=None,
     # Wait for unit status
     wait_for_cluster(model_name)
 
-    # Confirm
-    tries = 0
-    ret = validate_ssl_enabled_units(units, port=port)
-    while ret and tries < (max_wait / 4):
-        time.sleep(4)
-        logging.debug('Attempt {}: {}'.format(tries, ret))
-        ret = validate_ssl_enabled_units(units, port=port)
-        tries += 1
-
+    ret = _retry_validate_ssl_enabled_units(units, port=port)
     if ret:
         raise Exception(ret)
 
