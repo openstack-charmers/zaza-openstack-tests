@@ -368,6 +368,13 @@ class RmqTests(test_utils.OpenStackBaseTest):
 
         logging.debug('OK')
 
+    @tenacity.retry(
+        retry=tenacity.retry_if_result(lambda errors: bool(errors)),
+        wait=tenacity.wait_fixed(10),
+        stop=tenacity.stop_after_attempt(2))
+    def _retry_check_unit_cluster_nodes(self, u, unit_node_names):
+        return rmq_utils.check_unit_cluster_nodes(u, unit_node_names)
+
     def test_921_remove_unit(self):
         """Test if unit cleans up when removed from Rmq cluster.
 
@@ -396,15 +403,10 @@ class RmqTests(test_utils.OpenStackBaseTest):
         errors = []
 
         for u in left_units:
-            e = rmq_utils.check_unit_cluster_nodes(u, unit_node_names)
+            e = self._retry_check_unit_cluster_nodes(u,
+                                                     unit_node_names)
             if e:
-                # NOTE: cluster status may not have been updated yet so wait a
-                # little and try one more time. Need to find a better way to do
-                # this.
-                time.sleep(10)
-                e = rmq_utils.check_unit_cluster_nodes(u, unit_node_names)
-                if e:
-                    errors.append(e)
+                errors.append(e)
 
-        self.assertFalse(errors)
+        self.assertFalse(errors, msg=errors)
         logging.debug('OK')
