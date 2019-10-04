@@ -206,6 +206,15 @@ class RmqTests(test_utils.OpenStackBaseTest):
                                                ssl=True, port=5999)
         logging.info('OK')
 
+    @tenacity.retry(
+        retry=tenacity.retry_if_result(lambda ret: ret is not None),
+        wait=tenacity.wait_fixed(30),
+        stop=tenacity.stop_after_attempt(20),
+        after=rmq_utils._log_tenacity_retry)
+    def _retry_port_knock_units(self, units, port, expect_success=True):
+        return generic_utils.port_knock_units(units, port,
+                                              expect_success=expect_success)
+
     def test_412_rmq_management_plugin(self):
         """Enable and check management plugin."""
         logging.debug('Checking tcp socket connect to management plugin '
@@ -221,14 +230,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
         rmq_utils.wait_for_cluster()
 
         # Check tcp connect to management plugin port
-        max_wait = 600
-        tries = 0
-        ret = generic_utils.port_knock_units(units, mgmt_port)
-        while ret and tries < (max_wait / 30):
-            time.sleep(30)
-            logging.debug('Attempt {}: {}'.format(tries, ret))
-            ret = generic_utils.port_knock_units(units, mgmt_port)
-            tries += 1
+        ret = self._retry_port_knock_units(units, mgmt_port)
 
         self.assertIsNone(ret, msg=ret)
         logging.debug('Connect to all units (OK)')
@@ -242,17 +244,9 @@ class RmqTests(test_utils.OpenStackBaseTest):
         # Negative check - tcp connect to management plugin port
         logging.info('Expect tcp connect fail since charm config '
                      'option is disabled.')
-        tries = 0
-        ret = generic_utils.port_knock_units(units,
-                                             mgmt_port,
-                                             expect_success=False)
-
-        while ret and tries < (max_wait / 30):
-            time.sleep(30)
-            logging.debug('Attempt {}: {}'.format(tries, ret))
-            ret = generic_utils.port_knock_units(units, mgmt_port,
-                                                 expect_success=False)
-            tries += 1
+        ret = self._retry_port_knock_units(units,
+                                           mgmt_port,
+                                           expect_success=False)
 
         self.assertIsNone(ret, msg=ret)
         logging.info('Confirm mgmt port closed on all units (OK)')
