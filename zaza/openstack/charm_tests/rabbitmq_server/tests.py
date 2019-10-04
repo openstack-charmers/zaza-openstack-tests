@@ -257,6 +257,14 @@ class RmqTests(test_utils.OpenStackBaseTest):
         self.assertIsNone(ret, msg=ret)
         logging.info('Confirm mgmt port closed on all units (OK)')
 
+    @tenacity.retry(
+        retry=tenacity.retry_if_result(lambda ret: ret is not None),
+        # sleep for 2mins to allow 1min cron job to run...
+        wait=tenacity.wait_fixed(120),
+        stop=tenacity.stop_after_attempt(2))
+    def _retry_check_commands_on_units(self, cmds, units):
+        return generic_utils.check_commands_on_units(cmds, units)
+
     def test_414_rmq_nrpe_monitors(self):
         """Check rabbimq-server nrpe monitor basic functionality."""
         units = zaza.model.get_units(self.application_name)
@@ -266,17 +274,14 @@ class RmqTests(test_utils.OpenStackBaseTest):
         logging.debug('Checking nrpe check_rabbitmq on units...')
         cmds = ['egrep -oh /usr/local.* /etc/nagios/nrpe.d/'
                 'check_rabbitmq.cfg']
-        ret = generic_utils.check_commands_on_units(cmds, units)
-        self.assertIsNone(ret)
-
-        logging.debug('Sleeping 2ms for 1m cron job to run...')
-        time.sleep(120)
+        ret = self._retry_check_commands_on_units(cmds, units)
+        self.assertIsNone(ret, msg=ret)
 
         # check_rabbitmq_queue monitor
         logging.debug('Checking nrpe check_rabbitmq_queue on units...')
         cmds = ['egrep -oh /usr/local.* /etc/nagios/nrpe.d/'
                 'check_rabbitmq_queue.cfg']
-        ret = generic_utils.check_commands_on_units(cmds, units)
+        ret = self._retry_check_commands_on_units(cmds, units)
         self.assertIsNone(ret, msg=ret)
 
         # check dat file existence
