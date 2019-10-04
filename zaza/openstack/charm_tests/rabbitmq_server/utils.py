@@ -16,7 +16,6 @@
 
 import json
 import logging
-import time
 
 import pika
 import tenacity
@@ -254,6 +253,15 @@ def configure_ssl_on(units, model_name=None, port=None):
         raise Exception(ret)
 
 
+@tenacity.retry(
+    retry=tenacity.retry_if_result(lambda errors: bool(errors)),
+    wait=tenacity.wait_fixed(4),
+    stop=tenacity.stop_after_attempt(15),
+    after=_log_tenacity_retry)
+def _retry_validate_ssl_disabled_units(units):
+    return validate_ssl_disabled_units(units)
+
+
 def configure_ssl_off(units, model_name=None, max_wait=60):
     """Turn RabbitMQ charm SSL config option off.
 
@@ -274,14 +282,7 @@ def configure_ssl_off(units, model_name=None, max_wait=60):
     # Wait for unit status
     wait_for_cluster(model_name)
 
-    # Confirm
-    tries = 0
-    ret = validate_ssl_disabled_units(units)
-    while ret and tries < (max_wait / 4):
-        time.sleep(4)
-        logging.debug('Attempt {}: {}'.format(tries, ret))
-        ret = validate_ssl_disabled_units(units)
-        tries += 1
+    ret = _retry_validate_ssl_disabled_units(units)
 
     if ret:
         raise Exception(ret)
