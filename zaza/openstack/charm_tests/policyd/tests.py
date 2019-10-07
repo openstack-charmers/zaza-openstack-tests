@@ -35,6 +35,7 @@ import logging
 import os
 import shutil
 import tempfile
+import unittest
 import zipfile
 
 import keystoneauth1
@@ -65,9 +66,6 @@ class PolicydTest(object):
     def setUpClass(cls, application_name=None):
         """Run class setup for running Policyd charm operation tests."""
         super(PolicydTest, cls).setUpClass(application_name)
-        if (openstack_utils.get_os_release() <
-                openstack_utils.get_os_release('xenial_queens')):
-            cls.SkipTest("Test not valid before xenial_queens")
         cls._tmp_dir = tempfile.mkdtemp()
         cls._service_name = \
             cls.test_config['tests_options']['policyd']['service']
@@ -194,7 +192,15 @@ class PolicydTest(object):
 class GenericPolicydTest(PolicydTest, test_utils.OpenStackBaseTest):
     """Generic policyd test for any charm without a specific test."""
 
-    pass
+    @classmethod
+    def setUpClass(cls, application_name=None):
+        """Run class setup for running KeystonePolicydTest tests."""
+        super(GenericPolicydTest, cls).setUpClass(application_name)
+        if (openstack_utils.get_os_release() <
+                openstack_utils.get_os_release('xenial_queens')):
+            raise unittest.SkipTest(
+                "zaza.openstack.charm_tests.policyd.tests.GenericPolicydTest "
+                "not valid before xenial_queens")
 
 
 class PolicydOperationFailedException(Exception):
@@ -252,10 +258,16 @@ class BasePolicydSpecialization(PolicydTest,
     def setUpClass(cls, application_name=None):
         """Run class setup for running KeystonePolicydTest tests."""
         super(BasePolicydSpecialization, cls).setUpClass(application_name)
+        if (openstack_utils.get_os_release() <
+                openstack_utils.get_os_release('xenial_queens')):
+            raise unittest.SkipTest(
+                "zaza.openstack.charm_tests.policyd.tests.* "
+                "not valid before xenial_queens")
         if cls._rule is None:
-            cls.SkipTest("Test not valid if {}.rule is not configured"
-                         .format(cls.__name__))
-            return
+            raise unittest.SkipTest(
+                "zaza.openstack.charm_tests.policyd.tests.* "
+                "not valid if {}.rule is not configured"
+                .format(cls.__name__))
 
     def get_client_and_attempt_operation(self, keystone_session):
         """Override this method to perform the operation.
