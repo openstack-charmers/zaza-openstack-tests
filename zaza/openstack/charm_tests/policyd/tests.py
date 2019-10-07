@@ -395,16 +395,15 @@ class BasePolicydSpecialization(PolicydTest,
                 "Service action passed and should have failed.")
         except PolicydOperationFailedException:
             pass
-        except zaza_exceptions.PolicydError:
-            logging.info("Policy override worked.")
+        except zaza_exceptions.PolicydError as e:
+            logging.info("{}".format(str(e)))
             raise
         except Exception as e:
             logging.info("exception was: {}".format(e.__class__.__name__))
             import traceback
             logging.info(traceback.format_exc())
             raise zaza_exceptions.PolicydError(
-                'Retrieve service action as demo user with domain scoped '
-                'token failed: "{}"'
+                'Service action failed in an unexpected way: {}'
                 .format(str(e)))
 
         # clean out the policy and wait
@@ -523,7 +522,8 @@ class GlanceTests(BasePolicydSpecialization):
         glance_client = openstack_utils.get_glance_session_client(
             self.get_keystone_session_demo_user(ip))
         try:
-            glance_client.images.list()
+            images = list(glance_client.images.list())
+            logging.debug("images is: {}".format(images))
         except glanceclient.common.exceptions.HTTPForbidden:
             raise PolicydOperationFailedException()
 
