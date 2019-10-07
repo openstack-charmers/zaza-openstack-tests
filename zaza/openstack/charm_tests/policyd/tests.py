@@ -522,6 +522,10 @@ class GlanceTests(BasePolicydSpecialization):
         glance_client = openstack_utils.get_glance_session_client(
             self.get_keystone_session_demo_user(ip))
         try:
+            # NOTE(ajkavanagh) - it turns out that the list() is very important
+            # as it forces the generator to iterate which only then checkes if
+            # the api call is authorized.  Just getting the generator (from
+            # .list()) doesn't perform the API call.
             images = list(glance_client.images.list())
             logging.debug("images is: {}".format(images))
         except glanceclient.common.exceptions.HTTPForbidden:
