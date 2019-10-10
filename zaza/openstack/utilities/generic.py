@@ -367,6 +367,7 @@ def series_upgrade(unit_name, machine_num,
     logging.info("Series upgrade {}".format(unit_name))
     application = unit_name.split('/')[0]
     set_dpkg_non_interactive_on_unit(unit_name)
+    dist_upgrade(unit_name)
     logging.info("Prepare series upgrade on {}".format(machine_num))
     model.prepare_series_upgrade(machine_num, to_series=to_series)
     logging.info("Waiting for workload status 'blocked' on {}"
@@ -374,7 +375,6 @@ def series_upgrade(unit_name, machine_num,
     model.block_until_unit_wl_status(unit_name, "blocked")
     logging.info("Waiting for model idleness")
     model.block_until_all_units_idle()
-    dist_upgrade(unit_name)
     wrap_do_release_upgrade(unit_name, from_series=from_series,
                             to_series=to_series, files=files,
                             workaround_script=workaround_script)
