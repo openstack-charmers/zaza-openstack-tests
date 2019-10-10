@@ -26,11 +26,7 @@ import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.generic as generic_utils
 
 from charmhelpers.core.host import CompareHostReleases
-
-from zaza.openstack.utilities.generic import (
-    get_series,
-    get_client_series,
-)
+from zaza.openstack.utilities.generic import get_series
 
 from . import utils as rmq_utils
 from .utils import RmqNoMessageException
@@ -169,8 +165,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
         units = zaza.model.get_units(self.application_name)
 
         # http://pad.lv/1625044
-        if (CompareHostReleases(get_client_series()) >= 'xenial' and
-                CompareHostReleases(get_series(units[0])) <= 'trusty'):
+        if CompareHostReleases(get_series(units[0])) <= 'trusty':
             logging.info('SKIP')
             logging.info('Skipping SSL tests due to client'
                          ' compatibility issues')
@@ -192,8 +187,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
         units = zaza.model.get_units(self.application_name)
 
         # http://pad.lv/1625044
-        if (CompareHostReleases(get_client_series()) >= 'xenial' and
-                CompareHostReleases(get_series(units[0])) <= 'trusty'):
+        if CompareHostReleases(get_series(units[0])) <= 'trusty':
             logging.info('SKIP')
             logging.info('Skipping SSL tests due to client'
                          ' compatibility issues')

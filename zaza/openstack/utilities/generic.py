@@ -22,7 +22,6 @@ import telnetlib
 import yaml
 
 from zaza import model
-from charmhelpers.core.host import lsb_release
 from zaza.openstack.utilities import juju as juju_utils
 from zaza.openstack.utilities import exceptions as zaza_exceptions
 from zaza.openstack.utilities.os_versions import UBUNTU_OPENSTACK_RELEASE
@@ -797,8 +796,3 @@ def get_series(unit):
     result = model.run_on_unit(unit.entity_id,
                                "lsb_release -cs")
     return result['Stdout'].strip()
-
-
-def get_client_series():
-    """Ubuntu release name of machine running this function."""
-    return lsb_release()['DISTRIB_CODENAME']
