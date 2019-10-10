@@ -367,6 +367,7 @@ def series_upgrade(unit_name, machine_num,
     logging.info("Series upgrade {}".format(unit_name))
     application = unit_name.split('/')[0]
     set_dpkg_non_interactive_on_unit(unit_name)
+    dist_upgrade(unit_name)
     logging.info("Prepare series upgrade on {}".format(machine_num))
     model.prepare_series_upgrade(machine_num, to_series=to_series)
     logging.info("Waiting for workload status 'blocked' on {}"
@@ -479,6 +480,26 @@ def run_via_ssh(unit_name, cmd):
     except subprocess.CalledProcessError as e:
         logging.warn("Failed command {} on {}".format(cmd, unit_name))
         logging.warn(e)
+
+
+def dist_upgrade(unit_name):
+    """Run dist-upgrade on unit after update package db.
+
+    :param unit_name: Unit Name
+    :type unit_name: str
+    :returns: None
+    :rtype: None
+    """
+    logging.info('Updating package db ' + unit_name)
+    update_cmd = 'sudo apt update'
+    model.run_on_unit(unit_name, update_cmd)
+
+    logging.info('Updating existing packages ' + unit_name)
+    dist_upgrade_cmd = (
+        """sudo DEBIAN_FRONTEND=noninteractive apt --assume-yes """
+        """-o "Dpkg::Options::=--force-confdef" """
+        """-o "Dpkg::Options::=--force-confold" dist-upgrade""")
+    model.run_on_unit(unit_name, dist_upgrade_cmd)
 
 
 def do_release_upgrade(unit_name):

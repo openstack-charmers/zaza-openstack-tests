@@ -166,6 +166,17 @@ class TestGenericUtils(ut_utils.BaseTestCase):
                          _yaml_dict)
         self._open.assert_called_once_with(_filename, "r")
 
+    def test_dist_upgrade(self):
+        _unit = "app/2"
+        generic_utils.dist_upgrade(_unit)
+        dist_upgrade_cmd = (
+            """sudo DEBIAN_FRONTEND=noninteractive apt --assume-yes """
+            """-o "Dpkg::Options::=--force-confdef" """
+            """-o "Dpkg::Options::=--force-confold" dist-upgrade""")
+        self.model.run_on_unit.assert_has_calls([
+            mock.call(_unit, 'sudo apt update'),
+            mock.call(_unit, dist_upgrade_cmd)])
+
     def test_do_release_upgrade(self):
         _unit = "app/2"
         generic_utils.do_release_upgrade(_unit)
