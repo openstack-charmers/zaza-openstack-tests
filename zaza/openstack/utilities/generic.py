@@ -368,6 +368,7 @@ def series_upgrade(unit_name, machine_num,
     application = unit_name.split('/')[0]
     set_dpkg_non_interactive_on_unit(unit_name)
     dist_upgrade(unit_name)
+    model.block_until_all_units_idle()
     logging.info("Prepare series upgrade on {}".format(machine_num))
     model.prepare_series_upgrade(machine_num, to_series=to_series)
     logging.info("Waiting for workload status 'blocked' on {}"
