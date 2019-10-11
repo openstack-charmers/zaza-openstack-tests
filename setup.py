@@ -31,6 +31,7 @@ install_require = [
     'jinja2',
     'juju',
     'juju-wait',
+    'lxml',
     'PyYAML',
     'tenacity',
     'oslo.config',
