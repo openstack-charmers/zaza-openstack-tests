@@ -70,6 +70,8 @@ class SeriesUpgradeTest(unittest.TestCase):
                 origin = "source"
                 pause_non_leader_primary = False
                 pause_non_leader_subordinate = False
+            if "designate-bind" in applications[application]["charm"]:
+                origin = None
             if "memcached" in applications[application]["charm"]:
                 origin = None
                 pause_non_leader_primary = False
