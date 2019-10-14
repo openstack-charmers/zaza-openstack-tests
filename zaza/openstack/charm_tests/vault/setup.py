@@ -33,26 +33,22 @@ def basic_setup(cacert=None, unseal_and_authorize=False):
     :param unseal_and_authorize: Whether to unseal and authorize vault.
     :type unseal_and_authorize: bool
     """
-    clients = vault_utils.get_clients(cacert=cacert)
-    vip_client = vault_utils.get_vip_client(cacert=cacert)
-    if vip_client:
-        unseal_client = vip_client
-    else:
-        unseal_client = clients[0]
-    initialized = vault_utils.is_initialized(unseal_client)
-    # The credentials are written to a file to allow the tests to be re-run
-    # this is mainly useful for manually working on the tests.
-    if initialized:
-        vault_creds = vault_utils.get_credentails()
-    else:
-        vault_creds = vault_utils.init_vault(unseal_client)
-        vault_utils.store_credentails(vault_creds)
-
-    # For use by charms or bundles other than vault
+    vault_svc = vault_utils.VaultFacade(cacert=cacert)
     if unseal_and_authorize:
-        vault_utils.unseal_all(clients, vault_creds['keys'][0])
-        vault_utils.auth_all(clients, vault_creds['root_token'])
-        vault_utils.run_charm_authorize(vault_creds['root_token'])
+        vault_svc.unseal()
+        vault_svc.authorize()
+
+
+def basic_setup_and_unseal(cacert=None):
+    """Initialize (if needed) and unseal vault.
+
+    :param cacert: Path to CA cert used for vaults api cert.
+    :type cacert: str
+    """
+    vault_svc = vault_utils.VaultFacade(cacert=cacert)
+    vault_svc.unseal()
+    for unit in zaza.model.get_units('vault'):
+        zaza.model.run_on_unit(unit.name, './hooks/update-status')
 
 
 def auto_initialize(cacert=None, validation_application='keystone'):
