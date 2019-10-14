@@ -33,6 +33,62 @@ CharmVaultClient = collections.namedtuple(
     'CharmVaultClient', ['addr', 'hvac_client', 'vip_client'])
 
 
+class VaultFacade:
+    """Provide a facade for interacting with vault.
+
+    For example to setup new vault deployment::
+
+        vault_svc = VaultFacade()
+        vault_svc.unseal()
+        vault_svc.authorize()
+    """
+
+    def __init__(self, cacert=None, initialize=True):
+        """Create a facade for interacting with vault.
+
+        :param cacert: Path to CA cert used for vaults api cert.
+        :type cacert: str
+        :param initialize: Whether to initialize vault.
+        :type initialize: bool
+        """
+        self.clients = get_clients(cacert=cacert)
+        self.vip_client = get_vip_client(cacert=cacert)
+        if self.vip_client:
+            self.unseal_client = self.vip_client
+        else:
+            self.unseal_client = self.clients[0]
+        self.initialized = is_initialized(self.unseal_client)
+        if initialize:
+            self.initialize()
+
+    @property
+    def is_initialized(self):
+        """Check if vault is initialized."""
+        return self.initialized
+
+    def initialize(self):
+        """Initialise vault and store resulting credentials."""
+        if self.is_initialized:
+            self.vault_creds = get_credentails()
+        else:
+            self.vault_creds = init_vault(self.unseal_client)
+            store_credentails(self.vault_creds)
+        self.initialized = is_initialized(self.unseal_client)
+
+    def unseal(self):
+        """Unseal all the vaults clients."""
+        unseal_all(self.clients, self.vault_creds['keys'][0])
+
+    def authorize(self):
+        """Authorize charm to perfom certain actions.
+
+        Run vault charm action to authorize the charm to perform a limited
+        set of calls against the vault API.
+        """
+        auth_all(self.clients, self.vault_creds['root_token'])
+        run_charm_authorize(self.vault_creds['root_token'])
+
+
 def get_unit_api_url(ip):
     """Return URL for api access.
 
