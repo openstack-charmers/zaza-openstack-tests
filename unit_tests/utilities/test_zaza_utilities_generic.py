@@ -287,7 +287,8 @@ class TestGenericUtils(ut_utils.BaseTestCase):
                 mock.call("{}/{}".format(_application, machine_num),
                           machine_num, origin=_origin,
                           from_series=_from_series, to_series=_to_series,
-                          workaround_script=_workaround_script, files=_files),
+                          workaround_script=_workaround_script, files=_files,
+                          post_upgrade_functions=None),
             )
 
         # Pause primary peers and subordinates
@@ -325,7 +326,8 @@ class TestGenericUtils(ut_utils.BaseTestCase):
                 mock.call("{}/{}".format(_application, machine_num),
                           machine_num, origin=_origin,
                           from_series=_from_series, to_series=_to_series,
-                          workaround_script=_workaround_script, files=_files),
+                          workaround_script=_workaround_script, files=_files,
+                          post_upgrade_functions=None),
             )
 
         # Pause subordinates
@@ -356,7 +358,8 @@ class TestGenericUtils(ut_utils.BaseTestCase):
                 mock.call("{}/{}".format(_application, machine_num),
                           machine_num, origin=_origin,
                           from_series=_from_series, to_series=_to_series,
-                          workaround_script=_workaround_script, files=_files),
+                          workaround_script=_workaround_script, files=_files,
+                          post_upgrade_functions=None),
             )
 
         # No Pausiing
