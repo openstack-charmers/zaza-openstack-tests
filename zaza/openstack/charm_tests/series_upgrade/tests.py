@@ -52,6 +52,7 @@ class SeriesUpgradeTest(unittest.TestCase):
             origin = "openstack-origin"
             pause_non_leader_subordinate = True
             pause_non_leader_primary = True
+            post_upgrade_functions = []
             # Skip subordinates
             if applications[application]["subordinate-to"]:
                 continue
@@ -78,6 +79,10 @@ class SeriesUpgradeTest(unittest.TestCase):
                 origin = None
                 pause_non_leader_primary = False
                 pause_non_leader_subordinate = False
+            if "vault" in applications[application]["charm"]:
+                post_upgrade_functions = [
+                    ('zaza.openstack.charm_tests.vault.setup.'
+                     'basic_setup_and_unseal')]
             if ("mongodb" in applications[application]["charm"] or
                     "vault" in applications[application]["charm"]):
                 # Mongodb and vault need to run series upgrade
@@ -86,7 +91,8 @@ class SeriesUpgradeTest(unittest.TestCase):
                     application,
                     from_series=self.from_series,
                     to_series=self.to_series,
-                    completed_machines=completed_machines)
+                    completed_machines=completed_machines,
+                    post_upgrade_functions=post_upgrade_functions)
                 continue
 
             # The rest are likley APIs use defaults
@@ -100,7 +106,8 @@ class SeriesUpgradeTest(unittest.TestCase):
                 origin=origin,
                 completed_machines=completed_machines,
                 workaround_script=self.workaround_script,
-                files=self.files)
+                files=self.files,
+                post_upgrade_functions=post_upgrade_functions)
 
 
 class OpenStackSeriesUpgrade(SeriesUpgradeTest):

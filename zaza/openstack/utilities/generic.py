@@ -25,7 +25,7 @@ from zaza import model
 from zaza.openstack.utilities import juju as juju_utils
 from zaza.openstack.utilities import exceptions as zaza_exceptions
 from zaza.openstack.utilities.os_versions import UBUNTU_OPENSTACK_RELEASE
-
+from zaza.charm_lifecycle import utils as cl_utils
 
 SUBORDINATE_PAUSE_RESUME_BLACKLIST = [
     "cinder-ceph",
@@ -177,9 +177,22 @@ def get_yaml_config(config_file):
     return yaml.safe_load(open(config_file, 'r').read())
 
 
+def run_post_upgrade_functions(post_upgrade_functions):
+    """Execute list supplied functions.
+
+    :param post_upgrade_functions: List of functions
+    :type post_upgrade_functions: [function, function, ...]
+    """
+    if post_upgrade_functions:
+        for func in post_upgrade_functions:
+            logging.info("Running {}".format(func))
+            cl_utils.get_class(func)()
+
+
 def series_upgrade_non_leaders_first(application, from_series="trusty",
                                      to_series="xenial",
-                                     completed_machines=[]):
+                                     completed_machines=[],
+                                     post_upgrade_functions=None):
     """Series upgrade non leaders first.
 
     Wrap all the functionality to handle series upgrade for charms
@@ -214,7 +227,9 @@ def series_upgrade_non_leaders_first(application, from_series="trusty",
                          .format(unit))
             series_upgrade(unit, machine,
                            from_series=from_series, to_series=to_series,
-                           origin=None)
+                           origin=None,
+                           post_upgrade_functions=post_upgrade_functions)
+            run_post_upgrade_functions(post_upgrade_functions)
             completed_machines.append(machine)
         else:
             logging.info("Skipping unit: {}. Machine: {} already upgraded. "
@@ -227,7 +242,8 @@ def series_upgrade_non_leaders_first(application, from_series="trusty",
     if machine not in completed_machines:
         series_upgrade(leader, machine,
                        from_series=from_series, to_series=to_series,
-                       origin=None)
+                       origin=None,
+                       post_upgrade_functions=post_upgrade_functions)
         completed_machines.append(machine)
     else:
         logging.info("Skipping unit: {}. Machine: {} already upgraded."
@@ -240,7 +256,8 @@ def series_upgrade_application(application, pause_non_leader_primary=True,
                                from_series="trusty", to_series="xenial",
                                origin='openstack-origin',
                                completed_machines=[],
-                               files=None, workaround_script=None):
+                               files=None, workaround_script=None,
+                               post_upgrade_functions=None):
     """Series upgrade application.
 
     Wrap all the functionality to handle series upgrade for a given
@@ -310,7 +327,8 @@ def series_upgrade_application(application, pause_non_leader_primary=True,
         series_upgrade(leader, machine,
                        from_series=from_series, to_series=to_series,
                        origin=origin, workaround_script=workaround_script,
-                       files=files)
+                       files=files,
+                       post_upgrade_functions=post_upgrade_functions)
         completed_machines.append(machine)
     else:
         logging.info("Skipping unit: {}. Machine: {} already upgraded."
@@ -329,7 +347,8 @@ def series_upgrade_application(application, pause_non_leader_primary=True,
             series_upgrade(unit, machine,
                            from_series=from_series, to_series=to_series,
                            origin=origin, workaround_script=workaround_script,
-                           files=files)
+                           files=files,
+                           post_upgrade_functions=post_upgrade_functions)
             completed_machines.append(machine)
         else:
             logging.info("Skipping unit: {}. Machine: {} already upgraded. "
@@ -343,7 +362,8 @@ def series_upgrade_application(application, pause_non_leader_primary=True,
 def series_upgrade(unit_name, machine_num,
                    from_series="trusty", to_series="xenial",
                    origin='openstack-origin',
-                   files=None, workaround_script=None):
+                   files=None, workaround_script=None,
+                   post_upgrade_functions=None):
     """Perform series upgrade on a unit.
 
     :param unit_name: Unit Name
@@ -394,6 +414,9 @@ def series_upgrade(unit_name, machine_num,
     logging.info("Complete series upgrade on {}".format(machine_num))
     model.complete_series_upgrade(machine_num)
     model.block_until_all_units_idle()
+    logging.info("Running run_post_upgrade_functions {}".format(
+        post_upgrade_functions))
+    run_post_upgrade_functions(post_upgrade_functions)
     logging.info("Waiting for workload status 'active' on {}"
                  .format(unit_name))
     model.block_until_unit_wl_status(unit_name, "active")
