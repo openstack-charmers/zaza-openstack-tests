@@ -159,6 +159,22 @@ def ensure_secret_backend(client):
         pass
 
 
+def find_unit_with_creds():
+    """Find the unit thats has stored the credentials.
+
+    :returns: unit name
+    :rtype: str
+    """
+    unit = None
+    for vault_unit in zaza.model.get_units('vault'):
+        cmd = 'ls -l ~ubuntu/{}'.format(AUTH_FILE)
+        resp = zaza.model.run_on_unit(vault_unit.name, cmd)
+        if resp.get('Code') == '0':
+            unit = vault_unit.name
+            break
+    return unit
+
+
 def get_credentails():
     """Retrieve vault token and keys from unit.
 
@@ -168,7 +184,7 @@ def get_credentails():
     :returns: Tokens and keys for accessing test environment
     :rtype: dict
     """
-    unit = zaza.model.get_first_unit_name('vault')
+    unit = find_unit_with_creds()
     with tempfile.TemporaryDirectory() as tmpdirname:
         tmp_file = '{}/{}'.format(tmpdirname, AUTH_FILE)
         zaza.model.scp_from_unit(
