@@ -628,3 +628,31 @@ class TestGenericUtils(ut_utils.BaseTestCase):
                                                          expect_success=False))
         self.assertEqual(self._is_port_open.call_count, len(_units))
 
+    def test_check_commands_on_units(self):
+        self.patch(
+            "zaza.openstack.utilities.generic.model.run_on_unit",
+            new_callable=mock.MagicMock(),
+            name="_run"
+        )
+
+        num_units = 2
+        _units = [mock.MagicMock() for i in range(num_units)]
+
+        num_cmds = 3
+        cmds = ["/usr/bin/fakecmd"] * num_cmds
+
+        # Test success, all calls return 0
+        # zero is a string to replicate run_on_unit return data type
+        _cmd_results = [{"Code": "0"}] * len(_units) * len(cmds)
+        self._run.side_effect = _cmd_results
+
+        result = generic_utils.check_commands_on_units(cmds, _units)
+        self.assertIsNone(result)
+        self.assertEqual(self._run.call_count, len(_units) * len(cmds))
+
+        # Test failure, some call returns 1
+        _cmd_results[2] = {"Code": "1"}
+        self._run.side_effect = _cmd_results
+
+        result = generic_utils.check_commands_on_units(cmds, _units)
+        self.assertIsNotNone(result)
