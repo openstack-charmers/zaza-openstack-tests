@@ -572,3 +572,33 @@ class TestGenericUtils(ut_utils.BaseTestCase):
 
         self.telnet.side_effect = generic_utils.socket.error
         self.assertFalse(generic_utils.is_port_open(_port, _addr))
+
+    def test_get_unit_hostnames(self):
+        self.patch(
+            "zaza.openstack.utilities.generic.model.run_on_unit",
+            new_callable=mock.MagicMock(),
+            name="_run"
+        )
+
+        _unit1 = mock.MagicMock()
+        _unit1.entity_id = "testunit/1"
+        _unit2 = mock.MagicMock()
+        _unit2.entity_id = "testunit/2"
+
+        _hostname1 = "host1.domain"
+        _hostname2 = "host2.domain"
+
+        expected = {
+            _unit1.entity_id: _hostname1,
+            _unit2.entity_id: _hostname2,
+        }
+
+        _units = [_unit1, _unit2]
+
+        self._run.side_effect = [{"Stdout": _hostname1},
+                                 {"Stdout": _hostname2}]
+
+        actual = generic_utils.get_unit_hostnames(_units)
+
+        self.assertEqual(actual, expected)
+
