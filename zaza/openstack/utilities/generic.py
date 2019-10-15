@@ -75,6 +75,16 @@ def get_network_config(net_topology, ignore_env_vars=False,
     return net_info
 
 
+def get_unit_hostnames(units):
+    """Return a dict of juju unit names to hostnames."""
+    host_names = {}
+    for unit in units:
+        output = model.run_on_unit(unit.entity_id, 'hostname')
+        hostname = output['Stdout'].strip()
+        host_names[unit.entity_id] = hostname
+    return host_names
+
+
 def get_pkg_version(application, pkg):
     """Return package version.
 
@@ -526,6 +536,31 @@ def dist_upgrade(unit_name):
     model.run_on_unit(unit_name, dist_upgrade_cmd)
 
 
+def check_commands_on_units(commands, units):
+    """Check that all commands in a list exit zero on all units in a list.
+
+    :param commands:  list of bash commands
+    :param units:  list of unit pointers
+    :returns: None if successful; Failure message otherwise
+    """
+    logging.debug('Checking exit codes for {} commands on {} '
+                  'units...'.format(len(commands),
+                                    len(units)))
+
+    for u in units:
+        for cmd in commands:
+            output = model.run_on_unit(u.entity_id, cmd)
+            if int(output['Code']) == 0:
+                logging.debug('{} `{}` returned {} '
+                              '(OK)'.format(u.entity_id,
+                                            cmd, output['Code']))
+            else:
+                return ('{} `{}` returned {} '
+                        '{}'.format(u.entity_id,
+                                    cmd, output['Code'], output))
+    return None
+
+
 def do_release_upgrade(unit_name):
     """Run do-release-upgrade noninteractive.
 
@@ -729,6 +764,12 @@ def get_ubuntu_release(ubuntu_name):
     return index
 
 
+def get_file_contents(unit, f):
+    """Get contents of a file on a remote unit."""
+    return model.run_on_unit(unit.entity_id,
+                             "cat {}".format(f))['Stdout']
+
+
 def is_port_open(port, address):
         """Determine if TCP port is accessible.
 
@@ -752,3 +793,29 @@ def is_port_open(port, address):
                 logging.error("connection refused connecting"
                               " to {}:{}".format(address, port))
             return False
+
+
+def port_knock_units(units, port=22, expect_success=True):
+    """Check if specific port is open on units.
+
+    Open a TCP socket to check for a listening sevice on each listed juju unit.
+    :param units: list of unit pointers
+    :param port: TCP port number, default to 22
+    :param timeout: Connect timeout, default to 15 seconds
+    :expect_success: True by default, set False to invert logic
+    :returns: None if successful, Failure message otherwise
+    """
+    for u in units:
+        host = u.public_address
+        connected = is_port_open(port, host)
+        if not connected and expect_success:
+            return 'Socket connect failed.'
+        elif connected and not expect_success:
+            return 'Socket connected unexpectedly.'
+
+
+def get_series(unit):
+    """Ubuntu release name running on unit."""
+    result = model.run_on_unit(unit.entity_id,
+                               "lsb_release -cs")
+    return result['Stdout'].strip()

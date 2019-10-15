@@ -575,3 +575,87 @@ class TestGenericUtils(ut_utils.BaseTestCase):
 
         self.telnet.side_effect = generic_utils.socket.error
         self.assertFalse(generic_utils.is_port_open(_port, _addr))
+
+    def test_get_unit_hostnames(self):
+        self.patch(
+            "zaza.openstack.utilities.generic.model.run_on_unit",
+            new_callable=mock.MagicMock(),
+            name="_run"
+        )
+
+        _unit1 = mock.MagicMock()
+        _unit1.entity_id = "testunit/1"
+        _unit2 = mock.MagicMock()
+        _unit2.entity_id = "testunit/2"
+
+        _hostname1 = "host1.domain"
+        _hostname2 = "host2.domain"
+
+        expected = {
+            _unit1.entity_id: _hostname1,
+            _unit2.entity_id: _hostname2,
+        }
+
+        _units = [_unit1, _unit2]
+
+        self._run.side_effect = [{"Stdout": _hostname1},
+                                 {"Stdout": _hostname2}]
+
+        actual = generic_utils.get_unit_hostnames(_units)
+
+        self.assertEqual(actual, expected)
+
+    def test_port_knock_units(self):
+        self.patch(
+            "zaza.openstack.utilities.generic.is_port_open",
+            new_callable=mock.MagicMock(),
+            name="_is_port_open"
+        )
+
+        _units = [
+            mock.MagicMock(),
+            mock.MagicMock(),
+        ]
+
+        self._is_port_open.side_effect = [True, True]
+        self.assertIsNone(generic_utils.port_knock_units(_units))
+        self.assertEqual(self._is_port_open.call_count, len(_units))
+
+        self._is_port_open.side_effect = [True, False]
+        self.assertIsNotNone(generic_utils.port_knock_units(_units))
+
+        # check when func is expecting failure, i.e. should succeed
+        self._is_port_open.reset_mock()
+        self._is_port_open.side_effect = [False, False]
+        self.assertIsNone(generic_utils.port_knock_units(_units,
+                                                         expect_success=False))
+        self.assertEqual(self._is_port_open.call_count, len(_units))
+
+    def test_check_commands_on_units(self):
+        self.patch(
+            "zaza.openstack.utilities.generic.model.run_on_unit",
+            new_callable=mock.MagicMock(),
+            name="_run"
+        )
+
+        num_units = 2
+        _units = [mock.MagicMock() for i in range(num_units)]
+
+        num_cmds = 3
+        cmds = ["/usr/bin/fakecmd"] * num_cmds
+
+        # Test success, all calls return 0
+        # zero is a string to replicate run_on_unit return data type
+        _cmd_results = [{"Code": "0"}] * len(_units) * len(cmds)
+        self._run.side_effect = _cmd_results
+
+        result = generic_utils.check_commands_on_units(cmds, _units)
+        self.assertIsNone(result)
+        self.assertEqual(self._run.call_count, len(_units) * len(cmds))
+
+        # Test failure, some call returns 1
+        _cmd_results[2] = {"Code": "1"}
+        self._run.side_effect = _cmd_results
+
+        result = generic_utils.check_commands_on_units(cmds, _units)
+        self.assertIsNotNone(result)
