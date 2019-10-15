@@ -602,3 +602,29 @@ class TestGenericUtils(ut_utils.BaseTestCase):
 
         self.assertEqual(actual, expected)
 
+    def test_port_knock_units(self):
+        self.patch(
+            "zaza.openstack.utilities.generic.is_port_open",
+            new_callable=mock.MagicMock(),
+            name="_is_port_open"
+        )
+
+        _units = [
+            mock.MagicMock(),
+            mock.MagicMock(),
+        ]
+
+        self._is_port_open.side_effect = [True, True]
+        self.assertIsNone(generic_utils.port_knock_units(_units))
+        self.assertEqual(self._is_port_open.call_count, len(_units))
+
+        self._is_port_open.side_effect = [True, False]
+        self.assertIsNotNone(generic_utils.port_knock_units(_units))
+
+        # check when func is expecting failure, i.e. should succeed
+        self._is_port_open.reset_mock()
+        self._is_port_open.side_effect = [False, False]
+        self.assertIsNone(generic_utils.port_knock_units(_units,
+                                                         expect_success=False))
+        self.assertEqual(self._is_port_open.call_count, len(_units))
+
