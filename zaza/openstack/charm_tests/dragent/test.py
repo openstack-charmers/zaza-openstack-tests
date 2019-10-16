@@ -61,14 +61,14 @@ def test_bgp_routes(peer_application_name="quagga", keystone_session=None):
     # This test may run immediately after configuration. It may take time for
     # routes to propogate via BGP. Do a binary backoff.
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
-                    reraise=True, stop=tenacity.stop_after_attempt(8))
+                    reraise=True, stop=tenacity.stop_after_attempt(10))
     def _assert_cidr_in_peer_routing_table(peer_unit, cidr):
         logging.debug("Checking for {} on BGP peer {}"
                       .format(cidr, peer_unit))
         # Run show ip route bgp on BGP peer
         routes = juju_utils.remote_run(
             peer_unit, remote_cmd='vtysh -c "show ip route bgp"')
-        logging.debug(routes)
+        logging.info(routes)
         assert cidr in routes, (
             "CIDR, {}, not found in BGP peer's routing table" .format(cidr))
 
