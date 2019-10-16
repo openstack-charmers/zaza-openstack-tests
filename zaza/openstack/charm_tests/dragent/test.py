@@ -70,7 +70,8 @@ def test_bgp_routes(peer_application_name="quagga", keystone_session=None):
             peer_unit, remote_cmd='vtysh -c "show ip route bgp"')
         logging.info(routes)
         assert cidr in routes, (
-            "CIDR, {}, not found in BGP peer's routing table" .format(cidr))
+            "CIDR, {}, not found in BGP peer's routing table: {}"
+            .format(cidr, routes))
 
     _assert_cidr_in_peer_routing_table(peer_unit, private_cidr)
     logging.info("Private subnet CIDR, {}, found in routing table"
