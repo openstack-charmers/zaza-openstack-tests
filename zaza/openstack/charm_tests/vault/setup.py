@@ -83,6 +83,11 @@ def auto_initialize(cacert=None, validation_application='keystone'):
         root_ca=cacertificate,
         allowed_domains='openstack.local')
 
+    zaza.model.wait_for_agent_status()
+    test_config = lifecycle_utils.get_charm_config()
+    zaza.model.wait_for_application_states(
+        states=test_config.get('target_deploy_status', {}))
+
     if validation_application:
         validate_ca(cacertificate, application=validation_application)
         # Once validation has completed restart nova-compute to work around
@@ -120,9 +125,6 @@ def validate_ca(cacertificate, application="keystone", port=5000):
         application,
         zaza.openstack.utilities.openstack.KEYSTONE_REMOTE_CACERT,
         cacertificate.decode().strip())
-    test_config = lifecycle_utils.get_charm_config()
-    zaza.model.wait_for_application_states(
-        states=test_config.get('target_deploy_status', {}))
     vip = (zaza.model.get_application_config(application)
            .get("vip").get("value"))
     if vip:
