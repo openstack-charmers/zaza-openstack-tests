@@ -139,21 +139,35 @@ def get_undercloud_env_vars():
     :returns: Network environment variables
     :rtype: dict
     """
-    # Handle backward compatibile OSCI enviornment variables
+    # Handle OSCI environment variables
+    # Over time we have changed the names of prefixes. Try them all in
+    # ascending order of significance.
+    # Note: TEST_* is the preferred prefix
+    _prefixes = ["AMULET_", "MOJO_", "OS_", "", "TEST_"]
     _vars = {}
-    _vars['net_id'] = os.environ.get('NET_ID')
-    _vars['external_dns'] = os.environ.get('NAMESERVER')
-    _vars['default_gateway'] = os.environ.get('GATEWAY')
-    _vars['external_net_cidr'] = os.environ.get('CIDR_EXT')
+    for prefix in _prefixes:
+        if os.environ.get('{}NET_ID'.format(prefix)) is not None:
+            _vars['net_id'] = os.environ.get('{}NET_ID'.format(prefix))
+        if os.environ.get('{}NAMESERVER'.format(prefix))is not None:
+            _vars['external_dns'] = os.environ.get(
+                '{}NAMESERVER'.format(prefix))
+        if os.environ.get('{}GATEWAY'.format(prefix)) is not None:
+            _vars['default_gateway'] = os.environ.get(
+                '{}GATEWAY'.format(prefix))
+        if os.environ.get('{}CIDR_EXT'.format(prefix)) is not None:
+            _vars['external_net_cidr'] = os.environ.get(
+                '{}CIDR_EXT'.format(prefix))
 
-    # Take FIP_RANGE and create start and end floating ips
-    _fip_range = os.environ.get('FIP_RANGE')
-    if _fip_range and ':' in _fip_range:
-        _vars['start_floating_ip'] = os.environ.get('FIP_RANGE').split(':')[0]
-        _vars['end_floating_ip'] = os.environ.get('FIP_RANGE').split(':')[1]
+        # Take FIP_RANGE and create start and end floating ips
+        _fip_range = os.environ.get('{}FIP_RANGE'.format(prefix))
+        if _fip_range is not None and ':' in _fip_range:
+            _vars['start_floating_ip'] = os.environ.get(
+                '{}FIP_RANGE'.format(prefix)).split(':')[0]
+            _vars['end_floating_ip'] = os.environ.get(
+                '{}FIP_RANGE'.format(prefix)).split(':')[1]
 
-    # Env var naming consistent with zaza.openstack.configure.network
-    # functions takes priority. Override backward compatible settings.
+    # zaza.openstack.configure.network functions variables still take priority
+    # for local testing. Override OSCI settings.
     _keys = ['default_gateway',
              'start_floating_ip',
              'end_floating_ip',
