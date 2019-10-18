@@ -139,21 +139,24 @@ def get_undercloud_env_vars():
     :returns: Network environment variables
     :rtype: dict
     """
-    # Handle backward compatibile OSCI enviornment variables
+    # Handle OSCI environment variables
+    # Note: TEST_* is the only prefix honored
     _vars = {}
-    _vars['net_id'] = os.environ.get('NET_ID')
-    _vars['external_dns'] = os.environ.get('NAMESERVER')
-    _vars['default_gateway'] = os.environ.get('GATEWAY')
-    _vars['external_net_cidr'] = os.environ.get('CIDR_EXT')
+    _vars['net_id'] = os.environ.get('TEST_NET_ID')
+    _vars['external_dns'] = os.environ.get('TEST_NAMESERVER')
+    _vars['default_gateway'] = os.environ.get('TEST_GATEWAY')
+    _vars['external_net_cidr'] = os.environ.get('TEST_CIDR_EXT')
 
     # Take FIP_RANGE and create start and end floating ips
-    _fip_range = os.environ.get('FIP_RANGE')
-    if _fip_range and ':' in _fip_range:
-        _vars['start_floating_ip'] = os.environ.get('FIP_RANGE').split(':')[0]
-        _vars['end_floating_ip'] = os.environ.get('FIP_RANGE').split(':')[1]
+    _fip_range = os.environ.get('TEST_FIP_RANGE')
+    if _fip_range is not None and ':' in _fip_range:
+        _vars['start_floating_ip'] = os.environ.get(
+            'TEST_FIP_RANGE').split(':')[0]
+        _vars['end_floating_ip'] = os.environ.get(
+            'TEST_FIP_RANGE').split(':')[1]
 
-    # Env var naming consistent with zaza.openstack.configure.network
-    # functions takes priority. Override backward compatible settings.
+    # zaza.openstack.configure.network functions variables still take priority
+    # for local testing. Override OSCI settings.
     _keys = ['default_gateway',
              'start_floating_ip',
              'end_floating_ip',

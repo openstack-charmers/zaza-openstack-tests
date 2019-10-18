@@ -125,23 +125,30 @@ class TestGenericUtils(ut_utils.BaseTestCase):
             return _env.get(key)
         self.get.side_effect = _get_env
 
-        # OSCI backward compatible env vars
+        # Prefered OSCI TEST_ env vars
         _env = {"NET_ID": "netid",
                 "NAMESERVER": "10.0.0.10",
                 "GATEWAY": "10.0.0.1",
                 "CIDR_EXT": "10.0.0.0/24",
-                "FIP_RANGE": "10.0.200.0:10.0.200.254"}
+                "FIP_RANGE": "10.0.200.0:10.0.200.254",
+                "TEST_NET_ID": "test_netid",
+                "TEST_NAMESERVER": "10.9.0.10",
+                "TEST_GATEWAY": "10.9.0.1",
+                "TEST_CIDR_EXT": "10.9.0.0/24",
+                "TEST_FIP_RANGE": "10.9.200.0:10.0.200.254"}
         _expected_result = {}
-        _expected_result["net_id"] = _env["NET_ID"]
-        _expected_result["external_dns"] = _env["NAMESERVER"]
-        _expected_result["default_gateway"] = _env["GATEWAY"]
-        _expected_result["external_net_cidr"] = _env["CIDR_EXT"]
-        _expected_result["start_floating_ip"] = _env["FIP_RANGE"].split(":")[0]
-        _expected_result["end_floating_ip"] = _env["FIP_RANGE"].split(":")[1]
+        _expected_result["net_id"] = _env["TEST_NET_ID"]
+        _expected_result["external_dns"] = _env["TEST_NAMESERVER"]
+        _expected_result["default_gateway"] = _env["TEST_GATEWAY"]
+        _expected_result["external_net_cidr"] = _env["TEST_CIDR_EXT"]
+        _expected_result["start_floating_ip"] = _env[
+            "TEST_FIP_RANGE"].split(":")[0]
+        _expected_result["end_floating_ip"] = _env[
+            "TEST_FIP_RANGE"].split(":")[1]
         self.assertEqual(generic_utils.get_undercloud_env_vars(),
                          _expected_result)
 
-        # Overriding configure.network named variables
+        # Overriding local configure.network named variables
         _override = {"start_floating_ip": "10.100.50.0",
                      "end_floating_ip": "10.100.50.254",
                      "default_gateway": "10.100.0.1",
