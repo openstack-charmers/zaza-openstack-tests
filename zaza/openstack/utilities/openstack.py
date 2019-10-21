@@ -2078,8 +2078,8 @@ def get_ports_from_device_id(neutron_client, device_id):
     return ports
 
 
-@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
-                reraise=True, stop=tenacity.stop_after_attempt(10))
+@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=120),
+                reraise=True, stop=tenacity.stop_after_attempt(12))
 def cloud_init_complete(nova_client, vm_id, bootstring):
     """Wait for cloud init to complete on the given vm.
 
@@ -2098,7 +2098,9 @@ def cloud_init_complete(nova_client, vm_id, bootstring):
     instance = nova_client.servers.find(id=vm_id)
     console_log = instance.get_console_output()
     if bootstring not in console_log:
-        raise exceptions.CloudInitIncomplete()
+        raise exceptions.CloudInitIncomplete(
+            "'{}' not found in console log: {}"
+            .format(bootstring, console_log))
 
 
 @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
