@@ -127,18 +127,18 @@ class TestGenericUtils(ut_utils.BaseTestCase):
 
         # Prefered OSCI TEST_ env vars
         _env = {"NET_ID": "netid",
-                "NAMESERVER": "10.0.0.10",
+                "NAME_SERVER": "10.0.0.10",
                 "GATEWAY": "10.0.0.1",
                 "CIDR_EXT": "10.0.0.0/24",
                 "FIP_RANGE": "10.0.200.0:10.0.200.254",
                 "TEST_NET_ID": "test_netid",
-                "TEST_NAMESERVER": "10.9.0.10",
+                "TEST_NAME_SERVER": "10.9.0.10",
                 "TEST_GATEWAY": "10.9.0.1",
                 "TEST_CIDR_EXT": "10.9.0.0/24",
                 "TEST_FIP_RANGE": "10.9.200.0:10.0.200.254"}
         _expected_result = {}
         _expected_result["net_id"] = _env["TEST_NET_ID"]
-        _expected_result["external_dns"] = _env["TEST_NAMESERVER"]
+        _expected_result["external_dns"] = _env["TEST_NAME_SERVER"]
         _expected_result["default_gateway"] = _env["TEST_GATEWAY"]
         _expected_result["external_net_cidr"] = _env["TEST_CIDR_EXT"]
         _expected_result["start_floating_ip"] = _env[
