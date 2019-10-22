@@ -133,7 +133,7 @@ def get_undercloud_env_vars():
     export NET_ID="a705dd0f-5571-4818-8c30-4132cc494668"
     export GATEWAY="172.17.107.1"
     export CIDR_EXT="172.17.107.0/24"
-    export NAMESERVER="10.5.0.2"
+    export NAME_SERVER="10.5.0.2"
     export FIP_RANGE="172.17.107.200:172.17.107.249"
 
     :returns: Network environment variables
@@ -143,7 +143,7 @@ def get_undercloud_env_vars():
     # Note: TEST_* is the only prefix honored
     _vars = {}
     _vars['net_id'] = os.environ.get('TEST_NET_ID')
-    _vars['external_dns'] = os.environ.get('TEST_NAMESERVER')
+    _vars['external_dns'] = os.environ.get('TEST_NAME_SERVER')
     _vars['default_gateway'] = os.environ.get('TEST_GATEWAY')
     _vars['external_net_cidr'] = os.environ.get('TEST_CIDR_EXT')
 
