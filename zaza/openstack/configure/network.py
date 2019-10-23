@@ -172,6 +172,10 @@ def setup_sdn(network_config, keystone_session=None):
         network_config.get("private_net_cidr"),
         subnetpool=subnetpool,
         ip_version=ip_version)
+    openstack_utils.update_subnet_dns(
+        neutron_client,
+        project_subnet,
+        network_config["external_dns"])
     openstack_utils.plug_subnet_into_router(
         neutron_client,
         network_config["router_name"],
