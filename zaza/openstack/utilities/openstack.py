@@ -271,6 +271,7 @@ def get_heat_session_client(session, version=1):
     """
     return heatclient.Client(session=session, version=version)
 
+
 def get_cinder_session_client(session, version=2):
     """Return cinderclient authenticated by keystone session.
 

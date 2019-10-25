@@ -59,7 +59,7 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
         return services
 
     def _image_create(self):
-        """Create an image to be used by the heat template, verify it exists"""
+        """Create an image for use by the heat template, verify it exists."""
         logging.info('Creating glance image ({})...'.format(IMAGE_NAME))
 
         # Create a new image
@@ -82,9 +82,7 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
             logging.error(message)
 
     def _keypair_create(self):
-        """Create a keypair to be used by the heat template,
-           or get a keypair if it exists."""
-
+        """Create a keypair or get a keypair if it exists."""
         logging.info('Creating keypair {} if none exists'.format(KEYPAIR_NAME))
         if not openstack_utils.valid_key_exists(self.nova_client,
                                                 KEYPAIR_NAME):
@@ -100,7 +98,7 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
             logging.info('Keypair not created')
 
     def _stack_create(self):
-        """Create a heat stack from a basic heat template, verify its status"""
+        """Create a heat stack from a heat template, verify its status."""
         logging.info('Creating heat stack...')
 
         t_name = 'hot_hello_world.yaml'
@@ -183,8 +181,7 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
             logging.error(msg)
 
     def _stack_resource_compute(self):
-        """Confirm that the stack has created a subsequent nova
-           compute resource, and confirm its status."""
+        """Confirm the stack has created a nova resource and check status."""
         logging.info('Confirming heat stack resource status...')
 
         # Confirm existence of a heat-generated nova compute resource.
@@ -224,6 +221,7 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
                                         KEYPAIR_NAME, msg="nova keypair")
 
     def test_100_domain_setup(self):
+        """Run required action for a working Heat unit."""
         # Action is REQUIRED to run for a functioning heat deployment
         logging.info('Running domain-setup action on heat unit...')
         unit = zaza.model.get_units(self.application_name)[0]
@@ -234,8 +232,7 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
         assert unit.workload_status == "active"
 
     def test_400_heat_resource_types_list(self):
-        """Check default heat resource list behavior, also confirm
-           heat functionality."""
+        """Check default resource list behavior and confirm functionality."""
         logging.info('Checking default heat resource list...')
         try:
             types = list(self.heat_client.resource_types.list())
@@ -258,8 +255,7 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
             raise
 
     def test_402_heat_stack_list(self):
-        """Check default heat stack list behavior, also confirm
-           heat functionality."""
+        """Check default heat stack list behavior, confirm functionality."""
         logging.info('Checking default heat stack list...')
         try:
             stacks = list(self.heat_client.stacks.list())
@@ -275,8 +271,7 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
             raise
 
     def test_410_heat_stack_create_delete(self):
-        """Create a heat stack from template, confirm that a corresponding
-           nova compute resource is spawned, delete stack."""
+        """Create stack, confirm nova compute resource, delete stack."""
         logging.info('Creating, deleting heat stack (compute)...')
         self._image_create()
         self._keypair_create()
@@ -287,9 +282,7 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
         self._keypair_delete()
 
     def test_500_auth_encryption_key_same_on_units(self):
-        """Test that the auth_encryption_key in heat.conf is the same on all of
-        the units.
-        """
+        """Test the auth_encryption_key in heat.conf is same on all units."""
         logging.info("Checking the 'auth_encryption_key' is the same on "
                      "all units.")
         output, ret = self._run_arbitrary(
@@ -333,8 +326,7 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
         return output.decode('utf8').strip(), p.returncode
 
     def test_900_heat_restart_on_config_change(self):
-        """Verify that the specified services are restarted when the config
-           is changed."""
+        """Verify the specified services are restarted when config changes."""
         logging.info('Testing restart on configuration change')
 
         # Expected default and alternate values
