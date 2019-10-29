@@ -26,13 +26,14 @@ from novaclient import exceptions
 import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
+import zaza.charm_lifecycle.utils as charm_lifecycle_utils
 
 # Resource and name constants
 IMAGE_NAME = 'cirros-image-1'
 KEYPAIR_NAME = 'testkey'
 STACK_NAME = 'hello_world'
 RESOURCE_TYPE = 'server'
-TEMPLATES_PATH = 'tests/files'
+TEMPLATES_PATH = 'files'
 FLAVOR_NAME = 'm1.tiny'
 
 
@@ -54,7 +55,11 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
 
     @property
     def services(self):
-        """Return a list services for OpenStack release."""
+        """Return a list services for OpenStack release.
+
+        :returns: List of services
+        :rtype: [str]
+        """
         services = ['heat-api', 'heat-api-cfn', 'heat-engine']
         return services
 
@@ -71,15 +76,14 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
 
         # Confirm image is created and has status of 'active'
         if not image_new:
-            message = 'glance image create failed'
-            logging.error(message)
+            assert False, 'glance image create failed'
 
         # Verify new image name
         images_list = list(self.glance_client.images.list())
         if images_list[0].name != IMAGE_NAME:
             message = ('glance image create failed or unexpected '
                        'image name {}'.format(images_list[0].name))
-            logging.error(message)
+            assert False, message
 
     def _keypair_create(self):
         """Create a keypair or get a keypair if it exists."""
@@ -95,7 +99,7 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
                 key.private_key)
             logging.info('Keypair created')
         else:
-            logging.info('Keypair not created')
+            assert False, 'Keypair not created'
 
     def _stack_create(self):
         """Create a heat stack from a heat template, verify its status."""
@@ -108,7 +112,13 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
         else:
             os_release = 'queens'
 
-        file_rel_path = os.path.join(TEMPLATES_PATH, os_release, t_name)
+        # Get location of template files in charm-heat
+        bundle_path = charm_lifecycle_utils.BUNDLE_DIR
+        if bundle_path[-1:] == "/":
+            bundle_path = bundle_path[0:-1]
+
+        file_rel_path = os.path.join(os.path.dirname(bundle_path),
+                                     TEMPLATES_PATH, os_release, t_name)
         file_abs_path = os.path.abspath(file_rel_path)
         t_url = urlparse.urlparse(file_abs_path, scheme='file').geturl()
         logging.info('template url: {}'.format(t_url))
@@ -143,10 +153,10 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
 
         # Create the stack.
         try:
-            _stack = self.heat_client.stacks.create(**fields)
-            logging.info('Stack data: {}'.format(_stack))
-            _stack_id = _stack['stack']['id']
-            logging.info('Creating new stack, ID: {}'.format(_stack_id))
+            stack = self.heat_client.stacks.create(**fields)
+            logging.info('Stack data: {}'.format(stack))
+            stack_id = stack['stack']['id']
+            logging.info('Creating new stack, ID: {}'.format(stack_id))
         except Exception as e:
             # Generally, an api or cloud config error if this is hit.
             msg = 'Failed to create heat stack: {}'.format(e)
@@ -158,45 +168,46 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
         # find resources (a valid hypervisor) to fit the instance, in
         # which case the heat stack self-deletes!  Confirm anyway...
         openstack_utils.resource_reaches_status(self.heat_client.stacks,
-                                                _stack_id,
+                                                stack_id,
                                                 expected_status="COMPLETE",
                                                 msg="Stack status wait")
-        _stacks = list(self.heat_client.stacks.list())
-        logging.info('All stacks: {}'.format(_stacks))
+        # List stack
+        stacks = list(self.heat_client.stacks.list())
+        logging.info('All stacks: {}'.format(stacks))
 
-        # Confirm stack still exists.
+        # Get stack information
         try:
-            _stack = self.heat_client.stacks.get(STACK_NAME)
+            stack = self.heat_client.stacks.get(STACK_NAME)
         except Exception as e:
             # Generally, a resource availability issue if this is hit.
             msg = 'Failed to get heat stack: {}'.format(e)
-            logging.error(msg)
+            assert False, msg
 
         # Confirm stack name.
         logging.info('Expected, actual stack name: {}, '
-                     '{}'.format(STACK_NAME, _stack.stack_name))
-        if STACK_NAME != _stack.stack_name:
+                     '{}'.format(STACK_NAME, stack.stack_name))
+        if STACK_NAME != stack.stack_name:
             msg = 'Stack name mismatch, {} != {}'.format(STACK_NAME,
-                                                         _stack.stack_name)
-            logging.error(msg)
+                                                         stack.stack_name)
+            assert False, msg
 
     def _stack_resource_compute(self):
         """Confirm the stack has created a nova resource and check status."""
         logging.info('Confirming heat stack resource status...')
 
         # Confirm existence of a heat-generated nova compute resource.
-        _resource = self.heat_client.resources.get(STACK_NAME, RESOURCE_TYPE)
-        _server_id = _resource.physical_resource_id
-        if _server_id:
+        resource = self.heat_client.resources.get(STACK_NAME, RESOURCE_TYPE)
+        server_id = resource.physical_resource_id
+        if server_id:
             logging.debug('Heat template spawned nova instance, '
-                          'ID: {}'.format(_server_id))
+                          'ID: {}'.format(server_id))
         else:
             msg = 'Stack failed to spawn a nova compute resource (instance).'
             logging.error(msg)
 
         # Confirm nova instance reaches ACTIVE status.
         openstack_utils.resource_reaches_status(self.nova_client.servers,
-                                                _server_id,
+                                                server_id,
                                                 expected_status="ACTIVE",
                                                 msg="nova instance")
         logging.info('Nova instance reached ACTIVE status')
@@ -228,47 +239,26 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
         assert unit.workload_status == "active"
         zaza.model.run_action(unit.entity_id, "domain-setup")
         zaza.model.block_until_unit_wl_status(unit.entity_id, "active")
-        unit = zaza.model.get_unit_from_name(unit.entity_id)
-        assert unit.workload_status == "active"
 
     def test_400_heat_resource_types_list(self):
         """Check default resource list behavior and confirm functionality."""
         logging.info('Checking default heat resource list...')
         try:
-            types = list(self.heat_client.resource_types.list())
+            types = self.heat_client.resource_types.list()
             if type(types) is list:
                 logging.info('Resource type list check is ok.')
             else:
                 msg = 'Resource type list is not a list!'
-                logging.error('{}'.format(msg))
-                raise
+                assert False, msg
             if len(types) > 0:
                 logging.info('Resource type list is populated '
                              '({}, ok).'.format(len(types)))
             else:
                 msg = 'Resource type list length is zero!'
-                logging.error(msg)
-                raise
+                assert False, msg
         except Exception as e:
             msg = 'Resource type list failed: {}'.format(e)
-            logging.error(msg)
-            raise
-
-    def test_402_heat_stack_list(self):
-        """Check default heat stack list behavior, confirm functionality."""
-        logging.info('Checking default heat stack list...')
-        try:
-            stacks = list(self.heat_client.stacks.list())
-            if type(stacks) is list:
-                logging.info("Stack list check is ok.")
-            else:
-                msg = 'Stack list returned something other than a list.'
-                logging.error(msg)
-                raise
-        except Exception as e:
-            msg = 'Heat stack list failed: {}'.format(e)
-            logging.error(msg)
-            raise
+            assert False, msg
 
     def test_410_heat_stack_create_delete(self):
         """Create stack, confirm nova compute resource, delete stack."""
@@ -290,8 +280,8 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
             "--format json "
             "grep auth_encryption_key /etc/heat/heat.conf")
         if ret:
-            msg = "juju run returned error: ({}) -> {}".format(ret, output)
-            logging.error("Error: {}".format(msg))
+            msg = "juju run error: ret: {}, output: {}".format(ret, output)
+            self.assertEqual(ret, 0, msg)
         output = json.loads(output)
         keys = {}
         for r in output:
@@ -310,10 +300,13 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
 
         (Otherwise the self.run(...) command could have been used for the unit
 
-        :param str command: The command to run.
-        :param int timeout: Seconds to wait before timing out.
-        :return: A 2-tuple containing the output of the command and the exit
-            code of the command.
+        :param command: The command to run.
+        :type command: str
+        :param timeout: Seconds to wait before timing out.
+        :type timeout: int
+        :raises: subprocess.CalledProcessError.
+        :returns: A pair containing the output of the command and exit value
+        :rtype: (str, int)
         """
         cmd = ['juju', 'run', '--timeout', "{}s".format(timeout),
                ] + command.split()
