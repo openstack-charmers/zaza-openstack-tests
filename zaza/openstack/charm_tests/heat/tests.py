@@ -96,7 +96,6 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
 
     def test_410_heat_stack_create_delete(self):
         """Create stack, confirm nova compute resource, delete stack."""
-
         # Create an image for use by the heat template
         logging.info('Creating glance image ({})...'.format(IMAGE_NAME))
         glance_setup.add_cirros_image(image_name=IMAGE_NAME)
