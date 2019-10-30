@@ -101,8 +101,8 @@ class TestJujuUtils(ut_utils.BaseTestCase):
 
         # Machine data
         self.assertEqual(
-            juju_utils.get_machines_for_application(self.application),
-            [self.machine])
+            next(juju_utils.get_machines_for_application(self.application)),
+            self.machine)
         self.get_application_status.assert_called_once()
 
         # Subordinate application has no units
@@ -115,9 +115,9 @@ class TestJujuUtils(ut_utils.BaseTestCase):
         self.get_application_status.side_effect = _get_application_status
 
         self.assertEqual(
-            juju_utils.get_machines_for_application(
-                self.subordinate_application),
-            [self.machine])
+            next(juju_utils.get_machines_for_application(
+                self.subordinate_application)),
+            self.machine)
 
     def test_get_unit_name_from_host_name(self):
         unit_mock1 = mock.MagicMock()
@@ -151,8 +151,9 @@ class TestJujuUtils(ut_utils.BaseTestCase):
         self.get_machines_for_application.return_value = [self.machine]
 
         self.assertEqual(
-            juju_utils.get_machine_uuids_for_application(self.application),
-            [self.machine_data.get("instance-id")])
+            next(juju_utils.get_machine_uuids_for_application(
+                self.application)),
+            self.machine_data.get("instance-id"))
         self.get_machines_for_application.assert_called_once_with(
             self.application)
 

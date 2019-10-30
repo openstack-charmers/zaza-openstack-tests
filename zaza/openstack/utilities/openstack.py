@@ -45,6 +45,7 @@ from swiftclient import client as swiftclient
 
 import datetime
 import io
+import itertools
 import juju_wait
 import logging
 import os
@@ -55,8 +56,8 @@ import subprocess
 import sys
 import tempfile
 import tenacity
-import urllib
 import textwrap
+import urllib
 
 from zaza import model
 from zaza.openstack.utilities import (
@@ -434,7 +435,7 @@ def get_gateway_uuids():
     """Return machine uuids for neutron-gateway(s).
 
     :returns: List of uuids
-    :rtype: list
+    :rtype: Iterator[str]
     """
     return juju_utils.get_machine_uuids_for_application('neutron-gateway')
 
@@ -443,10 +444,22 @@ def get_ovs_uuids():
     """Return machine uuids for neutron-openvswitch(s).
 
     :returns: List of uuids
-    :rtype: list
+    :rtype: Iterator[str]
     """
     return (juju_utils
             .get_machine_uuids_for_application('neutron-openvswitch'))
+
+
+def get_ovn_uuids():
+    """Provide machine uuids for OVN Chassis.
+
+    :returns: List of uuids
+    :rtype: Iterator[str]
+    """
+    return itertools.chain(
+        juju_utils.get_machine_uuids_for_application('ovn-chassis'),
+        juju_utils.get_machine_uuids_for_application('ovn-dedicated-chassis'),
+    )
 
 
 BRIDGE_MAPPINGS = 'bridge-mappings'
@@ -1358,10 +1371,9 @@ def get_current_os_release_pair(application='keystone'):
     :raises: exceptions.SeriesNotFound
     :raises: exceptions.OSVersionNotFound
     """
-    machines = juju_utils.get_machines_for_application(application)
-    if len(machines) >= 1:
-        machine = machines[0]
-    else:
+    try:
+        machine = next(juju_utils.get_machines_for_application(application))
+    except StopIteration:
         raise exceptions.ApplicationNotFound(application)
 
     series = juju_utils.get_machine_series(machine)
