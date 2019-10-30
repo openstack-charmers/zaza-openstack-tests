@@ -160,7 +160,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
 
         # Already exists
         network = openstack_utils.create_external_network(
-            self.neutronclient, self.project_id, False)
+            self.neutronclient, self.project_id)
         self.assertEqual(network, self.network["network"])
         self.neutronclient.create_network.assert_not_called()
 
@@ -170,7 +170,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         network_msg = copy.deepcopy(self.network)
         network_msg["network"].pop("id")
         network = openstack_utils.create_external_network(
-            self.neutronclient, self.project_id, False)
+            self.neutronclient, self.project_id)
         self.assertEqual(network, self.network["network"])
         self.neutronclient.create_network.assert_called_once_with(
             network_msg)
@@ -1194,3 +1194,12 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             mock.call('ovn-chassis'),
             mock.call('ovn-dedicated-chassis'),
         ])
+
+    def test_dvr_enabled(self):
+        self.patch_object(openstack_utils, 'get_application_config_option')
+        openstack_utils.dvr_enabled()
+        self.get_application_config_option.assert_called_once_with(
+            'neutron-api', 'enable-dvr')
+
+    def test_ovn_present(self):
+        pass

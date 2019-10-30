@@ -129,7 +129,6 @@ def setup_sdn(network_config, keystone_session=None):
     ext_network = openstack_utils.create_external_network(
         neutron_client,
         project_id,
-        network_config.get("dvr_enabled", False),
         network_config["external_net_name"])
     openstack_utils.create_external_subnet(
         neutron_client,
@@ -226,7 +225,6 @@ def setup_gateway_ext_port(network_config, keystone_session=None):
     openstack_utils.configure_gateway_ext_port(
         nova_client,
         neutron_client,
-        dvr_mode=network_config.get("dvr_enabled", False),
         net_id=net_id,
         add_dataport_to_netplan=add_dataport_to_netplan)
 

@@ -25,7 +25,6 @@ from zaza.openstack.utilities import (
     juju as juju_utils,
     openstack as openstack_utils,
 )
-import zaza.model as model
 
 
 # The overcloud network configuration settings are declared.
@@ -74,10 +73,6 @@ def basic_overcloud_network():
     network_config.update(DEFAULT_UNDERCLOUD_NETWORK_CONFIG)
     # Environment specific settings
     network_config.update(generic_utils.get_undercloud_env_vars())
-    # Deployed model settings
-    if (model.get_application_config('neutron-api')
-            .get('enable-dvr').get('value')):
-        network_config.update({"dvr_enabled": True})
 
     # Get keystone session
     keystone_session = openstack_utils.get_overcloud_keystone_session()

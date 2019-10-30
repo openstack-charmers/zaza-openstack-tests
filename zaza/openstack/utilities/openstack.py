@@ -462,20 +462,44 @@ def get_ovn_uuids():
     )
 
 
+def dvr_enabled():
+    """Check whether DVR is enabled in deployment.
+
+    :returns: True when DVR is enabled, False otherwise
+    :rtype: bool
+    """
+    return get_application_config_option('neutron-api', 'enable-dvr')
+
+
+def ovn_present():
+    """Check whether OVN is present in deployment.
+
+    :returns: True when OVN is present, False otherwise
+    :rtype: bool
+    """
+    try:
+        for name in ('ovn-chassis', 'ovn-dedicated-chassis'):
+            model.get_application(name)
+            return True
+    except KeyError:
+        return False
+    else:
+        raise RuntimeError('Unable to determine whether or not OVN is present '
+                           'in deployment')
+
+
 BRIDGE_MAPPINGS = 'bridge-mappings'
 NEW_STYLE_NETWORKING = 'physnet1:br-ex'
 
 
-def deprecated_external_networking(dvr_mode=False):
+def deprecated_external_networking():
     """Determine whether deprecated external network mode is in use.
 
-    :param dvr_mode: Using DVR mode or not
-    :type dvr_mode: boolean
     :returns: True or False
     :rtype: boolean
     """
     bridge_mappings = None
-    if dvr_mode:
+    if dvr_enabled():
         bridge_mappings = get_application_config_option('neutron-openvswitch',
                                                         BRIDGE_MAPPINGS)
     else:
@@ -514,17 +538,15 @@ def get_admin_net(neutron_client):
             return net
 
 
-def add_interface_to_netplan(server_name, mac_address, dvr_mode=None):
+def add_interface_to_netplan(server_name, mac_address):
     """In guest server_name, add nic with mac_address to netplan.
 
     :param server_name: Hostname of instance
     :type server_name: string
     :param mac_address: mac address of nic to be added to netplan
     :type mac_address: string
-    :param dvr_mode: Using DVR mode or not
-    :type dvr_mode: boolean
     """
-    if dvr_mode:
+    if dvr_enabled():
         application_name = 'neutron-openvswitch'
     else:
         application_name = 'neutron-gateway'
@@ -572,8 +594,7 @@ def add_interface_to_netplan(server_name, mac_address, dvr_mode=None):
     model.run_on_unit(unit_name, "sudo netplan apply")
 
 
-def configure_gateway_ext_port(novaclient, neutronclient,
-                               dvr_mode=None, net_id=None,
+def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
                                add_dataport_to_netplan=False):
     """Configure the neturong-gateway external port.
 
@@ -581,20 +602,20 @@ def configure_gateway_ext_port(novaclient, neutronclient,
     :type novaclient: novaclient.Client object
     :param neutronclient: Authenticated neutronclient
     :type neutronclient: neutronclient.Client object
-    :param dvr_mode: Using DVR mode or not
-    :type dvr_mode: boolean
     :param net_id: Network ID
     :type net_id: string
     """
-    if dvr_mode:
+    if dvr_enabled():
         uuids = get_ovs_uuids()
         # If dvr, do not attempt to persist nic in netplan
         # https://github.com/openstack-charmers/zaza-openstack-tests/issues/78
         add_dataport_to_netplan = False
+        application_name = 'neutron-openvswitch'
     else:
         uuids = get_gateway_uuids()
+        application_name = 'neutron-gateway'
 
-    deprecated_extnet_mode = deprecated_external_networking(dvr_mode)
+    deprecated_extnet_mode = deprecated_external_networking()
 
     config_key = 'data-port'
     if deprecated_extnet_mode:
@@ -627,8 +648,7 @@ def configure_gateway_ext_port(novaclient, neutronclient,
             if add_dataport_to_netplan:
                 mac_address = get_mac_from_port(port, neutronclient)
                 add_interface_to_netplan(server.name,
-                                         mac_address=mac_address,
-                                         dvr_mode=dvr_mode)
+                                         mac_address=mac_address)
     ext_br_macs = []
     for port in neutronclient.list_ports(network_id=net_id)['ports']:
         if 'ext-port' in port['name']:
@@ -638,10 +658,6 @@ def configure_gateway_ext_port(novaclient, neutronclient,
                 ext_br_macs.append('br-ex:{}'.format(port['mac_address']))
     ext_br_macs.sort()
     ext_br_macs_str = ' '.join(ext_br_macs)
-    if dvr_mode:
-        application_name = 'neutron-openvswitch'
-    else:
-        application_name = 'neutron-gateway'
 
     if ext_br_macs:
         logging.info('Setting {} on {} external port to {}'.format(
@@ -715,16 +731,13 @@ def create_project_network(neutron_client, project_id, net_name='private',
     return network
 
 
-def create_external_network(neutron_client, project_id, dvr_mode,
-                            net_name='ext_net'):
+def create_external_network(neutron_client, project_id, net_name='ext_net'):
     """Create the external network.
 
     :param neutron_client: Authenticated neutronclient
     :type neutron_client: neutronclient.Client object
     :param project_id: Project ID
     :type project_id: string
-    :param dvr_mode: Using DVR mode or not
-    :type dvr_mode: boolean
     :param net_name: Network name
     :type net_name: string
     :returns: Network object
