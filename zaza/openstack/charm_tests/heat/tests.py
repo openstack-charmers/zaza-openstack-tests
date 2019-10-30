@@ -21,11 +21,8 @@ import os
 import subprocess
 from urllib import parse as urlparse
 from heatclient.common import template_utils
-from novaclient import exceptions
 
 import zaza.model
-import zaza.openstack.charm_tests.glance.setup as glance_setup
-import zaza.openstack.charm_tests.nova.setup as nova_setup
 import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
@@ -79,41 +76,21 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
         logging.info('Checking default heat resource list...')
         try:
             types = self.heat_client.resource_types.list()
-            if type(types) is list:
-                logging.info('Resource type list check is ok.')
-            else:
-                msg = 'Resource type list is not a list!'
-                assert False, msg
-            if len(types) > 0:
-                logging.info('Resource type list is populated '
-                             '({}, ok).'.format(len(types)))
-            else:
-                msg = 'Resource type list length is zero!'
-                assert False, msg
+            self.assertIsInstance(types, list, "Resource type is not a list!")
+            self.assertGreater(len(types), 0, "Resource type list len is zero")
         except Exception as e:
             msg = 'Resource type list failed: {}'.format(e)
-            assert False, msg
+            self.fail(msg)
 
     def test_410_heat_stack_create_delete(self):
         """Create stack, confirm nova compute resource, delete stack."""
-        # Create an image for use by the heat template
-        logging.info('Creating glance image ({})...'.format(IMAGE_NAME))
-        glance_setup.add_cirros_image(image_name=IMAGE_NAME)
-
         # Verify new image name
         images_list = list(self.glance_client.images.list())
-        if images_list[0].name != IMAGE_NAME:
-            message = ('glance image create failed or unexpected '
-                       'image name {}'.format(images_list[0].name))
-            assert False, message
-
-        # Create a keypair
-        logging.info('Creating keypair {}'.format(nova_utils.KEYPAIR_NAME))
-        nova_setup.manage_ssh_key(self.nova_client)
+        self.assertEqual(images_list[0].name, IMAGE_NAME,
+                         "glance image create failed or unexpected")
 
         # Create a heat stack from a heat template, verify its status
         logging.info('Creating heat stack...')
-
         t_name = 'hot_hello_world.yaml'
         if (openstack_utils.get_os_release() <
                 openstack_utils.get_os_release('xenial_queens')):
@@ -131,14 +108,6 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
         file_abs_path = os.path.abspath(file_rel_path)
         t_url = urlparse.urlparse(file_abs_path, scheme='file').geturl()
         logging.info('template url: {}'.format(t_url))
-
-        # Create flavor
-        try:
-            self.nova_client.flavors.find(name=FLAVOR_NAME)
-        except (exceptions.NotFound, exceptions.NoUniqueMatch):
-            logging.info('Creating flavor ({})'.format(FLAVOR_NAME))
-            self.nova_client.flavors.create(FLAVOR_NAME, ram=512, vcpus=1,
-                                            disk=1, flavorid=1)
 
         r_req = self.heat_client.http_client
         t_files, template = template_utils.get_template_contents(t_url, r_req)
@@ -168,8 +137,7 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
         except Exception as e:
             # Generally, an api or cloud config error if this is hit.
             msg = 'Failed to create heat stack: {}'.format(e)
-            logging.error(msg)
-            raise
+            self.fail(msg)
 
         # Confirm stack reaches COMPLETE status.
         # /!\ Heat stacks reach a COMPLETE status even when nova cannot
@@ -189,26 +157,20 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
         except Exception as e:
             # Generally, a resource availability issue if this is hit.
             msg = 'Failed to get heat stack: {}'.format(e)
-            assert False, msg
+            self.fail(msg)
 
         # Confirm stack name.
         logging.info('Expected, actual stack name: {}, '
                      '{}'.format(STACK_NAME, stack.stack_name))
-        if STACK_NAME != stack.stack_name:
-            msg = 'Stack name mismatch, {} != {}'.format(STACK_NAME,
-                                                         stack.stack_name)
-            assert False, msg
+        self.assertEqual(stack.stack_name, STACK_NAME,
+                         'Stack name mismatch, '
+                         '{} != {}'.format(STACK_NAME, stack.stack_name))
 
         # Confirm existence of a heat-generated nova compute resource
         logging.info('Confirming heat stack resource status...')
         resource = self.heat_client.resources.get(STACK_NAME, RESOURCE_TYPE)
         server_id = resource.physical_resource_id
-        if server_id:
-            logging.debug('Heat template spawned nova instance, '
-                          'ID: {}'.format(server_id))
-        else:
-            msg = 'Stack failed to spawn a nova compute resource (instance).'
-            logging.error(msg)
+        self.assertTrue(server_id, "Stack failed to spawn a compute resource.")
 
         # Confirm nova instance reaches ACTIVE status
         openstack_utils.resource_reaches_status(self.nova_client.servers,
@@ -221,18 +183,6 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
         logging.info('Deleting heat stack...')
         openstack_utils.delete_resource(self.heat_client.stacks,
                                         STACK_NAME, msg="heat stack")
-
-        # Delete image
-        logging.info('Deleting glance image...')
-        image = self.nova_client.glance.find_image(IMAGE_NAME)
-        openstack_utils.delete_resource(self.glance_client.images,
-                                        image.id, msg="glance image")
-
-        # Delete keypair
-        logging.info('Deleting keypair...')
-        openstack_utils.delete_resource(self.nova_client.keypairs,
-                                        nova_utils.KEYPAIR_NAME,
-                                        msg="nova keypair")
 
     def test_500_auth_encryption_key_same_on_units(self):
         """Test the auth_encryption_key in heat.conf is same on all units."""
@@ -252,10 +202,9 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
             keys[r['UnitId']] = k
         # see if keys are different
         ks = set(keys.values())
-        if len(ks) != 1:
-            msg = ("'auth_encryption_key' is not identical on every unit: {}"
-                   .format("{}={}".format(k, v) for k, v in keys.items()))
-            assert False, msg
+        self.assertEqual(len(ks), 1, "'auth_encryption_key' is not identical "
+                         "on every unit: {}".format("{}={}".format(k, v)
+                                                    for k, v in keys.items()))
 
     @staticmethod
     def _run_arbitrary(command, timeout=300):
