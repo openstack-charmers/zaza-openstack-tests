@@ -24,13 +24,15 @@ from heatclient.common import template_utils
 from novaclient import exceptions
 
 import zaza.model
+import zaza.openstack.charm_tests.glance.setup as glance_setup
+import zaza.openstack.charm_tests.nova.setup as nova_setup
+import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.charm_lifecycle.utils as charm_lifecycle_utils
 
 # Resource and name constants
-IMAGE_NAME = 'cirros-image-1'
-KEYPAIR_NAME = 'testkey'
+IMAGE_NAME = 'cirros'
 STACK_NAME = 'hello_world'
 RESOURCE_TYPE = 'server'
 TEMPLATES_PATH = 'files'
@@ -63,20 +65,41 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
         services = ['heat-api', 'heat-api-cfn', 'heat-engine']
         return services
 
-    def _image_create(self):
-        """Create an image for use by the heat template, verify it exists."""
+    def test_100_domain_setup(self):
+        """Run required action for a working Heat unit."""
+        # Action is REQUIRED to run for a functioning heat deployment
+        logging.info('Running domain-setup action on heat unit...')
+        unit = zaza.model.get_units(self.application_name)[0]
+        zaza.model.block_until_unit_wl_status(unit.entity_id, "active")
+        zaza.model.run_action(unit.entity_id, "domain-setup")
+        zaza.model.block_until_unit_wl_status(unit.entity_id, "active")
+
+    def test_400_heat_resource_types_list(self):
+        """Check default resource list behavior and confirm functionality."""
+        logging.info('Checking default heat resource list...')
+        try:
+            types = self.heat_client.resource_types.list()
+            if type(types) is list:
+                logging.info('Resource type list check is ok.')
+            else:
+                msg = 'Resource type list is not a list!'
+                assert False, msg
+            if len(types) > 0:
+                logging.info('Resource type list is populated '
+                             '({}, ok).'.format(len(types)))
+            else:
+                msg = 'Resource type list length is zero!'
+                assert False, msg
+        except Exception as e:
+            msg = 'Resource type list failed: {}'.format(e)
+            assert False, msg
+
+    def test_410_heat_stack_create_delete(self):
+        """Create stack, confirm nova compute resource, delete stack."""
+
+        # Create an image for use by the heat template
         logging.info('Creating glance image ({})...'.format(IMAGE_NAME))
-
-        # Create a new image
-        image_url = openstack_utils.find_cirros_image(arch='x86_64')
-        image_new = openstack_utils.create_image(
-            self.glance_client,
-            image_url,
-            IMAGE_NAME)
-
-        # Confirm image is created and has status of 'active'
-        if not image_new:
-            assert False, 'glance image create failed'
+        glance_setup.add_cirros_image(image_name=IMAGE_NAME)
 
         # Verify new image name
         images_list = list(self.glance_client.images.list())
@@ -85,24 +108,11 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
                        'image name {}'.format(images_list[0].name))
             assert False, message
 
-    def _keypair_create(self):
-        """Create a keypair or get a keypair if it exists."""
-        logging.info('Creating keypair {} if none exists'.format(KEYPAIR_NAME))
-        if not openstack_utils.valid_key_exists(self.nova_client,
-                                                KEYPAIR_NAME):
-            key = openstack_utils.create_ssh_key(
-                self.nova_client,
-                KEYPAIR_NAME,
-                replace=True)
-            openstack_utils.write_private_key(
-                KEYPAIR_NAME,
-                key.private_key)
-            logging.info('Keypair created')
-        else:
-            assert False, 'Keypair not created'
+        # Create a keypair
+        logging.info('Creating keypair {}'.format(nova_utils.KEYPAIR_NAME))
+        nova_setup.manage_ssh_key(self.nova_client)
 
-    def _stack_create(self):
-        """Create a heat stack from a heat template, verify its status."""
+        # Create a heat stack from a heat template, verify its status
         logging.info('Creating heat stack...')
 
         t_name = 'hot_hello_world.yaml'
@@ -132,7 +142,6 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
                                             disk=1, flavorid=1)
 
         r_req = self.heat_client.http_client
-
         t_files, template = template_utils.get_template_contents(t_url, r_req)
         env_files, env = template_utils.process_environment_and_files(
             env_path=None)
@@ -143,7 +152,7 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
             'disable_rollback': False,
             'parameters': {
                 'admin_pass': 'Ubuntu',
-                'key_name': KEYPAIR_NAME,
+                'key_name': nova_utils.KEYPAIR_NAME,
                 'image': IMAGE_NAME
             },
             'template': template,
@@ -151,7 +160,7 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
             'environment': env
         }
 
-        # Create the stack.
+        # Create the stack
         try:
             stack = self.heat_client.stacks.create(**fields)
             logging.info('Stack data: {}'.format(stack))
@@ -191,11 +200,8 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
                                                          stack.stack_name)
             assert False, msg
 
-    def _stack_resource_compute(self):
-        """Confirm the stack has created a nova resource and check status."""
+        # Confirm existence of a heat-generated nova compute resource
         logging.info('Confirming heat stack resource status...')
-
-        # Confirm existence of a heat-generated nova compute resource.
         resource = self.heat_client.resources.get(STACK_NAME, RESOURCE_TYPE)
         server_id = resource.physical_resource_id
         if server_id:
@@ -205,71 +211,29 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
             msg = 'Stack failed to spawn a nova compute resource (instance).'
             logging.error(msg)
 
-        # Confirm nova instance reaches ACTIVE status.
+        # Confirm nova instance reaches ACTIVE status
         openstack_utils.resource_reaches_status(self.nova_client.servers,
                                                 server_id,
                                                 expected_status="ACTIVE",
                                                 msg="nova instance")
         logging.info('Nova instance reached ACTIVE status')
 
-    def _stack_delete(self):
-        """Delete a heat stack, verify."""
+        # Delete stack
         logging.info('Deleting heat stack...')
         openstack_utils.delete_resource(self.heat_client.stacks,
                                         STACK_NAME, msg="heat stack")
 
-    def _image_delete(self):
-        """Delete that image."""
+        # Delete image
         logging.info('Deleting glance image...')
         image = self.nova_client.glance.find_image(IMAGE_NAME)
         openstack_utils.delete_resource(self.glance_client.images,
                                         image.id, msg="glance image")
 
-    def _keypair_delete(self):
-        """Delete that keypair."""
+        # Delete keypair
         logging.info('Deleting keypair...')
         openstack_utils.delete_resource(self.nova_client.keypairs,
-                                        KEYPAIR_NAME, msg="nova keypair")
-
-    def test_100_domain_setup(self):
-        """Run required action for a working Heat unit."""
-        # Action is REQUIRED to run for a functioning heat deployment
-        logging.info('Running domain-setup action on heat unit...')
-        unit = zaza.model.get_units(self.application_name)[0]
-        assert unit.workload_status == "active"
-        zaza.model.run_action(unit.entity_id, "domain-setup")
-        zaza.model.block_until_unit_wl_status(unit.entity_id, "active")
-
-    def test_400_heat_resource_types_list(self):
-        """Check default resource list behavior and confirm functionality."""
-        logging.info('Checking default heat resource list...')
-        try:
-            types = self.heat_client.resource_types.list()
-            if type(types) is list:
-                logging.info('Resource type list check is ok.')
-            else:
-                msg = 'Resource type list is not a list!'
-                assert False, msg
-            if len(types) > 0:
-                logging.info('Resource type list is populated '
-                             '({}, ok).'.format(len(types)))
-            else:
-                msg = 'Resource type list length is zero!'
-                assert False, msg
-        except Exception as e:
-            msg = 'Resource type list failed: {}'.format(e)
-            assert False, msg
-
-    def test_410_heat_stack_create_delete(self):
-        """Create stack, confirm nova compute resource, delete stack."""
-        logging.info('Creating, deleting heat stack (compute)...')
-        self._image_create()
-        self._keypair_create()
-        self._stack_create()
-        self._stack_resource_compute()
-        self._stack_delete()
-        self._image_delete()
-        self._keypair_delete()
+                                        nova_utils.KEYPAIR_NAME,
+                                        msg="nova keypair")
 
     def test_500_auth_encryption_key_same_on_units(self):
         """Test the auth_encryption_key in heat.conf is same on all units."""
@@ -287,12 +251,12 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
         for r in output:
             k = r['Stdout'].split('=')[1].strip()
             keys[r['UnitId']] = k
-        # see if keys are different.
-        ks = list(keys.values())
-        if any(((k != ks[0]) for k in ks[1:])):
+        # see if keys are different
+        ks = set(keys.values())
+        if len(ks) != 1:
             msg = ("'auth_encryption_key' is not identical on every unit: {}"
                    .format("{}={}".format(k, v) for k, v in keys.items()))
-            logging.error("Error: {}".format(msg))
+            assert False, msg
 
     @staticmethod
     def _run_arbitrary(command, timeout=300):
