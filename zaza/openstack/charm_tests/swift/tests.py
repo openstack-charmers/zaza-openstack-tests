@@ -62,7 +62,9 @@ class SwiftImageCreateTest(test_utils.OpenStackBaseTest):
         self.assertEqual(image['size'], total_bytes)
         openstack_utils.delete_image(self.glance_client, image['id'])
 
+
 class SwiftProxyTests(test_utils.OpenStackBaseTest):
+    """Tests specific to swift proxy."""
 
     def test_901_pause_resume(self):
         """Run pause and resume tests.
@@ -83,7 +85,9 @@ class SwiftProxyTests(test_utils.OpenStackBaseTest):
             action_params={})
         self.assertEqual(action.status, "completed")
 
+
 class SwiftStorageTests(test_utils.OpenStackBaseTest):
+    """Tests specific to swift storage."""
 
     def test_901_pause_resume(self):
         """Run pause and resume tests.
