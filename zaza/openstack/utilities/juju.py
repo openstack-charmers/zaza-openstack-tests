@@ -85,6 +85,8 @@ def get_machines_for_application(application):
     :rtype: Iterator[str]
     """
     status = get_application_status(application)
+    if not status:
+        raise StopIteration
 
     # libjuju juju status no longer has units for subordinate charms
     # Use the application it is subordinate-to to find machines
