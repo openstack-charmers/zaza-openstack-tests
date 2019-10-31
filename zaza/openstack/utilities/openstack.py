@@ -27,6 +27,7 @@ from openstack import connection
 
 from aodhclient.v2 import client as aodh_client
 from cinderclient import client as cinderclient
+from heatclient import client as heatclient
 from glanceclient import Client as GlanceClient
 
 from keystoneclient.v2_0 import client as keystoneclient_v2
@@ -256,6 +257,19 @@ def get_octavia_session_client(session, service_type='load-balancer',
     return octaviaclient.OctaviaAPI(session=session,
                                     service_type=service_type,
                                     endpoint=endpoint.url)
+
+
+def get_heat_session_client(session, version=1):
+    """Return heatclient authenticated by keystone session.
+
+    :param session: Keystone session object
+    :type session: keystoneauth1.session.Session object
+    :param version: Heat API version
+    :type version: int
+    :returns: Authenticated cinderclient
+    :rtype: heatclient.Client object
+    """
+    return heatclient.Client(session=session, version=version)
 
 
 def get_cinder_session_client(session, version=2):
