@@ -183,7 +183,8 @@ def setup_sdn(network_config, keystone_session=None):
     openstack_utils.add_neutron_secgroup_rules(neutron_client, project_id)
 
 
-def setup_gateway_ext_port(network_config, keystone_session=None):
+def setup_gateway_ext_port(network_config, keystone_session=None,
+                           limit_gws=None):
     """Perform setup external port on Neutron Gateway.
 
     For OpenStack on OpenStack scenarios.
@@ -192,6 +193,8 @@ def setup_gateway_ext_port(network_config, keystone_session=None):
     :type network_config: dict
     :param keystone_session: Keystone session object for undercloud
     :type keystone_session: keystoneauth1.session.Session object
+    :param limit_gws: Limit the number of gateways that get a port attached
+    :type limit_gws: Optional[int]
     :returns: None
     :rtype: None
     """
@@ -226,7 +229,8 @@ def setup_gateway_ext_port(network_config, keystone_session=None):
         nova_client,
         neutron_client,
         net_id=net_id,
-        add_dataport_to_netplan=add_dataport_to_netplan)
+        add_dataport_to_netplan=add_dataport_to_netplan,
+        limit_gws=limit_gws)
 
 
 def run_from_cli(**kwargs):

@@ -596,7 +596,8 @@ def add_interface_to_netplan(server_name, mac_address):
 
 
 def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
-                               add_dataport_to_netplan=False):
+                               add_dataport_to_netplan=False,
+                               limit_gws=None):
     """Configure the neturong-gateway external port.
 
     :param novaclient: Authenticated novaclient
@@ -605,6 +606,8 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
     :type neutronclient: neutronclient.Client object
     :param net_id: Network ID
     :type net_id: string
+    :param limit_gws: Limit the number of gateways that get a port attached
+    :type limit_gws: Optional[int]
     """
     deprecated_extnet_mode = deprecated_external_networking()
 
@@ -614,13 +617,13 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
 
     config = {}
     if dvr_enabled():
-        uuids = get_ovs_uuids()
+        uuids = itertools.islice(get_ovs_uuids(), limit_gws)
         # If dvr, do not attempt to persist nic in netplan
         # https://github.com/openstack-charmers/zaza-openstack-tests/issues/78
         add_dataport_to_netplan = False
         application_names = ['neutron-openvswitch']
     elif ovn_present():
-        uuids = get_ovn_uuids()
+        uuids = itertools.islice(get_ovn_uuids(), limit_gws)
         application_names = ['ovn-chassis']
         try:
             ovn_dc_name = 'ovn-dedicated-chassis'
@@ -633,7 +636,7 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
         config.update({'ovn-bridge-mappings': 'physnet1:br-ex'})
         add_dataport_to_netplan = False
     else:
-        uuids = get_gateway_uuids()
+        uuids = itertools.islice(get_gateway_uuids(), limit_gws)
         application_names = ['neutron-gateway']
 
     if not net_id:

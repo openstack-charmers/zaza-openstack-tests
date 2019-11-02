@@ -16,6 +16,8 @@
 
 """Setup for Neutron deployments."""
 
+import functools
+
 from zaza.openstack.configure import (
     network,
 )
@@ -56,12 +58,14 @@ DEFAULT_UNDERCLOUD_NETWORK_CONFIG = {
 }
 
 
-def basic_overcloud_network():
+def basic_overcloud_network(limit_gws=None):
     """Run setup for neutron networking.
 
     Configure the following:
         The overcloud network using subnet pools
 
+    :param limit_gws: Limit the number of gateways that get a port attached
+    :type limit_gws: int
     """
     cli_utils.setup_logging()
 
@@ -81,7 +85,20 @@ def basic_overcloud_network():
     if juju_utils.get_provider_type() == "openstack":
         undercloud_ks_sess = openstack_utils.get_undercloud_keystone_session()
         network.setup_gateway_ext_port(network_config,
-                                       keystone_session=undercloud_ks_sess)
+                                       keystone_session=undercloud_ks_sess,
+                                       limit_gws=None)
 
     # Confugre the overcloud network
     network.setup_sdn(network_config, keystone_session=keystone_session)
+
+
+# Configure function to get one gateway with external network
+overcloud_network_one_gw = functools.partial(
+    basic_overcloud_network,
+    limit_gws=1)
+
+
+# Configure function to get two gateways with external network
+overcloud_network_two_gws = functools.partial(
+    basic_overcloud_network,
+    limit_gws=2)
