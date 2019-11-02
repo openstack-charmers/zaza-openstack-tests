@@ -477,15 +477,14 @@ def ovn_present():
     :returns: True when OVN is present, False otherwise
     :rtype: bool
     """
-    try:
-        for name in ('ovn-chassis', 'ovn-dedicated-chassis'):
+    app_presence = []
+    for name in ('ovn-chassis', 'ovn-dedicated-chassis'):
+        try:
             model.get_application(name)
-            return True
-    except KeyError:
-        return False
-    else:
-        raise RuntimeError('Unable to determine whether or not OVN is present '
-                           'in deployment')
+            app_presence.append(True)
+        except KeyError:
+            app_presence.append(False)
+    return any(app_presence)
 
 
 BRIDGE_MAPPINGS = 'bridge-mappings'

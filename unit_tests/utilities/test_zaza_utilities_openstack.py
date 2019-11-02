@@ -1202,4 +1202,10 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             'neutron-api', 'enable-dvr')
 
     def test_ovn_present(self):
-        pass
+        self.patch_object(openstack_utils.model, 'get_application')
+        self.get_application.side_effect = [None, KeyError]
+        self.assertTrue(openstack_utils.ovn_present())
+        self.get_application.side_effect = [KeyError, None]
+        self.assertTrue(openstack_utils.ovn_present())
+        self.get_application.side_effect = [KeyError, KeyError]
+        self.assertFalse(openstack_utils.ovn_present())
