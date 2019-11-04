@@ -102,6 +102,10 @@ CHARM_TYPES = {
         'pkg': 'ceilometer-common',
         'origin_setting': 'openstack-origin'
     },
+    'designate': {
+        'pkg': 'designate-common',
+        'origin_setting': 'openstack-origin'
+    },
 }
 UPGRADE_SERVICES = [
     {'name': 'keystone', 'type': CHARM_TYPES['keystone']},
@@ -114,6 +118,7 @@ UPGRADE_SERVICES = [
     {'name': 'openstack-dashboard',
      'type': CHARM_TYPES['openstack-dashboard']},
     {'name': 'ceilometer', 'type': CHARM_TYPES['ceilometer']},
+    {'name': 'designate', 'type': CHARM_TYPES['designate']},
 ]
 
 

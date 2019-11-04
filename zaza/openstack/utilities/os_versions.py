@@ -205,4 +205,15 @@ PACKAGE_CODENAMES = {
         ('15', 'stein'),
         ('16', 'train'),
     ]),
+    'designate-common': OrderedDict([
+        ('1', 'liberty'),
+        ('2', 'mitaka'),
+        ('3', 'newton'),
+        ('4', 'ocata'),
+        ('5', 'pike'),
+        ('6', 'queens'),
+        ('7', 'rocky'),
+        ('8', 'stein'),
+        ('9', 'train'),
+    ]),
 }
