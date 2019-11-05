@@ -98,7 +98,7 @@ class OpenStackBaseTest(unittest.TestCase):
         """Run setup for test class to create common resourcea."""
         cls.keystone_session = openstack_utils.get_overcloud_keystone_session()
         cls.model_name = model.get_juju_model()
-        cls.test_config = lifecycle_utils.get_charm_config()
+        cls.test_config = lifecycle_utils.get_charm_config(fatal=False)
         if application_name:
             cls.application_name = application_name
         else:
