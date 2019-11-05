@@ -713,7 +713,7 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
                 application_name,
                 configuration=config)
         zaza.model.wait_for_agent_status()
-        test_config = zaza.charm_lifecycle.utils.get_charm_config()
+        test_config = zaza.charm_lifecycle.utils.get_charm_config(fatal=False)
         zaza.model.wait_for_application_states(
             states=test_config.get('target_deploy_status', {}))
 

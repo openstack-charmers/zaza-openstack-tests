@@ -84,7 +84,7 @@ def auto_initialize(cacert=None, validation_application='keystone'):
         allowed_domains='openstack.local')
 
     zaza.model.wait_for_agent_status()
-    test_config = lifecycle_utils.get_charm_config()
+    test_config = lifecycle_utils.get_charm_config(fatal=False)
     zaza.model.wait_for_application_states(
         states=test_config.get('target_deploy_status', {}))
 

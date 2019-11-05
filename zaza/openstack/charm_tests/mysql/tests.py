@@ -344,7 +344,7 @@ class PerconaClusterColdStartTest(PerconaClusterTest):
         logging.debug("Wait for application states ...")
         for unit in zaza.model.get_units(self.application):
             zaza.model.run_on_unit(unit.entity_id, "hooks/update-status")
-        test_config = lifecycle_utils.get_charm_config()
+        test_config = lifecycle_utils.get_charm_config(fatal=False)
         zaza.model.wait_for_application_states(
             states=test_config.get("target_deploy_status", {}))
 
