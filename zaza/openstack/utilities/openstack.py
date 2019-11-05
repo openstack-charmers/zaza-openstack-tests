@@ -46,7 +46,7 @@ from swiftclient import client as swiftclient
 
 import datetime
 import io
-import juju_wait
+import itertools
 import logging
 import os
 import paramiko
@@ -56,9 +56,10 @@ import subprocess
 import sys
 import tempfile
 import tenacity
-import urllib
 import textwrap
+import urllib
 
+import zaza
 from zaza import model
 from zaza.openstack.utilities import (
     exceptions,
@@ -453,7 +454,7 @@ def get_gateway_uuids():
     """Return machine uuids for neutron-gateway(s).
 
     :returns: List of uuids
-    :rtype: list
+    :rtype: Iterator[str]
     """
     return juju_utils.get_machine_uuids_for_application('neutron-gateway')
 
@@ -462,28 +463,65 @@ def get_ovs_uuids():
     """Return machine uuids for neutron-openvswitch(s).
 
     :returns: List of uuids
-    :rtype: list
+    :rtype: Iterator[str]
     """
     return (juju_utils
             .get_machine_uuids_for_application('neutron-openvswitch'))
+
+
+def get_ovn_uuids():
+    """Provide machine uuids for OVN Chassis.
+
+    :returns: List of uuids
+    :rtype: Iterator[str]
+    """
+    return itertools.chain(
+        juju_utils.get_machine_uuids_for_application('ovn-chassis'),
+        juju_utils.get_machine_uuids_for_application('ovn-dedicated-chassis'),
+    )
+
+
+def dvr_enabled():
+    """Check whether DVR is enabled in deployment.
+
+    :returns: True when DVR is enabled, False otherwise
+    :rtype: bool
+    """
+    return get_application_config_option('neutron-api', 'enable-dvr')
+
+
+def ovn_present():
+    """Check whether OVN is present in deployment.
+
+    :returns: True when OVN is present, False otherwise
+    :rtype: bool
+    """
+    app_presence = []
+    for name in ('ovn-chassis', 'ovn-dedicated-chassis'):
+        try:
+            model.get_application(name)
+            app_presence.append(True)
+        except KeyError:
+            app_presence.append(False)
+    return any(app_presence)
 
 
 BRIDGE_MAPPINGS = 'bridge-mappings'
 NEW_STYLE_NETWORKING = 'physnet1:br-ex'
 
 
-def deprecated_external_networking(dvr_mode=False):
+def deprecated_external_networking():
     """Determine whether deprecated external network mode is in use.
 
-    :param dvr_mode: Using DVR mode or not
-    :type dvr_mode: boolean
     :returns: True or False
     :rtype: boolean
     """
     bridge_mappings = None
-    if dvr_mode:
+    if dvr_enabled():
         bridge_mappings = get_application_config_option('neutron-openvswitch',
                                                         BRIDGE_MAPPINGS)
+    elif ovn_present():
+        return False
     else:
         bridge_mappings = get_application_config_option('neutron-gateway',
                                                         BRIDGE_MAPPINGS)
@@ -520,17 +558,15 @@ def get_admin_net(neutron_client):
             return net
 
 
-def add_interface_to_netplan(server_name, mac_address, dvr_mode=None):
+def add_interface_to_netplan(server_name, mac_address):
     """In guest server_name, add nic with mac_address to netplan.
 
     :param server_name: Hostname of instance
     :type server_name: string
     :param mac_address: mac address of nic to be added to netplan
     :type mac_address: string
-    :param dvr_mode: Using DVR mode or not
-    :type dvr_mode: boolean
     """
-    if dvr_mode:
+    if dvr_enabled():
         application_name = 'neutron-openvswitch'
     else:
         application_name = 'neutron-gateway'
@@ -578,33 +614,49 @@ def add_interface_to_netplan(server_name, mac_address, dvr_mode=None):
     model.run_on_unit(unit_name, "sudo netplan apply")
 
 
-def configure_gateway_ext_port(novaclient, neutronclient,
-                               dvr_mode=None, net_id=None,
-                               add_dataport_to_netplan=False):
+def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
+                               add_dataport_to_netplan=False,
+                               limit_gws=None):
     """Configure the neturong-gateway external port.
 
     :param novaclient: Authenticated novaclient
     :type novaclient: novaclient.Client object
     :param neutronclient: Authenticated neutronclient
     :type neutronclient: neutronclient.Client object
-    :param dvr_mode: Using DVR mode or not
-    :type dvr_mode: boolean
     :param net_id: Network ID
     :type net_id: string
+    :param limit_gws: Limit the number of gateways that get a port attached
+    :type limit_gws: Optional[int]
     """
-    if dvr_mode:
-        uuids = get_ovs_uuids()
+    deprecated_extnet_mode = deprecated_external_networking()
+
+    port_config_key = 'data-port'
+    if deprecated_extnet_mode:
+        port_config_key = 'ext-port'
+
+    config = {}
+    if dvr_enabled():
+        uuids = itertools.islice(get_ovs_uuids(), limit_gws)
         # If dvr, do not attempt to persist nic in netplan
         # https://github.com/openstack-charmers/zaza-openstack-tests/issues/78
         add_dataport_to_netplan = False
+        application_names = ['neutron-openvswitch']
+    elif ovn_present():
+        uuids = itertools.islice(get_ovn_uuids(), limit_gws)
+        application_names = ['ovn-chassis']
+        try:
+            ovn_dc_name = 'ovn-dedicated-chassis'
+            next(juju_utils.get_machine_uuids_for_application(ovn_dc_name))
+            application_names.append(ovn_dc_name)
+        except StopIteration:
+            # ovn-dedicated-chassis not in deployment
+            pass
+        port_config_key = 'interface-bridge-mappings'
+        config.update({'ovn-bridge-mappings': 'physnet1:br-ex'})
+        add_dataport_to_netplan = False
     else:
-        uuids = get_gateway_uuids()
-
-    deprecated_extnet_mode = deprecated_external_networking(dvr_mode)
-
-    config_key = 'data-port'
-    if deprecated_extnet_mode:
-        config_key = 'ext-port'
+        uuids = itertools.islice(get_gateway_uuids(), limit_gws)
+        application_names = ['neutron-gateway']
 
     if not net_id:
         net_id = get_admin_net(neutronclient)['id']
@@ -633,34 +685,37 @@ def configure_gateway_ext_port(novaclient, neutronclient,
             if add_dataport_to_netplan:
                 mac_address = get_mac_from_port(port, neutronclient)
                 add_interface_to_netplan(server.name,
-                                         mac_address=mac_address,
-                                         dvr_mode=dvr_mode)
+                                         mac_address=mac_address)
     ext_br_macs = []
     for port in neutronclient.list_ports(network_id=net_id)['ports']:
         if 'ext-port' in port['name']:
             if deprecated_extnet_mode:
                 ext_br_macs.append(port['mac_address'])
+            elif ovn_present():
+                ext_br_macs.append('{}:br-ex'.format(port['mac_address']))
             else:
                 ext_br_macs.append('br-ex:{}'.format(port['mac_address']))
     ext_br_macs.sort()
     ext_br_macs_str = ' '.join(ext_br_macs)
-    if dvr_mode:
-        application_name = 'neutron-openvswitch'
-    else:
-        application_name = 'neutron-gateway'
 
     if ext_br_macs:
-        logging.info('Setting {} on {} external port to {}'.format(
-            config_key, application_name, ext_br_macs_str))
-        current_data_port = get_application_config_option(application_name,
-                                                          config_key)
-        if current_data_port == ext_br_macs_str:
-            logging.info('Config already set to value')
-            return
-        model.set_application_config(
-            application_name,
-            configuration={config_key: ext_br_macs_str})
-        juju_wait.wait(wait_for_workload=True)
+        config.update({port_config_key: ext_br_macs_str})
+        for application_name in application_names:
+            logging.info('Setting {} on {}'.format(
+                config, application_name))
+            current_data_port = get_application_config_option(application_name,
+                                                              port_config_key)
+            if current_data_port == ext_br_macs_str:
+                logging.info('Config already set to value')
+                return
+
+            model.set_application_config(
+                application_name,
+                configuration=config)
+        zaza.model.wait_for_agent_status()
+        test_config = zaza.charm_lifecycle.utils.get_charm_config()
+        zaza.model.wait_for_application_states(
+            states=test_config.get('target_deploy_status', {}))
 
 
 @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
@@ -721,16 +776,13 @@ def create_project_network(neutron_client, project_id, net_name='private',
     return network
 
 
-def create_external_network(neutron_client, project_id, dvr_mode,
-                            net_name='ext_net'):
+def create_external_network(neutron_client, project_id, net_name='ext_net'):
     """Create the external network.
 
     :param neutron_client: Authenticated neutronclient
     :type neutron_client: neutronclient.Client object
     :param project_id: Project ID
     :type project_id: string
-    :param dvr_mode: Using DVR mode or not
-    :type dvr_mode: boolean
     :param net_name: Network name
     :type net_name: string
     :returns: Network object
@@ -1377,10 +1429,9 @@ def get_current_os_release_pair(application='keystone'):
     :raises: exceptions.SeriesNotFound
     :raises: exceptions.OSVersionNotFound
     """
-    machines = juju_utils.get_machines_for_application(application)
-    if len(machines) >= 1:
-        machine = machines[0]
-    else:
+    try:
+        machine = next(juju_utils.get_machines_for_application(application))
+    except StopIteration:
         raise exceptions.ApplicationNotFound(application)
 
     series = juju_utils.get_machine_series(machine)

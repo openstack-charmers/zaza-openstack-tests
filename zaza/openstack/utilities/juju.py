@@ -81,21 +81,20 @@ def get_machines_for_application(application):
 
     :param application: Application name
     :type application: string
-    :returns: List of machines for an application
-    :rtype: list
+    :returns: machines for an application
+    :rtype: Iterator[str]
     """
     status = get_application_status(application)
+    if not status:
+        raise StopIteration
 
     # libjuju juju status no longer has units for subordinate charms
     # Use the application it is subordinate-to to find machines
     if status.get("units") is None and status.get("subordinate-to"):
-        return get_machines_for_application(status.get("subordinate-to")[0])
+        status = get_application_status(status.get("subordinate-to")[0])
 
-    machines = []
     for unit in status.get("units").keys():
-        machines.append(
-            status.get("units").get(unit).get("machine"))
-    return machines
+        yield status.get("units").get(unit).get("machine")
 
 
 def get_unit_name_from_host_name(host_name, application):
@@ -151,13 +150,11 @@ def get_machine_uuids_for_application(application):
 
     :param application: Application name
     :type application: string
-    :returns: List of machine uuuids for an application
-    :rtype: list
+    :returns: machine uuuids for an application
+    :rtype: Iterator[str]
     """
-    uuids = []
     for machine in get_machines_for_application(application):
-        uuids.append(get_machine_status(machine, key="instance-id"))
-    return uuids
+        yield get_machine_status(machine, key="instance-id")
 
 
 def get_provider_type():
