@@ -37,8 +37,6 @@ class MySQLBaseTest(test_utils.OpenStackBaseTest):
         super(MySQLBaseTest, cls).setUpClass()
         cls.application = "mysql"
         cls.services = ["mysqld"]
-        cls.leader = None
-        cls.non_leaders = []
         # Config file affected by juju set config change
         cls.conf_file = "/etc/mysql/mysql.conf.d/mysqld.cnf"
 
@@ -52,7 +50,7 @@ class MySQLBaseTest(test_utils.OpenStackBaseTest):
             self.application,
             "leader-get root-password")["Stdout"].strip()
 
-    def update_leaders_and_non_leaders(self):
+    def get_leaders_and_non_leaders(self):
         """Get leader node and non-leader nodes of percona.
 
         Update and set on the object the leader node and list of non-leader
@@ -70,6 +68,7 @@ class MySQLBaseTest(test_utils.OpenStackBaseTest):
                 self.leader = unit
             else:
                 self.non_leaders.append(unit)
+        return self.leader, self.non_leaders
 
 
 class MySQLCommonTests(MySQLBaseTest):
@@ -317,14 +316,14 @@ class PerconaClusterColdStartTest(PerconaClusterBaseTest):
         zaza.model.wait_for_application_states(states=states)
 
         # Update which node is the leader and which are not
-        self.update_leaders_and_non_leaders()
+        _leader, _non_leaders = self.get_leaders_and_non_leaders()
         # We want to test the worst possible scenario which is the
         # non-leader with the highest sequence number. We will use the leader
         # for the notify-bootstrapped after. They just need to be different
         # units.
         logging.info("Execute bootstrap-pxc action after cold boot ...")
         zaza.model.run_action(
-            self.non_leaders[0],
+            _non_leaders[0],
             "bootstrap-pxc",
             action_params={})
         logging.debug("Wait for application states ...")
@@ -412,10 +411,10 @@ class MySQLInnoDBClusterTests(MySQLCommonTests):
         Run the cluster-status action.
         """
         # Update which node is the leader and which are not
-        self.update_leaders_and_non_leaders()
+        _leaders, _non_leaders = self.get_leaders_and_non_leaders()
         logging.info("Execute cluster-status action")
         action = zaza.model.run_action(
-            self.non_leaders[0],
+            _non_leaders[0],
             "cluster-status",
             action_params={})
         cluster_status = json.loads(action.data["results"]["cluster-status"])
