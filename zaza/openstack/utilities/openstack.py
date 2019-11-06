@@ -47,6 +47,7 @@ from swiftclient import client as swiftclient
 import datetime
 import io
 import itertools
+import juju_wait
 import logging
 import os
 import paramiko
@@ -59,7 +60,6 @@ import tenacity
 import textwrap
 import urllib
 
-import zaza
 from zaza import model
 from zaza.openstack.utilities import (
     exceptions,
@@ -712,10 +712,10 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
             model.set_application_config(
                 application_name,
                 configuration=config)
-        zaza.model.wait_for_agent_status()
-        test_config = zaza.charm_lifecycle.utils.get_charm_config(fatal=False)
-        zaza.model.wait_for_application_states(
-            states=test_config.get('target_deploy_status', {}))
+        # NOTE(fnordahl): We are stuck with juju_wait until we figure out how
+        # to deal with all the non ['active', 'idle', 'Unit is ready.']
+        # workload/agent states and msgs that our mojo specs are exposed to.
+        juju_wait.wait(wait_for_workload=True)
 
 
 @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
