@@ -205,7 +205,7 @@ class CephRBDMirrorTest(CephRBDMirrorBase):
         #
         # We do not use tenacity here as it will interfere with tenacity used
         # in ``resource_reaches_status``
-        def create_volume_from_image(cinder, image, retry=5):
+        def create_volume_from_image(cinder, image, retry=20):
             if retry < 1:
                 return
             volume = cinder.volumes.create(8, name='zaza', imageRef=image.id)
