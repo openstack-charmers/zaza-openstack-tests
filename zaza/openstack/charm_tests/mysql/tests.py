@@ -242,8 +242,6 @@ class PerconaClusterColdStartTest(PerconaClusterBaseTest):
             openstack_utils.get_undercloud_keystone_session())
         cls.nova_client = openstack_utils.get_nova_session_client(
             cls.overcloud_keystone_session)
-        cls.machines = (
-            juju_utils.get_machine_uuids_for_application(cls.application))
 
     def resolve_update_status_errors(self):
         """Resolve update-status hooks error.
@@ -267,25 +265,27 @@ class PerconaClusterColdStartTest(PerconaClusterBaseTest):
         After bootstrapping a non-leader node, notify bootstrapped on the
         leader node.
         """
+        _machines = list(
+            juju_utils.get_machine_uuids_for_application(self.application))
         # Stop Nodes
-        self.machines.sort()
+        _machines.sort()
         # Avoid hitting an update-status hook
         logging.debug("Wait till model is idle ...")
         zaza.model.block_until_all_units_idle()
-        logging.info("Stopping instances: {}".format(self.machines))
-        for uuid in self.machines:
+        logging.info("Stopping instances: {}".format(_machines))
+        for uuid in _machines:
             self.nova_client.servers.stop(uuid)
         logging.debug("Wait till all machines are shutoff ...")
-        for uuid in self.machines:
+        for uuid in _machines:
             openstack_utils.resource_reaches_status(self.nova_client.servers,
                                                     uuid,
                                                     expected_status='SHUTOFF',
                                                     stop_after_attempt=16)
 
         # Start nodes
-        self.machines.sort(reverse=True)
-        logging.info("Starting instances: {}".format(self.machines))
-        for uuid in self.machines:
+        _machines.sort(reverse=True)
+        logging.info("Starting instances: {}".format(_machines))
+        for uuid in _machines:
             self.nova_client.servers.start(uuid)
 
         for unit in zaza.model.get_units(self.application):
