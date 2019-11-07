@@ -39,6 +39,7 @@ install_require = [
     'python-heatclient',
     'python-glanceclient',
     'python-keystoneclient',
+    'python-manilaclient',
     'python-novaclient',
     'python-neutronclient',
     'python-octaviaclient',
