@@ -62,6 +62,8 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
     :type meta: dict
     :param userdata: Configuration to use upon launch, used by cloud-init.
     :type userdata: str
+    :returns: the created instance
+    :rtype: novaclient.Server
     """
     keystone_session = openstack_utils.get_overcloud_keystone_session()
     nova_client = openstack_utils.get_nova_session_client(keystone_session)
@@ -140,3 +142,4 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
         vm_name=vm_name,
         password=boot_tests[instance_key].get('password'),
         privkey=openstack_utils.get_private_key(nova_utils.KEYPAIR_NAME))
+    return instance

@@ -31,6 +31,14 @@ class ManilaGaneshaTests(test_utils.OpenStackBaseTest):
     """Encapsulate Manila Ganesha tests."""
 
     RESOURCE_PREFIX = 'zaza-manilatests'
+    INSTANCE_USERDATA = """#cloud-config
+packages:
+- nfs-common
+write_files:
+- path: "/mnt/ceph"
+  permissions: '0600'
+  owner: root:root
+"""
 
     @classmethod
     def setUpClass(cls):
@@ -55,20 +63,19 @@ class ManilaGaneshaTests(test_utils.OpenStackBaseTest):
         share = self.manila_client.shares.create(
             share_type='cephfsnfstype', name='cephnfsshare1',
             share_proto="nfs", size=1)
+        mount_path = share.export_locations[0]
 
         # Spawn Servers
-        guest.launch_instance(
+        instance_1 = guest.launch_instance(
             glance_setup.LTS_IMAGE_NAME,
-            vm_name='{}-ins-1'.format(self.RESOURCE_PREFIX))
-        guest.launch_instance(
+            vm_name='{}-ins-1'.format(self.RESOURCE_PREFIX),
+            userdata=self.INSTANCE_USERDATA)
+        instance_2 = guest.launch_instance(
             glance_setup.LTS_IMAGE_NAME,
-            vm_name='{}-ins-2'.format(self.RESOURCE_PREFIX))
+            vm_name='{}-ins-2'.format(self.RESOURCE_PREFIX),
+            userdata=self.INSTANCE_USERDATA)
 
-        instance_1 = self.nova_client.servers.find(
-            name='{}-ins-1'.format(self.RESOURCE_PREFIX))
         fip_1 = neutron_tests.floating_ips_from_instance(instance_1)[0]
-        instance_2 = self.nova_client.servers.find(
-            name='{}-ins-2'.format(self.RESOURCE_PREFIX))
         fip_2 = neutron_tests.floating_ips_from_instance(instance_2)[0]
 
         share.allow(access_type='ip', access=fip_1, access_level='rw')
@@ -78,7 +85,6 @@ class ManilaGaneshaTests(test_utils.OpenStackBaseTest):
         username = guest.boot_tests['bionic']['username']
         password = guest.boot_tests['bionic'].get('password')
         privkey = openstack_utils.get_private_key(nova_utils.KEYPAIR_NAME)
-        mount_path = share.export_locations[0]
 
         # Write a file on instance_1
         def verify_setup(stdin, stdout, stderr):
@@ -86,9 +92,6 @@ class ManilaGaneshaTests(test_utils.OpenStackBaseTest):
             self.assertEqual(status, 0)
 
         openstack_utils.ssh_command(
-            username, fip_1, 'instance-1',
-            'sudo apt install -yq nfs-common && '
-            'sudo mkdir -p /mnt/ceph && '
             'sudo mount -t nfs -o nfsvers=4.1,proto=tcp {} /mnt/ceph && '
             'echo "test" | sudo tee /mnt/ceph/test'.format(
                 mount_path),
@@ -96,17 +99,14 @@ class ManilaGaneshaTests(test_utils.OpenStackBaseTest):
 
         # Read that file on instance_2
         openstack_utils.ssh_command(
-            username, fip_2, 'instance-2',
-            'sudo apt install -yq nfs-common && '
-            'sudo /bin/mkdir -p /mnt/ceph && '
             'sudo /bin/mount -t nfs -o nfsvers=4.1,proto=tcp {} /mnt/ceph'
             .format(mount_path),
             password=password, privkey=privkey, verify=verify_setup)
 
         def verify(stdin, stdout, stderr):
             status = stdout.channel.recv_exit_status()
+            self.assertEqual(status, 0)
             out = ""
-            print("[{}] Stdout:".format(status))
             for line in iter(stdout.readline, ""):
                 out += line
             self.assertEqual(out, "test\n")
