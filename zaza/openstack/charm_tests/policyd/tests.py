@@ -41,6 +41,7 @@ import zipfile
 import keystoneauth1
 import glanceclient.common.exceptions
 import cinderclient.exceptions
+import heatclient.exc
 
 import zaza.model as zaza_model
 
@@ -558,4 +559,36 @@ class CinderTests(BasePolicydSpecialization):
         try:
             cinder_client.volumes.list()
         except cinderclient.exceptions.Forbidden:
+            raise PolicydOperationFailedException()
+
+
+class HeatTests(BasePolicydSpecialization):
+    """Test the policyd override using the heat client."""
+
+    _rule = "{'stacks:index': '!'}"
+
+    @classmethod
+    def setUpClass(cls, application_name=None):
+        """Run class setup for running HeatTests charm operation tests."""
+        super(HeatTests, cls).setUpClass(application_name="heat")
+        cls.application_name = "heat"
+
+    def get_client_and_attempt_operation(self, ip):
+        """Attempt to list the heat stacks as a policyd override.
+
+        This operation should pass normally, and fail when
+        the rule has been overriden (see the `rule` class variable).
+
+        :param ip: the IP address to get the session against.
+        :type ip: str
+        :raises: PolicydOperationFailedException if operation fails.
+        """
+        heat_client = openstack_utils.get_heat_session_client(
+            self.get_keystone_session_admin_user(ip))
+        try:
+            # stacks.list() returns a generator (as opposed to a list), so to
+            # force the client to actually connect, the generator has to be
+            # iterated.
+            list(heat_client.stacks.list())
+        except heatclient.exc.HTTPForbidden:
             raise PolicydOperationFailedException()
