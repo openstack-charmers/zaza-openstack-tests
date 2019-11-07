@@ -210,8 +210,13 @@ class CephRBDMirrorTest(CephRBDMirrorBase):
                 return
             volume = cinder.volumes.create(8, name='zaza', imageRef=image.id)
             try:
+                # Note(coreycb): stop_after_attempt is increased because using
+                # juju storage for ceph-osd backed by cinder on undercloud
+                # takes longer than the prior method of directory-backed OSD
+                # devices.
                 openstack.resource_reaches_status(
-                    cinder.volumes, volume.id, msg='volume')
+                    cinder.volumes, volume.id, msg='volume',
+                    stop_after_attempt=20)
                 return volume
             except AssertionError:
                 logging.info('retrying')
