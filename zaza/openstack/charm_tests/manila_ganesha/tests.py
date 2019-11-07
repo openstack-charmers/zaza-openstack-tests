@@ -63,7 +63,6 @@ write_files:
         share = self.manila_client.shares.create(
             share_type='cephfsnfstype', name='cephnfsshare1',
             share_proto="nfs", size=1)
-        mount_path = share.export_locations[0]
 
         # Spawn Servers
         instance_1 = guest.launch_instance(
@@ -90,6 +89,8 @@ write_files:
         def verify_setup(stdin, stdout, stderr):
             status = stdout.channel.recv_exit_status()
             self.assertEqual(status, 0)
+
+        mount_path = share.export_locations[0]
 
         openstack_utils.ssh_command(
             'sudo mount -t nfs -o nfsvers=4.1,proto=tcp {} /mnt/ceph && '
