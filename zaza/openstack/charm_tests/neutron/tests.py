@@ -90,19 +90,22 @@ class SecurityTest(test_utils.OpenStackBaseTest):
 
     def test_security_checklist(self):
         """Verify expected state with security-checklist."""
-        # Changes fixing the below expected failures will be made following
-        # this initial work to get validation in. There will be bugs targeted
-        # to each one and resolved independently where possible.
-
-        expected_failures = [
-            'validate-enables-tls',
+        tls_checks = [
             'validate-uses-tls-for-keystone',
+        ]
+        expected_failures = [
+            'validate-enables-tls',  # LP: #1851610
         ]
         expected_passes = [
             'validate-file-ownership',
             'validate-file-permissions',
             'validate-uses-keystone',
         ]
+        if zaza.model.get_relation_id(
+                'neutron-api', 'vault', remote_interface_name='certificates'):
+            expected_passes.extend(tls_checks)
+        else:
+            expected_failures.extend(tls_checks)
 
         for unit in zaza.model.get_units('neutron-api',
                                          model_name=self.model_name):
