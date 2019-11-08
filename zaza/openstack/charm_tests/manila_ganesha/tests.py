@@ -34,10 +34,6 @@ class ManilaGaneshaTests(test_utils.OpenStackBaseTest):
     INSTANCE_USERDATA = """#cloud-config
 packages:
 - nfs-common
-write_files:
-- path: "/mnt/ceph"
-  permissions: '0600'
-  owner: root:root
 """
 
     @classmethod
@@ -94,6 +90,7 @@ write_files:
 
         openstack_utils.ssh_command(
             username, fip_1, 'instance-1',
+            'sudo mkdir -p /mnt/ceph && '
             'sudo mount -t nfs -o nfsvers=4.1,proto=tcp {} /mnt/ceph && '
             'echo "test" | sudo tee /mnt/ceph/test'.format(
                 mount_path),
@@ -102,6 +99,7 @@ write_files:
         # Read that file on instance_2
         openstack_utils.ssh_command(
             username, fip_2, 'instance-2',
+            'sudo mkdir -p /mnt/ceph && '
             'sudo /bin/mount -t nfs -o nfsvers=4.1,proto=tcp {} /mnt/ceph'
             .format(mount_path),
             password=password, privkey=privkey, verify=verify_setup)
