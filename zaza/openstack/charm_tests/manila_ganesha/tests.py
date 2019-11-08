@@ -93,6 +93,7 @@ write_files:
         mount_path = share.export_locations[0]
 
         openstack_utils.ssh_command(
+            username, fip_1, 'instance-1',
             'sudo mount -t nfs -o nfsvers=4.1,proto=tcp {} /mnt/ceph && '
             'echo "test" | sudo tee /mnt/ceph/test'.format(
                 mount_path),
@@ -100,6 +101,7 @@ write_files:
 
         # Read that file on instance_2
         openstack_utils.ssh_command(
+            username, fip_2, 'instance-2',
             'sudo /bin/mount -t nfs -o nfsvers=4.1,proto=tcp {} /mnt/ceph'
             .format(mount_path),
             password=password, privkey=privkey, verify=verify_setup)
