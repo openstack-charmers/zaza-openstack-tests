@@ -2174,7 +2174,7 @@ def cloud_init_complete(nova_client, vm_id, bootstring):
 
 
 @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
-                reraise=True, stop=tenacity.stop_after_attempt(8))
+                reraise=True, stop=tenacity.stop_after_attempt(16))
 def ping_response(ip):
     """Wait for ping to respond on the given IP.
 
