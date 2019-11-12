@@ -465,8 +465,7 @@ def get_ovs_uuids():
     :returns: List of uuids
     :rtype: Iterator[str]
     """
-    return (juju_utils
-            .get_machine_uuids_for_application('neutron-openvswitch'))
+    return juju_utils.get_machine_uuids_for_application('neutron-openvswitch')
 
 
 def get_ovn_uuids():
@@ -636,11 +635,20 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
 
     config = {}
     if dvr_enabled():
-        uuids = itertools.islice(get_ovs_uuids(), limit_gws)
+        uuids = itertools.islice(itertools.chain(get_ovs_uuids(),
+                                                 get_gateway_uuids()),
+                                 limit_gws)
         # If dvr, do not attempt to persist nic in netplan
         # https://github.com/openstack-charmers/zaza-openstack-tests/issues/78
         add_dataport_to_netplan = False
         application_names = ['neutron-openvswitch']
+        try:
+            ngw = 'neutron-gateway'
+            next(juju_utils.get_machine_uuids_for_application(ngw))
+            application_names.append(ngw)
+        except StopIteration:
+            # neutron-gateway not in deployment
+            pass
     elif ovn_present():
         uuids = itertools.islice(get_ovn_uuids(), limit_gws)
         application_names = ['ovn-chassis']
