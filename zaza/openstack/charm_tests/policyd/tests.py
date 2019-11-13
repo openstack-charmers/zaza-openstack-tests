@@ -86,6 +86,7 @@ class PolicydTest(object):
         config = {"use-policyd-override": s}
         logging.info("Setting config to {}".format(config))
         zaza_model.set_application_config(self.application_name, config)
+        zaza_model.wait_for_agent_status()
 
     def _make_zip_file_from(self, name, files):
         """Make a zip file from a dictionary of filename: string.
