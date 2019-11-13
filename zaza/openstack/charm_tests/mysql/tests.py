@@ -421,3 +421,22 @@ class MySQLInnoDBClusterTests(MySQLCommonTests):
         assert "OK" in cluster_status["defaultReplicaSet"]["status"], (
             "Cluster status action failed.")
         logging.info("Passed cluster-status action test.")
+
+    def test_110_mysqldump(self):
+        """Backup mysql.
+
+        Run the mysqldump action.
+        """
+        _db = "keystone"
+        _file_key = "mysqldump-file"
+        # Update which node is the leader and which are not
+        _leaders, _non_leaders = self.get_leaders_and_non_leaders()
+        logging.info("Execute mysqldump action")
+        action = zaza.model.run_action(
+            _non_leaders[0],
+            "mysqldump",
+            action_params={"databases": _db})
+        _results = action.data["results"]
+        assert _db in _results[_file_key], (
+            "Mysqldump action failed.")
+        logging.info("Passed mysqldump action test.")
