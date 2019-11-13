@@ -18,6 +18,7 @@
 
 
 import logging
+import tenacity
 import unittest
 
 import zaza
@@ -175,6 +176,8 @@ class NeutronNetworkingTest(unittest.TestCase):
         self.validate_instance_can_reach_router(instance_1, verify)
         self.validate_instance_can_reach_router(instance_2, verify)
 
+    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
+                    reraise=True, stop=tenacity.stop_after_attempt(8))
     def validate_instance_can_reach_other(self,
                                           instance_1,
                                           instance_2,
@@ -206,6 +209,8 @@ class NeutronNetworkingTest(unittest.TestCase):
             'ping -c 1 {}'.format(floating_2),
             password=password, privkey=privkey, verify=verify)
 
+    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
+                    reraise=True, stop=tenacity.stop_after_attempt(8))
     def validate_instance_can_reach_router(self, instance, verify):
         """
         Validate that an instance can reach it's primary gateway.
