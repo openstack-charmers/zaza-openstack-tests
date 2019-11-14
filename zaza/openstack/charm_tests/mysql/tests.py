@@ -440,3 +440,104 @@ class MySQLInnoDBClusterTests(MySQLCommonTests):
         assert _db in _results[_file_key], (
             "Mysqldump action failed.")
         logging.info("Passed mysqldump action test.")
+
+
+class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
+    """Percona Cluster cold start tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running percona-cluster cold start tests."""
+        super().setUpClass()
+        cls.application = "mysql-innodb-cluster"
+        cls.overcloud_keystone_session = (
+            openstack_utils.get_undercloud_keystone_session())
+        cls.nova_client = openstack_utils.get_nova_session_client(
+            cls.overcloud_keystone_session)
+
+    def resolve_update_status_errors(self):
+        """Resolve update-status hooks error.
+
+        This should *only* be used after an instance hard reboot to handle the
+        situation where a update-status hook was running when the unit was
+        rebooted.
+        """
+        zaza.model.resolve_units(
+            application_name=self.application,
+            erred_hook='update-status',
+            wait=True)
+
+    def test_100_cold_start_bootstrap(self):
+        """Bootstrap a non-leader node.
+
+        After bootstrapping a non-leader node, notify bootstrapped on the
+        leader node.
+        """
+        _machines = list(
+            juju_utils.get_machine_uuids_for_application(self.application))
+        # Stop Nodes
+        _machines.sort()
+        # Avoid hitting an update-status hook
+        logging.debug("Wait till model is idle ...")
+        zaza.model.block_until_all_units_idle()
+        logging.info("Stopping instances: {}".format(_machines))
+        for uuid in _machines:
+            self.nova_client.servers.stop(uuid)
+        logging.debug("Wait till all machines are shutoff ...")
+        for uuid in _machines:
+            openstack_utils.resource_reaches_status(self.nova_client.servers,
+                                                    uuid,
+                                                    expected_status='SHUTOFF',
+                                                    stop_after_attempt=16)
+
+        # Start nodes
+        _machines.sort(reverse=True)
+        logging.info("Starting instances: {}".format(_machines))
+        for uuid in _machines:
+            self.nova_client.servers.start(uuid)
+
+        for unit in zaza.model.get_units(self.application):
+            zaza.model.block_until_unit_wl_status(
+                unit.entity_id,
+                'unknown',
+                negate_match=True)
+
+        logging.debug("Wait till model is idle ...")
+        # XXX If a hook was executing on a unit when it was powered off
+        #     it comes back in an error state.
+        try:
+            zaza.model.block_until_all_units_idle()
+        except zaza.model.UnitError:
+            self.resolve_update_status_errors()
+            zaza.model.block_until_all_units_idle()
+
+        logging.debug("Wait for application states ...")
+        for unit in zaza.model.get_units(self.application):
+            try:
+                zaza.model.run_on_unit(unit.entity_id, "hooks/update-status")
+            except zaza.model.UnitError:
+                self.resolve_update_status_errors()
+                zaza.model.run_on_unit(unit.entity_id, "hooks/update-status")
+        states = {self.application: {
+            "workload-status": "blocked",
+            "workload-status-message":
+                "MySQL InnoDB Cluster not healthy: None"}}
+        zaza.model.wait_for_application_states(states=states)
+
+        # Update which node is the leader and which are not
+        _leader, _non_leaders = self.get_leaders_and_non_leaders()
+        logging.info("Execute reboot-cluster-from-complete-outage "
+                     "action after cold boot ...")
+        action = zaza.model.run_action(
+            _non_leaders[0],
+            "reboot-cluster-from-complete-outage",
+            action_params={})
+        assert "completed" in action.data["status"], (
+            "Reboot Cluster From Complete Outage action failed: {}"
+            .format(action.data))
+        logging.debug("Wait for application states ...")
+        for unit in zaza.model.get_units(self.application):
+            zaza.model.run_on_unit(unit.entity_id, "hooks/update-status")
+        test_config = lifecycle_utils.get_charm_config(fatal=False)
+        zaza.model.wait_for_application_states(
+            states=test_config.get("target_deploy_status", {}))
