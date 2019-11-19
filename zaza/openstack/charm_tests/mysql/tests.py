@@ -410,16 +410,15 @@ class MySQLInnoDBClusterTests(MySQLCommonTests):
 
         Run the cluster-status action.
         """
-        # Update which node is the leader and which are not
-        _leaders, _non_leaders = self.get_leaders_and_non_leaders()
         logging.info("Execute cluster-status action")
-        action = zaza.model.run_action(
-            _non_leaders[0],
+        action = zaza.model.run_action_on_leader(
+            self.application,
             "cluster-status",
             action_params={})
         cluster_status = json.loads(action.data["results"]["cluster-status"])
         assert "OK" in cluster_status["defaultReplicaSet"]["status"], (
-            "Cluster status action failed.")
+            "Cluster status action failed: {}"
+            .format(action.data))
         logging.info("Passed cluster-status action test.")
 
     def test_110_mysqldump(self):
@@ -429,17 +428,32 @@ class MySQLInnoDBClusterTests(MySQLCommonTests):
         """
         _db = "keystone"
         _file_key = "mysqldump-file"
-        # Update which node is the leader and which are not
-        _leaders, _non_leaders = self.get_leaders_and_non_leaders()
         logging.info("Execute mysqldump action")
-        action = zaza.model.run_action(
-            _non_leaders[0],
+        action = zaza.model.run_action_on_leader(
+            self.application,
             "mysqldump",
             action_params={"databases": _db})
         _results = action.data["results"]
         assert _db in _results[_file_key], (
-            "Mysqldump action failed.")
+            "Mysqldump action failed: {}".format(action.data))
         logging.info("Passed mysqldump action test.")
+
+    def test_120_set_cluster_option(self):
+        """Set cluster option.
+
+        Run the set-cluster-option action.
+        """
+        _key = "autoRejoinTries"
+        _value = "500"
+        logging.info("Set cluster option {}={}".format(_key, _value))
+        action = zaza.model.run_action_on_leader(
+            self.application,
+            "set-cluster-option",
+            action_params={"key": _key, "value": _value})
+        assert "Success" in action.data["results"]["outcome"], (
+            "Set cluster option {}={} action failed: {}"
+            .format(_key, _value, action.data))
+        logging.info("Passed set cluster option action test.")
 
 
 class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
@@ -467,11 +481,10 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
             erred_hook='update-status',
             wait=True)
 
-    def test_100_cold_start_bootstrap(self):
-        """Bootstrap a non-leader node.
+    def test_100_reboot_cluster_from_complete_outage(self):
+        """Reboot cluster from complete outage.
 
-        After bootstrapping a non-leader node, notify bootstrapped on the
-        leader node.
+        After a cold start, reboot cluster from complete outage.
         """
         _machines = list(
             juju_utils.get_machine_uuids_for_application(self.application))
@@ -503,8 +516,6 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
                 negate_match=True)
 
         logging.debug("Wait till model is idle ...")
-        # XXX If a hook was executing on a unit when it was powered off
-        #     it comes back in an error state.
         try:
             zaza.model.block_until_all_units_idle()
         except zaza.model.UnitError:
@@ -524,16 +535,14 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
                 "MySQL InnoDB Cluster not healthy: None"}}
         zaza.model.wait_for_application_states(states=states)
 
-        # Update which node is the leader and which are not
-        _leader, _non_leaders = self.get_leaders_and_non_leaders()
         logging.info("Execute reboot-cluster-from-complete-outage "
                      "action after cold boot ...")
-        action = zaza.model.run_action(
-            _non_leaders[0],
+        action = zaza.model.run_action_on_leader(
+            self.application,
             "reboot-cluster-from-complete-outage",
             action_params={})
-        assert "completed" in action.data["status"], (
-            "Reboot Cluster From Complete Outage action failed: {}"
+        assert "Success" in action.data["results"]["outcome"], (
+            "Reboot cluster from complete outage action failed: {}"
             .format(action.data))
         logging.debug("Wait for application states ...")
         for unit in zaza.model.get_units(self.application):
