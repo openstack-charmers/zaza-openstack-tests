@@ -14,6 +14,7 @@
 
 """Encapsulate horizon (openstack-dashboard) charm testing."""
 
+import http.client
 import logging
 import requests
 import tenacity
@@ -315,18 +316,29 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
         logging.debug('Maybe enabling hardening for apache...')
         _app_config = zaza_model.get_application_config(self.application_name)
         logging.info(_app_config['harden'])
+
+        # NOTE(ajkavanagh): it seems that apache2 doesn't start quickly enough
+        # for the test, and so it gets reset errors; repeat until either that
+        # stops or there is a failure
+        @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1,
+                                                       min=5, max=10),
+                        retry=tenacity.retry_if_exception_type(
+                            http.client.RemoteDisconnected),
+                        reraise=True)
+        def _do_request():
+            return urllib.request.urlopen('http://{}/server-status'
+                                          .format(dashboard_ip))
+
         with self.config_change(
                 {'harden': _app_config['harden'].get('value', '')},
                 {'harden': 'apache'}):
             try:
-                urllib.request.urlopen('http://{}/server-status'
-                                       .format(dashboard_ip))
+                _do_request()
             except urllib.request.HTTPError as e:
-                if e.code == 404:
-                    return
-        # test failed if it didn't return 404
-        msg = "Apache mod_status check failed."
-        assert False, msg
+                # test failed if it didn't return 404
+                msg = "Apache mod_status check failed."
+                self.assertEqual(e.code, 404, msg)
+        logging.info('OK')
 
     def test_501_security_checklist_action(self):
         """Verify expected result on a default install.
@@ -386,6 +398,13 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
 class OpenStackDashboardPolicydTests(policyd.BasePolicydSpecialization):
     """Test the policyd override using the dashboard."""
 
+    good = {
+        "identity/file1.yaml": "{'rule1': '!'}"
+    }
+    bad = {
+        "identity/file2.yaml": "{'rule': '!}"
+    }
+    path_infix = "keystone_policy.d"
     _rule = {'identity/rule.yaml': yaml.dump({
         'identity:list_domains': '!',
         'identity:get_domain': '!',

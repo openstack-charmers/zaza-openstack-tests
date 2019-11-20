@@ -62,6 +62,13 @@ class PolicydTest(object):
       policyd:
         service: keystone
     """
+    good = {
+        "file1.yaml": "{'rule1': '!'}"
+    }
+    bad = {
+        "file2.yaml": "{'rule': '!}"
+    }
+    path_infix = ""
 
     @classmethod
     def setUpClass(cls, application_name=None):
@@ -115,9 +122,7 @@ class PolicydTest(object):
 
     def test_001_policyd_good_yaml(self):
         """Test that the policyd with a good zipped yaml file."""
-        good = {
-            'file1.yaml': "{'rule1': '!'}"
-        }
+        good = self.good
         good_zip_path = self._make_zip_file_from('good.zip', good)
         logging.info("Attaching good zip file as a resource.")
         zaza_model.attach_resource(self.application_name,
@@ -127,8 +132,13 @@ class PolicydTest(object):
         logging.debug("Now setting config to true")
         self._set_config(True)
         # check that the file gets to the right location
-        path = os.path.join(
-            "/etc", self._service_name, "policy.d", 'file1.yaml')
+        if self.path_infix:
+            path = os.path.join(
+                "/etc", self._service_name, "policy.d", self.path_infix,
+                'file1.yaml')
+        else:
+            path = os.path.join(
+                "/etc", self._service_name, "policy.d", 'file1.yaml')
         logging.info("Now checking for file contents: {}".format(path))
         zaza_model.block_until_file_has_contents(self.application_name,
                                                  path,
@@ -162,9 +172,7 @@ class PolicydTest(object):
 
     def test_002_policyd_bad_yaml(self):
         """Test bad yaml file in the zip file is handled."""
-        bad = {
-            "file2.yaml": "{'rule': '!}"
-        }
+        bad = self.bad
         bad_zip_path = self._make_zip_file_from('bad.zip', bad)
         logging.info("Attaching bad zip file as a resource")
         zaza_model.attach_resource(self.application_name,
@@ -182,8 +190,13 @@ class PolicydTest(object):
         logging.debug("App status is valid for broken yaml file")
         zaza_model.block_until_all_units_idle()
         # now verify that no file got landed on the machine
-        path = os.path.join(
-            "/etc", self._service_name, "policy.d", 'file2.yaml')
+        if self.path_infix:
+            path = os.path.join(
+                "/etc", self._service_name, "policy.d", self.path_infix,
+                'file2.yaml')
+        else:
+            path = os.path.join(
+                "/etc", self._service_name, "policy.d", 'file2.yaml')
         logging.info("Now checking that file {} is not present.".format(path))
         zaza_model.block_until_file_missing(self.application_name, path)
         self._set_config(False)
