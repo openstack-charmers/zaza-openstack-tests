@@ -62,6 +62,7 @@ class PolicydTest(object):
       policyd:
         service: keystone
     """
+
     good = {
         "file1.yaml": "{'rule1': '!'}"
     }
