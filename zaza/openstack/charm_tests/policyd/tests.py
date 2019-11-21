@@ -63,6 +63,14 @@ class PolicydTest(object):
         service: keystone
     """
 
+    good = {
+        "file1.yaml": "{'rule1': '!'}"
+    }
+    bad = {
+        "file2.yaml": "{'rule': '!}"
+    }
+    path_infix = ""
+
     @classmethod
     def setUpClass(cls, application_name=None):
         """Run class setup for running Policyd charm operation tests."""
@@ -104,8 +112,8 @@ class PolicydTest(object):
                 zfp.writestr(name, contents)
         return path
 
-    def _set_policy_with(self, rules):
-        rules_zip_path = self._make_zip_file_from('rules.zip', rules)
+    def _set_policy_with(self, rules, filename='rules.zip'):
+        rules_zip_path = self._make_zip_file_from(filename, rules)
         zaza_model.attach_resource(self.application_name,
                                    'policyd-override',
                                    rules_zip_path)
@@ -115,9 +123,7 @@ class PolicydTest(object):
 
     def test_001_policyd_good_yaml(self):
         """Test that the policyd with a good zipped yaml file."""
-        good = {
-            'file1.yaml': "{'rule1': '!'}"
-        }
+        good = self.good
         good_zip_path = self._make_zip_file_from('good.zip', good)
         logging.info("Attaching good zip file as a resource.")
         zaza_model.attach_resource(self.application_name,
@@ -127,8 +133,13 @@ class PolicydTest(object):
         logging.debug("Now setting config to true")
         self._set_config(True)
         # check that the file gets to the right location
-        path = os.path.join(
-            "/etc", self._service_name, "policy.d", 'file1.yaml')
+        if self.path_infix:
+            path = os.path.join(
+                "/etc", self._service_name, "policy.d", self.path_infix,
+                'file1.yaml')
+        else:
+            path = os.path.join(
+                "/etc", self._service_name, "policy.d", 'file1.yaml')
         logging.info("Now checking for file contents: {}".format(path))
         zaza_model.block_until_file_has_contents(self.application_name,
                                                  path,
@@ -162,9 +173,7 @@ class PolicydTest(object):
 
     def test_002_policyd_bad_yaml(self):
         """Test bad yaml file in the zip file is handled."""
-        bad = {
-            "file2.yaml": "{'rule': '!}"
-        }
+        bad = self.bad
         bad_zip_path = self._make_zip_file_from('bad.zip', bad)
         logging.info("Attaching bad zip file as a resource")
         zaza_model.attach_resource(self.application_name,
@@ -182,8 +191,13 @@ class PolicydTest(object):
         logging.debug("App status is valid for broken yaml file")
         zaza_model.block_until_all_units_idle()
         # now verify that no file got landed on the machine
-        path = os.path.join(
-            "/etc", self._service_name, "policy.d", 'file2.yaml')
+        if self.path_infix:
+            path = os.path.join(
+                "/etc", self._service_name, "policy.d", self.path_infix,
+                'file2.yaml')
+        else:
+            path = os.path.join(
+                "/etc", self._service_name, "policy.d", 'file2.yaml')
         logging.info("Now checking that file {} is not present.".format(path))
         zaza_model.block_until_file_missing(self.application_name, path)
         self._set_config(False)
@@ -198,8 +212,8 @@ class GenericPolicydTest(PolicydTest, test_utils.OpenStackBaseTest):
     def setUpClass(cls, application_name=None):
         """Run class setup for running KeystonePolicydTest tests."""
         super(GenericPolicydTest, cls).setUpClass(application_name)
-        if (openstack_utils.get_os_release() <
-                openstack_utils.get_os_release('xenial_queens')):
+        if (openstack_utils.get_os_release()
+                < openstack_utils.get_os_release('xenial_queens')):
             raise unittest.SkipTest(
                 "zaza.openstack.charm_tests.policyd.tests.GenericPolicydTest "
                 "not valid before xenial_queens")
@@ -242,7 +256,7 @@ class BasePolicydSpecialization(PolicydTest,
 
         class KeystonePolicydTest(BasePolicydSpecialization):
 
-            _rule = "{'identity:list_services': '!'}"
+            _rule = {'rule.yaml': "{'identity:list_services': '!'}"}
 
             def get_client_and_attempt_operation(self, keystone_session):
                 ... etc.
@@ -260,8 +274,8 @@ class BasePolicydSpecialization(PolicydTest,
     def setUpClass(cls, application_name=None):
         """Run class setup for running KeystonePolicydTest tests."""
         super(BasePolicydSpecialization, cls).setUpClass(application_name)
-        if (openstack_utils.get_os_release() <
-                openstack_utils.get_os_release('xenial_queens')):
+        if (openstack_utils.get_os_release()
+                < openstack_utils.get_os_release('xenial_queens')):
             raise unittest.SkipTest(
                 "zaza.openstack.charm_tests.policyd.tests.* "
                 "not valid before xenial_queens")
@@ -386,7 +400,7 @@ class BasePolicydSpecialization(PolicydTest,
 
         # now do the policyd override.
         logging.info("Doing policyd override with: {}".format(self._rule))
-        self._set_policy_with({'rule.yaml': self._rule})
+        self._set_policy_with(self._rule)
         zaza_model.block_until_all_units_idle()
 
         # now make sure the operation fails
@@ -439,7 +453,7 @@ class BasePolicydSpecialization(PolicydTest,
 class KeystoneTests(BasePolicydSpecialization):
     """Test the policyd override using the keystone client."""
 
-    _rule = "{'identity:list_services': '!'}"
+    _rule = {'rule.yaml': "{'identity:list_services': '!'}"}
 
     @classmethod
     def setUpClass(cls, application_name=None):
@@ -468,7 +482,7 @@ class KeystoneTests(BasePolicydSpecialization):
 class NeutronApiTests(BasePolicydSpecialization):
     """Test the policyd override using the neutron client."""
 
-    _rule = "{'get_network': '!'}"
+    _rule = {'rule.yaml': "{'get_network': '!'}"}
 
     @classmethod
     def setUpClass(cls, application_name=None):
@@ -503,7 +517,7 @@ class NeutronApiTests(BasePolicydSpecialization):
 class GlanceTests(BasePolicydSpecialization):
     """Test the policyd override using the glance client."""
 
-    _rule = "{'get_images': '!'}"
+    _rule = {'rule.yaml': "{'get_images': '!'}"}
 
     @classmethod
     def setUpClass(cls, application_name=None):
@@ -537,7 +551,7 @@ class GlanceTests(BasePolicydSpecialization):
 class CinderTests(BasePolicydSpecialization):
     """Test the policyd override using the cinder client."""
 
-    _rule = "{'volume:get_all': '!'}"
+    _rule = {'rule.yaml': "{'volume:get_all': '!'}"}
 
     @classmethod
     def setUpClass(cls, application_name=None):
@@ -566,7 +580,7 @@ class CinderTests(BasePolicydSpecialization):
 class HeatTests(BasePolicydSpecialization):
     """Test the policyd override using the heat client."""
 
-    _rule = "{'stacks:index': '!'}"
+    _rule = {'rule.yaml': "{'stacks:index': '!'}"}
 
     @classmethod
     def setUpClass(cls, application_name=None):
