@@ -148,8 +148,6 @@ def _login(dashboard_ip, domain, username, password):
     if expect not in response.text:
         msg = 'FAILURE code={} text="{}"'.format(response,
                                                  response.text)
-        # NOTE(thedac) amulet.raise_status exits on exception.
-        # Raise a custom exception.
         logging.info("Yeah, wen't wrong: {}".format(msg))
         raise FailedAuth(msg)
     logging.info("Logged into okay")
