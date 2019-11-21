@@ -644,7 +644,7 @@ class HeatTests(BasePolicydSpecialization):
 class OctaviaTests(BasePolicydSpecialization):
     """Test the policyd override using the octavia client."""
 
-    _rule = "{'os_load-balancer_api:loadbalancer:get_one': '!'}"
+    _rule = {'rule.yaml': "{'os_load-balancer_api:loadbalancer:get_one': '!'}"}
 
     @classmethod
     def setUpClass(cls, application_name=None):
