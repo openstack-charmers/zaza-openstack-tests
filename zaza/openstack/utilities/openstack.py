@@ -2467,6 +2467,8 @@ def get_keystone_session_from_relation(client_app,
                        False - do not verify,
                        None  - defer to requests library to find certs,
                        str   - path to a CA cert bundle)
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns: Keystone session object
     :rtype: keystoneauth1.session.Session object
     """
