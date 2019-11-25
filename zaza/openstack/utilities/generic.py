@@ -85,21 +85,23 @@ def get_unit_hostnames(units):
     return host_names
 
 
-def get_pkg_version(application, pkg):
+def get_pkg_version(application, pkg, model_name=None):
     """Return package version.
 
     :param application: Application name
     :type application: string
     :param pkg: Package name
     :type pkg: string
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns: List of package version
     :rtype: list
     """
     versions = []
-    units = model.get_units(application)
+    units = model.get_units(application, model_name=model_name)
     for unit in units:
         cmd = 'dpkg -l | grep {}'.format(pkg)
-        out = juju_utils.remote_run(unit.entity_id, cmd)
+        out = juju_utils.remote_run(unit.entity_id, cmd, model_name=model_name)
         versions.append(out.split('\n')[0].split()[2])
     if len(set(versions)) != 1:
         raise Exception('Unexpected output from pkg version check')

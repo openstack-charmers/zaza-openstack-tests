@@ -93,7 +93,7 @@ class TestJujuUtils(ut_utils.BaseTestCase):
 
     def test_get_full_juju_status(self):
         self.assertEqual(juju_utils.get_full_juju_status(), self.juju_status)
-        self.model.get_status.assert_called_once_with()
+        self.model.get_status.assert_called_once_with(model_name=None)
 
     def test_get_machines_for_application(self):
         self.patch_object(juju_utils, "get_application_status")
@@ -106,7 +106,7 @@ class TestJujuUtils(ut_utils.BaseTestCase):
         self.get_application_status.assert_called_once()
 
         # Subordinate application has no units
-        def _get_application_status(application):
+        def _get_application_status(application, model_name=None):
             _apps = {
                 self.application: self.application_data,
                 self.subordinate_application:
@@ -155,7 +155,7 @@ class TestJujuUtils(ut_utils.BaseTestCase):
                 self.application)),
             self.machine_data.get("instance-id"))
         self.get_machines_for_application.assert_called_once_with(
-            self.application)
+            self.application, model_name=None)
 
     def test_get_provider_type(self):
         self.patch_object(juju_utils, "get_cloud_configs")
@@ -171,12 +171,17 @@ class TestJujuUtils(ut_utils.BaseTestCase):
         self.assertEqual(juju_utils.remote_run(self.unit, _cmd),
                          self.run_output["Stdout"])
         self.model.run_on_unit.assert_called_once_with(
-            self.unit, _cmd, timeout=None)
+            self.unit, _cmd, timeout=None, model_name=None)
 
         # Non-fatal failure
         self.model.run_on_unit.return_value = self.error_run_output
-        self.assertEqual(juju_utils.remote_run(self.unit, _cmd, fatal=False),
-                         self.error_run_output["Stderr"])
+        self.assertEqual(
+            juju_utils.remote_run(
+                self.unit,
+                _cmd,
+                fatal=False,
+                model_name=None),
+            self.error_run_output["Stderr"])
 
         # Fatal failure
         with self.assertRaises(Exception):
@@ -205,7 +210,8 @@ class TestJujuUtils(ut_utils.BaseTestCase):
                                           'arelation')
         self.model.run_on_unit.assert_called_with(
             'aunit/0',
-            'relation-get --format=yaml -r "42" - "otherunit/0"')
+            'relation-get --format=yaml -r "42" - "otherunit/0"',
+            model_name=None)
         self.yaml.safe_load.assert_called_with(str(data))
 
     def test_get_relation_from_unit_fails(self):
@@ -220,7 +226,8 @@ class TestJujuUtils(ut_utils.BaseTestCase):
                                               'arelation')
         self.model.run_on_unit.assert_called_with(
             'aunit/0',
-            'relation-get --format=yaml -r "42" - "otherunit/0"')
+            'relation-get --format=yaml -r "42" - "otherunit/0"',
+            model_name=None)
         self.assertFalse(self.yaml.safe_load.called)
 
     def test_leader_get(self):
@@ -231,7 +238,7 @@ class TestJujuUtils(ut_utils.BaseTestCase):
             'Code': 0, 'Stdout': str(data)}
         juju_utils.leader_get('application')
         self.model.run_on_leader.assert_called_with(
-            'application', 'leader-get --format=yaml ')
+            'application', 'leader-get --format=yaml ', model_name=None)
         self.yaml.safe_load.assert_called_with(str(data))
 
     def test_leader_get_key(self):
@@ -242,7 +249,7 @@ class TestJujuUtils(ut_utils.BaseTestCase):
             'Code': 0, 'Stdout': data['foo']}
         juju_utils.leader_get('application', 'foo')
         self.model.run_on_leader.assert_called_with(
-            'application', 'leader-get --format=yaml foo')
+            'application', 'leader-get --format=yaml foo', model_name=None)
         self.yaml.safe_load.assert_called_with(data['foo'])
 
     def test_leader_get_fails(self):
@@ -253,7 +260,8 @@ class TestJujuUtils(ut_utils.BaseTestCase):
         with self.assertRaises(Exception):
             juju_utils.leader_get('application')
         self.model.run_on_leader.assert_called_with(
-            'application', 'leader-get --format=yaml ')
+            'application', 'leader-get --format=yaml ',
+            model_name=None)
         self.assertFalse(self.yaml.safe_load.called)
 
     def test_get_machine_series(self):
@@ -267,6 +275,7 @@ class TestJujuUtils(ut_utils.BaseTestCase):
         actual = juju_utils.get_machine_series('6')
         self._get_machine_status.assert_called_with(
             machine='6',
-            key='series'
+            key='series',
+            model_name=None
         )
         self.assertEqual(expected, actual)

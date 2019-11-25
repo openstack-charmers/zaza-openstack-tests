@@ -321,13 +321,16 @@ def get_aodh_session_client(session):
     return aodh_client.Client(session=session)
 
 
-def get_keystone_scope():
+def get_keystone_scope(model_name=None):
     """Return Keystone scope based on OpenStack release of the overcloud.
 
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns: String keystone scope
     :rtype: string
     """
-    os_version = get_current_os_versions("keystone")["keystone"]
+    os_version = get_current_os_versions("keystone",
+                                         model_name=model_name)["keystone"]
     # Keystone policy.json shipped the charm with liberty requires a domain
     # scoped token. Bug #1649106
     if os_version == "liberty":
@@ -362,17 +365,20 @@ def get_keystone_session(openrc_creds, scope='PROJECT', verify=None):
     return session.Session(auth=auth, verify=verify)
 
 
-def get_overcloud_keystone_session(verify=None):
+def get_overcloud_keystone_session(verify=None, model_name=None):
     """Return Over cloud keystone session.
 
     :param verify: Control TLS certificate verification behaviour
     :type verify: any
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns keystone_session: keystoneauth1.session.Session object
     :rtype: keystoneauth1.session.Session
     """
-    return get_keystone_session(get_overcloud_auth(),
-                                scope=get_keystone_scope(),
-                                verify=verify)
+    return get_keystone_session(
+        get_overcloud_auth(model_name=model_name),
+        scope=get_keystone_scope(model_name=model_name),
+        verify=verify)
 
 
 def get_undercloud_keystone_session(verify=None):
@@ -572,7 +578,6 @@ def add_interface_to_netplan(server_name, mac_address):
 
     unit_name = juju_utils.get_unit_name_from_host_name(
         server_name, application_name)
-
     run_cmd_nic = "ip -f link -br -o addr|grep {}".format(mac_address)
     interface = model.run_on_unit(unit_name, run_cmd_nic)
     interface = interface['Stdout'].split(' ')[0]
@@ -1394,11 +1399,13 @@ def get_os_code_info(package, pkg_version):
             return OPENSTACK_CODENAMES[vers]
 
 
-def get_current_os_versions(deployed_applications):
+def get_current_os_versions(deployed_applications, model_name=None):
     """Determine OpenStack codename of deployed applications.
 
     :param deployed_applications: List of deployed applications
     :type deployed_applications: list
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns: List of aplication to codenames dictionaries
     :rtype: list
     """
@@ -1408,7 +1415,8 @@ def get_current_os_versions(deployed_applications):
             continue
 
         version = generic_utils.get_pkg_version(application['name'],
-                                                application['type']['pkg'])
+                                                application['type']['pkg'],
+                                                model_name=model_name)
         versions[application['name']] = (
             get_os_code_info(application['type']['pkg'], version))
     return versions
@@ -1473,17 +1481,21 @@ def get_os_release(release_pair=None):
     return index
 
 
-def get_application_config_option(application, option):
+def get_application_config_option(application, option, model_name=None):
     """Return application configuration.
 
     :param application: Name of application
     :type application: string
     :param option: Specific configuration option
     :type option: string
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns: Value of configuration option
     :rtype: Configuration option value type
     """
-    application_config = model.get_application_config(application)
+    application_config = model.get_application_config(
+        application,
+        model_name=model_name)
     try:
         return application_config.get(option).get('value')
     except AttributeError:
@@ -1557,27 +1569,39 @@ def get_undercloud_auth():
 
 
 # Openstack Client helpers
-def get_keystone_ip():
+def get_keystone_ip(model_name=None):
     """Return the IP address to use when communicating with keystone api.
 
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns: IP address
     :rtype: str
     """
-    if get_application_config_option('keystone', 'vip'):
-        return get_application_config_option('keystone', 'vip')
-    unit = model.get_units('keystone')[0]
+    vip_option = get_application_config_option(
+        'keystone',
+        'vip',
+        model_name=model_name)
+    if vip_option:
+        return vip_option
+    unit = model.get_units('keystone', model_name=model_name)[0]
     return unit.public_address
 
 
-def get_keystone_api_version():
+def get_keystone_api_version(model_name=None):
     """Return the keystone api version.
 
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns: Keystone's api version
     :rtype: int
     """
-    os_version = get_current_os_versions('keystone')['keystone']
-    api_version = get_application_config_option('keystone',
-                                                'preferred-api-version')
+    os_version = get_current_os_versions(
+        'keystone',
+        model_name=model_name)['keystone']
+    api_version = get_application_config_option(
+        'keystone',
+        'preferred-api-version',
+        model_name=model_name)
     if os_version >= 'queens':
         api_version = 3
     elif api_version is None:
@@ -1586,15 +1610,21 @@ def get_keystone_api_version():
     return int(api_version)
 
 
-def get_overcloud_auth(address=None):
+def get_overcloud_auth(address=None, model_name=None):
     """Get overcloud OpenStack authentication from the environment.
 
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns: Dictionary of authentication settings
     :rtype: dict
     """
     tls_rid = model.get_relation_id('keystone', 'vault',
+                                    model_name=model_name,
                                     remote_interface_name='certificates')
-    ssl_config = get_application_config_option('keystone', 'ssl_cert')
+    ssl_config = get_application_config_option(
+        'keystone',
+        'ssl_cert',
+        model_name=model_name)
     if tls_rid or ssl_config:
         transport = 'https'
         port = 35357
@@ -1603,11 +1633,14 @@ def get_overcloud_auth(address=None):
         port = 5000
 
     if not address:
-        address = get_keystone_ip()
+        address = get_keystone_ip(model_name=model_name)
 
-    password = juju_utils.leader_get('keystone', 'admin_passwd')
+    password = juju_utils.leader_get(
+        'keystone',
+        'admin_passwd',
+        model_name=model_name)
 
-    if get_keystone_api_version() == 2:
+    if get_keystone_api_version(model_name=model_name) == 2:
         # V2 Explicitly, or None when charm does not possess the config key
         logging.info('Using keystone API V2 for overcloud auth')
         auth_settings = {
@@ -1633,7 +1666,7 @@ def get_overcloud_auth(address=None):
             'API_VERSION': 3,
         }
     if tls_rid:
-        unit = model.get_first_unit_name('keystone')
+        unit = model.get_first_unit_name('keystone', model_name=model_name)
         model.scp_from_unit(
             unit,
             KEYSTONE_REMOTE_CACERT,
