@@ -1108,7 +1108,8 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.get_relation_from_unit.assert_called_once_with(
             'swift-proxy',
             'keystone',
-            'identity-service')
+            'identity-service',
+            model_name=None)
         self.get_keystone_session.assert_called_once_with(
             {
                 'OS_AUTH_URL': 'http://10.5.0.61:5000/v3',
@@ -1155,7 +1156,8 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.get_relation_from_unit.assert_called_once_with(
             'swift-proxy',
             'keystone',
-            'identity-service')
+            'identity-service',
+            model_name=None)
         self.get_keystone_session.assert_called_once_with(
             {
                 'OS_AUTH_URL': 'http://10.5.0.36:5000/v2.0',

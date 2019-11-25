@@ -2450,7 +2450,8 @@ def get_keystone_session_from_relation(client_app,
                                        identity_app='keystone',
                                        relation_name='identity-service',
                                        scope='PROJECT',
-                                       verify=None):
+                                       verify=None,
+                                       model_name=None):
     """Extract credentials information from a relation & return a session.
 
     :param client_app: Name of application receiving credentials.
@@ -2472,10 +2473,11 @@ def get_keystone_session_from_relation(client_app,
     relation = juju_utils.get_relation_from_unit(
         client_app,
         identity_app,
-        relation_name)
+        relation_name,
+        model_name=model_name)
 
     api_version = int(relation.get('api_version', 2))
-    creds = get_overcloud_auth()
+    creds = get_overcloud_auth(model_name=model_name)
     creds['OS_USERNAME'] = relation['service_username']
     creds['OS_PASSWORD'] = relation['service_password']
     creds['OS_PROJECT_NAME'] = relation['service_tenant']
