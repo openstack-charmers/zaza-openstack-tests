@@ -99,8 +99,8 @@ class OpenStackBaseTest(unittest.TestCase):
 
         Override this method with a method which removes any resources
         which were created during the test run. If the test sets
-        "self.run_resource_cleanup = False" then cleanup will be
-        skipped.
+        "self.run_resource_cleanup = True" then cleanup will be
+        performed.
         """
         pass
 
@@ -124,7 +124,7 @@ class OpenStackBaseTest(unittest.TestCase):
         cls.lead_unit = model.get_lead_unit_name(
             cls.application_name,
             model_name=cls.model_name)
-        cls.run_resource_cleanup = True
+        cls.run_resource_cleanup = False
         logging.debug('Leader unit is {}'.format(cls.lead_unit))
 
     @contextlib.contextmanager
