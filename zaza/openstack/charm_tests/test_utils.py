@@ -94,6 +94,24 @@ class OpenStackBaseTest(unittest.TestCase):
     """Generic helpers for testing OpenStack API charms."""
 
     @classmethod
+    def resource_cleanup(cls):
+        """Cleanup any resources created during the test run.
+
+        Override this method with a method which removes any resources
+        which were created during the test run. If the test sets
+        "self.run_resource_cleanup = True" then cleanup will be
+        performed.
+        """
+        pass
+
+    @classmethod
+    def tearDown(cls):
+        """Run teardown for test class."""
+        if cls.run_resource_cleanup:
+            logging.info('Running resource cleanup')
+            cls.resource_cleanup()
+
+    @classmethod
     def setUpClass(cls, application_name=None):
         """Run setup for test class to create common resourcea."""
         cls.keystone_session = openstack_utils.get_overcloud_keystone_session()
@@ -106,6 +124,7 @@ class OpenStackBaseTest(unittest.TestCase):
         cls.lead_unit = model.get_lead_unit_name(
             cls.application_name,
             model_name=cls.model_name)
+        cls.run_resource_cleanup = False
         logging.debug('Leader unit is {}'.format(cls.lead_unit))
 
     @contextlib.contextmanager
