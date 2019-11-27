@@ -135,17 +135,24 @@ class NeutronNetworkingTest(unittest.TestCase):
             openstack_utils.get_overcloud_keystone_session())
         cls.nova_client = (
             openstack_utils.get_nova_session_client(cls.keystone_session))
+        # NOTE(fnordahl): in the event of a test failure we do not want to run
+        # tear down code as it will make debugging a problem virtually
+        # impossible.  To alleviate each test method will set the
+        # `run_tearDown` instance variable at the end which will let us run
+        # tear down only when there were no failure.
+        cls.run_tearDown = False
 
     @classmethod
     def tearDown(cls):
         """Remove test resources."""
-        logging.info('Running teardown')
-        for server in cls.nova_client.servers.list():
-            if server.name.startswith(cls.RESOURCE_PREFIX):
-                openstack_utils.delete_resource(
-                    cls.nova_client.servers,
-                    server.id,
-                    msg="server")
+        if cls.run_tearDown:
+            logging.info('Running teardown')
+            for server in cls.nova_client.servers.list():
+                if server.name.startswith(cls.RESOURCE_PREFIX):
+                    openstack_utils.delete_resource(
+                        cls.nova_client.servers,
+                        server.id,
+                        msg="server")
 
     def test_instances_have_networking(self):
         """Validate North/South and East/West networking."""
@@ -175,6 +182,9 @@ class NeutronNetworkingTest(unittest.TestCase):
         # Validate tenant to external network routing
         self.validate_instance_can_reach_router(instance_1, verify)
         self.validate_instance_can_reach_router(instance_2, verify)
+
+        # If we get here, it means the tests passed
+        self.run_tearDown = True
 
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
                     reraise=True, stop=tenacity.stop_after_attempt(8))
