@@ -93,6 +93,8 @@ def audit_assertions(action,
 class OpenStackBaseTest(unittest.TestCase):
     """Generic helpers for testing OpenStack API charms."""
 
+    run_resource_cleanup = False
+
     @classmethod
     def resource_cleanup(cls):
         """Cleanup any resources created during the test run.
@@ -107,7 +109,7 @@ class OpenStackBaseTest(unittest.TestCase):
     @classmethod
     def tearDown(cls):
         """Run teardown for test class."""
-        if getattr(cls, 'run_resource_cleanup', False):
+        if cls.run_resource_cleanup:
             logging.info('Running resource cleanup')
             cls.resource_cleanup()
 
@@ -124,7 +126,6 @@ class OpenStackBaseTest(unittest.TestCase):
         cls.lead_unit = model.get_lead_unit_name(
             cls.application_name,
             model_name=cls.model_name)
-        cls.run_resource_cleanup = False
         logging.debug('Leader unit is {}'.format(cls.lead_unit))
 
     @contextlib.contextmanager
