@@ -107,7 +107,7 @@ class OpenStackBaseTest(unittest.TestCase):
     @classmethod
     def tearDown(cls):
         """Run teardown for test class."""
-        if cls.run_resource_cleanup:
+        if getattr(cls, 'run_resource_cleanup', False):
             logging.info('Running resource cleanup')
             cls.resource_cleanup()
 
