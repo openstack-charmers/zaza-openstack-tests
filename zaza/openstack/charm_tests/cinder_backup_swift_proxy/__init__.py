@@ -12,4 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Collection of code for setting up and testing cinder-backup-swift."""
+"""Collection of code for setting up and testing cinder-backup-swift-proxy."""
