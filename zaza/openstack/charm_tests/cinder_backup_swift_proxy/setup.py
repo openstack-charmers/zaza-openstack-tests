@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Code for configuring cinder-backup-swift."""
+"""Code for configuring cinder-backup-swift-proxy."""
 
 import zaza.model as zaza_model
 import zaza.openstack.charm_tests.test_utils
 
 
 def configure_cinder_backup():
-    """Configure cinder-backup-swift."""
+    """Configure cinder-backup-swift-proxy."""
     keystone_ip = zaza_model.get_app_ips(
         'swift-keystone')[0]
     swift_ip = zaza_model.get_app_ips(
@@ -32,17 +32,17 @@ def configure_cinder_backup():
     else:
         auth_url = 'http://{}:5000/v3'.format(keystone_ip)
         endpoint_url = 'http://{}:8080/v1/AUTH'.format(swift_ip)
-    cinder_backup_swift_conf = {
+    cinder_backup_swift_proxy_conf = {
         'endpoint-url': endpoint_url,
         'auth-url': auth_url
     }
-    juju_service = 'cinder-backup-swift'
-    zaza_model.set_application_config(juju_service, cinder_backup_swift_conf)
+    juju_service = 'cinder-backup-swift-proxy'
+    zaza_model.set_application_config(juju_service, cinder_backup_swift_proxy_conf)
     zaza_model.wait_for_agent_status()
     zaza_model.wait_for_application_states()
     _singleton = zaza.openstack.charm_tests.test_utils.OpenStackBaseTest()
     _singleton.setUpClass()
-    with _singleton.config_change(cinder_backup_swift_conf,
-                                  cinder_backup_swift_conf):
+    with _singleton.config_change(cinder_backup_swift_proxy_conf,
+                                  cinder_backup_swift_proxy_conf):
         # wait for configuration to be applied then return
         pass
