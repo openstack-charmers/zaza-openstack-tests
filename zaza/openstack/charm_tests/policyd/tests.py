@@ -522,6 +522,12 @@ class NeutronApiTests(BasePolicydSpecialization):
         super(NeutronApiTests, cls).setUpClass(application_name="neutron-api")
         cls.application_name = "neutron-api"
 
+    # NOTE(fnordahl): There is a race between `neutron-api` signalling unit is
+    # ready and the service actually being ready to serve requests.  The test
+    # will fail intermittently unless we gracefully accept this.
+    # Issue: openstack-charmers/zaza-openstack-tests#138
+    @tenacity.retry(wait=tenacity.wait_fixed(1),
+                    reraise=True, stop=tenacity.stop_after_delay(8))
     def get_client_and_attempt_operation(self, ip):
         """Attempt to list the networks as a policyd override.
 
