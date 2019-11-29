@@ -114,10 +114,15 @@ class OpenStackBaseTest(unittest.TestCase):
             cls.resource_cleanup()
 
     @classmethod
-    def setUpClass(cls, application_name=None):
+    def setUpClass(cls, application_name=None, model_alias=None):
         """Run setup for test class to create common resourcea."""
-        cls.keystone_session = openstack_utils.get_overcloud_keystone_session()
-        cls.model_name = model.get_juju_model()
+        cls.model_aliases = model.get_juju_model_aliases()
+        if model_alias:
+            cls.model_name = cls.model_aliases[model_alias]
+        else:
+            cls.model_name = model.get_juju_model()
+        cls.keystone_session = openstack_utils.get_overcloud_keystone_session(
+            model_name=cls.model_name)
         cls.test_config = lifecycle_utils.get_charm_config(fatal=False)
         if application_name:
             cls.application_name = application_name
