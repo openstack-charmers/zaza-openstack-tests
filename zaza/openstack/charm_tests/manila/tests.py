@@ -44,5 +44,4 @@ packages:
     def test_manila_api(self):
         """Test that the Manila API is working."""
         # now just try a list the shares
-        # NOTE(AJK) the 'search_opts={}' is to work around Bug#1707303
-        self.manila.shares.list(search_opts={})
+        self.manila.shares.list()
