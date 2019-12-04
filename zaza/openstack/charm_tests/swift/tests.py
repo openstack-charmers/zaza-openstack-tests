@@ -155,8 +155,9 @@ class SwiftGlobalReplicationTests(test_utils.OpenStackBaseTest):
     def tearDown(cls):
         """Remove test resources.
 
-        The retry decotator is needed as the deletes are async so objects
-        are sometime not fully deleted before their container.
+        The retry decorator is needed as it is luck of the draw as to whether
+        a delete of a newly created container will result in a 404. Retrying
+        will eventually result in the delete being accepted.
         """
         logging.info('Running teardown')
         resp_headers, containers = cls.swift_region1.get_account()

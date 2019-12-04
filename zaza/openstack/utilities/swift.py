@@ -104,6 +104,8 @@ class ObjectReplicas:
         :type object_name: str
         :param model_name: Model to point environment at
         :type model_name: str
+        :returns: Stdout of command
+        :rtype: str
         """
         ring_file = '/etc/swift/object.ring.gz'
         obj_cmd = "swift-get-nodes  -a {} {} {} {}".format(
@@ -124,7 +126,7 @@ class ObjectReplicas:
         These are not real replicas. They hand off the replica to other node.
 
         :returns: List of IPS of handoff nodes for object.
-        :rtype: [str, ...]
+        :rtype: List[str]
         """
         return [r.server for r in self.replicas if r.handoff_device]
 
@@ -141,12 +143,15 @@ class ObjectReplicas:
     def placements(self):
         """Region an zone information for each replica.
 
+        Zone info is in the form:
+            [{
+                'app_name': str,
+                'unit': juju.Unit,
+                'region': int,
+                'zone': int}, ...]
+
         :returns: List of dicts with region and zone information.
-        :rtype: [{
-                    'app_name': str,
-                    'unit': juju.Unit,
-                    'region': int,
-                    'zone': int}, ...]
+        :rtype: List[Dict[str, Union[str,int]]]
         """
         return [self.storage_topology[ip] for ip in self.storage_ips]
 
@@ -164,7 +169,7 @@ class ObjectReplicas:
         """List of all zones that have a replica.
 
         :returns: List of tuples (region, zone) that have a replica.
-        :rtype: [(r1, z1), ...]
+        :rtype: List[Tuple[str, str]]
         """
         return [(p['region'], p['zone']) for p in self.placements]
 
@@ -217,7 +222,7 @@ def setup_test_container(swift_client, resource_prefix):
     :type swift_client: swiftclient.Client
     :returns: (container_name, account_name) Container name and account
               name for new container
-    :rtype: (str, str)
+    :rtype: Tuple[str, str]
     """
     run_id = str(uuid.uuid1()).split('-')[0]
     container_name = '{}-{}-container'.format(resource_prefix, run_id)
