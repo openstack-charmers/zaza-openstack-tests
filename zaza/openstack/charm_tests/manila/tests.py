@@ -26,12 +26,6 @@ import zaza.openstack.utilities.openstack as openstack_utils
 class ManilaTests(test_utils.OpenStackBaseTest):
     """Encapsulate Manila  tests."""
 
-    RESOURCE_PREFIX = 'zaza-manilatests'
-    INSTANCE_USERDATA = """#cloud-config
-packages:
-- nfs-common
-"""
-
     @classmethod
     def setUpClass(cls):
         """Run class setup for running tests."""
