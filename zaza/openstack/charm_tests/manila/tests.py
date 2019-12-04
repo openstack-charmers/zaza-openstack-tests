@@ -38,4 +38,4 @@ class ManilaTests(test_utils.OpenStackBaseTest):
     def test_manila_api(self):
         """Test that the Manila API is working."""
         # now just try a list the shares
-        self.manila.shares.list()
+        self.manila_client.shares.list()
