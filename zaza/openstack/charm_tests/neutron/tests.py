@@ -29,6 +29,97 @@ import zaza.openstack.configure.guest as guest
 import zaza.openstack.utilities.openstack as openstack_utils
 
 
+class NeutronGatewayTest(test_utils.OpenStackBaseTest):
+    """Test basic Neutron Gateway Charm functionality."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running Neutron Gateway tests."""
+        super(NeutronGatewayTest, cls).setUpClass()
+        cls.current_os_release = openstack_utils.get_os_release()
+        cls.services = cls._get_services()
+
+    def test_900_restart_on_config_change(self):
+        """Checking restart happens on config change.
+
+        Change disk format and assert then change propagates to the correct
+        file and that services are restarted as a result
+        """
+        # Expected default and alternate values
+        current_value = zaza.model.get_application_config(
+            'neutron-gateway')['debug']['value']
+        new_value = str(not bool(current_value)).title()
+        current_value = str(current_value).title()
+
+        set_default = {'debug': current_value}
+        set_alternate = {'debug': new_value}
+        default_entry = {'DEFAULT': {'debug': [current_value]}}
+        alternate_entry = {'DEFAULT': {'debug': [new_value]}}
+
+        # Config file affected by juju set config change
+        conf_file = '/etc/neutron/neutron.conf'
+
+        bionic_stein = openstack_utils.get_os_release('bionic_stein')
+
+        # Make config change, check for service restarts
+        logging.info(
+            'Setting verbose on neutron-api {}'.format(set_alternate))
+        if self.current_os_release >= bionic_stein:
+            pgrep_full = True
+        else:
+            pgrep_full = False
+        self.restart_on_changed(
+            conf_file,
+            set_default,
+            set_alternate,
+            default_entry,
+            alternate_entry,
+            self.services,
+            pgrep_full=pgrep_full)
+
+    def test_910_pause_and_resume(self):
+        """Run pause and resume tests.
+
+        Pause service and check services are stopped then resume and check
+        they are started
+        """
+        bionic_stein = openstack_utils.get_os_release('bionic_stein')
+        if self.current_os_release >= bionic_stein:
+            pgrep_full = True
+        else:
+            pgrep_full = False
+        with self.pause_resume(
+                self.services,
+                pgrep_full=pgrep_full):
+            logging.info("Testing pause resume")
+
+    @classmethod
+    def _get_services(cls):
+        """
+        Return the services expected in Neutron Gateway.
+
+        :returns: A list of services
+        :rtype: list[str]
+        """
+        services = ['neutron-dhcp-agent',
+                    'neutron-metadata-agent',
+                    'neutron-metering-agent',
+                    'neutron-openvswitch-agent']
+
+        trusty_icehouse = openstack_utils.get_os_release('trusty_icehouse')
+        xenial_newton = openstack_utils.get_os_release('xenial_newton')
+        bionic_train = openstack_utils.get_os_release('bionic_train')
+
+        if cls.current_os_release <= trusty_icehouse:
+            services.append('neutron-vpn-agent')
+        if cls.current_os_release < xenial_newton:
+            services.append('neutron-lbaas-agent')
+        if xenial_newton <= cls.current_os_release < bionic_train:
+            services.append('neutron-lbaasv2-agent')
+
+        return services
+
+
 class NeutronApiTest(test_utils.OpenStackBaseTest):
     """Test basic Neutron API Charm functionality."""
 
