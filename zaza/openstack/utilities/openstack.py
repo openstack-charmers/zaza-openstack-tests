@@ -659,7 +659,7 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
         application_names = ['ovn-chassis']
         try:
             ovn_dc_name = 'ovn-dedicated-chassis'
-            model.get_application(ngw)
+            model.get_application(ovn_dc_name)
             application_names.append(ovn_dc_name)
         except KeyError:
             # ovn-dedicated-chassis not in deployment
