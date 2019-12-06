@@ -1450,7 +1450,7 @@ def get_current_os_release_pair(application='keystone'):
     :raises: exceptions.OSVersionNotFound
     """
     try:
-        machine = juju_utils.get_machines_for_application(application)
+        machine = list(juju_utils.get_machines_for_application(application))[0]
     except KeyError:
         raise exceptions.ApplicationNotFound(application)
 
