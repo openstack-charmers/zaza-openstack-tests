@@ -92,7 +92,7 @@ def get_machines_for_application(application, model_name=None):
     """
     status = get_application_status(application, model_name=model_name)
     if not status:
-        raise StopIteration
+        return
 
     # libjuju juju status no longer has units for subordinate charms
     # Use the application it is subordinate-to to find machines

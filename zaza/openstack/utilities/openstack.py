@@ -674,31 +674,35 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
     if not net_id:
         net_id = get_admin_net(neutronclient)['id']
 
-    for uuid in uuids:
-        server = novaclient.servers.get(uuid)
-        ext_port_name = "{}_ext-port".format(server.name)
-        for port in neutronclient.list_ports(device_id=server.id)['ports']:
-            if port['name'] == ext_port_name:
-                logging.warning('Neutron Gateway already has additional port')
-                break
-        else:
-            logging.info('Attaching additional port to instance, '
-                         'connected to net id: {}'.format(net_id))
-            body_value = {
-                "port": {
-                    "admin_state_up": True,
-                    "name": ext_port_name,
-                    "network_id": net_id,
-                    "port_security_enabled": False,
+    try:
+        for uuid in uuids:
+            server = novaclient.servers.get(uuid)
+            ext_port_name = "{}_ext-port".format(server.name)
+            for port in neutronclient.list_ports(device_id=server.id)['ports']:
+                if port['name'] == ext_port_name:
+                    logging.warning(
+                        'Neutron Gateway already has additional port')
+                    break
+            else:
+                logging.info('Attaching additional port to instance, '
+                             'connected to net id: {}'.format(net_id))
+                body_value = {
+                    "port": {
+                        "admin_state_up": True,
+                        "name": ext_port_name,
+                        "network_id": net_id,
+                        "port_security_enabled": False,
+                    }
                 }
-            }
-            port = neutronclient.create_port(body=body_value)
-            server.interface_attach(port_id=port['port']['id'],
-                                    net_id=None, fixed_ip=None)
-            if add_dataport_to_netplan:
-                mac_address = get_mac_from_port(port, neutronclient)
-                add_interface_to_netplan(server.name,
-                                         mac_address=mac_address)
+                port = neutronclient.create_port(body=body_value)
+                server.interface_attach(port_id=port['port']['id'],
+                                        net_id=None, fixed_ip=None)
+                if add_dataport_to_netplan:
+                    mac_address = get_mac_from_port(port, neutronclient)
+                    add_interface_to_netplan(server.name,
+                                             mac_address=mac_address)
+    except StopIteration:
+        pass
     ext_br_macs = []
     for port in neutronclient.list_ports(network_id=net_id)['ports']:
         if 'ext-port' in port['name']:
