@@ -649,9 +649,9 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
         application_names = ['neutron-openvswitch']
         try:
             ngw = 'neutron-gateway'
-            next(juju_utils.get_machine_uuids_for_application(ngw))
+            model.get_application(ngw)
             application_names.append(ngw)
-        except StopIteration:
+        except KeyError:
             # neutron-gateway not in deployment
             pass
     elif ovn_present():
@@ -659,9 +659,9 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
         application_names = ['ovn-chassis']
         try:
             ovn_dc_name = 'ovn-dedicated-chassis'
-            next(juju_utils.get_machine_uuids_for_application(ovn_dc_name))
+            model.get_application(ngw)
             application_names.append(ovn_dc_name)
-        except StopIteration:
+        except KeyError:
             # ovn-dedicated-chassis not in deployment
             pass
         port_config_key = 'interface-bridge-mappings'
@@ -1450,8 +1450,8 @@ def get_current_os_release_pair(application='keystone'):
     :raises: exceptions.OSVersionNotFound
     """
     try:
-        machine = next(juju_utils.get_machines_for_application(application))
-    except StopIteration:
+        machine = juju_utils.get_machines_for_application(application)
+    except KeyError:
         raise exceptions.ApplicationNotFound(application)
 
     series = juju_utils.get_machine_series(machine)
