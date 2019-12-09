@@ -120,6 +120,32 @@ class NeutronGatewayTest(test_utils.OpenStackBaseTest):
         return services
 
 
+class NeutronGatewaySecurityTest(test_utils.OpenStackBaseTest):
+    """Neutron Gateway Security Tests."""
+
+    def test_security_checklist(self):
+        """Verify expected state with security-checklist."""
+        expected_failures = []
+        expected_passes = [
+            'validate-file-ownership',
+            'validate-file-permissions',
+        ]
+
+        for unit in zaza.model.get_units('neutron-gateway',
+                                         model_name=self.model_name):
+            logging.info('Running `security-checklist` action'
+                         ' on  unit {}'.format(unit.entity_id))
+            test_utils.audit_assertions(
+                zaza.model.run_action(
+                    unit.entity_id,
+                    'security-checklist',
+                    model_name=self.model_name,
+                    action_params={}),
+                expected_passes,
+                expected_failures,
+                expected_to_pass=True)
+
+
 class NeutronApiTest(test_utils.OpenStackBaseTest):
     """Test basic Neutron API Charm functionality."""
 
