@@ -15,7 +15,6 @@
 import copy
 import datetime
 import io
-import itertools
 import mock
 import tenacity
 
@@ -814,14 +813,16 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             name='_get_machine_series'
         )
 
+        _machine = mock.MagicMock()
+
         # No machine returned
-        self._get_machines.side_effect = StopIteration
+        self._get_machines.side_effect = KeyError
         with self.assertRaises(exceptions.ApplicationNotFound):
             openstack_utils.get_current_os_release_pair()
         self._get_machines.side_effect = None
 
         # No series returned
-        self._get_machines.return_value = itertools.repeat('6')
+        self._get_machines.return_value = [_machine]
         self._get_machine_series.return_value = None
         with self.assertRaises(exceptions.SeriesNotFound):
             openstack_utils.get_current_os_release_pair()
