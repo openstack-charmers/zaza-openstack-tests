@@ -149,6 +149,34 @@ class NeutronGatewayTest(test_utils.OpenStackBaseTest):
                 pgrep_full=self.pgrep_full):
             logging.info("Testing pause resume")
 
+    def test_920_change_aa_profile(self):
+        """Test changing the Apparmor profile mode."""
+        services = ['neutron-openvswitch-agent',
+                    'neutron-dhcp-agent',
+                    'neutron-l3-agent',
+                    'neutron-metadata-agent',
+                    'neutron-metering-agent']
+
+        set_default = {'aa-profile-mode': 'disable'}
+        set_alternate = {'aa-profile-mode': 'complain'}
+
+        mtime = zaza.model.get_unit_time(
+            self.lead_unit,
+            model_name=self.model_name)
+        logging.debug('Remote unit timestamp {}'.format(mtime))
+
+        with self.config_change(set_default, set_alternate):
+            for unit in zaza.model.get_units('neutron-gateway',
+                                             model_name=self.model_name):
+                logging.info('Checking number of profiles in complain '
+                             'mode in {}'.format(unit.entity_id))
+                run = zaza.model.run_on_unit(
+                    unit.entity_id,
+                    'aa-status --complaining',
+                    model_name=self.model_name)
+                output = run['Stdout']
+                self.assertTrue(int(output) >= len(services))
+
     @classmethod
     def _get_services(cls):
         """
