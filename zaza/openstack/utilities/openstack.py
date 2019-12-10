@@ -1451,7 +1451,7 @@ def get_current_os_release_pair(application='keystone'):
     """
     try:
         machine = list(juju_utils.get_machines_for_application(application))[0]
-    except KeyError:
+    except IndexError:
         raise exceptions.ApplicationNotFound(application)
 
     series = juju_utils.get_machine_series(machine)

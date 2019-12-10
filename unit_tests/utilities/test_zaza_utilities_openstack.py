@@ -816,7 +816,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         _machine = mock.MagicMock()
 
         # No machine returned
-        self._get_machines.side_effect = KeyError
+        self._get_machines.return_value = []
         with self.assertRaises(exceptions.ApplicationNotFound):
             openstack_utils.get_current_os_release_pair()
         self._get_machines.side_effect = None
