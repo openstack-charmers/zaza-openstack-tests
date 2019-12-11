@@ -573,6 +573,9 @@ def add_interface_to_netplan(server_name, mac_address):
     """
     if dvr_enabled():
         application_name = 'neutron-openvswitch'
+    elif ovn_present():
+        # OVN chassis is a subordinate to nova-compute
+        application_name = 'nova-compute'
     else:
         application_name = 'neutron-gateway'
 
@@ -666,7 +669,7 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
             pass
         port_config_key = 'interface-bridge-mappings'
         config.update({'ovn-bridge-mappings': 'physnet1:br-ex'})
-        add_dataport_to_netplan = False
+        add_dataport_to_netplan = True
     else:
         uuids = itertools.islice(get_gateway_uuids(), limit_gws)
         application_names = ['neutron-gateway']
