@@ -649,9 +649,9 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
         application_names = ['neutron-openvswitch']
         try:
             ngw = 'neutron-gateway'
-            next(juju_utils.get_machine_uuids_for_application(ngw))
+            model.get_application(ngw)
             application_names.append(ngw)
-        except StopIteration:
+        except KeyError:
             # neutron-gateway not in deployment
             pass
     elif ovn_present():
@@ -659,9 +659,9 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
         application_names = ['ovn-chassis']
         try:
             ovn_dc_name = 'ovn-dedicated-chassis'
-            next(juju_utils.get_machine_uuids_for_application(ovn_dc_name))
+            model.get_application(ovn_dc_name)
             application_names.append(ovn_dc_name)
-        except StopIteration:
+        except KeyError:
             # ovn-dedicated-chassis not in deployment
             pass
         port_config_key = 'interface-bridge-mappings'
@@ -679,7 +679,8 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
         ext_port_name = "{}_ext-port".format(server.name)
         for port in neutronclient.list_ports(device_id=server.id)['ports']:
             if port['name'] == ext_port_name:
-                logging.warning('Neutron Gateway already has additional port')
+                logging.warning(
+                    'Neutron Gateway already has additional port')
                 break
         else:
             logging.info('Attaching additional port to instance, '
@@ -1446,8 +1447,8 @@ def get_current_os_release_pair(application='keystone'):
     :raises: exceptions.OSVersionNotFound
     """
     try:
-        machine = next(juju_utils.get_machines_for_application(application))
-    except StopIteration:
+        machine = list(juju_utils.get_machines_for_application(application))[0]
+    except IndexError:
         raise exceptions.ApplicationNotFound(application)
 
     series = juju_utils.get_machine_series(machine)
