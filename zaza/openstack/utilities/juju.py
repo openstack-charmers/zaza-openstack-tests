@@ -311,3 +311,49 @@ def leader_get(application, key='', model_name=None):
         return yaml.safe_load(result.get('Stdout'))
     else:
         raise model.CommandRunFailed(cmd, result)
+
+
+def get_subordinate_units(unit_list, charm_name=None, status=None,
+                          model_name=None):
+    """Get a list of all subordinate units associated with units in unit_list.
+
+    Get a list of all subordinate units associated with units in unit_list.
+    Subordinate can be filtered by using 'charm_name' which will only return
+    subordinate units which have 'charm_name' in the name of the charm e.g.
+
+        get_subordinate_units(
+            ['cinder/1']) would return ['cinder-hacluster/1',
+                                        'cinder-ceph/2'])
+    where as
+
+        get_subordinate_units(
+            ['cinder/1'], charm_name='hac') would return ['cinder-hacluster/1']
+
+    NOTE: The charm_name match is against the name of the charm not the
+          application name.
+
+    :param charm_name: List of unit names
+    :type unit_list: []
+    :param charm_name: charm_name to match against, can be a sub-string.
+    :type charm_name: str
+    :param status: Juju status to query against,
+    :type status: juju.client._definitions.FullStatus
+    :param model_name: Name of model to query.
+    :type model_name: str
+    :returns: List of matching unit names.
+    :rtype: []
+    """
+    if not status:
+        status = model.get_status(model_name=model_name)
+    sub_units = []
+    for unit_name in unit_list:
+        app_name = unit_name.split('/')[0]
+        subs = status.applications[app_name]['units'][unit_name].get(
+            'subordinates') or {}
+        if charm_name:
+            for unit_name, unit_data in subs.items():
+                if charm_name in unit_data['charm']:
+                    sub_units.append(unit_name)
+        else:
+            sub_units.extend([n for n in subs.keys()])
+    return sub_units
