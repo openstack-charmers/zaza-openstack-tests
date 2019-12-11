@@ -204,32 +204,6 @@ class NeutronGatewayTest(test_utils.OpenStackBaseTest):
         return services
 
 
-class NeutronGatewaySecurityTest(test_utils.OpenStackBaseTest):
-    """Neutron Gateway Security Tests."""
-
-    def test_security_checklist(self):
-        """Verify expected state with security-checklist."""
-        expected_failures = []
-        expected_passes = [
-            'validate-file-ownership',
-            'validate-file-permissions',
-        ]
-
-        for unit in zaza.model.get_units('neutron-gateway',
-                                         model_name=self.model_name):
-            logging.info('Running `security-checklist` action'
-                         ' on  unit {}'.format(unit.entity_id))
-            test_utils.audit_assertions(
-                zaza.model.run_action(
-                    unit.entity_id,
-                    'security-checklist',
-                    model_name=self.model_name,
-                    action_params={}),
-                expected_passes,
-                expected_failures,
-                expected_to_pass=True)
-
-
 class NeutronApiTest(test_utils.OpenStackBaseTest):
     """Test basic Neutron API Charm functionality."""
 
@@ -288,28 +262,41 @@ class NeutronApiTest(test_utils.OpenStackBaseTest):
 
 
 class SecurityTest(test_utils.OpenStackBaseTest):
-    """Neutron APIsecurity tests tests."""
+    """Neutron Security Tests."""
 
     def test_security_checklist(self):
         """Verify expected state with security-checklist."""
-        tls_checks = [
-            'validate-uses-tls-for-keystone',
-        ]
-        expected_failures = [
-            'validate-enables-tls',  # LP: #1851610
-        ]
+        expected_failures = []
         expected_passes = [
             'validate-file-ownership',
             'validate-file-permissions',
-            'validate-uses-keystone',
         ]
-        if zaza.model.get_relation_id(
-                'neutron-api', 'vault', remote_interface_name='certificates'):
-            expected_passes.extend(tls_checks)
-        else:
-            expected_failures.extend(tls_checks)
+        expected_to_pass = True
 
-        for unit in zaza.model.get_units('neutron-api',
+        # override settings depending on application name so we can reuse
+        # the class for multiple charms
+        if self.application_name == 'neutron-api':
+            tls_checks = [
+                'validate-uses-tls-for-keystone',
+            ]
+
+            expected_failures = [
+                'validate-enables-tls',  # LP: #1851610
+            ]
+
+            expected_passes.append('validate-uses-keystone')
+
+            if zaza.model.get_relation_id(
+                    'neutron-api',
+                    'vault',
+                    remote_interface_name='certificates'):
+                expected_passes.extend(tls_checks)
+            else:
+                expected_failures.extend(tls_checks)
+
+            expected_to_pass = False
+
+        for unit in zaza.model.get_units(self.application_name,
                                          model_name=self.model_name):
             logging.info('Running `security-checklist` action'
                          ' on  unit {}'.format(unit.entity_id))
@@ -321,7 +308,7 @@ class SecurityTest(test_utils.OpenStackBaseTest):
                     action_params={}),
                 expected_passes,
                 expected_failures,
-                expected_to_pass=False)
+                expected_to_pass=expected_to_pass)
 
 
 class NeutronNetworkingTest(unittest.TestCase):
