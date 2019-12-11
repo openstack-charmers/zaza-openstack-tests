@@ -279,3 +279,34 @@ class TestJujuUtils(ut_utils.BaseTestCase):
             model_name=None
         )
         self.assertEqual(expected, actual)
+
+    def test_get_subordinate_units(self):
+        juju_status = mock.MagicMock()
+        juju_status.applications = {
+            'nova-compute': {
+                'units': {
+                    'nova-compute/0': {
+                        'subordinates': {
+                            'neutron-openvswitch/2': {
+                                'charm': 'cs:neutron-openvswitch-22'}}}}},
+            'cinder': {
+                'units': {
+                    'cinder/1': {
+                        'subordinates': {
+                            'cinder-hacluster/0': {
+                                'charm': 'cs:hacluster-42'},
+                            'cinder-ceph/3': {
+                                'charm': 'cs:cinder-ceph-2'}}}}},
+        }
+        self.assertEqual(
+            sorted(juju_utils.get_subordinate_units(
+                ['nova-compute/0', 'cinder/1'],
+                status=juju_status)),
+            sorted(['neutron-openvswitch/2', 'cinder-hacluster/0',
+                    'cinder-ceph/3']))
+        self.assertEqual(
+            juju_utils.get_subordinate_units(
+                ['nova-compute/0', 'cinder/1'],
+                charm_name='ceph',
+                status=juju_status),
+            ['cinder-ceph/3'])
