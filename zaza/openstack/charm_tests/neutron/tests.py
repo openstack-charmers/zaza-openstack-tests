@@ -17,7 +17,6 @@
 """Encapsulating `neutron-openvswitch` testing."""
 
 
-import time
 import logging
 import tenacity
 import unittest
@@ -90,21 +89,7 @@ class NeutronGatewayTest(test_utils.OpenStackBaseTest):
                     {'enable-qos': 'True'},
                     application_name="neutron-api"):
 
-                # wait for neutron-gateway to complete as well
-                time.sleep(60)
-
-                # obtain dhcp agent to identify the neutron-gateway host
-                dhcp_agent = self.neutron_client.list_agents(
-                    binary='neutron-dhcp-agent')['agents'][0]
-                neutron_gw_host = dhcp_agent['host']
-                logging.debug('neutron gw host: {}'.format(neutron_gw_host))
-
-                # check extensions on the ovs agent to validate qos
-                ovs_agent = self.neutron_client.list_agents(
-                    binary='neutron-openvswitch-agent',
-                    host=neutron_gw_host)['agents'][0]
-
-                self.assertIn('qos', ovs_agent['configurations']['extensions'])
+                self._validate_openvswitch_agent_qos()
 
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change.
@@ -176,6 +161,22 @@ class NeutronGatewayTest(test_utils.OpenStackBaseTest):
                     model_name=self.model_name)
                 output = run['Stdout']
                 self.assertTrue(int(output) >= len(services))
+
+    @tenacity.retry(wait=tenacity.wait_exponential(min=5, max=60))
+    def _validate_openvswitch_agent_qos(self):
+        """Validate that the qos extension is enabled in the ovs agent."""
+        # obtain the dhcp agent to identify the neutron-gateway host
+        dhcp_agent = self.neutron_client.list_agents(
+            binary='neutron-dhcp-agent')['agents'][0]
+        neutron_gw_host = dhcp_agent['host']
+        logging.debug('neutron gw host: {}'.format(neutron_gw_host))
+
+        # check extensions on the ovs agent to validate qos
+        ovs_agent = self.neutron_client.list_agents(
+            binary='neutron-openvswitch-agent',
+            host=neutron_gw_host)['agents'][0]
+
+        self.assertIn('qos', ovs_agent['configurations']['extensions'])
 
     @classmethod
     def _get_services(cls):
