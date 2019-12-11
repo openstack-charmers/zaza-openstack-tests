@@ -39,57 +39,10 @@ class NeutronGatewayTest(test_utils.OpenStackBaseTest):
         cls.current_os_release = openstack_utils.get_os_release()
         cls.services = cls._get_services()
 
-        # set up clients
-        cls.neutron_client = (
-            openstack_utils.get_neutron_session_client(cls.keystone_session))
-
         bionic_stein = openstack_utils.get_os_release('bionic_stein')
 
         cls.pgrep_full = (True if cls.current_os_release >= bionic_stein
                           else False)
-
-    def test_400_create_network(self):
-        """Create a network, verify that it exists, and then delete it."""
-        logging.debug('Creating neutron network...')
-        self.neutron_client.format = 'json'
-        net_name = 'test_net'
-
-        # Verify that the network doesn't exist
-        networks = self.neutron_client.list_networks(name=net_name)
-        net_count = len(networks['networks'])
-        assert net_count == 0, (
-            "Expected zero networks, found {}".format(net_count))
-
-        # Create a network and verify that it exists
-        network = {'name': net_name}
-        self.neutron_client.create_network({'network': network})
-
-        networks = self.neutron_client.list_networks(name=net_name)
-        logging.debug('Networks: {}'.format(networks))
-        net_len = len(networks['networks'])
-        assert net_len == 1, (
-            "Expected 1 network, found {}".format(net_len))
-
-        logging.debug('Confirming new neutron network...')
-        network = networks['networks'][0]
-        assert network['name'] == net_name, "network ext_net not found"
-
-        # Cleanup
-        logging.debug('Deleting neutron network...')
-        self.neutron_client.delete_network(network['id'])
-
-    def test_401_enable_qos(self):
-        """Check qos settings set via neutron-api charm."""
-        if (self.current_os_release >=
-                openstack_utils.get_os_release('trusty_mitaka')):
-            logging.info('running qos check')
-
-            with self.config_change(
-                    {'enable-qos': 'False'},
-                    {'enable-qos': 'True'},
-                    application_name="neutron-api"):
-
-                self._validate_openvswitch_agent_qos()
 
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change.
@@ -162,22 +115,6 @@ class NeutronGatewayTest(test_utils.OpenStackBaseTest):
                 output = run['Stdout']
                 self.assertTrue(int(output) >= len(services))
 
-    @tenacity.retry(wait=tenacity.wait_exponential(min=5, max=60))
-    def _validate_openvswitch_agent_qos(self):
-        """Validate that the qos extension is enabled in the ovs agent."""
-        # obtain the dhcp agent to identify the neutron-gateway host
-        dhcp_agent = self.neutron_client.list_agents(
-            binary='neutron-dhcp-agent')['agents'][0]
-        neutron_gw_host = dhcp_agent['host']
-        logging.debug('neutron gw host: {}'.format(neutron_gw_host))
-
-        # check extensions on the ovs agent to validate qos
-        ovs_agent = self.neutron_client.list_agents(
-            binary='neutron-openvswitch-agent',
-            host=neutron_gw_host)['agents'][0]
-
-        self.assertIn('qos', ovs_agent['configurations']['extensions'])
-
     @classmethod
     def _get_services(cls):
         """
@@ -207,6 +144,59 @@ class NeutronGatewayTest(test_utils.OpenStackBaseTest):
 
 class NeutronApiTest(test_utils.OpenStackBaseTest):
     """Test basic Neutron API Charm functionality."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running Neutron Gateway tests."""
+        super(NeutronApiTest, cls).setUpClass()
+        cls.current_os_release = openstack_utils.get_os_release()
+
+        # set up clients
+        cls.neutron_client = (
+            openstack_utils.get_neutron_session_client(cls.keystone_session))
+
+    def test_400_create_network(self):
+        """Create a network, verify that it exists, and then delete it."""
+        logging.debug('Creating neutron network...')
+        self.neutron_client.format = 'json'
+        net_name = 'test_net'
+
+        # Verify that the network doesn't exist
+        networks = self.neutron_client.list_networks(name=net_name)
+        net_count = len(networks['networks'])
+        assert net_count == 0, (
+            "Expected zero networks, found {}".format(net_count))
+
+        # Create a network and verify that it exists
+        network = {'name': net_name}
+        self.neutron_client.create_network({'network': network})
+
+        networks = self.neutron_client.list_networks(name=net_name)
+        logging.debug('Networks: {}'.format(networks))
+        net_len = len(networks['networks'])
+        assert net_len == 1, (
+            "Expected 1 network, found {}".format(net_len))
+
+        logging.debug('Confirming new neutron network...')
+        network = networks['networks'][0]
+        assert network['name'] == net_name, "network ext_net not found"
+
+        # Cleanup
+        logging.debug('Deleting neutron network...')
+        self.neutron_client.delete_network(network['id'])
+
+    def test_401_enable_qos(self):
+        """Check qos settings set via neutron-api charm."""
+        if (self.current_os_release >=
+                openstack_utils.get_os_release('trusty_mitaka')):
+            logging.info('running qos check')
+
+            with self.config_change(
+                    {'enable-qos': 'False'},
+                    {'enable-qos': 'True'},
+                    application_name="neutron-api"):
+
+                self._validate_openvswitch_agent_qos()
 
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change.
@@ -260,6 +250,22 @@ class NeutronApiTest(test_utils.OpenStackBaseTest):
                 ["neutron-server", "apache2", "haproxy"],
                 pgrep_full=pgrep_full):
             logging.info("Testing pause resume")
+
+    @tenacity.retry(wait=tenacity.wait_exponential(min=5, max=60))
+    def _validate_openvswitch_agent_qos(self):
+        """Validate that the qos extension is enabled in the ovs agent."""
+        # obtain the dhcp agent to identify the neutron-gateway host
+        dhcp_agent = self.neutron_client.list_agents(
+            binary='neutron-dhcp-agent')['agents'][0]
+        neutron_gw_host = dhcp_agent['host']
+        logging.debug('neutron gw host: {}'.format(neutron_gw_host))
+
+        # check extensions on the ovs agent to validate qos
+        ovs_agent = self.neutron_client.list_agents(
+            binary='neutron-openvswitch-agent',
+            host=neutron_gw_host)['agents'][0]
+
+        self.assertIn('qos', ovs_agent['configurations']['extensions'])
 
 
 class SecurityTest(test_utils.OpenStackBaseTest):
