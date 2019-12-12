@@ -29,8 +29,174 @@ import zaza.openstack.configure.guest as guest
 import zaza.openstack.utilities.openstack as openstack_utils
 
 
+class NeutronGatewayTest(test_utils.OpenStackBaseTest):
+    """Test basic Neutron Gateway Charm functionality."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running Neutron Gateway tests."""
+        super(NeutronGatewayTest, cls).setUpClass()
+        cls.current_os_release = openstack_utils.get_os_release()
+        cls.services = cls._get_services()
+
+        bionic_stein = openstack_utils.get_os_release('bionic_stein')
+
+        cls.pgrep_full = (True if cls.current_os_release >= bionic_stein
+                          else False)
+
+    def test_900_restart_on_config_change(self):
+        """Checking restart happens on config change.
+
+        Change disk format and assert then change propagates to the correct
+        file and that services are restarted as a result
+        """
+        # Expected default and alternate values
+        current_value = zaza.model.get_application_config(
+            'neutron-gateway')['debug']['value']
+        new_value = str(not bool(current_value)).title()
+        current_value = str(current_value).title()
+
+        set_default = {'debug': current_value}
+        set_alternate = {'debug': new_value}
+        default_entry = {'DEFAULT': {'debug': [current_value]}}
+        alternate_entry = {'DEFAULT': {'debug': [new_value]}}
+
+        # Config file affected by juju set config change
+        conf_file = '/etc/neutron/neutron.conf'
+
+        # Make config change, check for service restarts
+        logging.info(
+            'Setting verbose on neutron-api {}'.format(set_alternate))
+        self.restart_on_changed(
+            conf_file,
+            set_default,
+            set_alternate,
+            default_entry,
+            alternate_entry,
+            self.services,
+            pgrep_full=self.pgrep_full)
+
+    def test_910_pause_and_resume(self):
+        """Run pause and resume tests.
+
+        Pause service and check services are stopped then resume and check
+        they are started
+        """
+        with self.pause_resume(
+                self.services,
+                pgrep_full=self.pgrep_full):
+            logging.info("Testing pause resume")
+
+    def test_920_change_aa_profile(self):
+        """Test changing the Apparmor profile mode."""
+        services = ['neutron-openvswitch-agent',
+                    'neutron-dhcp-agent',
+                    'neutron-l3-agent',
+                    'neutron-metadata-agent',
+                    'neutron-metering-agent']
+
+        set_default = {'aa-profile-mode': 'disable'}
+        set_alternate = {'aa-profile-mode': 'complain'}
+
+        mtime = zaza.model.get_unit_time(
+            self.lead_unit,
+            model_name=self.model_name)
+        logging.debug('Remote unit timestamp {}'.format(mtime))
+
+        with self.config_change(set_default, set_alternate):
+            for unit in zaza.model.get_units('neutron-gateway',
+                                             model_name=self.model_name):
+                logging.info('Checking number of profiles in complain '
+                             'mode in {}'.format(unit.entity_id))
+                run = zaza.model.run_on_unit(
+                    unit.entity_id,
+                    'aa-status --complaining',
+                    model_name=self.model_name)
+                output = run['Stdout']
+                self.assertTrue(int(output) >= len(services))
+
+    @classmethod
+    def _get_services(cls):
+        """
+        Return the services expected in Neutron Gateway.
+
+        :returns: A list of services
+        :rtype: list[str]
+        """
+        services = ['neutron-dhcp-agent',
+                    'neutron-metadata-agent',
+                    'neutron-metering-agent',
+                    'neutron-openvswitch-agent']
+
+        trusty_icehouse = openstack_utils.get_os_release('trusty_icehouse')
+        xenial_newton = openstack_utils.get_os_release('xenial_newton')
+        bionic_train = openstack_utils.get_os_release('bionic_train')
+
+        if cls.current_os_release <= trusty_icehouse:
+            services.append('neutron-vpn-agent')
+        if cls.current_os_release < xenial_newton:
+            services.append('neutron-lbaas-agent')
+        if xenial_newton <= cls.current_os_release < bionic_train:
+            services.append('neutron-lbaasv2-agent')
+
+        return services
+
+
 class NeutronApiTest(test_utils.OpenStackBaseTest):
     """Test basic Neutron API Charm functionality."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running Neutron Gateway tests."""
+        super(NeutronApiTest, cls).setUpClass()
+        cls.current_os_release = openstack_utils.get_os_release()
+
+        # set up clients
+        cls.neutron_client = (
+            openstack_utils.get_neutron_session_client(cls.keystone_session))
+
+    def test_400_create_network(self):
+        """Create a network, verify that it exists, and then delete it."""
+        logging.debug('Creating neutron network...')
+        self.neutron_client.format = 'json'
+        net_name = 'test_net'
+
+        # Verify that the network doesn't exist
+        networks = self.neutron_client.list_networks(name=net_name)
+        net_count = len(networks['networks'])
+        assert net_count == 0, (
+            "Expected zero networks, found {}".format(net_count))
+
+        # Create a network and verify that it exists
+        network = {'name': net_name}
+        self.neutron_client.create_network({'network': network})
+
+        networks = self.neutron_client.list_networks(name=net_name)
+        logging.debug('Networks: {}'.format(networks))
+        net_len = len(networks['networks'])
+        assert net_len == 1, (
+            "Expected 1 network, found {}".format(net_len))
+
+        logging.debug('Confirming new neutron network...')
+        network = networks['networks'][0]
+        assert network['name'] == net_name, "network ext_net not found"
+
+        # Cleanup
+        logging.debug('Deleting neutron network...')
+        self.neutron_client.delete_network(network['id'])
+
+    def test_401_enable_qos(self):
+        """Check qos settings set via neutron-api charm."""
+        if (self.current_os_release >=
+                openstack_utils.get_os_release('trusty_mitaka')):
+            logging.info('running qos check')
+
+            with self.config_change(
+                    {'enable-qos': 'False'},
+                    {'enable-qos': 'True'},
+                    application_name="neutron-api"):
+
+                self._validate_openvswitch_agent_qos()
 
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change.
@@ -85,30 +251,59 @@ class NeutronApiTest(test_utils.OpenStackBaseTest):
                 pgrep_full=pgrep_full):
             logging.info("Testing pause resume")
 
+    @tenacity.retry(wait=tenacity.wait_exponential(min=5, max=60))
+    def _validate_openvswitch_agent_qos(self):
+        """Validate that the qos extension is enabled in the ovs agent."""
+        # obtain the dhcp agent to identify the neutron-gateway host
+        dhcp_agent = self.neutron_client.list_agents(
+            binary='neutron-dhcp-agent')['agents'][0]
+        neutron_gw_host = dhcp_agent['host']
+        logging.debug('neutron gw host: {}'.format(neutron_gw_host))
+
+        # check extensions on the ovs agent to validate qos
+        ovs_agent = self.neutron_client.list_agents(
+            binary='neutron-openvswitch-agent',
+            host=neutron_gw_host)['agents'][0]
+
+        self.assertIn('qos', ovs_agent['configurations']['extensions'])
+
 
 class SecurityTest(test_utils.OpenStackBaseTest):
-    """Neutron APIsecurity tests tests."""
+    """Neutron Security Tests."""
 
     def test_security_checklist(self):
         """Verify expected state with security-checklist."""
-        tls_checks = [
-            'validate-uses-tls-for-keystone',
-        ]
-        expected_failures = [
-            'validate-enables-tls',  # LP: #1851610
-        ]
+        expected_failures = []
         expected_passes = [
             'validate-file-ownership',
             'validate-file-permissions',
-            'validate-uses-keystone',
         ]
-        if zaza.model.get_relation_id(
-                'neutron-api', 'vault', remote_interface_name='certificates'):
-            expected_passes.extend(tls_checks)
-        else:
-            expected_failures.extend(tls_checks)
+        expected_to_pass = True
 
-        for unit in zaza.model.get_units('neutron-api',
+        # override settings depending on application name so we can reuse
+        # the class for multiple charms
+        if self.application_name == 'neutron-api':
+            tls_checks = [
+                'validate-uses-tls-for-keystone',
+            ]
+
+            expected_failures = [
+                'validate-enables-tls',  # LP: #1851610
+            ]
+
+            expected_passes.append('validate-uses-keystone')
+
+            if zaza.model.get_relation_id(
+                    'neutron-api',
+                    'vault',
+                    remote_interface_name='certificates'):
+                expected_passes.extend(tls_checks)
+            else:
+                expected_failures.extend(tls_checks)
+
+            expected_to_pass = False
+
+        for unit in zaza.model.get_units(self.application_name,
                                          model_name=self.model_name):
             logging.info('Running `security-checklist` action'
                          ' on  unit {}'.format(unit.entity_id))
@@ -120,7 +315,7 @@ class SecurityTest(test_utils.OpenStackBaseTest):
                     action_params={}),
                 expected_passes,
                 expected_failures,
-                expected_to_pass=False)
+                expected_to_pass=expected_to_pass)
 
 
 class NeutronNetworkingTest(unittest.TestCase):
