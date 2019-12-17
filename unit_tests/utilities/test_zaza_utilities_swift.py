@@ -104,7 +104,7 @@ class TestSwiftUtils(ut_utils.BaseTestCase):
             region = int(app_name.split('-')[2].replace('region', ''))
             zone = int(app_name.split('-')[3].replace('zone', ''))
             app_config[app_name] = {
-                'region': {'value': region},
+                'storage-region': {'value': region},
                 'zone': {'value': zone}}
 
         self.get_application_config.side_effect = \
