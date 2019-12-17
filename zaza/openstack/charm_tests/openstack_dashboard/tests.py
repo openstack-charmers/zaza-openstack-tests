@@ -226,7 +226,7 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
         base64string = base64.b64encode(
             bytes('{}:{}'.format('admin', password), 'ascii'))
         request.add_header(
-            "Authorization", "Basic %s" % base64string.decode('utf-8'))
+            "Authorization", "Basic {}".format(base64string.decode('utf-8')))
 
         # Expect default config to not be available externally.
         expected = 'bind 127.0.0.1:{}'.format(port)
