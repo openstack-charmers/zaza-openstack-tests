@@ -14,6 +14,7 @@
 
 """Encapsulate horizon (openstack-dashboard) charm testing."""
 
+import base64
 import http.client
 import logging
 import requests
@@ -26,6 +27,7 @@ import zaza.model as zaza_model
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.juju as openstack_juju
+import zaza.openstack.utilities.generic as generic_utils
 import zaza.openstack.charm_tests.policyd.tests as policyd
 
 
@@ -205,6 +207,64 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
                 services=unit_services,
                 target_status='running'
             )
+
+    def test_200_haproxy_stats_config(self):
+        """Verify that the HAProxy stats are properly setup."""
+        logging.info('Checking dashboard HAProxy settings...')
+        application_name = 'openstack-dashboard'
+        unit = zaza_model.get_unit_from_name(
+            zaza_model.get_lead_unit_name(application_name))
+        keystone_unit = zaza_model.get_lead_unit_name('keystone')
+        dashboard_relation = openstack_juju.get_relation_from_unit(
+            keystone_unit, unit.entity_id, 'identity-service')
+        dashboard_ip = dashboard_relation['private-address']
+        logging.debug("... dashboard_ip is:{}".format(dashboard_ip))
+        conf = '/etc/haproxy/haproxy.cfg'
+        port = '8888'
+        set_alternate = {
+            'haproxy-expose-stats': 'True',
+        }
+
+        request = urllib.request.Request(
+            'http://{}:{}'.format(dashboard_ip, port))
+
+        # NOTE(ajkavanagh): it seems that apache2 doesn't start quickly enough
+        # for the test, and so it gets reset errors; repeat until either that
+        # stops or there is a failure
+        @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1,
+                                                       min=5, max=10),
+                        retry=tenacity.retry_if_exception_type(
+                            http.client.RemoteDisconnected),
+                        reraise=True)
+        def _do_request():
+            return urllib.request.urlopen(request)
+
+        output = str(generic_utils.get_file_contents(unit, conf))
+
+        for line in output.split('\n'):
+            if "stats auth" in line:
+                password = line.split(':')[1]
+        base64string = base64.b64encode(bytes('%s:%s' % ('admin', password),
+                                              'ascii'))
+        request.add_header(
+            "Authorization", "Basic %s" % base64string.decode('utf-8'))
+
+        # Expect default config to not be available externally.
+        expected = 'bind 127.0.0.1:{}'.format(port)
+        self.assertIn(expected, output)
+        with self.assertRaises(urllib.error.URLError):
+            _do_request()
+
+        zaza_model.set_application_config(application_name, set_alternate)
+        zaza_model.block_until_all_units_idle(model_name=self.model_name)
+
+        # Once exposed, expect HAProxy stats to be available externally
+        output = str(generic_utils.get_file_contents(unit, conf))
+        expected = 'bind 0.0.0.0:{}'.format(port)
+        html = _do_request().read().decode(encoding='utf-8')
+        self.assertIn(expected, output)
+        self.assertIn('Statistics Report for HAProxy', html,
+                      "HAProxy stats check failed")
 
     def test_302_router_settings(self):
         """Verify that the horizon router settings are correct.
