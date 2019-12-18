@@ -14,6 +14,7 @@
 
 """Encapsulate horizon (openstack-dashboard) charm testing."""
 
+import base64
 import http.client
 import logging
 import requests
@@ -25,7 +26,7 @@ import zaza.model as zaza_model
 
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
-import zaza.openstack.utilities.juju as openstack_juju
+import zaza.openstack.utilities.generic as generic_utils
 import zaza.openstack.charm_tests.policyd.tests as policyd
 
 
@@ -39,21 +40,6 @@ class FailedAuth(AuthExceptions):
     """Failed exception for the 401 test."""
 
     pass
-
-
-def _get_dashboard_ip():
-    """Get the IP of the dashboard.
-
-    :returns: The IP of the dashboard
-    :rtype: str
-    """
-    unit_name = zaza_model.get_lead_unit_name('openstack-dashboard')
-    keystone_unit = zaza_model.get_lead_unit_name('keystone')
-    dashboard_relation = openstack_juju.get_relation_from_unit(
-        keystone_unit, unit_name, 'identity-service')
-    dashboard_ip = dashboard_relation['private-address']
-    logging.debug("dashboard_ip is: {}".format(dashboard_ip))
-    return dashboard_ip
 
 
 # NOTE: intermittent authentication fails. Wrap in a retry loop.
@@ -154,6 +140,25 @@ def _login(dashboard_ip, domain, username, password):
     return client, response
 
 
+# NOTE(ajkavanagh): it seems that apache2 doesn't start quickly enough
+# for the test, and so it gets reset errors; repeat until either that
+# stops or there is a failure
+@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, min=5, max=10),
+                retry=tenacity.retry_if_exception_type(
+                    http.client.RemoteDisconnected),
+                reraise=True)
+def _do_request(request):
+    """Open a webpage via urlopen.
+
+    :param request: A urllib request object.
+    :type request: object
+    :returns: HTTPResponse object
+    :rtype: object
+    :raises: URLError on protocol errors
+    """
+    return urllib.request.urlopen(request)
+
+
 class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
     """Encapsulate openstack dashboard charm tests."""
 
@@ -206,6 +211,48 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
                 target_status='running'
             )
 
+    def test_200_haproxy_stats_config(self):
+        """Verify that the HAProxy stats are properly setup."""
+        logging.info('Checking dashboard HAProxy settings...')
+        unit = zaza_model.get_unit_from_name(
+            zaza_model.get_lead_unit_name(self.application_name))
+        logging.debug("... dashboard_ip is:{}".format(unit.public_address))
+        conf = '/etc/haproxy/haproxy.cfg'
+        port = '8888'
+        set_alternate = {
+            'haproxy-expose-stats': 'True',
+        }
+
+        request = urllib.request.Request(
+            'http://{}:{}'.format(unit.public_address, port))
+
+        output = str(generic_utils.get_file_contents(unit, conf))
+
+        for line in output.split('\n'):
+            if "stats auth" in line:
+                password = line.split(':')[1]
+        base64string = base64.b64encode(
+            bytes('{}:{}'.format('admin', password), 'ascii'))
+        request.add_header(
+            "Authorization", "Basic {}".format(base64string.decode('utf-8')))
+
+        # Expect default config to not be available externally.
+        expected = 'bind 127.0.0.1:{}'.format(port)
+        self.assertIn(expected, output)
+        with self.assertRaises(urllib.error.URLError):
+            _do_request(request)
+
+        zaza_model.set_application_config(self.application_name, set_alternate)
+        zaza_model.block_until_all_units_idle(model_name=self.model_name)
+
+        # Once exposed, expect HAProxy stats to be available externally
+        output = str(generic_utils.get_file_contents(unit, conf))
+        expected = 'bind 0.0.0.0:{}'.format(port)
+        html = _do_request(request).read().decode(encoding='utf-8')
+        self.assertIn(expected, output)
+        self.assertIn('Statistics Report for HAProxy', html,
+                      "HAProxy stats check failed")
+
     def test_302_router_settings(self):
         """Verify that the horizon router settings are correct.
 
@@ -251,33 +298,20 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
         """
         logging.info('Checking dashboard http response...')
 
-        unit_name = zaza_model.get_lead_unit_name('openstack-dashboard')
-        keystone_unit = zaza_model.get_lead_unit_name('keystone')
-        dashboard_relation = openstack_juju.get_relation_from_unit(
-            keystone_unit, unit_name, 'identity-service')
-        dashboard_ip = dashboard_relation['private-address']
-        logging.debug("... dashboard_ip is:{}".format(dashboard_ip))
+        unit = zaza_model.get_unit_from_name(
+            zaza_model.get_lead_unit_name(self.application_name))
+        logging.debug("... dashboard_ip is:{}".format(unit.public_address))
 
-        # NOTE(fnordahl) there is a eluding issue that currently makes the
-        #                first request to the OpenStack Dashboard error out
-        #                with 500 Internal Server Error in CI.  Temporarilly
-        #                add retry logic to unwedge the gate.  This issue
-        #                should be revisited and root caused properly when time
-        #                allows.
-        @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1,
-                                                       min=5, max=10),
-                        reraise=True)
-        def do_request():
+        request = urllib.request.Request(
+            'http://{}/horizon'.format(unit.public_address))
+        try:
             logging.info("... trying to fetch the page")
-            try:
-                response = urllib.request.urlopen('http://{}/horizon'
-                                                  .format(dashboard_ip))
-                logging.info("... fetched page")
-            except Exception as e:
-                logging.info("... exception raised was {}".format(str(e)))
-                raise
-            return response.read().decode('utf-8')
-        html = do_request()
+            html = _do_request(request)
+            logging.info("... fetched page")
+        except Exception as e:
+            logging.info("... exception raised was {}".format(str(e)))
+            raise
+        return html.read().decode('utf-8')
         self.assertIn('OpenStack Dashboard', html,
                       "Dashboard frontpage check failed")
 
@@ -285,7 +319,8 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
         """Validate that authentication succeeds for client log in."""
         logging.info('Checking authentication through dashboard...')
 
-        dashboard_ip = _get_dashboard_ip()
+        unit = zaza_model.get_unit_from_name(
+            zaza_model.get_lead_unit_name(self.application_name))
         overcloud_auth = openstack_utils.get_overcloud_auth()
         password = overcloud_auth['OS_PASSWORD'],
         logging.info("admin password is {}".format(password))
@@ -294,7 +329,7 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
         domain = 'admin_domain',
         username = 'admin',
         password = overcloud_auth['OS_PASSWORD'],
-        _login(dashboard_ip, domain, username, password)
+        _login(unit.public_address, domain, username, password)
         logging.info('OK')
 
     def test_404_connection(self):
@@ -304,34 +339,21 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
         """
         logging.info('Checking apache mod_status gets disabled.')
 
-        unit_name = zaza_model.get_lead_unit_name('openstack-dashboard')
-        keystone_unit = zaza_model.get_lead_unit_name('keystone')
-        dashboard_relation = openstack_juju.get_relation_from_unit(
-            keystone_unit, unit_name, 'identity-service')
-        dashboard_ip = dashboard_relation['private-address']
-        logging.debug("... dashboard_ip is:{}".format(dashboard_ip))
+        unit = zaza_model.get_unit_from_name(
+            zaza_model.get_lead_unit_name(self.application_name))
+        logging.debug("... dashboard_ip is: {}".format(unit.public_address))
 
         logging.debug('Maybe enabling hardening for apache...')
         _app_config = zaza_model.get_application_config(self.application_name)
         logging.info(_app_config['harden'])
 
-        # NOTE(ajkavanagh): it seems that apache2 doesn't start quickly enough
-        # for the test, and so it gets reset errors; repeat until either that
-        # stops or there is a failure
-        @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1,
-                                                       min=5, max=10),
-                        retry=tenacity.retry_if_exception_type(
-                            http.client.RemoteDisconnected),
-                        reraise=True)
-        def _do_request():
-            return urllib.request.urlopen('http://{}/server-status'
-                                          .format(dashboard_ip))
-
+        request = urllib.request.Request(
+            'http://{}/server-status'.format(unit.public_address))
         with self.config_change(
                 {'harden': _app_config['harden'].get('value', '')},
                 {'harden': 'apache'}):
             try:
-                _do_request()
+                _do_request(request)
             except urllib.request.HTTPError as e:
                 # test failed if it didn't return 404
                 msg = "Apache mod_status check failed."
@@ -431,8 +453,9 @@ class OpenStackDashboardPolicydTests(policyd.BasePolicydSpecialization):
         :type ip: str
         :raises: PolicydOperationFailedException if operation fails.
         """
-        dashboard_ip = _get_dashboard_ip()
-        logging.info("Dashboard is at {}".format(dashboard_ip))
+        unit = zaza_model.get_unit_from_name(
+            zaza_model.get_lead_unit_name(self.application_name))
+        logging.info("Dashboard is at {}".format(unit.public_address))
         overcloud_auth = openstack_utils.get_overcloud_auth()
         password = overcloud_auth['OS_PASSWORD'],
         logging.info("admin password is {}".format(password))
@@ -441,9 +464,10 @@ class OpenStackDashboardPolicydTests(policyd.BasePolicydSpecialization):
         domain = 'admin_domain',
         username = 'admin',
         password = overcloud_auth['OS_PASSWORD'],
-        client, response = _login(dashboard_ip, domain, username, password)
+        client, response = _login(
+            unit.public_address, domain, username, password)
         # now attempt to get the domains page
-        _url = self.url.format(dashboard_ip)
+        _url = self.url.format(unit.public_address)
         result = client.get(_url)
         if result.status_code == 403:
             raise policyd.PolicydOperationFailedException("Not authenticated")
