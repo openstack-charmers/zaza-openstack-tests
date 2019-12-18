@@ -148,6 +148,14 @@ def _login(dashboard_ip, domain, username, password):
                     http.client.RemoteDisconnected),
                 reraise=True)
 def _do_request(request):
+    """Open a webpage via urlopen.
+
+    :param request: A urllib request object.
+    :type request: object
+    :returns: HTTPResponse object
+    :rtype: object
+    :raises: URLError on protocol errors
+    """
     return urllib.request.urlopen(request)
 
 
