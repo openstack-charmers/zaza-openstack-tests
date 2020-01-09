@@ -109,6 +109,15 @@ class SeriesUpgradeTest(unittest.TestCase):
                 files=self.files,
                 post_upgrade_functions=post_upgrade_functions)
 
+            if "rabbitmq-server" in applications[application]["charm"]:
+                logging.info(
+                    "Running complete-cluster-series-upgrade action on leader")
+                model.run_action_on_leader(
+                    'rabbitmq-server',
+                    'complete-cluster-series-upgrade',
+                    action_params={})
+                model.block_until_all_units_idle()
+
 
 class OpenStackSeriesUpgrade(SeriesUpgradeTest):
     """OpenStack Series Upgrade.
