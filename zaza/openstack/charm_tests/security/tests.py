@@ -20,7 +20,7 @@ import unittest
 
 import zaza.model as model
 import zaza.charm_lifecycle.utils as utils
-from zaza.openstack.utilities.file_assertions import (
+from zaza.utilities.file_assertions import (
     assert_path_glob,
     assert_single_file,
 )
