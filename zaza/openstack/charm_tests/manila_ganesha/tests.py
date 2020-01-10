@@ -16,6 +16,7 @@
 
 """Encapsulate Manila Ganesha testing."""
 
+from tenacity import Retrying, stop_after_attempt, wait_exponential
 
 from manilaclient import client as manilaclient
 
@@ -88,21 +89,31 @@ packages:
 
         mount_path = share.export_locations[0]
 
-        openstack_utils.ssh_command(
-            username, fip_1, 'instance-1',
-            'sudo mkdir -p /mnt/ceph && '
-            'sudo mount -t nfs -o nfsvers=4.1,proto=tcp {} /mnt/ceph && '
-            'echo "test" | sudo tee /mnt/ceph/test'.format(
-                mount_path),
-            password=password, privkey=privkey, verify=verify_setup)
+        for attempt in Retrying(
+                stop=stop_after_attempt(3),
+                wait=wait_exponential(multiplier=1, min=2, max=10)):
+            with attempt:
+                openstack_utils.ssh_command(
+                    username, fip_1, 'instance-1',
+                    'sudo mkdir -p /mnt/ceph && '
+                    'sudo mount -t nfs -o nfsvers=4.1,proto=tcp '
+                    '{} /mnt/ceph && '
+                    'echo "test" | sudo tee /mnt/ceph/test'.format(
+                        mount_path),
+                    password=password, privkey=privkey, verify=verify_setup)
 
-        # Read that file on instance_2
-        openstack_utils.ssh_command(
-            username, fip_2, 'instance-2',
-            'sudo mkdir -p /mnt/ceph && '
-            'sudo /bin/mount -t nfs -o nfsvers=4.1,proto=tcp {} /mnt/ceph'
-            .format(mount_path),
-            password=password, privkey=privkey, verify=verify_setup)
+        for attempt in Retrying(
+                stop=stop_after_attempt(3),
+                wait=wait_exponential(multiplier=1, min=2, max=10)):
+            with attempt:
+                # Setup that file on instance_2
+                openstack_utils.ssh_command(
+                    username, fip_2, 'instance-2',
+                    'sudo mkdir -p /mnt/ceph && '
+                    'sudo /bin/mount -t nfs -o nfsvers=4.1,proto=tcp '
+                    '{} /mnt/ceph'
+                    .format(mount_path),
+                    password=password, privkey=privkey, verify=verify_setup)
 
         def verify(stdin, stdout, stderr):
             status = stdout.channel.recv_exit_status()
