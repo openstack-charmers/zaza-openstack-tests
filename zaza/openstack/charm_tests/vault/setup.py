@@ -21,7 +21,7 @@ import tempfile
 import zaza.charm_lifecycle.utils as lifecycle_utils
 import zaza.openstack.charm_tests.vault.utils as vault_utils
 import zaza.model
-import zaza.openstack.utilities.cert
+import zaza.utilities.cert
 import zaza.openstack.utilities.openstack
 
 
@@ -70,10 +70,10 @@ def auto_initialize(cacert=None, validation_application='keystone'):
 
     action = vault_utils.run_get_csr()
     intermediate_csr = action.data['results']['output']
-    (cakey, cacertificate) = zaza.openstack.utilities.cert.generate_cert(
+    (cakey, cacertificate) = zaza.utilities.cert.generate_cert(
         'DivineAuthority',
         generate_ca=True)
-    intermediate_cert = zaza.openstack.utilities.cert.sign_csr(
+    intermediate_cert = zaza.utilities.cert.sign_csr(
         intermediate_csr,
         cakey.decode(),
         cacertificate.decode(),

@@ -38,4 +38,5 @@ paramiko
 # Documentation requirements
 sphinx
 sphinxcontrib-asyncio
-git+https://github.com/openstack-charmers/zaza#egg=zaza
+#git+https://github.com/openstack-charmers/zaza#egg=zaza
+-e ../zaza

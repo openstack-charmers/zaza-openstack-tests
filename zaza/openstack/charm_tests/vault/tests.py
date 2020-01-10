@@ -28,7 +28,7 @@ import requests
 import zaza.charm_lifecycle.utils as lifecycle_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.charm_tests.vault.utils as vault_utils
-import zaza.openstack.utilities.cert
+import zaza.utilities.cert
 import zaza.openstack.utilities.openstack
 import zaza.model
 
@@ -135,10 +135,10 @@ class VaultTest(BaseVaultTest):
         action = vault_utils.run_get_csr()
 
         intermediate_csr = action.data['results']['output']
-        (cakey, cacert) = zaza.openstack.utilities.cert.generate_cert(
+        (cakey, cacert) = zaza.utilities.cert.generate_cert(
             'DivineAuthority',
             generate_ca=True)
-        intermediate_cert = zaza.openstack.utilities.cert.sign_csr(
+        intermediate_cert = zaza.utilities.cert.sign_csr(
             intermediate_csr,
             cakey.decode(),
             cacert.decode(),

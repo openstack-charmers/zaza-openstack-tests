@@ -37,7 +37,7 @@ from keystoneauth1.identity import (
     v3,
     v2,
 )
-import zaza.openstack.utilities.cert as cert
+import zaza.utilities.cert as cert
 from novaclient import client as novaclient_client
 from neutronclient.v2_0 import client as neutronclient
 from neutronclient.common import exceptions as neutronexceptions

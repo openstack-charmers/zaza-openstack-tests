@@ -18,7 +18,7 @@ import os
 import base64
 import logging
 
-import zaza.openstack.utilities.cert as cert
+import zaza.utilities.cert as cert
 import zaza.charm_lifecycle.utils
 import zaza.openstack.charm_tests.test_utils
 import zaza.openstack.charm_tests.glance.setup as glance_setup
