@@ -318,6 +318,206 @@ class SecurityTest(test_utils.OpenStackBaseTest):
                 expected_to_pass=expected_to_pass)
 
 
+class NeutronOpenvSwitchTest(test_utils.OpenStackBaseTest):
+    """Test basic Neutron Openvswitch Charm functionality."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running Neutron Openvswitch tests."""
+        super(NeutronOpenvSwitchTest, cls).setUpClass()
+
+        cls.current_os_release = openstack_utils.get_os_release()
+
+        cls.compute_unit = zaza.model.get_units('nova-compute')[0]
+        cls.neutron_api_unit = zaza.model.get_units('neutron-api')[0]
+        cls.n_ovs_unit = zaza.model.get_units('neutron-openvswitch')[0]
+
+        cls.bionic_stein = openstack_utils.get_os_release('bionic_stein')
+        cls.trusty_mitaka = openstack_utils.get_os_release('trusty_mitaka')
+
+        if cls.current_os_release >= cls.bionic_stein:
+            cls.pgrep_full = True
+        else:
+            cls.pgrep_full = False
+
+        # set up client
+        cls.neutron_client = (
+            openstack_utils.get_neutron_session_client(cls.keystone_session))
+
+    def test_101_neutron_sriov_config(self):
+        """Verify data in the sriov agent config file."""
+        trusty_kilo = openstack_utils.get_os_release('trusty_kilo')
+        if self.current_os_release < trusty_kilo:
+            logging.debug('Skipping test, sriov agent not supported on < '
+                          'trusty/kilo')
+            return
+
+        zaza.model.set_application_config(
+            self.application_name,
+            {'enable-sriov': 'True'})
+
+        zaza.model.wait_for_application_states()
+
+        self._check_settings_in_config(
+            self.application_name,
+            'sriov-device-mappings',
+            'physical_device_mappings',
+            ['', 'physnet42:eth42'],
+            'sriov_nic',
+            '/etc/neutron/plugins/ml2/sriov_agent.ini')
+
+        # the CI environment does not expose an actual SR-IOV NIC to the
+        # functional tests. consequently the neutron-sriov agent will not
+        # run, and the charm will update its status as such. this will prevent
+        # the success of pause/resume test.
+        #
+        # disable sriov after validation of config file is complete.
+        logging.info('Disabling SR-IOV after verifying config file data...')
+
+        zaza.model.set_application_config(
+            self.application_name,
+            {'enable-sriov': 'False'})
+
+        logging.info('Waiting for config-changes to complete...')
+        zaza.model.wait_for_application_states()
+
+        logging.debug('OK')
+
+    def _check_settings_in_config(self, service, charm_key,
+                                  config_file_key, vpair,
+                                  section, conf_file):
+
+        set_default = {charm_key: vpair[0]}
+        set_alternate = {charm_key: vpair[1]}
+        app_name = service
+
+        expected = {
+            section: {
+                config_file_key: [vpair[1]],
+            },
+        }
+
+        with self.config_change(set_default,
+                                set_alternate,
+                                application_name=app_name):
+            zaza.model.block_until_oslo_config_entries_match(
+                self.application_name,
+                conf_file,
+                expected,
+            )
+        logging.debug('OK')
+
+    def test_201_l2pop_propagation(self):
+        """Verify that l2pop setting propagates to neutron-ovs."""
+        self._check_settings_in_config(
+            'neutron-api',
+            'l2-population',
+            'l2_population',
+            ['False', 'True'],
+            'agent',
+            '/etc/neutron/plugins/ml2/openvswitch_agent.ini')
+
+    def test_202_nettype_propagation(self):
+        """Verify that nettype setting propagates to neutron-ovs."""
+        self._check_settings_in_config(
+            'neutron-api',
+            'overlay-network-type',
+            'tunnel_types',
+            ['vxlan', 'gre'],
+            'agent',
+            '/etc/neutron/plugins/ml2/openvswitch_agent.ini')
+
+    def test_301_secgroup_propagation_local_override(self):
+        """Verify disable-security-groups overrides what neutron-api says."""
+        if self.current_os_release >= self.trusty_mitaka:
+            conf_file = "/etc/neutron/plugins/ml2/openvswitch_agent.ini"
+        else:
+            conf_file = "/etc/neutron/plugins/ml2/ml2_conf.ini"
+
+        zaza.model.set_application_config(
+            'neutron-api',
+            {'neutron-security-groups': 'True'})
+        zaza.model.set_application_config(
+            'neutron-openvswitch',
+            {'disable-security-groups': 'True'})
+
+        zaza.model.wait_for_application_states()
+
+        expected = {
+            'securitygroup': {
+                'enable_security_group': ['False'],
+            },
+        }
+
+        zaza.model.block_until_oslo_config_entries_match(
+            self.application_name,
+            conf_file,
+            expected,
+        )
+
+        logging.info('Restoring to default configuration...')
+        zaza.model.set_application_config(
+            'neutron-openvswitch',
+            {'disable-security-groups': 'False'})
+        zaza.model.set_application_config(
+            'neutron-api',
+            {'neutron-security-groups': 'False'})
+
+        zaza.model.wait_for_application_states()
+
+    def test_401_restart_on_config_change(self):
+        """Verify that the specified services are restarted.
+
+        When the config is changed we need to make sure that the services are
+        restarted.
+        """
+        self.restart_on_changed(
+            '/etc/neutron/neutron.conf',
+            {'debug': 'false'},
+            {'debug': 'true'},
+            {'DEFAULT': {'debug': ['False']}},
+            {'DEFAULT': {'debug': ['True']}},
+            ['neutron-openvswitch-agent'],
+            pgrep_full=self.pgrep_full)
+
+    def test_501_enable_qos(self):
+        """Check qos settings set via neutron-api charm."""
+        if self.current_os_release < self.trusty_mitaka:
+            logging.debug('Skipping test')
+            return
+
+        set_default = {'enable-qos': 'false'}
+        set_alternate = {'enable-qos': 'true'}
+        app_name = 'neutron-api'
+
+        conf_file = '/etc/neutron/plugins/ml2/openvswitch_agent.ini'
+        expected = {
+            'agent': {
+                'extensions': ['qos'],
+            },
+        }
+
+        with self.config_change(set_default,
+                                set_alternate,
+                                application_name=app_name):
+            zaza.model.block_until_oslo_config_entries_match(
+                self.application_name,
+                conf_file,
+                expected,
+            )
+        logging.debug('OK')
+
+    def test_901_pause_and_resume(self):
+        """Run pause and resume tests.
+
+        Pause service and check services are stopped then resume and check
+        they are started
+        """
+        with self.pause_resume(['neutron-openvswitch-agent'],
+                               pgrep_full=self.pgrep_full):
+            logging.info('Testing pause resume')
+
+
 class NeutronNetworkingTest(unittest.TestCase):
     """Ensure that openstack instances have valid networking."""
 
