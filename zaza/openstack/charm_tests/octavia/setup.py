@@ -137,6 +137,9 @@ def centralized_fip_network():
     4: https://review.opendev.org/#/c/437986/
     5: https://review.opendev.org/#/c/466434/
     """
+    if not openstack.dvr_enabled():
+        logging.info('DVR not enabled, skip.')
+        return
     keystone_session = openstack.get_overcloud_keystone_session()
     neutron_client = openstack.get_neutron_session_client(
         keystone_session)
