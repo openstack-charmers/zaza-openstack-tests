@@ -666,3 +666,28 @@ class TestGenericUtils(ut_utils.BaseTestCase):
 
         result = generic_utils.check_commands_on_units(cmds, _units)
         self.assertIsNotNone(result)
+
+    def test_systemctl(self):
+        self.patch_object(generic_utils.model, "get_unit_from_name")
+        self.patch_object(generic_utils.model, "run_on_unit")
+        _unit = mock.MagicMock()
+        _unit.entity_id = "unit/2"
+        _command = "stop"
+        _service = "servicename"
+        _systemctl = "/bin/systemctl {} {}".format(_command, _service)
+        self.run_on_unit.return_value = {"Code": 0}
+        self.get_unit_from_name.return_value = _unit
+
+        # With Unit object
+        generic_utils.systemctl(_unit, _service, command=_command)
+        self.run_on_unit.assert_called_with(_unit.entity_id, _systemctl)
+
+        # With string name unit
+        generic_utils.systemctl(_unit.entity_id, _service, command=_command)
+        self.run_on_unit.assert_called_with(_unit.entity_id, _systemctl)
+
+        # Failed return code
+        self.run_on_unit.return_value = {"Code": 1}
+        with self.assertRaises(AssertionError):
+            generic_utils.systemctl(
+                _unit.entity_id, _service, command=_command)
