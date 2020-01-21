@@ -17,7 +17,7 @@ import collections
 import json
 import logging
 import pprint
-
+import tenacity
 import keystoneauth1
 
 import zaza.model
@@ -408,6 +408,10 @@ class LdapTests(BaseKeystoneTest):
                 'domain-name': 'userdomain',
             }
 
+    # NOTE: intermittent authentication fails. Wrap in a retry loop.
+    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1,
+                                                   min=5, max=10),
+                    reraise=True)
     def _find_keystone_v3_user(self, username, domain):
         """Find a user within a specified keystone v3 domain."""
         client = self.admin_keystone_client
@@ -438,9 +442,12 @@ class LdapTests(BaseKeystoneTest):
             'keystone-ldap': {
                 'workload-status': 'idle',
                 'workload-status-messages': 'Unit is ready'
+            },
+            'keystone': {
+                'workload-status': 'idle',
+                'workload-status-messages': 'Unit is ready'
             }
         }
-
         zaza.model.wait_for_application_states(states=states)
 
         # NOTE(jamespage): Test fixture should have johndoe and janedoe
