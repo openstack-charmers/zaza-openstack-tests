@@ -824,3 +824,29 @@ def get_series(unit):
     result = model.run_on_unit(unit.entity_id,
                                "lsb_release -cs")
     return result['Stdout'].strip()
+
+
+def systemctl(unit, service, command="restart"):
+    """Run systemctl command on a unit.
+
+    :param unit: Unit object or unit name
+    :type unit: Union[Unit,string]
+    :param service: Name of service to act on
+    :type service: string
+    :param command: Name of command. i.e. start, stop, restart
+    :type command: string
+    :raises: AssertionError if the command is unsuccessful
+    :returns: None if successful
+    """
+    cmd = "/bin/systemctl {} {}".format(command, service)
+
+    # Check if this is a unit object or string name of a unit
+    try:
+        unit.entity_id
+    except AttributeError:
+        unit = model.get_unit_from_name(unit)
+
+    result = model.run_on_unit(
+        unit.entity_id, cmd)
+    assert int(result['Code']) == 0, (
+        "{} of {} on {} failed".format(command, service, unit.entity_id))

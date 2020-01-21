@@ -16,6 +16,8 @@
 
 """Setup for BGP deployments."""
 
+import logging
+import zaza.model
 from zaza.openstack.configure import (
     network,
     bgp_speaker,
@@ -86,6 +88,15 @@ def setup():
 
     # Confugre the overcloud network
     network.setup_sdn(network_config, keystone_session=keystone_session)
+
+    # LP Bugs #1784083 and #1841459, require a late restart of the
+    # neutron-bgp-dragent service
+    logging.warning("Due to LP Bugs #1784083 and #1841459, we require a late "
+                    "restart of the neutron-bgp-dragent service before "
+                    "setting up BGP.")
+    for unit in zaza.model.get_units("neutron-dynamic-routing"):
+        generic_utils.systemctl(unit, "neutron-bgp-dragent", command="restart")
+
     # Configure BGP
     bgp_speaker.setup_bgp_speaker(
         peer_application_name=DEFAULT_PEER_APPLICATION_NAME,
