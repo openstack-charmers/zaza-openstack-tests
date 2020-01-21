@@ -145,11 +145,11 @@ class CharmOperationTest(BaseKeystoneTest):
                 if unit_repo != lead_repo:
                     raise zaza_exceptions.KeystoneKeyRepositoryError(
                         'expect: "{}" actual({}): "{}"'
-                        .format(pprint.pformat(lead_repo), unit.entity_id,
-                                pprint.pformat(unit_repo)))
+                        ''.format(pprint.pformat(lead_repo), unit.entity_id,
+                                  pprint.pformat(unit_repo)))
                 logging.info('"{}" == "{}"'
-                             .format(pprint.pformat(unit_repo),
-                                     pprint.pformat(lead_repo)))
+                             ''.format(pprint.pformat(unit_repo),
+                                       pprint.pformat(lead_repo)))
 
 
 class AuthenticationAuthorizationTest(BaseKeystoneTest):
@@ -212,7 +212,7 @@ class AuthenticationAuthorizationTest(BaseKeystoneTest):
     def test_end_user_domain_admin_access(self):
         """Verify that end-user domain admin does not have elevated privileges.
 
-        In additon to validating that the `policy.json` is written and the
+        In addition to validating that the `policy.json` is written and the
         service is restarted on config-changed, the test validates that our
         `policy.json` is correct.
 
@@ -257,8 +257,9 @@ class AuthenticationAuthorizationTest(BaseKeystoneTest):
                         'allowed when it should not be.')
         logging.info('OK')
 
-    def test_end_user_acccess_and_token(self):
-        """Verify regular end-user access resources and validate token data.
+    def test_end_user_access_and_token(self):
+        """
+        Verify regular end-user access resources and validate token data.
 
         In effect this also validates user creation, presence of standard
         roles (`_member_`, `Member`), effect of policy and configuration
@@ -279,12 +280,12 @@ class AuthenticationAuthorizationTest(BaseKeystoneTest):
                 if len(token) != 32:
                     raise zaza_exceptions.KeystoneWrongTokenProvider(
                         'We expected a UUID token and got this: "{}"'
-                        .format(token))
+                        ''.format(token))
             else:
                 if len(token) < 180:
                     raise zaza_exceptions.KeystoneWrongTokenProvider(
                         'We expected a Fernet token and got this: "{}"'
-                        .format(token))
+                        ''.format(token))
             logging.info('token: "{}"'.format(pprint.pformat(token)))
 
             if (openstack_utils.get_os_release() <
@@ -371,3 +372,80 @@ class SecurityTests(BaseKeystoneTest):
             expected_passes,
             expected_failures,
             expected_to_pass=False)
+
+
+class LdapTests(BaseKeystoneTest):
+    """Keystone ldap tests tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running Keystone ldap-tests."""
+        super(LdapTests, cls).setUpClass()
+
+    def _get_ldap_config(self):
+        ldap_ips = zaza.model.get_app_ips("ldap-server")
+        ldap_server_ip = ldap_ips[0]
+
+        keystone_ldap_config = {
+            'ldap-server': "ldap://{}".format(ldap_server_ip),
+            'ldap-user': 'cn=admin,dc=test,dc=com',
+            'ldap-password': 'crapper',
+            'ldap-suffix': 'dc=test,dc=com',
+            'domain-name': 'userdomain',
+        }
+        if all(keystone_ldap_config.values()):
+            self.ldap_configured = True
+            return keystone_ldap_config
+        else:
+            # NOTE(jamespage): Use mock values to check deployment only
+            #                  as no test fixture has been supplied
+            self.ldap_configured = False
+            return {
+                'ldap-server': 'myserver',
+                'ldap-user': 'myuser',
+                'ldap-password': 'mypassword',
+                'ldap-suffix': 'mysuffix',
+                'domain-name': 'userdomain',
+            }
+
+    def _find_keystone_v3_user(self, username, domain):
+        """Find a user within a specified keystone v3 domain."""
+        client = self.admin_keystone_client
+        domain_users = client.users.list(
+            domain=client.domains.find(name=domain).id
+        )
+        usernames = []
+        for user in domain_users:
+            usernames.append(user.name)
+            if username.lower() == user.name.lower():
+                return user
+        logging.debug("User {} was not in these users: {}. Returning None."
+                      "".format(username, usernames))
+        return None
+
+    def test_100_keystone_ldap_users(self):
+        """Validate basic functionality of keystone API with ldap."""
+        zaza.model.set_application_config('keystone-ldap',
+                                          self._get_ldap_config())
+
+        if not self.ldap_configured:
+            msg = 'Skipping API tests as no LDAP test fixture'
+            logging.info(msg)
+            return
+
+        logging.info('Waiting for ldap config-changes to complete...')
+        states = {
+            'keystone-ldap': {
+                'workload-status': 'idle',
+                'workload-status-messages': 'Unit is ready'
+            }
+        }
+
+        zaza.model.wait_for_application_states(states=states)
+
+        # NOTE(jamespage): Test fixture should have johndoe and janedoe
+        #                  accounts
+        johndoe = self._find_keystone_v3_user('john doe', 'userdomain')
+        assert johndoe is not None
+        janedoe = self._find_keystone_v3_user('jane doe', 'userdomain')
+        assert janedoe is not None
