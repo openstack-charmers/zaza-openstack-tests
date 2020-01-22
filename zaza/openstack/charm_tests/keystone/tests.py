@@ -416,13 +416,17 @@ class LdapTests(BaseKeystoneTest):
         application_name = 'keystone-ldap'
         can_config, config = self._get_ldap_config()
         if not can_config:
-            raise unittest.SkipTest("Skipping API tests as no LDAP test fixture")
+            raise unittest.SkipTest(
+                "Skipping API tests as no LDAP test fixture"
+            )
 
         with self.config_change(
                 self.config_current(application_name),
                 config,
                 application_name=application_name):
-            logging.info('Waiting for users to become available in keystone...')
+            logging.info(
+                'Waiting for users to become available in keystone...'
+            )
             states = {
                 'keystone': {
                     'workload-status': 'idle',

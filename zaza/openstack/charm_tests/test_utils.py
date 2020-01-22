@@ -134,7 +134,7 @@ class OpenStackBaseTest(unittest.TestCase):
         logging.debug('Leader unit is {}'.format(cls.lead_unit))
 
     def config_current(self, application_name=None, keys=None):
-        """Get Current Config of an application normalized into key-values
+        """Get Current Config of an application normalized into key-values.
 
         :param application_name: String application name for use when called
                                  by a charm under test other than the object's
@@ -185,7 +185,9 @@ class OpenStackBaseTest(unittest.TestCase):
         # we need to compare config values to what is already applied before
         # attempting to set them.  otherwise the model will behave differently
         # than we would expect while waiting for completion of the change
-        app_config = self.config_current(application_name, keys=alternate_config.keys())
+        app_config = self.config_current(
+            application_name, keys=alternate_config.keys()
+        )
 
         if all(item in app_config.items()
                 for item in alternate_config.items()):
