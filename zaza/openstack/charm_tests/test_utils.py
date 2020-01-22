@@ -133,6 +133,29 @@ class OpenStackBaseTest(unittest.TestCase):
             model_name=cls.model_name)
         logging.debug('Leader unit is {}'.format(cls.lead_unit))
 
+    def config_current(self, application_name=None, keys=None):
+        """Get Current Config of an application normalized into key-values
+
+        :param application_name: String application name for use when called
+                                 by a charm under test other than the object's
+                                 application.
+        :type application_name: str
+        :param keys: iterable of strs to index into the current config.  If
+                     None, return all keys from the config
+        :type keys: Union[iterable[str], None]
+        """
+        if not application_name:
+            application_name = self.application_name
+        _app_config = model.get_application_config(application_name)
+        # convert the more elaborate config structure from libjuju to key-value
+        keys = keys or _app_config.keys()
+        # note that conversion to string for all values is due to
+        # attempting to set any config with other types lead to Traceback
+        return {
+            str(k): str(_app_config.get(k, {}).get('value', ''))
+            for k in keys
+        }
+
     @contextlib.contextmanager
     def config_change(self, default_config, alternate_config,
                       application_name=None):
@@ -158,17 +181,12 @@ class OpenStackBaseTest(unittest.TestCase):
         """
         if not application_name:
             application_name = self.application_name
+
         # we need to compare config values to what is already applied before
         # attempting to set them.  otherwise the model will behave differently
         # than we would expect while waiting for completion of the change
-        _app_config = model.get_application_config(application_name)
-        app_config = {}
-        # convert the more elaborate config structure from libjuju to something
-        # we can compare to what the caller supplies to this function
-        for k in alternate_config.keys():
-            # note that conversion to string for all values is due to
-            # attempting to set any config with other types lead to Traceback
-            app_config[k] = str(_app_config.get(k, {}).get('value', ''))
+        app_config = self.config_current(application_name, keys=alternate_config.keys())
+
         if all(item in app_config.items()
                 for item in alternate_config.items()):
             logging.debug('alternate_config equals what is already applied '
