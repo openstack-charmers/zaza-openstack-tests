@@ -284,7 +284,7 @@ class AuthenticationAuthorizationTest(BaseKeystoneTest):
                 if len(token) < 180:
                     raise zaza_exceptions.KeystoneWrongTokenProvider(
                         'We expected a Fernet token and got this: "{}"'
-                        ''.format(token))
+                        .format(token))
             logging.info('token: "{}"'.format(pprint.pformat(token)))
 
             if (openstack_utils.get_os_release() <
