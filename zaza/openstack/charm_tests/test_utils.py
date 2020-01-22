@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Module containg base class for implementing charm tests."""
+"""Module containing base class for implementing charm tests."""
 import contextlib
 import logging
 import subprocess
@@ -70,7 +70,7 @@ def audit_assertions(action,
     :param expected_passes: List of test names that are expected to pass
     :type expected_passes: List[str]
     :param expected_failures: List of test names that are expected to fail
-    :type expexted_failures: List[str]
+    :type expected_failures: List[str]
     :raises: AssertionError if the assertion fails.
     """
     if expected_failures is None:
@@ -115,7 +115,7 @@ class OpenStackBaseTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls, application_name=None, model_alias=None):
-        """Run setup for test class to create common resourcea."""
+        """Run setup for test class to create common resources."""
         cls.model_aliases = model.get_juju_model_aliases()
         if model_alias:
             cls.model_name = cls.model_aliases[model_alias]
@@ -136,13 +136,15 @@ class OpenStackBaseTest(unittest.TestCase):
     def config_current(self, application_name=None, keys=None):
         """Get Current Config of an application normalized into key-values.
 
-        :param application_name: String application name for use when called
+        @param application_name: String application name for use when called
                                  by a charm under test other than the object's
                                  application.
-        :type application_name: str
-        :param keys: iterable of strs to index into the current config.  If
+        @type application_name:  Optional[str]
+        @param keys: iterable of strs to index into the current config.  If
                      None, return all keys from the config
-        :type keys: Union[iterable[str], None]
+        @type keys:  Optional[Iterable[str]]
+        @return: Dictionary of requested config from application
+        @rtype: Dict[str, str]
         """
         if not application_name:
             application_name = self.application_name
