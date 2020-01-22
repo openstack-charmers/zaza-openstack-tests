@@ -396,6 +396,7 @@ class LdapTests(BaseKeystoneTest):
 
     def _find_keystone_v3_user(self, username, domain):
         """Find a user within a specified keystone v3 domain.
+
         @param str username: Username to search for in keystone
         @param str domain: username selected from which domain
         @return: return username if found
