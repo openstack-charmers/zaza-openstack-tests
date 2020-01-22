@@ -395,7 +395,12 @@ class LdapTests(BaseKeystoneTest):
         return False, {}
 
     def _find_keystone_v3_user(self, username, domain):
-        """Find a user within a specified keystone v3 domain."""
+        """Find a user within a specified keystone v3 domain.
+        @param str username: Username to search for in keystone
+        @param str domain: username selected from which domain
+        @return: return username if found
+        @rtype: Optional[str]
+        """
         client = self.admin_keystone_client
         domain_users = client.users.list(
             domain=client.domains.find(name=domain).id
@@ -417,7 +422,7 @@ class LdapTests(BaseKeystoneTest):
         can_config, config = self._get_ldap_config()
         if not can_config:
             raise unittest.SkipTest(
-                "Skipping API tests as no LDAP test fixture"
+                "Skipping API tests because there's no ldap-server"
             )
 
         with self.config_change(
