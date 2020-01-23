@@ -383,6 +383,12 @@ class LdapTests(BaseKeystoneTest):
 
     @staticmethod
     def _get_ldap_config():
+        """Generate ldap config for current model.
+
+        :return: tuple of whether ldap-server is running and if so, config
+            for the keystone-ldap application.
+        :rtype: Tuple[bool, Dict[str,str]]
+        """
         ldap_ips = zaza.model.get_app_ips("ldap-server")
         if ldap_ips:
             return True, {
@@ -397,10 +403,10 @@ class LdapTests(BaseKeystoneTest):
     def _find_keystone_v3_user(self, username, domain):
         """Find a user within a specified keystone v3 domain.
 
-        @param str username: Username to search for in keystone
-        @param str domain: username selected from which domain
-        @return: return username if found
-        @rtype: Optional[str]
+        :param str username: Username to search for in keystone
+        :param str domain: username selected from which domain
+        :return: return username if found
+        :rtype: Optional[str]
         """
         client = self.admin_keystone_client
         domain_users = client.users.list(
