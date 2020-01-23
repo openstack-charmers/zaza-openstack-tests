@@ -17,7 +17,6 @@ import collections
 import json
 import logging
 import pprint
-import unittest
 import keystoneauth1
 
 import zaza.model
@@ -381,26 +380,30 @@ class LdapTests(BaseKeystoneTest):
         """Run class setup for running Keystone ldap-tests."""
         super(LdapTests, cls).setUpClass()
 
-    @staticmethod
-    def _get_ldap_config():
+    def _get_ldap_config(self):
+        """Generate ldap config for current model.
+
+        :return: tuple of whether ldap-server is running and if so, config
+            for the keystone-ldap application.
+        :rtype: Tuple[bool, Dict[str,str]]
+        """
         ldap_ips = zaza.model.get_app_ips("ldap-server")
-        if ldap_ips:
-            return True, {
-                'ldap-server': "ldap://{}".format(ldap_ips[0]),
-                'ldap-user': 'cn=admin,dc=test,dc=com',
-                'ldap-password': 'crapper',
-                'ldap-suffix': 'dc=test,dc=com',
-                'domain-name': 'userdomain',
-            }
-        return False, {}
+        self.assertTrue(ldap_ips, "Should be at least one ldap server")
+        return {
+            'ldap-server': "ldap://{}".format(ldap_ips[0]),
+            'ldap-user': 'cn=admin,dc=test,dc=com',
+            'ldap-password': 'crapper',
+            'ldap-suffix': 'dc=test,dc=com',
+            'domain-name': 'userdomain',
+        }
 
     def _find_keystone_v3_user(self, username, domain):
         """Find a user within a specified keystone v3 domain.
 
-        @param str username: Username to search for in keystone
-        @param str domain: username selected from which domain
-        @return: return username if found
-        @rtype: Optional[str]
+        :param str username: Username to search for in keystone
+        :param str domain: username selected from which domain
+        :return: return username if found
+        :rtype: Optional[str]
         """
         client = self.admin_keystone_client
         domain_users = client.users.list(
@@ -420,11 +423,7 @@ class LdapTests(BaseKeystoneTest):
     def test_100_keystone_ldap_users(self):
         """Validate basic functionality of keystone API with ldap."""
         application_name = 'keystone-ldap'
-        can_config, config = self._get_ldap_config()
-        if not can_config:
-            raise unittest.SkipTest(
-                "Skipping API tests because there's no ldap-server"
-            )
+        config = self._get_ldap_config()
 
         with self.config_change(
                 self.config_current(application_name),

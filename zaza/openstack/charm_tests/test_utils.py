@@ -136,15 +136,15 @@ class OpenStackBaseTest(unittest.TestCase):
     def config_current(self, application_name=None, keys=None):
         """Get Current Config of an application normalized into key-values.
 
-        @param application_name: String application name for use when called
+        :param application_name: String application name for use when called
                                  by a charm under test other than the object's
                                  application.
-        @type application_name:  Optional[str]
-        @param keys: iterable of strs to index into the current config.  If
+        :type application_name:  Optional[str]
+        :param keys: iterable of strs to index into the current config.  If
                      None, return all keys from the config
-        @type keys:  Optional[Iterable[str]]
-        @return: Dictionary of requested config from application
-        @rtype: Dict[str, str]
+        :type keys:  Optional[Iterable[str]]
+        :return: Dictionary of requested config from application
+        :rtype: Dict[str, str]
         """
         if not application_name:
             application_name = self.application_name
