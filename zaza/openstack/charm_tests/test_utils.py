@@ -151,8 +151,8 @@ class OpenStackBaseTest(unittest.TestCase):
         _app_config = model.get_application_config(application_name)
         # convert the more elaborate config structure from libjuju to key-value
         keys = keys or _app_config.keys()
-        # note that conversion to string for all values is due to
-        # attempting to set any config with other types lead to Traceback
+        # note the conversion to str for all values is due to
+        # attempting to set any config with other type leads to Traceback
         return {
             str(k): str(_app_config.get(k, {}).get('value', ''))
             for k in keys
