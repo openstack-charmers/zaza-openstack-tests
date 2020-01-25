@@ -17,6 +17,7 @@
 """Encapsulating `neutron-openvswitch` testing."""
 
 
+import copy
 import logging
 import tenacity
 import unittest
@@ -29,20 +30,78 @@ import zaza.openstack.configure.guest as guest
 import zaza.openstack.utilities.openstack as openstack_utils
 
 
-class NeutronGatewayTest(test_utils.OpenStackBaseTest):
+class NeutronPluginApiSharedTests(test_utils.OpenStackBaseTest):
+    """Shared tests for Neutron Plugin API Charms."""
+
+    def setUpClass(cls):
+        """Run class setup for running Neutron Openvswitch tests."""
+        super(NeutronPluginApiSharedTests, cls).setUpClass()
+
+        cls.current_os_release = openstack_utils.get_os_release()
+        cls.bionic_stein = openstack_utils.get_os_release('bionic_stein')
+        cls.trusty_mitaka = openstack_utils.get_os_release('trusty_mitaka')
+
+        if cls.current_os_release >= cls.bionic_stein:
+            cls.pgrep_full = True
+        else:
+            cls.pgrep_full = False
+
+    def test_211_ovs_use_veth(self):
+        """Verify proper handling of ovs-use-veth setting."""
+        conf_file = "/etc/neutron/dhcp_agent.ini"
+        expected = {"DEFAULT": {"ovs_use_veth": ["False"]}}
+        test_config = zaza.charm_lifecycle.utils.get_charm_config(fatal=False)
+        states = test_config.get("target_deploy_status", {})
+        alt_states = copy.deepcopy(states)
+        alt_states[self.application_name] = {
+            "workload-status": "blocked",
+            "workload-status-message":
+                "Mismatched existing and configured ovs-use-veth. See log."}
+
+        if "neutron-openvswitch" in self.application_name:
+            logging.info("Turning on DHCP and metadata")
+            zaza.model.set_application_config(
+                self.application_name,
+                {"enable-local-dhcp-and-metadata": "True"})
+            zaza.model.wait_for_application_states(states=states)
+
+        logging.info("Check for expected default ovs-use-veth setting of "
+                     "False")
+        zaza.model.block_until_oslo_config_entries_match(
+            self.application_name,
+            conf_file,
+            expected,
+        )
+        logging.info("Setting conflicting ovs-use-veth to True")
+        zaza.model.set_application_config(
+            self.application_name,
+            {"ovs-use-veth": "True"})
+        logging.info("Wait to go into a blocked workload status")
+        zaza.model.wait_for_application_states(states=alt_states)
+        # Check the value stayed the same
+        logging.info("Check that the value of ovs-use-veth setting "
+                     "remained False")
+        zaza.model.block_until_oslo_config_entries_match(
+            self.application_name,
+            conf_file,
+            expected,
+        )
+        logging.info("Setting ovs-use-veth to match existing.")
+        zaza.model.set_application_config(
+            self.application_name,
+            {"ovs-use-veth": "False"})
+        logging.info("Wait to go into unit ready workload status")
+        zaza.model.wait_for_application_states(states=states)
+
+
+class NeutronGatewayTest(NeutronPluginApiSharedTests):
     """Test basic Neutron Gateway Charm functionality."""
 
     @classmethod
     def setUpClass(cls):
         """Run class setup for running Neutron Gateway tests."""
-        super(NeutronGatewayTest, cls).setUpClass()
-        cls.current_os_release = openstack_utils.get_os_release()
+        super(NeutronGatewayTest, cls).setUpClass(cls)
         cls.services = cls._get_services()
-
-        bionic_stein = openstack_utils.get_os_release('bionic_stein')
-
-        cls.pgrep_full = (True if cls.current_os_release >= bionic_stein
-                          else False)
 
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change.
@@ -328,27 +387,17 @@ class SecurityTest(test_utils.OpenStackBaseTest):
                 expected_to_pass=expected_to_pass)
 
 
-class NeutronOpenvSwitchTest(test_utils.OpenStackBaseTest):
+class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
     """Test basic Neutron Openvswitch Charm functionality."""
 
     @classmethod
     def setUpClass(cls):
         """Run class setup for running Neutron Openvswitch tests."""
-        super(NeutronOpenvSwitchTest, cls).setUpClass()
-
-        cls.current_os_release = openstack_utils.get_os_release()
+        super(NeutronOpenvSwitchTest, cls).setUpClass(cls)
 
         cls.compute_unit = zaza.model.get_units('nova-compute')[0]
         cls.neutron_api_unit = zaza.model.get_units('neutron-api')[0]
         cls.n_ovs_unit = zaza.model.get_units('neutron-openvswitch')[0]
-
-        cls.bionic_stein = openstack_utils.get_os_release('bionic_stein')
-        cls.trusty_mitaka = openstack_utils.get_os_release('trusty_mitaka')
-
-        if cls.current_os_release >= cls.bionic_stein:
-            cls.pgrep_full = True
-        else:
-            cls.pgrep_full = False
 
         # set up client
         cls.neutron_client = (
