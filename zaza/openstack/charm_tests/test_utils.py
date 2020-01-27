@@ -152,7 +152,7 @@ class OpenStackBaseTest(unittest.TestCase):
 
         keys = keys or _app_config.keys()
         return {
-            str(k): _app_config.get(k, {}).get('value', '')
+            k: _app_config.get(k, {}).get('value', '')
             for k in keys
         }
 
