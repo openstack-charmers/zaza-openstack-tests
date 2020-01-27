@@ -16,7 +16,6 @@ import contextlib
 import logging
 import subprocess
 import unittest
-import zaza.model
 
 import zaza.model as model
 import zaza.charm_lifecycle.utils as lifecycle_utils
@@ -28,7 +27,7 @@ def skipIfNotHA(service_name):
     """Run decorator to skip tests if application not in HA configuration."""
     def _skipIfNotHA_inner_1(f):
         def _skipIfNotHA_inner_2(*args, **kwargs):
-            ips = zaza.model.get_app_ips(
+            ips = model.get_app_ips(
                 service_name)
             if len(ips) > 1:
                 return f(*args, **kwargs)
@@ -144,19 +143,33 @@ class OpenStackBaseTest(unittest.TestCase):
                      None, return all keys from the config
         :type keys:  Optional[Iterable[str]]
         :return: Dictionary of requested config from application
-        :rtype: Dict[str, str]
+        :rtype: Dict[str, Any]
         """
         if not application_name:
             application_name = self.application_name
+
         _app_config = model.get_application_config(application_name)
-        # convert the more elaborate config structure from libjuju to key-value
+
         keys = keys or _app_config.keys()
-        # note the conversion to str for all values is due to
-        # attempting to set any config with other type leads to Traceback
         return {
-            str(k): str(_app_config.get(k, {}).get('value', ''))
+            str(k): _app_config.get(k, {}).get('value', '')
             for k in keys
         }
+
+    @staticmethod
+    def _stringed_value_config(config):
+        """
+        Workaround:
+
+        libjuju refuses to accept data with types other than strings
+        through the zuzu.model.set_application_config
+
+        :param config: Config dictionary with any typed values
+        :type  config: Dict[str,Any]
+        :return:       Config Dictionary with string-ly typed values
+        :rtype:        Dict[str,str]
+        """
+        return {k: str(v) for k, v in config.items()}
 
     @contextlib.contextmanager
     def config_change(self, default_config, alternate_config,
@@ -207,7 +220,7 @@ class OpenStackBaseTest(unittest.TestCase):
                           .format(alternate_config))
             model.set_application_config(
                 application_name,
-                alternate_config,
+                self._stringed_value_config(alternate_config),
                 model_name=self.model_name)
 
             logging.debug(
@@ -227,7 +240,7 @@ class OpenStackBaseTest(unittest.TestCase):
         logging.debug('Restoring charm setting to {}'.format(default_config))
         model.set_application_config(
             application_name,
-            default_config,
+            self._stringed_value_config(default_config),
             model_name=self.model_name)
 
         logging.debug(

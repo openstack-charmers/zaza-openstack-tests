@@ -426,7 +426,7 @@ class LdapTests(BaseKeystoneTest):
         config = self._get_ldap_config()
 
         with self.config_change(
-                self.config_current(application_name),
+                self.config_current(application_name, config.keys()),
                 config,
                 application_name=application_name):
             logging.info(
