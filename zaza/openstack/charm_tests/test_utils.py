@@ -158,9 +158,9 @@ class OpenStackBaseTest(unittest.TestCase):
 
     @staticmethod
     def _stringed_value_config(config):
-        """
-        Workaround:
+        """Stringify values in a dict.
 
+        Workaround:
         libjuju refuses to accept data with types other than strings
         through the zuzu.model.set_application_config
 
