@@ -15,7 +15,10 @@
 # limitations under the License.
 
 """Encapsulate cinder-backup testing."""
+import copy
 import logging
+
+import tenacity
 
 import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
@@ -169,26 +172,35 @@ class CinderBackupTest(test_utils.OpenStackBaseTest):
             stop_after_attempt=15,
             msg="Volume")
 
+        @tenacity.retry(wait=tenacity.wait_exponential(multiplier=10, max=300),
+                        reraise=True, stop=tenacity.stop_after_attempt(10),
+                        retry=tenacity.retry_if_exception_type(AssertionError))
+        def _check_get_ceph_pool_sample(obj_count_samples, pool_size_samples):
+            pool_name, obj_count, kb_used = ceph_utils.get_ceph_pool_sample(
+                unit_name, cinder_ceph_pool, self.model_name)
+
+            _obj_count_samples = copy.deepcopy(obj_count_samples)
+            _pool_size_samples = copy.deepcopy(pool_size_samples)
+            _obj_count_samples.append(obj_count)
+            _pool_size_samples.append(kb_used)
+            # Validate ceph cinder pool object count samples over time
+            original, created, deleted = range(3)
+            self.assertFalse(_obj_count_samples[created] <=
+                             _obj_count_samples[original])
+            self.assertFalse(_obj_count_samples[deleted] >=
+                             _obj_count_samples[created])
+
+            # Luminous (pike) ceph seems more efficient at disk usage so we
+            # cannot guarantee the ordering of kb_used
+            if (openstack_utils.get_os_release() <
+                    openstack_utils.get_os_release('xenial_mitaka')):
+                self.assertFalse(_pool_size_samples[created] <=
+                                 _pool_size_samples[original])
+                self.assertFalse(_pool_size_samples[deleted] >=
+                                 _pool_size_samples[created])
+
         # Final check, ceph cinder pool object count and disk usage
         logging.info('Checking ceph cinder pool after volume delete...')
-        pool_name, obj_count, kb_used = ceph_utils.get_ceph_pool_sample(
-            unit_name, cinder_ceph_pool, self.model_name)
-
-        obj_count_samples.append(obj_count)
-        pool_size_samples.append(kb_used)
-
-        # Validate ceph cinder pool object count samples over time
-        original, created, deleted = range(3)
-        self.assertFalse(obj_count_samples[created] <=
-                         obj_count_samples[original])
-        self.assertFalse(obj_count_samples[deleted] >=
-                         obj_count_samples[created])
-
-        # Luminous (pike) ceph seems more efficient at disk usage so we cannot
-        # grantee the ordering of kb_used
-        if (openstack_utils.get_os_release() <
-                openstack_utils.get_os_release('xenial_mitaka')):
-            self.assertFalse(pool_size_samples[created] <=
-                             pool_size_samples[original])
-            self.assertFalse(pool_size_samples[deleted] >=
-                             pool_size_samples[created])
+        # It sometime takes a short time for removal to be reflected in
+        # get_ceph_pool_sample so wrap check in tenacity decorator to retry.
+        _check_get_ceph_pool_sample(obj_count_samples, pool_size_samples)
