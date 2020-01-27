@@ -191,6 +191,16 @@ class NeutronApiTest(test_utils.OpenStackBaseTest):
                 openstack_utils.get_os_release('trusty_mitaka')):
             logging.info('running qos check')
 
+            dhcp_agents = self.neutron_client.list_agents(
+                binary='neutron-dhcp-agent')['agents']
+            if not dhcp_agents:
+                ovn_agents = self.neutron_client.list_agents(
+                    binary='ovn-controller')['agents']
+                if ovn_agents:
+                    raise unittest.SkipTest(
+                        "QoS tests are currently not supported on OVN "
+                        "deployments")
+
             with self.config_change(
                     {'enable-qos': 'False'},
                     {'enable-qos': 'True'},
