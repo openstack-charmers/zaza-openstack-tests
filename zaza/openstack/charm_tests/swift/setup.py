@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Code for configuring octavia."""
+"""Code for configuring swift."""
 
 import logging
 import tenacity
