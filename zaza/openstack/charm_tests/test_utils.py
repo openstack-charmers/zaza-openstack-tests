@@ -152,7 +152,7 @@ class OpenStackBaseTest(unittest.TestCase):
 
         keys = keys or _app_config.keys()
         return {
-            k: _app_config.get(k, {}).get('value', '')
+            k: _app_config.get(k, {}).get('value')
             for k in keys
         }
 
@@ -169,7 +169,12 @@ class OpenStackBaseTest(unittest.TestCase):
         :return:       Config Dictionary with string-ly typed values
         :rtype:        Dict[str,str]
         """
-        return {k: str(v) for k, v in config.items()}
+        # if v is None, stringify to ''
+        # otherwise use a strict cast with str(...)
+        return {
+            k: '' if v is None else str(v)
+            for k, v in config.items()
+        }
 
     @contextlib.contextmanager
     def config_change(self, default_config, alternate_config,
