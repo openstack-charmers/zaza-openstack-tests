@@ -405,7 +405,10 @@ class LdapTests(BaseKeystoneTest):
         :return: return username if found
         :rtype: Optional[str]
         """
-        client = self.admin_keystone_client
+        client = openstack_utils.get_keystone_session_client(
+            self.admin_keystone_session,
+            client_api_version=3)
+
         domain_users = client.users.list(
             domain=client.domains.find(name=domain).id
         )
