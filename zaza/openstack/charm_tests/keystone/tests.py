@@ -400,30 +400,21 @@ class LdapTests(BaseKeystoneTest):
         :rtype: Optional[str]
         """
         for ip in self.keystone_ips:
-            try:
-                logging.info('keystone IP {}'.format(ip))
-                ks_session = openstack_utils.get_keystone_session(
-                    openstack_utils.get_overcloud_auth(address=ip))
-                ks_client = openstack_utils.get_keystone_session_client(
-                    ks_session)
+            logging.info('Keystone IP {}'.format(ip))
+            session = openstack_utils.get_keystone_session(
+                openstack_utils.get_overcloud_auth(address=ip))
+            client = openstack_utils.get_keystone_session_client(session)
 
-                domain_users = ks_client.users.list(
-                    domain=ks_client.domains.find(name=domain).id
-                )
+            domain_users = client.users.list(
+                domain=client.domains.find(name=domain).id
+            )
 
-                usernames = []
-                for user in domain_users:
-                    usernames.append(user.name)
-                    if username.lower() == user.name.lower():
-                        return user
-            except keystoneauth1.exceptions.http.HTTPError as e:
-                raise zaza_exceptions.KeystoneAuthorizationStrict(
-                    'Retrieve domain list as admin FAILED. ({})'.format(e)
-                )
+            usernames = [u.name.lower() for u in domain_users]
+            if username.lower() in usernames:
+                return username
 
         logging.debug(
-            "User {} was not in these users: {}. Returning None."
-            .format(username, usernames)
+            "User {} was not found. Returning None.".format(username)
         )
         return None
 
