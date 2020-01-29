@@ -188,10 +188,7 @@ class AuthenticationAuthorizationTest(BaseKeystoneTest):
                 openstack_utils.get_os_release('trusty_mitaka')):
             logging.info('skipping test < trusty_mitaka')
             return
-        with self.config_change(
-                {'preferred-api-version': self.default_api_version},
-                {'preferred-api-version': '3'},
-                application_name="keystone"):
+        with self.v3_keystone_preferred():
             for ip in self.keystone_ips:
                 try:
                     logging.info('keystone IP {}'.format(ip))
@@ -221,10 +218,7 @@ class AuthenticationAuthorizationTest(BaseKeystoneTest):
                 openstack_utils.get_os_release('xenial_ocata')):
             logging.info('skipping test < xenial_ocata')
             return
-        with self.config_change(
-                {'preferred-api-version': self.default_api_version},
-                {'preferred-api-version': '3'},
-                application_name="keystone"):
+        with self.v3_keystone_preferred():
             for ip in self.keystone_ips:
                 openrc = {
                     'API_VERSION': 3,
@@ -405,18 +399,28 @@ class LdapTests(BaseKeystoneTest):
         :return: return username if found
         :rtype: Optional[str]
         """
-        client = openstack_utils.get_keystone_session_client(
-            self.admin_keystone_session,
-            client_api_version=3)
+        for ip in self.keystone_ips:
+            try:
+                logging.info('keystone IP {}'.format(ip))
+                ks_session = openstack_utils.get_keystone_session(
+                    openstack_utils.get_overcloud_auth(address=ip))
+                ks_client = openstack_utils.get_keystone_session_client(
+                    ks_session)
 
-        domain_users = client.users.list(
-            domain=client.domains.find(name=domain).id
-        )
-        usernames = []
-        for user in domain_users:
-            usernames.append(user.name)
-            if username.lower() == user.name.lower():
-                return user
+                domain_users = ks_client.users.list(
+                    domain=ks_client.domains.find(name=domain).id
+                )
+
+                usernames = []
+                for user in domain_users:
+                    usernames.append(user.name)
+                    if username.lower() == user.name.lower():
+                        return user
+            except keystoneauth1.exceptions.http.HTTPError as e:
+                raise zaza_exceptions.KeystoneAuthorizationStrict(
+                    'Retrieve domain list as admin FAILED. ({})'.format(e)
+                )
+
         logging.debug(
             "User {} was not in these users: {}. Returning None."
             .format(username, usernames)
@@ -440,9 +444,10 @@ class LdapTests(BaseKeystoneTest):
                 states=test_config.get("target_deploy_status", {})
             )
 
-            # NOTE(jamespage): Test fixture should have johndoe and janedoe
-            #                  accounts
-            johndoe = self._find_keystone_v3_user('john doe', 'userdomain')
-            self.assertIsNotNone(johndoe, "user 'john doe' was unknown")
-            janedoe = self._find_keystone_v3_user('jane doe', 'userdomain')
-            self.assertIsNotNone(janedoe, "user 'jane doe' was unknown")
+            with self.v3_keystone_preferred():
+                # NOTE(jamespage): Test fixture should have johndoe and janedoe
+                #                  accounts
+                johndoe = self._find_keystone_v3_user('john doe', 'userdomain')
+                self.assertIsNotNone(johndoe, "user 'john doe' was unknown")
+                janedoe = self._find_keystone_v3_user('jane doe', 'userdomain')
+                self.assertIsNotNone(janedoe, "user 'jane doe' was unknown")

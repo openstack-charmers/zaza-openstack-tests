@@ -13,6 +13,7 @@
 # limitations under the License.
 
 """Collection of code for setting up and testing keystone."""
+import contextlib
 import zaza
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
@@ -59,3 +60,12 @@ class BaseKeystoneTest(test_utils.OpenStackBaseTest):
             openstack_utils.get_keystone_session_client(
                 cls.admin_keystone_session,
                 client_api_version=cls.default_api_version))
+
+    @contextlib.contextmanager
+    def v3_keystone_preferred(self):
+        """Set the preferred keystone api to v3 within called context."""
+        with self.config_change(
+                {'preferred-api-version': self.default_api_version},
+                {'preferred-api-version': '3'},
+                application_name="keystone"):
+            yield
