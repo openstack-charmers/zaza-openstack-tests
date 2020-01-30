@@ -48,6 +48,13 @@ class NeutronPluginApiSharedTests(test_utils.OpenStackBaseTest):
 
     def test_211_ovs_use_veth(self):
         """Verify proper handling of ovs-use-veth setting."""
+        current_release = openstack_utils.get_os_release()
+        xenial_mitaka = openstack_utils.get_os_release('xenial_mitaka')
+        if current_release < xenial_mitaka:
+            logging.info(
+                "Skipping OVS use veth test. ovs_use_veth is always True on "
+                "Trusty.")
+            return
         conf_file = "/etc/neutron/dhcp_agent.ini"
         expected = {"DEFAULT": {"ovs_use_veth": ["False"]}}
         test_config = zaza.charm_lifecycle.utils.get_charm_config(fatal=False)
