@@ -86,11 +86,13 @@ class HaclusterTest(test_utils.OpenStackBaseTest):
             for subordinate in primary_status["units"][leader]["subordinates"]:
                 logging.info("Pausing {}".format(subordinate))
                 zaza.model.run_action(subordinate, "pause")
-                zaza.model.block_until_unit_wl_status(leader, "blocked")
+                zaza.model.block_until_unit_wl_status(
+                    subordinate,
+                    "maintenance")
 
                 logging.info("Resuming {}".format(subordinate))
                 zaza.model.run_action(subordinate, "resume")
-                zaza.model.block_until_unit_wl_status(leader, "active")
+                zaza.model.block_until_unit_wl_status(subordinate, "active")
 
         _states = {"hacluster": {
             "workload-status": "active",
