@@ -16,6 +16,7 @@
 
 """Encapsulate Ceilometer testing."""
 
+import copy
 import logging
 
 import zaza.openstack.utilities.openstack as openstack_utils
@@ -46,20 +47,20 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
         bug #1846390.
         https://bugs.launchpad.net/charms/+source/ceilometer/+bug/1846390
         """
-        current_release = openstack_utils.get_os_release()
+        self.current_release = openstack_utils.get_os_release()
         services = []
 
-        if current_release >= CeilometerTest.XENIAL_PIKE:
+        if self.current_release >= CeilometerTest.XENIAL_PIKE:
             # services.append('ceilometer-polling: AgentManager worker(0)')
             services.append('ceilometer-agent-notification: '
                             'NotificationService worker(0)')
-        elif current_release >= CeilometerTest.XENIAL_OCATA:
+        elif self.current_release >= CeilometerTest.XENIAL_OCATA:
             services.append('ceilometer-collector: CollectorService worker(0)')
             # services.append('ceilometer-polling: AgentManager worker(0)')
             services.append('ceilometer-agent-notification: '
                             'NotificationService worker(0)')
             services.append('apache2')
-        elif current_release >= CeilometerTest.XENIAL_NEWTON:
+        elif self.current_release >= CeilometerTest.XENIAL_NEWTON:
             services.append('ceilometer-collector - CollectorService(0)')
             # services.append('ceilometer-polling - AgentManager(0)')
             services.append('ceilometer-agent-notification - '
@@ -70,11 +71,11 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
             services.append('ceilometer-api')
             services.append('ceilometer-agent-notification')
 
-            if current_release < CeilometerTest.TRUSTY_MITAKA:
+            if self.current_release < CeilometerTest.TRUSTY_MITAKA:
                 services.append('ceilometer-alarm-notifier')
                 services.append('ceilometer-alarm-evaluator')
 
-            # if current_release >= CeilometerTest.TRUSTY_LIBERTY:
+            # if self.current_release >= CeilometerTest.TRUSTY_LIBERTY:
                 # Liberty and later
                 # services.append('ceilometer-polling')
             # else:
@@ -87,6 +88,15 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
 
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change."""
+        _services = copy.deepcopy(self.services)
+
+        # Due to Bug #1861321 ceilometer-collector does not reliably
+        # restart.
+        if self.current_release <= CeilometerTest.TRUSTY_MITAKA:
+            try:
+                _services.remove('ceilometer-collector')
+            except ValueError:
+                pass
         # Expected default and alternate values
         current_value = openstack_utils.get_application_config_option(
             'ceilometer', 'debug'
@@ -110,7 +120,7 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
             set_alternate,
             default_entry,
             alternate_entry,
-            self.services)
+            _services)
 
     def test_901_pause_resume(self):
         """Run pause and resume tests.
