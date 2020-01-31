@@ -31,6 +31,7 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
     XENIAL_PIKE = openstack_utils.get_os_release('xenial_pike')
     XENIAL_OCATA = openstack_utils.get_os_release('xenial_ocata')
     XENIAL_NEWTON = openstack_utils.get_os_release('xenial_newton')
+    XENIAL_MITAKA = openstack_utils.get_os_release('xenial_mitaka')
     TRUSTY_MITAKA = openstack_utils.get_os_release('trusty_mitaka')
     TRUSTY_LIBERTY = openstack_utils.get_os_release('trusty_liberty')
 
@@ -41,15 +42,19 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
 
     @property
     def services(self):
-        """Return a list services for Openstack Release.
-
-        Note: disabling ceilometer-polling and ceilometer-agent-central due to
-        bug #1846390.
-        https://bugs.launchpad.net/charms/+source/ceilometer/+bug/1846390
-        """
+        """Return a list services for Openstack Release."""
         self.current_release = openstack_utils.get_os_release()
         services = []
 
+        if self.application_name == 'ceilometer-agent':
+            if self.current_release <= CeilometerTest.XENIAL_MITAKA:
+                services.append('ceilometer-polling')
+            else:
+                services.append('ceilometer-polling: AgentManager worker(0)')
+            return services
+
+        # Note: disabling ceilometer-polling and ceilometer-agent-central due
+        # to bug 1846390: https://bugs.launchpad.net/bugs/1846390
         if self.current_release >= CeilometerTest.XENIAL_PIKE:
             # services.append('ceilometer-polling: AgentManager worker(0)')
             services.append('ceilometer-agent-notification: '
@@ -97,9 +102,15 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
                 _services.remove('ceilometer-collector')
             except ValueError:
                 pass
+
+        config_name = 'debug'
+
+        if self.application_name == 'ceilometer-agent':
+            config_name = 'use-internal-endpoints'
+
         # Expected default and alternate values
         current_value = openstack_utils.get_application_config_option(
-            'ceilometer', 'debug'
+            self.application_name, config_name
         )
         assert type(current_value) == bool
         new_value = not current_value
@@ -108,10 +119,17 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
         current_value = str(current_value)
         new_value = str(new_value)
 
-        set_default = {'debug': current_value}
-        set_alternate = {'debug': new_value}
+        set_default = {config_name: current_value}
+        set_alternate = {config_name: new_value}
+
         default_entry = {'DEFAULT': {'debug': [current_value]}}
         alternate_entry = {'DEFAULT': {'debug': [new_value]}}
+
+        if self.application_name == 'ceilometer-agent':
+            default_entry = None
+            alternate_entry = {
+                'service_credentials': {'interface': ['internalURL']}
+            }
 
         logging.info('changing config: {}'.format(set_alternate))
         self.restart_on_changed(
