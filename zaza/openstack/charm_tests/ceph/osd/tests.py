@@ -47,3 +47,53 @@ class SecurityTest(unittest.TestCase):
             expected_passes,
             expected_failures,
             expected_to_pass=True)
+
+
+class CephOsdTest(unittest.TestCase):
+    """Ceph OSD specific tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running ceph OSD tests."""
+        super(CephOsdTest, cls).setUpClass()
+
+    def test_osd_removal_action(self):
+        """Verify that Ceph OSD can correctly remove a machine."""
+        unit_name = 'ceph-mon/0'
+        cmd = 'sudo ceph osd ls | wc -l'
+        result = zaza_model.run_on_unit(unit_name, cmd)
+        code = result.get('Code')
+        if code != '0':
+            raise zaza_model.CommandRunFailed(cmd, result)
+        output = result.get('Stdout').strip()
+        logging.debug('Output received: {}'.format(output))
+        num_osds = int(output)
+
+        # Add a unit, and make sure we increased OSDs
+        zaza_model.add_unit('ceph-osd')
+        zaza_model.block_until_all_units_idle()
+        result = zaza_model.run_on_unit(unit_name, cmd)
+        code = result.get('Code')
+        if code != '0':
+            raise zaza_model.CommandRunFailed(cmd, result)
+        output = result.get('Stdout').strip()
+        logging.debug('Output received: {}'.format(output))
+        self.assertGreater(int(output), num_osds)
+
+        # Remove a unit
+        action = zaza_model.run_on_unit(
+            'ceph-osd/0', 'prepare-for-destruction',
+            action_params={'i-really-mean-it': True})
+        logging.info("prepared the lead ceph osd unit "
+                     "for destruction: {}".format(action))
+        zaza_model.destroy_unit('ceph-osd', 'ceph-osd/0')
+        zaza_model.block_until_all_units_idle()
+
+        # Does Ceph have the right number of OSDs?
+        result = zaza_model.run_on_unit(unit_name, cmd)
+        code = result.get('Code')
+        if code != '0':
+            raise zaza_model.CommandRunFailed(cmd, result)
+        output = result.get('Stdout').strip()
+        logging.debug('Output received: {}'.format(output))
+        self.assertEqual(int(output), num_osds)
