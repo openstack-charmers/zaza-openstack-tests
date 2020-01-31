@@ -127,7 +127,9 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
 
         if self.application_name == 'ceilometer-agent':
             default_entry = None
-            alternate_entry = {'service_credentials': {'interface': ['internalURL']}}
+            alternate_entry = {
+                'service_credentials': {'interface': ['internalURL']}
+            }
 
         logging.info('changing config: {}'.format(set_alternate))
         self.restart_on_changed(
