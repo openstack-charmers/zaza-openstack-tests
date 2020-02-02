@@ -56,6 +56,9 @@ class SeriesUpgradeTest(unittest.TestCase):
             # Skip subordinates
             if applications[application]["subordinate-to"]:
                 continue
+            if "easyrsa" in applications[application]["charm"]:
+                logging.warn("Skipping series upgrade of easyrsa Bug #1850121")
+                continue
             if "percona-cluster" in applications[application]["charm"]:
                 origin = "source"
                 pause_non_leader_primary = True
