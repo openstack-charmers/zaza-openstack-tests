@@ -11,12 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Module containg base class for implementing charm tests."""
+"""Module containing base class for implementing charm tests."""
 import contextlib
 import logging
 import subprocess
 import unittest
-import zaza.model
 
 import zaza.model as model
 import zaza.charm_lifecycle.utils as lifecycle_utils
@@ -28,7 +27,7 @@ def skipIfNotHA(service_name):
     """Run decorator to skip tests if application not in HA configuration."""
     def _skipIfNotHA_inner_1(f):
         def _skipIfNotHA_inner_2(*args, **kwargs):
-            ips = zaza.model.get_app_ips(
+            ips = model.get_app_ips(
                 service_name)
             if len(ips) > 1:
                 return f(*args, **kwargs)
@@ -70,7 +69,7 @@ def audit_assertions(action,
     :param expected_passes: List of test names that are expected to pass
     :type expected_passes: List[str]
     :param expected_failures: List of test names that are expected to fail
-    :type expexted_failures: List[str]
+    :type expected_failures: List[str]
     :raises: AssertionError if the assertion fails.
     """
     if expected_failures is None:
@@ -115,7 +114,7 @@ class OpenStackBaseTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls, application_name=None, model_alias=None):
-        """Run setup for test class to create common resourcea."""
+        """Run setup for test class to create common resources."""
         cls.model_aliases = model.get_juju_model_aliases()
         if model_alias:
             cls.model_name = cls.model_aliases[model_alias]
@@ -132,6 +131,50 @@ class OpenStackBaseTest(unittest.TestCase):
             cls.application_name,
             model_name=cls.model_name)
         logging.debug('Leader unit is {}'.format(cls.lead_unit))
+
+    def config_current(self, application_name=None, keys=None):
+        """Get Current Config of an application normalized into key-values.
+
+        :param application_name: String application name for use when called
+                                 by a charm under test other than the object's
+                                 application.
+        :type application_name:  Optional[str]
+        :param keys: iterable of strs to index into the current config.  If
+                     None, return all keys from the config
+        :type keys:  Optional[Iterable[str]]
+        :return: Dictionary of requested config from application
+        :rtype: Dict[str, Any]
+        """
+        if not application_name:
+            application_name = self.application_name
+
+        _app_config = model.get_application_config(application_name)
+
+        keys = keys or _app_config.keys()
+        return {
+            k: _app_config.get(k, {}).get('value')
+            for k in keys
+        }
+
+    @staticmethod
+    def _stringed_value_config(config):
+        """Stringify values in a dict.
+
+        Workaround:
+        libjuju refuses to accept data with types other than strings
+        through the zuzu.model.set_application_config
+
+        :param config: Config dictionary with any typed values
+        :type  config: Dict[str,Any]
+        :return:       Config Dictionary with string-ly typed values
+        :rtype:        Dict[str,str]
+        """
+        # if v is None, stringify to ''
+        # otherwise use a strict cast with str(...)
+        return {
+            k: '' if v is None else str(v)
+            for k, v in config.items()
+        }
 
     @contextlib.contextmanager
     def config_change(self, default_config, alternate_config,
@@ -158,17 +201,14 @@ class OpenStackBaseTest(unittest.TestCase):
         """
         if not application_name:
             application_name = self.application_name
+
         # we need to compare config values to what is already applied before
         # attempting to set them.  otherwise the model will behave differently
         # than we would expect while waiting for completion of the change
-        _app_config = model.get_application_config(application_name)
-        app_config = {}
-        # convert the more elaborate config structure from libjuju to something
-        # we can compare to what the caller supplies to this function
-        for k in alternate_config.keys():
-            # note that conversion to string for all values is due to
-            # attempting to set any config with other types lead to Traceback
-            app_config[k] = str(_app_config.get(k, {}).get('value', ''))
+        app_config = self.config_current(
+            application_name, keys=alternate_config.keys()
+        )
+
         if all(item in app_config.items()
                 for item in alternate_config.items()):
             logging.debug('alternate_config equals what is already applied '
@@ -185,7 +225,7 @@ class OpenStackBaseTest(unittest.TestCase):
                           .format(alternate_config))
             model.set_application_config(
                 application_name,
-                alternate_config,
+                self._stringed_value_config(alternate_config),
                 model_name=self.model_name)
 
             logging.debug(
@@ -205,7 +245,7 @@ class OpenStackBaseTest(unittest.TestCase):
         logging.debug('Restoring charm setting to {}'.format(default_config))
         model.set_application_config(
             application_name,
-            default_config,
+            self._stringed_value_config(default_config),
             model_name=self.model_name)
 
         logging.debug(

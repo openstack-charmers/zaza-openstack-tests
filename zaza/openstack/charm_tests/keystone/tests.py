@@ -17,14 +17,13 @@ import collections
 import json
 import logging
 import pprint
-
 import keystoneauth1
 
 import zaza.model
 import zaza.openstack.utilities.exceptions as zaza_exceptions
 import zaza.openstack.utilities.juju as juju_utils
 import zaza.openstack.utilities.openstack as openstack_utils
-
+import zaza.charm_lifecycle.utils as lifecycle_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 from zaza.openstack.charm_tests.keystone import (
     BaseKeystoneTest,
@@ -189,10 +188,7 @@ class AuthenticationAuthorizationTest(BaseKeystoneTest):
                 openstack_utils.get_os_release('trusty_mitaka')):
             logging.info('skipping test < trusty_mitaka')
             return
-        with self.config_change(
-                {'preferred-api-version': self.default_api_version},
-                {'preferred-api-version': '3'},
-                application_name="keystone"):
+        with self.v3_keystone_preferred():
             for ip in self.keystone_ips:
                 try:
                     logging.info('keystone IP {}'.format(ip))
@@ -212,7 +208,7 @@ class AuthenticationAuthorizationTest(BaseKeystoneTest):
     def test_end_user_domain_admin_access(self):
         """Verify that end-user domain admin does not have elevated privileges.
 
-        In additon to validating that the `policy.json` is written and the
+        In addition to validating that the `policy.json` is written and the
         service is restarted on config-changed, the test validates that our
         `policy.json` is correct.
 
@@ -222,10 +218,7 @@ class AuthenticationAuthorizationTest(BaseKeystoneTest):
                 openstack_utils.get_os_release('xenial_ocata')):
             logging.info('skipping test < xenial_ocata')
             return
-        with self.config_change(
-                {'preferred-api-version': self.default_api_version},
-                {'preferred-api-version': '3'},
-                application_name="keystone"):
+        with self.v3_keystone_preferred():
             for ip in self.keystone_ips:
                 openrc = {
                     'API_VERSION': 3,
@@ -257,7 +250,7 @@ class AuthenticationAuthorizationTest(BaseKeystoneTest):
                         'allowed when it should not be.')
         logging.info('OK')
 
-    def test_end_user_acccess_and_token(self):
+    def test_end_user_access_and_token(self):
         """Verify regular end-user access resources and validate token data.
 
         In effect this also validates user creation, presence of standard
@@ -371,3 +364,81 @@ class SecurityTests(BaseKeystoneTest):
             expected_passes,
             expected_failures,
             expected_to_pass=False)
+
+
+class LdapTests(BaseKeystoneTest):
+    """Keystone ldap tests tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running Keystone ldap-tests."""
+        super(LdapTests, cls).setUpClass()
+
+    def _get_ldap_config(self):
+        """Generate ldap config for current model.
+
+        :return: tuple of whether ldap-server is running and if so, config
+            for the keystone-ldap application.
+        :rtype: Tuple[bool, Dict[str,str]]
+        """
+        ldap_ips = zaza.model.get_app_ips("ldap-server")
+        self.assertTrue(ldap_ips, "Should be at least one ldap server")
+        return {
+            'ldap-server': "ldap://{}".format(ldap_ips[0]),
+            'ldap-user': 'cn=admin,dc=test,dc=com',
+            'ldap-password': 'crapper',
+            'ldap-suffix': 'dc=test,dc=com',
+            'domain-name': 'userdomain',
+        }
+
+    def _find_keystone_v3_user(self, username, domain):
+        """Find a user within a specified keystone v3 domain.
+
+        :param str username: Username to search for in keystone
+        :param str domain: username selected from which domain
+        :return: return username if found
+        :rtype: Optional[str]
+        """
+        for ip in self.keystone_ips:
+            logging.info('Keystone IP {}'.format(ip))
+            session = openstack_utils.get_keystone_session(
+                openstack_utils.get_overcloud_auth(address=ip))
+            client = openstack_utils.get_keystone_session_client(session)
+
+            domain_users = client.users.list(
+                domain=client.domains.find(name=domain).id
+            )
+
+            usernames = [u.name.lower() for u in domain_users]
+            if username.lower() in usernames:
+                return username
+
+        logging.debug(
+            "User {} was not found. Returning None.".format(username)
+        )
+        return None
+
+    def test_100_keystone_ldap_users(self):
+        """Validate basic functionality of keystone API with ldap."""
+        application_name = 'keystone-ldap'
+        config = self._get_ldap_config()
+
+        with self.config_change(
+                self.config_current(application_name, config.keys()),
+                config,
+                application_name=application_name):
+            logging.info(
+                'Waiting for users to become available in keystone...'
+            )
+            test_config = lifecycle_utils.get_charm_config(fatal=False)
+            zaza.model.wait_for_application_states(
+                states=test_config.get("target_deploy_status", {})
+            )
+
+            with self.v3_keystone_preferred():
+                # NOTE(jamespage): Test fixture should have johndoe and janedoe
+                #                  accounts
+                johndoe = self._find_keystone_v3_user('john doe', 'userdomain')
+                self.assertIsNotNone(johndoe, "user 'john doe' was unknown")
+                janedoe = self._find_keystone_v3_user('jane doe', 'userdomain')
+                self.assertIsNotNone(janedoe, "user 'jane doe' was unknown")
