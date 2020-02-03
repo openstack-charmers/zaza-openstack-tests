@@ -47,6 +47,115 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         """Run class setup for running LBaaSv2 service tests."""
         super(LBAASv2Test, cls).setUpClass()
 
+    @staticmethod
+    @tenacity.retry(wait=tenacity.wait_fixed(1),
+                    reraise=True, stop=tenacity.stop_after_delay(900))
+    def wait_for_lb_resource(octavia_show_func, resource_id,
+                             operating_status=None):
+        """Wait for loadbalancer resource to reach expected status."""
+        resp = octavia_show_func(resource_id)
+        logging.info(resp['provisioning_status'])
+        assert resp['provisioning_status'] == 'ACTIVE', (
+            'load balancer resource has not reached '
+            'expected provisioning status: {}'
+            .format(resp))
+        if operating_status:
+            logging.info(resp['operating_status'])
+            assert resp['operating_status'] == operating_status, (
+                'load balancer resource has not reached '
+                'expected operating status: {}'.format(resp))
+
+        return resp
+
+    def _create_lb_resources(self, octavia_client, provider, vip_subnet_id,
+                             member_subnet_id, payload_ips):
+        result = octavia_client.load_balancer_create(
+            json={
+                'loadbalancer': {
+                    'description': 'Created by Zaza',
+                    'admin_state_up': True,
+                    'vip_subnet_id': vip_subnet_id,
+                    'name': 'zaza-lb-0',
+                }})
+        lb = result['loadbalancer']
+        lb_id = lb['id']
+
+        logging.info('Awaiting loadbalancer to reach provisioning_status '
+                     '"ACTIVE"')
+        resp = self.wait_for_lb_resource(
+            octavia_client.load_balancer_show, lb_id)
+        logging.info(resp)
+
+        result = octavia_client.listener_create(
+            json={
+                'listener': {
+                    'loadbalancer_id': lb_id,
+                    'name': 'listener1',
+                    'protocol': 'HTTP',
+                    'protocol_port': 80
+                },
+            })
+        listener_id = result['listener']['id']
+        logging.info('Awaiting listener to reach provisioning_status '
+                     '"ACTIVE"')
+        resp = self.wait_for_lb_resource(
+            octavia_client.listener_show, listener_id)
+        logging.info(resp)
+
+        result = octavia_client.pool_create(
+            json={
+                'pool': {
+                    'listener_id': listener_id,
+                    'name': 'pool1',
+                    'lb_algorithm': 'ROUND_ROBIN',
+                    'protocol': 'HTTP',
+                },
+            })
+        pool_id = result['pool']['id']
+        logging.info('Awaiting pool to reach provisioning_status '
+                     '"ACTIVE"')
+        resp = self.wait_for_lb_resource(octavia_client.pool_show, pool_id)
+        logging.info(resp)
+
+        result = octavia_client.health_monitor_create(
+            json={
+                'healthmonitor': {
+                    'pool_id': pool_id,
+                    'delay': 5,
+                    'max_retries': 4,
+                    'timeout': 10,
+                    'type': 'HTTP',
+                    'url_path': '/',
+                },
+            })
+        healthmonitor_id = result['healthmonitor']['id']
+        logging.info('Awaiting healthmonitor to reach provisioning_status '
+                     '"ACTIVE"')
+        resp = self.wait_for_lb_resource(octavia_client.health_monitor_show,
+                                         healthmonitor_id)
+        logging.info(resp)
+
+        for ip in payload_ips:
+            result = octavia_client.member_create(
+                pool_id=pool_id,
+                json={
+                    'member': {
+                        'subnet_id': member_subnet_id,
+                        'address': ip,
+                        'protocol_port': 80,
+                    },
+                })
+            member_id = result['member']['id']
+            logging.info('Awaiting member to reach provisioning_status '
+                         '"ACTIVE"')
+            resp = self.wait_for_lb_resource(
+                lambda x: octavia_client.member_show(
+                    pool_id=pool_id, member_id=x),
+                member_id,
+                operating_status='ONLINE')
+            logging.info(resp)
+        return lb
+
     def test_create_loadbalancer(self):
         """Create load balancer."""
         keystone_session = openstack_utils.get_overcloud_keystone_session()
@@ -70,109 +179,11 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
             vip_subnet_id = subnet_id
         octavia_client = openstack_utils.get_octavia_session_client(
             keystone_session)
-        result = octavia_client.load_balancer_create(
-            json={
-                'loadbalancer': {
-                    'description': 'Created by Zaza',
-                    'admin_state_up': True,
-                    'vip_subnet_id': vip_subnet_id,
-                    'name': 'zaza-lb-0',
-                }})
-        lb_id = result['loadbalancer']['id']
-        lb_vip_port_id = result['loadbalancer']['vip_port_id']
-
-        @tenacity.retry(wait=tenacity.wait_fixed(1),
-                        reraise=True, stop=tenacity.stop_after_delay(900))
-        def wait_for_lb_resource(octavia_show_func, resource_id,
-                                 operating_status=None):
-            resp = octavia_show_func(resource_id)
-            logging.info(resp['provisioning_status'])
-            assert resp['provisioning_status'] == 'ACTIVE', (
-                'load balancer resource has not reached '
-                'expected provisioning status: {}'
-                .format(resp))
-            if operating_status:
-                logging.info(resp['operating_status'])
-                assert resp['operating_status'] == operating_status, (
-                    'load balancer resource has not reached '
-                    'expected operating status: {}'.format(resp))
-
-            return resp
-        logging.info('Awaiting loadbalancer to reach provisioning_status '
-                     '"ACTIVE"')
-        resp = wait_for_lb_resource(octavia_client.load_balancer_show, lb_id)
-        logging.info(resp)
-
-        result = octavia_client.listener_create(
-            json={
-                'listener': {
-                    'loadbalancer_id': lb_id,
-                    'name': 'listener1',
-                    'protocol': 'HTTP',
-                    'protocol_port': 80
-                },
-            })
-        listener_id = result['listener']['id']
-        logging.info('Awaiting listener to reach provisioning_status '
-                     '"ACTIVE"')
-        resp = wait_for_lb_resource(octavia_client.listener_show, listener_id)
-        logging.info(resp)
-
-        result = octavia_client.pool_create(
-            json={
-                'pool': {
-                    'listener_id': listener_id,
-                    'name': 'pool1',
-                    'lb_algorithm': 'ROUND_ROBIN',
-                    'protocol': 'HTTP',
-                },
-            })
-        pool_id = result['pool']['id']
-        logging.info('Awaiting pool to reach provisioning_status '
-                     '"ACTIVE"')
-        resp = wait_for_lb_resource(octavia_client.pool_show, pool_id)
-        logging.info(resp)
-
-        result = octavia_client.health_monitor_create(
-            json={
-                'healthmonitor': {
-                    'pool_id': pool_id,
-                    'delay': 5,
-                    'max_retries': 4,
-                    'timeout': 10,
-                    'type': 'HTTP',
-                    'url_path': '/',
-                },
-            })
-        healthmonitor_id = result['healthmonitor']['id']
-        logging.info('Awaiting healthmonitor to reach provisioning_status '
-                     '"ACTIVE"')
-        resp = wait_for_lb_resource(octavia_client.health_monitor_show,
-                                    healthmonitor_id)
-        logging.info(resp)
-
-        for ip in payload_ips:
-            result = octavia_client.member_create(
-                pool_id=pool_id,
-                json={
-                    'member': {
-                        'subnet_id': subnet_id,
-                        'address': ip,
-                        'protocol_port': 80,
-                    },
-                })
-            member_id = result['member']['id']
-            logging.info('Awaiting member to reach provisioning_status '
-                         '"ACTIVE"')
-            resp = wait_for_lb_resource(
-                lambda x: octavia_client.member_show(
-                    pool_id=pool_id, member_id=x),
-                member_id,
-                operating_status='ONLINE')
-            logging.info(resp)
+        lb = self._create_lb_resources(octavia_client, 'amphora',
+                                       vip_subnet_id, subnet_id, payload_ips)
 
         lb_fp = openstack_utils.create_floating_ip(
-            neutron_client, 'ext_net', port={'id': lb_vip_port_id})
+            neutron_client, 'ext_net', port={'id': lb['vip_port_id']})
 
         @tenacity.retry(wait=tenacity.wait_fixed(1),
                         reraise=True, stop=tenacity.stop_after_delay(900))
