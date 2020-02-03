@@ -15,6 +15,7 @@
 """Run configuration phase."""
 
 import functools
+import os
 import requests
 import tempfile
 
@@ -49,6 +50,23 @@ def basic_setup_and_unseal(cacert=None):
     vault_svc.unseal()
     for unit in zaza.model.get_units('vault'):
         zaza.model.run_on_unit(unit.name, './hooks/update-status')
+
+
+def basic_unseal_mojo_cacert():
+    """Unseal Vault and search for cacert to use.
+
+    This is designed to be used from a mojo spec where certs are stored in the
+    $MOJO_LOCAL directory.
+    """
+    try:
+        cert_dir = os.environ['MOJO_LOCAL']
+    except KeyError:
+        raise Exception("Could not find cacert.pem, MOJO_LOCAL unset")
+    cacert = os.path.join(cert_dir, 'cacert.pem')
+    if os.path.exists(cacert):
+        basic_setup_and_unseal(cacert=cacert)
+    else:
+        raise Exception("Could not find cacert.pem")
 
 
 def auto_initialize(cacert=None, validation_application='keystone'):

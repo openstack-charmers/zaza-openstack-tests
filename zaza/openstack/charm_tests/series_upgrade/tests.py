@@ -85,7 +85,7 @@ class SeriesUpgradeTest(unittest.TestCase):
             if "vault" in applications[application]["charm"]:
                 post_upgrade_functions = [
                     ('zaza.openstack.charm_tests.vault.setup.'
-                     'basic_setup_and_unseal')]
+                     'basic_unseal_mojo_cacert')]
             if ("mongodb" in applications[application]["charm"] or
                     "vault" in applications[application]["charm"]):
                 # Mongodb and vault need to run series upgrade

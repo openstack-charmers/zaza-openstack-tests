@@ -55,6 +55,10 @@ class VaultFacade:
         self.vip_client = get_vip_client(cacert=cacert)
         if self.vip_client:
             self.unseal_client = self.vip_client
+            try:
+                self.unseal_client.hvac_client.is_initialized()
+            except requests.exceptions.ConnectionError:
+                self.unseal_client = self.clients[0]
         else:
             self.unseal_client = self.clients[0]
         self.initialized = is_initialized(self.unseal_client)
