@@ -59,7 +59,7 @@ def basic_unseal_mojo_cacert():
     $MOJO_LOCAL directory.
     """
     try:
-        cert_dir = os.environ['MOJO_LOCAL']
+        cert_dir = os.environ['MOJO_LOCAL_DIR']
     except KeyError:
         raise Exception("Could not find cacert.pem, MOJO_LOCAL unset")
     cacert = os.path.join(cert_dir, 'cacert.pem')
