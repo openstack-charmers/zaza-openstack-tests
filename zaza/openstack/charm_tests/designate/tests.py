@@ -23,7 +23,6 @@ import zaza.openstack.utilities.juju as zaza_juju
 from zaza.openstack.charm_tests.designate import (
     BaseDesignateTest,
 )
-import zaza.openstack.utilities.openstack as openstack_utils
 
 
 class BaseTests(BaseDesignateTest):
