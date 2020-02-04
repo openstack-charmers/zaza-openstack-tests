@@ -42,7 +42,7 @@ class BaseDesignateTest(test_utils.OpenStackBaseTest):
             ]
 
         # Get keystone session
-        keystone_api = 3 if (os_release() >= os_release('xenial_queens')) else 2
+        keystone_api = 3 if os_release() >= os_release('xenial_queens') else 2
         cls.keystone_session = openstack_utils.get_overcloud_keystone_session()
         cls.keystone = openstack_utils.get_keystone_session_client(
             cls.keystone_session, keystone_api

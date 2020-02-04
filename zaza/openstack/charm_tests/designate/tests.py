@@ -27,9 +27,10 @@ import zaza.openstack.utilities.openstack as openstack_utils
 
 
 class BaseTests(BaseDesignateTest):
+    """Base Designate charm tests."""
+
     def test_100_services(self):
-        """Verify the expected services are running on the corresponding
-           service units."""
+        """Verify expected services are running."""
         logging.debug('Checking system services on units...')
 
         model.block_until_service_status(
@@ -44,6 +45,8 @@ class BaseTests(BaseDesignateTest):
 
 
 class BindTests(BaseDesignateTest):
+    """Designate Bind charm tests."""
+
     TEST_DOMAIN = 'amuletexample.com.'
     TEST_WWW_RECORD = "www.{}".format(TEST_DOMAIN)
     TEST_RECORD = {TEST_WWW_RECORD: '10.0.0.23'}
@@ -88,7 +91,7 @@ class BindTests(BaseDesignateTest):
             raise Exception("Record Doesn't Exist")
 
     def test_205_designate_designate_bind_relation(self):
-        """Verify the designate to designate-bind dns-backend relation data"""
+        """Verify the designate to designate-bind dns-backend relation data."""
         logging.debug('Checking designate:designate-bind dns-backend relation'
                       'data...')
 
@@ -108,7 +111,7 @@ class BindTests(BaseDesignateTest):
         self.assertEqual(rel_private_ip, remote_ip)
 
     def test_206_designate_bind_designate_relation(self):
-        """Verify the designate_bind to designate dns-backend relation data"""
+        """Verify the designate_bind to designate dns-backend relation data."""
         logging.debug('Checking designate-bind:designate dns-backend relation'
                       'data...')
 
@@ -126,9 +129,9 @@ class BindTests(BaseDesignateTest):
         rel_private_ip = relation.get('private-address')
         # The private address in relation should match designate-bind/0 address
         self.assertEqual(rel_private_ip, remote_ip)
-        
+
     def test_400_domain_creation(self):
-        """Simple api calls to create domain"""
+        """Simple api calls to create domain."""
         logging.debug('Checking if domain exists before trying to create it')
         old_dom_id = self._get_test_domain_id()
         if old_dom_id:

@@ -36,6 +36,7 @@ install_require = [
     'tenacity',
     'oslo.config',
     'aodhclient',
+    'python-designateclient',
     'python-heatclient',
     'python-glanceclient',
     'python-keystoneclient',
