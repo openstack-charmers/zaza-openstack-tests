@@ -108,18 +108,23 @@ CHARM_TYPES = {
         'origin_setting': 'openstack-origin'
     },
 }
+
+# Older tests use the order the services appear in the list to imply
+# the order they should be upgraded in. This approach has been superceded and
+# zaza.openstack.utilities.openstack_upgrade.get_upgrade_groups should be used
+# instead.
 UPGRADE_SERVICES = [
     {'name': 'keystone', 'type': CHARM_TYPES['keystone']},
-    {'name': 'nova-cloud-controller', 'type': CHARM_TYPES['nova']},
-    {'name': 'nova-compute', 'type': CHARM_TYPES['nova']},
     {'name': 'neutron-api', 'type': CHARM_TYPES['neutron']},
-    {'name': 'neutron-gateway', 'type': CHARM_TYPES['neutron']},
+    {'name': 'nova-cloud-controller', 'type': CHARM_TYPES['nova']},
     {'name': 'glance', 'type': CHARM_TYPES['glance']},
     {'name': 'cinder', 'type': CHARM_TYPES['cinder']},
-    {'name': 'openstack-dashboard',
-     'type': CHARM_TYPES['openstack-dashboard']},
+    {'name': 'neutron-gateway', 'type': CHARM_TYPES['neutron']},
     {'name': 'ceilometer', 'type': CHARM_TYPES['ceilometer']},
     {'name': 'designate', 'type': CHARM_TYPES['designate']},
+    {'name': 'nova-compute', 'type': CHARM_TYPES['nova']},
+    {'name': 'openstack-dashboard',
+     'type': CHARM_TYPES['openstack-dashboard']},
 ]
 
 
