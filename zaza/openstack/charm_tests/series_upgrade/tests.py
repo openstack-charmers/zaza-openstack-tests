@@ -83,12 +83,14 @@ class SeriesUpgradeTest(unittest.TestCase):
                 pause_non_leader_primary = False
                 pause_non_leader_subordinate = False
             if "vault" in applications[application]["charm"]:
+                origin = None
+                pause_non_leader_primary = False
+                pause_non_leader_subordinate = True
                 post_upgrade_functions = [
                     ('zaza.openstack.charm_tests.vault.setup.'
-                     'basic_unseal_mojo_cacert')]
-            if ("mongodb" in applications[application]["charm"] or
-                    "vault" in applications[application]["charm"]):
-                # Mongodb and vault need to run series upgrade
+                     'mojo_unseal_by_unit')]
+            if "mongodb" in applications[application]["charm"]:
+                # Mongodb needs to run series upgrade
                 # on its secondaries first.
                 generic_utils.series_upgrade_non_leaders_first(
                     application,

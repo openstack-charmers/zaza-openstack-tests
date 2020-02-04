@@ -850,3 +850,22 @@ def systemctl(unit, service, command="restart"):
         unit.entity_id, cmd)
     assert int(result['Code']) == 0, (
         "{} of {} on {} failed".format(command, service, unit.entity_id))
+
+
+def get_mojo_cacert():
+    """Retrieve cacert from Mojo storage location.
+
+    :returns: Pathh to cacert
+    :rtype: str
+    :raises: zaza_exceptions.CACERTNotFound
+    """
+    try:
+        cert_dir = os.environ['MOJO_LOCAL_DIR']
+    except KeyError:
+        raise zaza_exceptions.CACERTNotFound(
+            "Could not find cacert.pem, MOJO_LOCAL_DIR unset")
+    cacert = os.path.join(cert_dir, 'cacert.pem')
+    if os.path.exists(cacert):
+        return cacert
+    else:
+        raise zaza_exceptions.CACERTNotFound("Could not find cacert.pem")
