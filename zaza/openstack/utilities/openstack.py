@@ -209,18 +209,15 @@ def get_glance_session_client(session):
     return GlanceClient('2', session=session)
 
 
-def get_designate_session_client(session, **kwargs):
+def get_designate_session_client(**kwargs):
     """Return designateclient authenticated by keystone session.
 
-    :param session: Keystone session object
-    :type session: keystoneauth1.session.Session object
     :param kwargs: Designate Client Arguments
     :returns: Authenticated designateclient
     :rtype: DesignateClient
     """
     version = kwargs.pop('version', None) or 2
-    return DesignateClient(session=session,
-                           version=str(version),
+    return DesignateClient(version=str(version),
                            **kwargs)
 
 
