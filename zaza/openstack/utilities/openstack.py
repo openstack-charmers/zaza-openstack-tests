@@ -110,9 +110,9 @@ CHARM_TYPES = {
 }
 
 # Older tests use the order the services appear in the list to imply
-# they shoould be upgraded in. This approache has been superceded and
+# the order they should be upgraded in. This approach has been superceded and
 # zaza.openstack.utilities.openstack_upgrade.get_upgrade_groups should be used
-# instead
+# instead.
 UPGRADE_SERVICES = [
     {'name': 'keystone', 'type': CHARM_TYPES['keystone']},
     {'name': 'neutron-api', 'type': CHARM_TYPES['neutron']},
