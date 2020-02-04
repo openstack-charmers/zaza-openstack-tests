@@ -24,6 +24,7 @@ import zaza.model
 import zaza.openstack.utilities.cert
 import zaza.openstack.utilities.openstack
 import zaza.openstack.utilities.generic
+import zaza.utilities.juju as juju_utils
 
 
 def basic_setup(cacert=None, unseal_and_authorize=False):
@@ -59,7 +60,7 @@ def mojo_unseal_by_unit():
     for client in vault_utils.get_clients(cacert=cacert):
         if client.hvac_client.is_sealed():
             client.hvac_client.unseal(vault_creds['keys'][0])
-            unit_name = zaza.utilities.juju.get_unit_name_from_ip_address(
+            unit_name = juju_utils.get_unit_name_from_ip_address(
                 client.addr,
                 'vault')
             zaza.model.run_on_unit(unit_name, './hooks/update-status')
