@@ -852,12 +852,13 @@ def systemctl(unit, service, command="restart"):
         "{} of {} on {} failed".format(command, service, unit.entity_id))
 
 
-def get_mojo_cacert():
+def get_mojo_cacert_path():
     """Retrieve cacert from Mojo storage location.
 
-    :returns: Pathh to cacert
+    :returns: Path to cacert
     :rtype: str
     :raises: zaza_exceptions.CACERTNotFound
+    :raises: :class:`zaza_exceptions.CACERTNotfound`
     """
     try:
         cert_dir = os.environ['MOJO_LOCAL_DIR']

@@ -55,7 +55,7 @@ def basic_setup_and_unseal(cacert=None):
 
 def mojo_unseal_by_unit():
     """Unseal any units reported as sealed using mojo cacert."""
-    cacert = zaza.openstack.utilities.generic.get_mojo_cacert()
+    cacert = zaza.openstack.utilities.generic.get_mojo_cacert_path()
     vault_creds = vault_utils.get_credentails()
     for client in vault_utils.get_clients(cacert=cacert):
         if client.hvac_client.is_sealed():
