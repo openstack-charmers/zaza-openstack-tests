@@ -679,7 +679,11 @@ class OctaviaTests(BasePolicydSpecialization):
         octavia_client = openstack_utils.get_octavia_session_client(sess)
         neutron_client = openstack_utils.get_neutron_session_client(sess)
 
-        resp = neutron_client.list_networks(name="private_lb_fip_network")
+        if openstack_utils.dvr_enabled():
+            network_name = 'private_lb_fip_network'
+        else:
+            network_name = 'private'
+        resp = neutron_client.list_networks(name=network_name)
 
         vip_subnet_id = resp['networks'][0]['subnets'][0]
 
