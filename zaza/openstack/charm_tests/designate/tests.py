@@ -81,7 +81,7 @@ class BindTests(BaseDesignateTest):
         reraise=True
     )
     def _wait_to_resolve_test_record(self, dns_ip):
-        logging.debug('Waiting for dns record to propagate')
+        logging.info('Waiting for dns record to propagate @ {}'.format(dns_ip))
         lookup_cmd = [
             'dig', '+short', '@{}'.format(dns_ip),
             self.TEST_WWW_RECORD]
@@ -145,7 +145,8 @@ class BindTests(BaseDesignateTest):
             email="fred@amuletexample.com")
 
         os_release = openstack_utils.get_os_release
-        if os_release() >= os_release('xenial_queens'):
+        post_xenial_queens = os_release() >= os_release('xenial_queens')
+        if post_xenial_queens:
             new_domain = self.designate.zones.create(
                 name=domain.name, email=domain.email)
         else:
@@ -158,7 +159,7 @@ class BindTests(BaseDesignateTest):
             type="A",
             data=self.TEST_RECORD[self.TEST_WWW_RECORD])
 
-        if os_release() >= os_release('xenial_queens'):
+        if post_xenial_queens:
             _domain_id = new_domain['id']
             self.designate.recordsets.create(
                 _domain_id, _record.name, _record.type, [_record.data])
@@ -167,8 +168,8 @@ class BindTests(BaseDesignateTest):
             self.designate.records.create(_domain_id, _record)
 
         dns_ip = zaza_juju.get_relation_from_unit(
-            'designate-bind/0',
             'designate/0',
+            'designate-bind/0',
             'dns-backend'
         ).get('private-address')
         self._wait_to_resolve_test_record(dns_ip)
