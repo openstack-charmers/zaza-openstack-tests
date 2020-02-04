@@ -144,9 +144,7 @@ class BindTests(BaseDesignateTest):
             name=self.TEST_DOMAIN,
             email="fred@amuletexample.com")
 
-        os_release = openstack_utils.get_os_release
-        post_xenial_queens = os_release() >= os_release('xenial_queens')
-        if post_xenial_queens:
+        if self.post_xenial_queens:
             new_domain = self.designate.zones.create(
                 name=domain.name, email=domain.email)
         else:
@@ -159,7 +157,7 @@ class BindTests(BaseDesignateTest):
             type="A",
             data=self.TEST_RECORD[self.TEST_WWW_RECORD])
 
-        if post_xenial_queens:
+        if self.post_xenial_queens:
             _domain_id = new_domain['id']
             self.designate.recordsets.create(
                 _domain_id, _record.name, _record.type, [_record.data])
