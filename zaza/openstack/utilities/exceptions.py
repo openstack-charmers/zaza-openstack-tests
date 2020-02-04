@@ -184,3 +184,9 @@ class PolicydError(Exception):
     """Policyd override failed."""
 
     pass
+
+
+class CACERTNotFound(Exception):
+    """Could not find cacert."""
+
+    pass

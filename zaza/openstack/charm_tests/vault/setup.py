@@ -23,6 +23,8 @@ import zaza.openstack.charm_tests.vault.utils as vault_utils
 import zaza.model
 import zaza.openstack.utilities.cert
 import zaza.openstack.utilities.openstack
+import zaza.openstack.utilities.generic
+import zaza.utilities.juju as juju_utils
 
 
 def basic_setup(cacert=None, unseal_and_authorize=False):
@@ -49,6 +51,19 @@ def basic_setup_and_unseal(cacert=None):
     vault_svc.unseal()
     for unit in zaza.model.get_units('vault'):
         zaza.model.run_on_unit(unit.name, './hooks/update-status')
+
+
+def mojo_unseal_by_unit():
+    """Unseal any units reported as sealed using mojo cacert."""
+    cacert = zaza.openstack.utilities.generic.get_mojo_cacert_path()
+    vault_creds = vault_utils.get_credentails()
+    for client in vault_utils.get_clients(cacert=cacert):
+        if client.hvac_client.is_sealed():
+            client.hvac_client.unseal(vault_creds['keys'][0])
+            unit_name = juju_utils.get_unit_name_from_ip_address(
+                client.addr,
+                'vault')
+            zaza.model.run_on_unit(unit_name, './hooks/update-status')
 
 
 def auto_initialize(cacert=None, validation_application='keystone'):
