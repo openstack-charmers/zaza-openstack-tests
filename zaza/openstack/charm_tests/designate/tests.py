@@ -35,7 +35,7 @@ class BaseTests(BaseDesignateTest):
         logging.debug('Checking system services on units...')
 
         model.block_until_service_status(
-            self.application_name,
+            self.lead_unit,
             self.designate_svcs,
             'running',
             self.model_name,
