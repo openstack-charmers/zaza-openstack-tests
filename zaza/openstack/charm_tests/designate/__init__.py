@@ -43,15 +43,13 @@ class BaseDesignateTest(test_utils.OpenStackBaseTest):
 
         # Get keystone session
         cls.post_xenial_queens = os_release() >= os_release('xenial_queens')
-        keystone_api = 3 if cls.post_xenial_queens else 2
-        cls.keystone_session = openstack_utils.get_overcloud_keystone_session()
-        cls.keystone = openstack_utils.get_keystone_session_client(
-            cls.keystone_session, keystone_api
-        )
+        overcloud_auth = openstack_utils.get_overcloud_auth()
+        cls.keystone = openstack_utils.get_keystone_client(overcloud_auth)
 
         if cls.post_xenial_queens:
+            keystone_session = openstack_utils.get_overcloud_keystone_session()
             cls.designate = openstack_utils.get_designate_session_client(
-                session=cls.keystone_session
+                session=keystone_session
             )
             cls.zones_list = cls.designate.zones.list
             cls.zones_delete = cls.designate.zones.delete
