@@ -48,11 +48,11 @@ class BaseTests(BaseDesignateTest):
 class ApiTests(BaseDesignateTest):
     """Designate charm api tests."""
 
-    VALID_URL_TOKENS = {
-        'adminURL'
-        'publicURL'
-        'internalURL'
-    }
+    VALID_INTERFACE = [
+        'admin',
+        'public',
+        'internal'
+    ]
 
     VALID_URL = re.compile(
             r'^(?:http|ftp)s?://'
@@ -67,28 +67,27 @@ class ApiTests(BaseDesignateTest):
         """Verify that the service catalog endpoint data is valid."""
         logging.debug('Checking keystone service catalog data...')
         actual = self.keystone.service_catalog.get_endpoints()
-        self.assertIsNotNone(actual['dns'].get('id'))
-        self.assertEqual(actual['dns'].get('region'), "RegionOne")
-        for token in self.VALID_URL_TOKENS:
-            validate = actual['dns'].get(token)
-            self.assertIsNotNone(
-                validate, "token {} doesn't exist".format(token))
-            self.assertRegexpMatches(validate, self.VALID_URL)
+        dns_endpoints = actual['dns']
+
+        for ep in dns_endpoints:
+            logging.debug(ep)
+            self.assertIsNotNone(ep.get('id'))
+            self.assertEqual(ep.get('region'), "RegionOne")
+            self.assertIn(ep.get('interface'), self.VALID_INTERFACE)
+            self.assertRegexpMatches(ep.get('url'), self.VALID_URL)
 
     def test_114_designate_api_endpoint(self):
         """Verify the designate api endpoint data."""
         logging.debug('Checking designate api endpoint data...')
         endpoints = self.keystone.endpoints.list()
-        logging.debug(endpoints)
 
-        self.assertIsNotNone(endpoints.get('id'))
-        self.assertEqual(endpoints.get('region'), "RegionOne")
-        self.assertIsNotNone(endpoints.get('server_id'))
-        for token in self.VALID_URL_TOKENS:
-            validate = endpoints.get(token)
-            self.assertIsNotNone(
-                validate, "token {} doesn't exist".format(token))
-            self.assertRegexpMatches(validate, self.VALID_URL)
+        for ep in endpoints:
+            logging.debug(ep)
+            self.assertIsNotNone(ep.id)
+            self.assertEqual(ep.region, "RegionOne")
+            self.assertIsNotNone(ep.service_id)
+            self.assertIn(ep.interface, self.VALID_INTERFACE)
+            self.assertRegexpMatches(ep.url, self.VALID_URL)
 
 
 class KeystoneIdentityRelationTests(BaseDesignateTest):
