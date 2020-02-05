@@ -176,8 +176,8 @@ class AmqpRelationTests(BaseDesignateTest):
         """Verify the designate to rabbitmq-server amqp relation data."""
         logging.debug('Checking designate:amqp rabbitmq relation data...')
 
-        unit_name = 'designate/0'
-        remote_unit_name = 'rabbitmq-server/0'
+        unit_name = 'rabbitmq-server/0'
+        remote_unit_name = 'designate/0'
         relation_name = 'amqp'
         remote_unit = model.get_unit_from_name(remote_unit_name)
         remote_ip = remote_unit.public_address
@@ -199,8 +199,8 @@ class AmqpRelationTests(BaseDesignateTest):
         """Verify the rabbitmq-server to designate amqp relation data."""
         logging.debug('Checking rabbitmq:amqp designate relation data...')
 
-        unit_name = 'rabbitmq-server/0'
-        remote_unit_name = 'designate/0'
+        unit_name = 'designate/0'
+        remote_unit_name = 'rabbitmq-server/0'
         relation_name = 'amqp'
         remote_unit = model.get_unit_from_name(remote_unit_name)
         remote_ip = remote_unit.public_address
