@@ -86,8 +86,13 @@ class ApiTests(BaseDesignateTest):
             self.assertIsNotNone(ep.id)
             self.assertEqual(ep.region, "RegionOne")
             self.assertIsNotNone(ep.service_id)
-            self.assertIn(ep.interface, self.VALID_INTERFACE)
-            self.assertRegexpMatches(ep.url, self.VALID_URL)
+            if self.post_xenial_queens:
+                self.assertIn(ep.interface, self.VALID_INTERFACE)
+                self.assertRegexpMatches(ep.url, self.VALID_URL)
+            else:
+                self.assertRegexpMatches(ep.adminURL, self.VALID_URL)
+                self.assertRegexpMatches(ep.internalURL, self.VALID_URL)
+                self.assertRegexpMatches(ep.publicURL, self.VALID_URL)
 
 
 class KeystoneIdentityRelationTests(BaseDesignateTest):
