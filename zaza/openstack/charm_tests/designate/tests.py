@@ -98,8 +98,8 @@ class KeystoneIdentityRelationTests(BaseDesignateTest):
         logging.debug('Checking designate to keystone identity-service '
                       'relation data...')
 
-        unit_name = 'designate/0'
-        remote_unit_name = 'keystone/0'
+        unit_name = 'keystone/0'
+        remote_unit_name = 'designate/0'
         relation_name = 'identity-service'
         remote_unit = model.get_unit_from_name(remote_unit_name)
         remote_ip = remote_unit.public_address
@@ -129,8 +129,8 @@ class KeystoneIdentityRelationTests(BaseDesignateTest):
         """Verify the keystone to designate identity-service relation data."""
         logging.debug('Checking keystone:designate identity relation data...')
 
-        unit_name = 'keystone/0'
-        remote_unit_name = 'designate/0'
+        unit_name = 'designate/0'
+        remote_unit_name = 'keystone/0'
         relation_name = 'identity-service'
         remote_unit = model.get_unit_from_name(remote_unit_name)
         remote_ip = remote_unit.public_address
@@ -211,12 +211,12 @@ class AmqpRelationTests(BaseDesignateTest):
         )
         # Get private-address in relation
         rel_private_ip = relation.get('private-address')
-        username = relation.get('username')
-        vhost = relation.get('vhost')
+        hostname = relation.get('hostname')
+        password = relation.get('password')
 
         self.assertEqual(rel_private_ip, remote_ip)
-        self.assertEqual(username, 'designate')
-        self.assertEqual(vhost, 'openstack')
+        self.assertEqual(hostname, remote_ip)
+        self.assertIsNotNone(password)
 
 
 class NeutronApiRelationTests(BaseDesignateTest):
@@ -225,8 +225,8 @@ class NeutronApiRelationTests(BaseDesignateTest):
     def test_207_designate_neutron_api_relation(self):
         """Verify the designate to neutron-api external-dns relation data."""
         logging.debug('Checking designate:dnsaas relation data...')
-        unit_name = 'designate/0'
-        remote_unit_name = 'neutron-api/0'
+        unit_name = 'neutron-api/0'
+        remote_unit_name = 'designate/0'
         relation_name = 'dnsaas'
         remote_unit = model.get_unit_from_name(remote_unit_name)
         remote_ip = remote_unit.public_address
@@ -243,8 +243,8 @@ class NeutronApiRelationTests(BaseDesignateTest):
     def test_208_neutron_api_designate_relation(self):
         """Verify the neutron-api to designate dnsaas relation data."""
         logging.debug('Checking neutron-api:external-dns relation data...')
-        unit_name = 'neutron-api/0'
-        remote_unit_name = 'designate/0'
+        unit_name = 'designate/0'
+        remote_unit_name = 'neutron-api/0'
         relation_name = 'external-dns'
         remote_unit = model.get_unit_from_name(remote_unit_name)
         remote_ip = remote_unit.public_address
