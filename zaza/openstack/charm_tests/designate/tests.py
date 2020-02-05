@@ -73,8 +73,13 @@ class ApiTests(BaseDesignateTest):
             logging.debug(ep)
             self.assertIsNotNone(ep.get('id'))
             self.assertEqual(ep.get('region'), "RegionOne")
-            self.assertIn(ep.get('interface'), self.VALID_INTERFACE)
-            self.assertRegexpMatches(ep.get('url'), self.VALID_URL)
+            if self.post_xenial_queens:
+                self.assertIn(ep.get('interface'), self.VALID_INTERFACE)
+                self.assertRegexpMatches(ep.get('url'), self.VALID_URL)
+            else:
+                self.assertRegexpMatches(ep.get('adminURL'), self.VALID_URL)
+                self.assertRegexpMatches(ep.get('internalURL'), self.VALID_URL)
+                self.assertRegexpMatches(ep.get('publicURL'), self.VALID_URL)
 
     def test_114_designate_api_endpoint(self):
         """Verify the designate api endpoint data."""
@@ -86,13 +91,8 @@ class ApiTests(BaseDesignateTest):
             self.assertIsNotNone(ep.id)
             self.assertEqual(ep.region, "RegionOne")
             self.assertIsNotNone(ep.service_id)
-            if self.post_xenial_queens:
-                self.assertIn(ep.interface, self.VALID_INTERFACE)
-                self.assertRegexpMatches(ep.url, self.VALID_URL)
-            else:
-                self.assertRegexpMatches(ep.adminURL, self.VALID_URL)
-                self.assertRegexpMatches(ep.internalURL, self.VALID_URL)
-                self.assertRegexpMatches(ep.publicURL, self.VALID_URL)
+            self.assertIn(ep.interface, self.VALID_INTERFACE)
+            self.assertRegexpMatches(ep.url, self.VALID_URL)
 
 
 class KeystoneIdentityRelationTests(BaseDesignateTest):
