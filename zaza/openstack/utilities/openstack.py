@@ -685,7 +685,7 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
         except KeyError:
             # ovn-dedicated-chassis not in deployment
             pass
-        port_config_key = 'interface-bridge-mappings'
+        port_config_key = 'bridge-interface-mappings'
         config.update({'ovn-bridge-mappings': 'physnet1:br-ex'})
         add_dataport_to_netplan = True
     else:
@@ -726,8 +726,6 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
         if 'ext-port' in port['name']:
             if deprecated_extnet_mode:
                 ext_br_macs.append(port['mac_address'])
-            elif ovn_present():
-                ext_br_macs.append('{}:br-ex'.format(port['mac_address']))
             else:
                 ext_br_macs.append('br-ex:{}'.format(port['mac_address']))
     ext_br_macs.sort()
