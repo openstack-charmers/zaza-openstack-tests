@@ -1,4 +1,4 @@
-# Copyright 2018 Canonical Ltd.
+# Copyright 2020 Canonical Ltd.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,296 +20,18 @@ import subprocess
 import designateclient.v1.domains as domains
 import designateclient.v1.records as records
 import designateclient.v1.servers as servers
-import zaza.model as model
 import zaza.openstack.utilities.juju as zaza_juju
-from zaza.openstack.charm_tests.designate import (
-    BaseDesignateTest,
-)
+from zaza.openstack.charm_tests.designate import BaseDesignateTest
 
 
-class BaseTests(BaseDesignateTest):
-    """Base Designate charm tests."""
-
-    def test_100_services(self):
-        """Verify expected services are running."""
-        logging.debug('Checking system services on units...')
-
-        model.block_until_service_status(
-            self.lead_unit,
-            self.designate_svcs,
-            'running',
-            self.model_name,
-            timeout=30
-        )
-
-        logging.debug('OK')
-
-
-class ApiTests(BaseDesignateTest):
-    """Designate charm api tests."""
-
-    VALID_INTERFACE = [
-        'admin',
-        'public',
-        'internal'
-    ]
-
-    VALID_URL = re.compile(
-            r'^(?:http|ftp)s?://'
-            r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|'  # noqa
-            r'localhost|'
-            r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'
-            r'(?::\d+)?'
-            r'(?:/?|[/?]\S+)$',
-            re.IGNORECASE)
-
-    def test_110_service_catalog(self):
-        """Verify that the service catalog endpoint data is valid."""
-        logging.debug('Checking keystone service catalog data...')
-        actual = self.keystone.service_catalog.get_endpoints()
-        dns_endpoints = actual['dns']
-
-        for ep in dns_endpoints:
-            logging.debug(ep)
-            self.assertIsNotNone(ep.get('id'))
-            self.assertEqual(ep.get('region'), "RegionOne")
-            if self.post_xenial_queens:
-                self.assertIn(ep.get('interface'), self.VALID_INTERFACE)
-                self.assertRegexpMatches(ep.get('url'), self.VALID_URL)
-            else:
-                self.assertRegexpMatches(ep.get('adminURL'), self.VALID_URL)
-                self.assertRegexpMatches(ep.get('internalURL'), self.VALID_URL)
-                self.assertRegexpMatches(ep.get('publicURL'), self.VALID_URL)
-
-    def test_114_designate_api_endpoint(self):
-        """Verify the designate api endpoint data."""
-        logging.debug('Checking designate api endpoint data...')
-        endpoints = self.keystone.endpoints.list()
-
-        for ep in endpoints:
-            logging.debug(ep)
-            self.assertIsNotNone(ep.id)
-            self.assertEqual(ep.region, "RegionOne")
-            self.assertIsNotNone(ep.service_id)
-            self.assertIn(ep.interface, self.VALID_INTERFACE)
-            self.assertRegexpMatches(ep.url, self.VALID_URL)
-
-
-class KeystoneIdentityRelationTests(BaseDesignateTest):
-    """Designate Keystone identity relations charm tests."""
-
-    def test_200_designate_identity_relation(self):
-        """Verify the designate to keystone identity-service relation data."""
-        logging.debug('Checking designate to keystone identity-service '
-                      'relation data...')
-
-        unit_name = 'keystone/0'
-        remote_unit_name = 'designate/0'
-        relation_name = 'identity-service'
-        remote_unit = model.get_unit_from_name(remote_unit_name)
-        remote_ip = remote_unit.public_address
-        relation = zaza_juju.get_relation_from_unit(
-            unit_name,
-            remote_unit_name,
-            relation_name
-        )
-
-        designate_endpoint = "http://{}:9001".format(remote_ip)
-        expected = {
-            'admin_url': designate_endpoint,
-            'internal_url': designate_endpoint,
-            'private-address': remote_ip,
-            'public_url': designate_endpoint,
-            'region': 'RegionOne',
-            'service': 'designate',
-        }
-
-        for token, value in expected.items():
-            r_val = relation.get(token)
-            self.assertEqual(
-                r_val, value, "token({}) doesn't match".format(token)
-            )
-
-    def test_201_keystone_designate_identity_relation(self):
-        """Verify the keystone to designate identity-service relation data."""
-        logging.debug('Checking keystone:designate identity relation data...')
-
-        unit_name = 'designate/0'
-        remote_unit_name = 'keystone/0'
-        relation_name = 'identity-service'
-        remote_unit = model.get_unit_from_name(remote_unit_name)
-        remote_ip = remote_unit.public_address
-        relation = zaza_juju.get_relation_from_unit(
-            unit_name,
-            remote_unit_name,
-            relation_name
-        )
-        expected = {
-            'admin_token': 'ubuntutesting',
-            'auth_host': remote_ip,
-            'auth_port': "35357",
-            'auth_protocol': 'http',
-            'private-address': remote_ip,
-            'service_host': remote_ip,
-            'service_port': "5000",
-            'service_protocol': 'http',
-            'service_tenant': 'services',
-            'service_username': 'designate',
-        }
-
-        for token, value in expected.items():
-            r_val = relation.get(token)
-            self.assertEqual(
-                r_val, value, "token({}) doesn't match".format(token)
-            )
-
-        self.assertIsNotNone(
-            relation.get('service_password'),
-            "service_password missing"
-        )
-
-        self.assertIsNotNone(
-            relation.get('service_tenant_id'),
-            "service_tenant_id missing"
-        )
-
-
-class AmqpRelationTests(BaseDesignateTest):
-    """Designate Rabbit MQ relations charm tests."""
-
-    def test_203_designate_amqp_relation(self):
-        """Verify the designate to rabbitmq-server amqp relation data."""
-        logging.debug('Checking designate:amqp rabbitmq relation data...')
-
-        unit_name = 'rabbitmq-server/0'
-        remote_unit_name = 'designate/0'
-        relation_name = 'amqp'
-        remote_unit = model.get_unit_from_name(remote_unit_name)
-        remote_ip = remote_unit.public_address
-        relation = zaza_juju.get_relation_from_unit(
-            unit_name,
-            remote_unit_name,
-            relation_name
-        )
-        # Get private-address in relation
-        rel_private_ip = relation.get('private-address')
-        username = relation.get('username')
-        vhost = relation.get('vhost')
-
-        self.assertEqual(rel_private_ip, remote_ip)
-        self.assertEqual(username, 'designate')
-        self.assertEqual(vhost, 'openstack')
-
-    def test_204_amqp_designate_relation(self):
-        """Verify the rabbitmq-server to designate amqp relation data."""
-        logging.debug('Checking rabbitmq:amqp designate relation data...')
-
-        unit_name = 'designate/0'
-        remote_unit_name = 'rabbitmq-server/0'
-        relation_name = 'amqp'
-        remote_unit = model.get_unit_from_name(remote_unit_name)
-        remote_ip = remote_unit.public_address
-        relation = zaza_juju.get_relation_from_unit(
-            unit_name,
-            remote_unit_name,
-            relation_name
-        )
-        # Get private-address in relation
-        rel_private_ip = relation.get('private-address')
-        hostname = relation.get('hostname')
-        password = relation.get('password')
-
-        self.assertEqual(rel_private_ip, remote_ip)
-        self.assertEqual(hostname, remote_ip)
-        self.assertIsNotNone(password)
-
-
-class NeutronApiRelationTests(BaseDesignateTest):
-    """Designate Neutron API relations charm tests."""
-
-    def test_207_designate_neutron_api_relation(self):
-        """Verify the designate to neutron-api external-dns relation data."""
-        logging.debug('Checking designate:dnsaas relation data...')
-        unit_name = 'neutron-api/0'
-        remote_unit_name = 'designate/0'
-        relation_name = 'dnsaas'
-        remote_unit = model.get_unit_from_name(remote_unit_name)
-        remote_ip = remote_unit.public_address
-        relation = zaza_juju.get_relation_from_unit(
-            unit_name,
-            remote_unit_name,
-            relation_name
-        )
-        # Get private-address in relation
-        rel_private_ip = relation.get('private-address')
-        # The private address in relation should match designate-bind/0 address
-        self.assertEqual(rel_private_ip, remote_ip)
-
-    def test_208_neutron_api_designate_relation(self):
-        """Verify the neutron-api to designate dnsaas relation data."""
-        logging.debug('Checking neutron-api:external-dns relation data...')
-        unit_name = 'designate/0'
-        remote_unit_name = 'neutron-api/0'
-        relation_name = 'external-dns'
-        remote_unit = model.get_unit_from_name(remote_unit_name)
-        remote_ip = remote_unit.public_address
-        relation = zaza_juju.get_relation_from_unit(
-            unit_name,
-            remote_unit_name,
-            relation_name
-        )
-        # Get private-address in relation
-        rel_private_ip = relation.get('private-address')
-        # The private address in relation should match designate-bind/0 address
-        self.assertEqual(rel_private_ip, remote_ip)
-
-
-class BindRelationTests(BaseDesignateTest):
-    """Designate Bind relations charm tests."""
-
-    def test_205_designate_designate_bind_relation(self):
-        """Verify the designate to designate-bind dns-backend relation data."""
-        logging.debug('Checking designate:designate-bind dns-backend relation'
-                      'data...')
-
-        unit_name = 'designate/0'
-        remote_unit_name = 'designate-bind/0'
-        relation_name = 'dns-backend'
-        remote_unit = model.get_unit_from_name(remote_unit_name)
-        remote_ip = remote_unit.public_address
-        relation = zaza_juju.get_relation_from_unit(
-            unit_name,
-            remote_unit_name,
-            relation_name
-        )
-        # Get private-address in relation
-        rel_private_ip = relation.get('private-address')
-        # The private address in relation should match designate-bind/0 address
-        self.assertEqual(rel_private_ip, remote_ip)
-
-    def test_206_designate_bind_designate_relation(self):
-        """Verify the designate_bind to designate dns-backend relation data."""
-        logging.debug('Checking designate-bind:designate dns-backend relation'
-                      'data...')
-
-        unit_name = 'designate-bind/0'
-        remote_unit_name = 'designate/0'
-        relation_name = 'dns-backend'
-        remote_unit = model.get_unit_from_name(remote_unit_name)
-        remote_ip = remote_unit.public_address
-        relation = zaza_juju.get_relation_from_unit(
-            unit_name,
-            remote_unit_name,
-            relation_name
-        )
-        # Get private-address in relation
-        rel_private_ip = relation.get('private-address')
-        # The private address in relation should match designate-bind/0 address
-        self.assertEqual(rel_private_ip, remote_ip)
-
-
-class ResetAndPauseTests(BaseDesignateTest):
+class DesignateTests(BaseDesignateTest):
     """Designate charm restart and pause tests."""
+
+    TEST_DOMAIN = 'amuletexample.com.'
+    TEST_NS1_RECORD = 'ns1.{}'.format(TEST_DOMAIN)
+    TEST_NS2_RECORD = 'ns2.{}'.format(TEST_DOMAIN)
+    TEST_WWW_RECORD = "www.{}".format(TEST_DOMAIN)
+    TEST_RECORD = {TEST_WWW_RECORD: '10.0.0.23'}
 
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change.
@@ -344,13 +66,6 @@ class ResetAndPauseTests(BaseDesignateTest):
                 self.designate_svcs,
                 pgrep_full=False):
             logging.info("Testing pause resume")
-
-
-class ServerCreationTest(BaseDesignateTest):
-    """Designate charm server creation tests."""
-
-    TEST_NS1_RECORD = 'ns1.amuletexample.com.'
-    TEST_NS2_RECORD = 'ns2.amuletexample.com.'
 
     def _get_server_id(self, server_name):
         server_id = None
@@ -395,14 +110,6 @@ class ServerCreationTest(BaseDesignateTest):
         server = servers.Server(name=self.TEST_NS2_RECORD)
         new_server = self.designate.servers.create(server)
         self.assertIsNotNone(new_server)
-
-
-class DomainCreationTests(BaseDesignateTest):
-    """Designate charm domain creation tests."""
-
-    TEST_DOMAIN = 'amuletexample.com.'
-    TEST_WWW_RECORD = "www.{}".format(TEST_DOMAIN)
-    TEST_RECORD = {TEST_WWW_RECORD: '10.0.0.23'}
 
     def _get_domain_id(self, domain_name):
         domain_id = None
