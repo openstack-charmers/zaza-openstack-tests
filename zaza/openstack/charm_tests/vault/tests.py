@@ -248,9 +248,11 @@ class VaultTest(BaseVaultTest):
         if 'pause' not in vault_actions or 'resume' not in vault_actions:
             raise unittest.SkipTest("The version of charm-vault tested does "
                                     "not have pause/resume actions")
+        # this pauses and resumes the LEAD unit
         with self.pause_resume(['vault']):
             logging.info("Testing pause resume")
-        self.assertTrue(self.clients[0].hvac_client.seal_status['sealed'])
+        lead_client = vault_utils.extract_lead_unit_client(self.clients)
+        self.assertTrue(lead_client.hvac_client.seal_status['sealed'])
 
 
 if __name__ == '__main__':
