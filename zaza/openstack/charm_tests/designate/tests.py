@@ -191,6 +191,25 @@ class DesignateTests(BaseDesignateTest):
         if self._get_test_domain_id():
             raise Exception("Domain Exists")
 
+    def _get_test_zone_id(self):
+        zone_id = None
+        for zone in self.designate.zones.list():
+            if zone['name'] == self.TEST_DOMAIN:
+                zone_id = zone['id']
+                break
+        return zone_id
+
+    @tenacity.retry(
+        wait=tenacity.wait_exponential(multiplier=1, min=5, max=10),
+        reraise=True
+    )
+    def _wait_on_zone_gone(self):
+        self._wait_on_domain_gone()
+        if self.post_xenial_queens:
+            logging.debug('Waiting for zone to disappear')
+            if self._get_test_zone_id():
+                raise Exception("Zone Exists")
+
     @tenacity.retry(
         wait=tenacity.wait_exponential(multiplier=1, min=5, max=10),
         reraise=True
@@ -218,7 +237,7 @@ class DesignateTests(BaseDesignateTest):
         if old_dom_id:
             logging.debug('Deleting old domain')
             self.zones_delete(old_dom_id)
-            self._wait_on_domain_gone()
+            self._wait_on_zone_gone()
 
         logging.debug('Creating new domain')
         domain = domains.Domain(
@@ -250,5 +269,5 @@ class DesignateTests(BaseDesignateTest):
 
         logging.debug('Tidy up delete test record')
         self.zones_delete(_domain_id)
-        self._wait_on_domain_gone()
+        self._wait_on_zone_gone()
         logging.debug('OK')
