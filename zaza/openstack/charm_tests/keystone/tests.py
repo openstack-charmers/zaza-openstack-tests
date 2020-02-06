@@ -321,7 +321,7 @@ class AuthenticationAuthorizationTest(BaseKeystoneTest):
             }
             with self.config_change(
                     {'preferred-api-version': self.default_api_version},
-                    {'preferred-api-version': '3'},
+                    {'preferred-api-version': self.api_v3},
                     application_name="keystone"):
                 for ip in self.keystone_ips:
                     openrc.update(

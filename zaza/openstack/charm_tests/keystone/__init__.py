@@ -34,6 +34,9 @@ class BaseKeystoneTest(test_utils.OpenStackBaseTest):
     def setUpClass(cls, application_name=None):
         """Run class setup for running Keystone charm operation tests."""
         super(BaseKeystoneTest, cls).setUpClass(application_name='keystone')
+        # Standardize v2 and v3 as ints
+        cls.api_v2 = 2
+        cls.api_v3 = 3
         # Check if we are related to Vault TLS certificates
         cls.tls_rid = zaza.model.get_relation_id(
             'keystone', 'vault', remote_interface_name='certificates')
@@ -51,9 +54,9 @@ class BaseKeystoneTest(test_utils.OpenStackBaseTest):
                 cls.keystone_ips.append(cls.vip)
         if (openstack_utils.get_os_release() <
                 openstack_utils.get_os_release('xenial_queens')):
-            cls.default_api_version = '2'
+            cls.default_api_version = cls.api_v2
         else:
-            cls.default_api_version = '3'
+            cls.default_api_version = cls.api_v3
         cls.admin_keystone_session = (
             openstack_utils.get_overcloud_keystone_session())
         cls.admin_keystone_client = (
@@ -66,6 +69,6 @@ class BaseKeystoneTest(test_utils.OpenStackBaseTest):
         """Set the preferred keystone api to v3 within called context."""
         with self.config_change(
                 {'preferred-api-version': self.default_api_version},
-                {'preferred-api-version': '3'},
+                {'preferred-api-version': self.api_v3},
                 application_name="keystone"):
             yield
