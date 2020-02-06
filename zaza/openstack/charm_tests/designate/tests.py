@@ -13,7 +13,6 @@
 # limitations under the License.
 
 """Encapsulate designate testing."""
-import re
 import logging
 import tenacity
 import subprocess
