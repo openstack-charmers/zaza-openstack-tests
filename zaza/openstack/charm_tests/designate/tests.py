@@ -78,9 +78,9 @@ class BaseDesignateTest(test_utils.OpenStackBaseTest):
             cls.domain_list = cls.designate.domains.list
             cls.domain_delete = cls.designate.domains.delete
             cls.domain_create = cls.designate.domains.create
-        cls.server_list = cls.designate.servers.list
-        cls.server_create = cls.designate.servers.create
-        cls.server_delete = cls.designate.servers.delete
+            cls.server_list = cls.designate.servers.list
+            cls.server_create = cls.designate.servers.create
+            cls.server_delete = cls.designate.servers.delete
 
 
 class DesignateTests(BaseDesignateTest):
