@@ -126,6 +126,15 @@ class SeriesUpgradeTest(unittest.TestCase):
                     action_params={})
                 model.block_until_all_units_idle()
 
+            if "percona-cluster" in applications[application]["charm"]:
+                logging.info(
+                    "Running complete-cluster-series-upgrade action on leader")
+                model.run_action_on_leader(
+                    'mysql',
+                    'complete-cluster-series-upgrade',
+                    action_params={})
+                model.block_until_all_units_idle()
+
 
 class OpenStackSeriesUpgrade(SeriesUpgradeTest):
     """OpenStack Series Upgrade.
