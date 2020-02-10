@@ -29,6 +29,7 @@ from aodhclient.v2 import client as aodh_client
 from cinderclient import client as cinderclient
 from heatclient import client as heatclient
 from glanceclient import Client as GlanceClient
+from designateclient.client import Client as DesignateClient
 
 from keystoneclient.v2_0 import client as keystoneclient_v2
 from keystoneclient.v3 import client as keystoneclient_v3
@@ -206,6 +207,18 @@ def get_glance_session_client(session):
     :rtype: glanceclient.Client
     """
     return GlanceClient('2', session=session)
+
+
+def get_designate_session_client(**kwargs):
+    """Return designateclient authenticated by keystone session.
+
+    :param kwargs: Designate Client Arguments
+    :returns: Authenticated designateclient
+    :rtype: DesignateClient
+    """
+    version = kwargs.pop('version', None) or 2
+    return DesignateClient(version=str(version),
+                           **kwargs)
 
 
 def get_nova_session_client(session):
