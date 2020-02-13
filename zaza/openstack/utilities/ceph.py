@@ -1,5 +1,5 @@
 """Module containing Ceph related utilities."""
-
+import json
 import logging
 
 import zaza.openstack.utilities.openstack as openstack_utils
@@ -95,6 +95,54 @@ def get_ceph_pools(unit_name, model_name=None):
 
     logging.debug('Pools on {}: {}'.format(unit_name, pools))
     return pools
+
+
+def get_ceph_df(unit_name, model_name=None):
+    """Return dict of ceph df json output, including ceph pool state.
+
+    :param unit_name: Name of the unit to get ceph df
+    :type unit_name: string
+    :param model_name: Name of model to operate in
+    :type model_name: str
+    :returns: Dict of ceph df output
+    :rtype: dict
+    :raise: zaza.model.CommandRunFailed
+    """
+    cmd = 'sudo ceph df --format=json'
+    result = zaza_model.run_on_unit(unit_name, cmd, model_name=model_name)
+    if result.get('Code') != '0':
+        raise zaza_model.CommandRunFailed(cmd, result)
+    return json.loads(result.get('Stdout'))
+
+
+def get_ceph_pool_sample(unit_name, pool_id=0, model_name=None):
+    """Return list of ceph pool attributes.
+
+    Take a sample of attributes of a ceph pool, returning ceph
+    pool name, object count and disk space used for the specified
+    pool ID number.
+
+    :param unit_name: Name of the unit to get the pool sample
+    :type unit_name: string
+    :param pool_id: Ceph pool ID
+    :type pool_id: int
+    :param model_name: Name of model to operate in
+    :type model_name: str
+    :returns: List of pool name, object count, kb disk space used
+    :rtype: list
+    :raises: zaza.model.CommandRunFailed
+    """
+    df = get_ceph_df(unit_name, model_name)
+    for pool in df['pools']:
+        if pool['id'] == pool_id:
+            pool_name = pool['name']
+            obj_count = pool['stats']['objects']
+            kb_used = pool['stats']['kb_used']
+
+    logging.debug('Ceph {} pool (ID {}): {} objects, '
+                  '{} kb used'.format(pool_name, pool_id,
+                                      obj_count, kb_used))
+    return pool_name, obj_count, kb_used
 
 
 def get_rbd_hash(unit_name, pool, image, model_name=None):

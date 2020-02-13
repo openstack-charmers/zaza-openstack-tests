@@ -16,13 +16,20 @@
 
 import logging
 import os
+import socket
 import subprocess
+import telnetlib
 import yaml
 
 from zaza import model
 from zaza.openstack.utilities import juju as juju_utils
 from zaza.openstack.utilities import exceptions as zaza_exceptions
 from zaza.openstack.utilities.os_versions import UBUNTU_OPENSTACK_RELEASE
+from zaza.charm_lifecycle import utils as cl_utils
+
+SUBORDINATE_PAUSE_RESUME_BLACKLIST = [
+    "cinder-ceph",
+]
 
 
 def dict_to_yaml(dict_data):
@@ -68,21 +75,33 @@ def get_network_config(net_topology, ignore_env_vars=False,
     return net_info
 
 
-def get_pkg_version(application, pkg):
+def get_unit_hostnames(units):
+    """Return a dict of juju unit names to hostnames."""
+    host_names = {}
+    for unit in units:
+        output = model.run_on_unit(unit.entity_id, 'hostname')
+        hostname = output['Stdout'].strip()
+        host_names[unit.entity_id] = hostname
+    return host_names
+
+
+def get_pkg_version(application, pkg, model_name=None):
     """Return package version.
 
     :param application: Application name
     :type application: string
     :param pkg: Package name
     :type pkg: string
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns: List of package version
     :rtype: list
     """
     versions = []
-    units = model.get_units(application)
+    units = model.get_units(application, model_name=model_name)
     for unit in units:
         cmd = 'dpkg -l | grep {}'.format(pkg)
-        out = juju_utils.remote_run(unit.entity_id, cmd)
+        out = juju_utils.remote_run(unit.entity_id, cmd, model_name=model_name)
         versions.append(out.split('\n')[0].split()[2])
     if len(set(versions)) != 1:
         raise Exception('Unexpected output from pkg version check')
@@ -116,27 +135,30 @@ def get_undercloud_env_vars():
     export NET_ID="a705dd0f-5571-4818-8c30-4132cc494668"
     export GATEWAY="172.17.107.1"
     export CIDR_EXT="172.17.107.0/24"
-    export NAMESERVER="10.5.0.2"
+    export NAME_SERVER="10.5.0.2"
     export FIP_RANGE="172.17.107.200:172.17.107.249"
 
     :returns: Network environment variables
     :rtype: dict
     """
-    # Handle backward compatibile OSCI enviornment variables
+    # Handle OSCI environment variables
+    # Note: TEST_* is the only prefix honored
     _vars = {}
-    _vars['net_id'] = os.environ.get('NET_ID')
-    _vars['external_dns'] = os.environ.get('NAMESERVER')
-    _vars['default_gateway'] = os.environ.get('GATEWAY')
-    _vars['external_net_cidr'] = os.environ.get('CIDR_EXT')
+    _vars['net_id'] = os.environ.get('TEST_NET_ID')
+    _vars['external_dns'] = os.environ.get('TEST_NAME_SERVER')
+    _vars['default_gateway'] = os.environ.get('TEST_GATEWAY')
+    _vars['external_net_cidr'] = os.environ.get('TEST_CIDR_EXT')
 
     # Take FIP_RANGE and create start and end floating ips
-    _fip_range = os.environ.get('FIP_RANGE')
-    if _fip_range and ':' in _fip_range:
-        _vars['start_floating_ip'] = os.environ.get('FIP_RANGE').split(':')[0]
-        _vars['end_floating_ip'] = os.environ.get('FIP_RANGE').split(':')[1]
+    _fip_range = os.environ.get('TEST_FIP_RANGE')
+    if _fip_range is not None and ':' in _fip_range:
+        _vars['start_floating_ip'] = os.environ.get(
+            'TEST_FIP_RANGE').split(':')[0]
+        _vars['end_floating_ip'] = os.environ.get(
+            'TEST_FIP_RANGE').split(':')[1]
 
-    # Env var naming consistent with zaza.openstack.configure.network
-    # functions takes priority. Override backward compatible settings.
+    # zaza.openstack.configure.network functions variables still take priority
+    # for local testing. Override OSCI settings.
     _keys = ['default_gateway',
              'start_floating_ip',
              'end_floating_ip',
@@ -170,9 +192,22 @@ def get_yaml_config(config_file):
     return yaml.safe_load(open(config_file, 'r').read())
 
 
+def run_post_upgrade_functions(post_upgrade_functions):
+    """Execute list supplied functions.
+
+    :param post_upgrade_functions: List of functions
+    :type post_upgrade_functions: [function, function, ...]
+    """
+    if post_upgrade_functions:
+        for func in post_upgrade_functions:
+            logging.info("Running {}".format(func))
+            cl_utils.get_class(func)()
+
+
 def series_upgrade_non_leaders_first(application, from_series="trusty",
                                      to_series="xenial",
-                                     completed_machines=[]):
+                                     completed_machines=[],
+                                     post_upgrade_functions=None):
     """Series upgrade non leaders first.
 
     Wrap all the functionality to handle series upgrade for charms
@@ -207,7 +242,9 @@ def series_upgrade_non_leaders_first(application, from_series="trusty",
                          .format(unit))
             series_upgrade(unit, machine,
                            from_series=from_series, to_series=to_series,
-                           origin=None)
+                           origin=None,
+                           post_upgrade_functions=post_upgrade_functions)
+            run_post_upgrade_functions(post_upgrade_functions)
             completed_machines.append(machine)
         else:
             logging.info("Skipping unit: {}. Machine: {} already upgraded. "
@@ -220,7 +257,8 @@ def series_upgrade_non_leaders_first(application, from_series="trusty",
     if machine not in completed_machines:
         series_upgrade(leader, machine,
                        from_series=from_series, to_series=to_series,
-                       origin=None)
+                       origin=None,
+                       post_upgrade_functions=post_upgrade_functions)
         completed_machines.append(machine)
     else:
         logging.info("Skipping unit: {}. Machine: {} already upgraded."
@@ -233,7 +271,8 @@ def series_upgrade_application(application, pause_non_leader_primary=True,
                                from_series="trusty", to_series="xenial",
                                origin='openstack-origin',
                                completed_machines=[],
-                               files=None, workaround_script=None):
+                               files=None, workaround_script=None,
+                               post_upgrade_functions=None):
     """Series upgrade application.
 
     Wrap all the functionality to handle series upgrade for a given
@@ -284,8 +323,14 @@ def series_upgrade_application(application, pause_non_leader_primary=True,
         if pause_non_leader_subordinate:
             if status["units"][unit].get("subordinates"):
                 for subordinate in status["units"][unit]["subordinates"]:
-                    logging.info("Pausing {}".format(subordinate))
-                    model.run_action(subordinate, "pause", action_params={})
+                    _app = subordinate.split('/')[0]
+                    if _app in SUBORDINATE_PAUSE_RESUME_BLACKLIST:
+                        logging.info("Skipping pausing {} - blacklisted"
+                                     .format(subordinate))
+                    else:
+                        logging.info("Pausing {}".format(subordinate))
+                        model.run_action(
+                            subordinate, "pause", action_params={})
         if pause_non_leader_primary:
             logging.info("Pausing {}".format(unit))
             model.run_action(unit, "pause", action_params={})
@@ -297,7 +342,8 @@ def series_upgrade_application(application, pause_non_leader_primary=True,
         series_upgrade(leader, machine,
                        from_series=from_series, to_series=to_series,
                        origin=origin, workaround_script=workaround_script,
-                       files=files)
+                       files=files,
+                       post_upgrade_functions=post_upgrade_functions)
         completed_machines.append(machine)
     else:
         logging.info("Skipping unit: {}. Machine: {} already upgraded."
@@ -316,7 +362,8 @@ def series_upgrade_application(application, pause_non_leader_primary=True,
             series_upgrade(unit, machine,
                            from_series=from_series, to_series=to_series,
                            origin=origin, workaround_script=workaround_script,
-                           files=files)
+                           files=files,
+                           post_upgrade_functions=post_upgrade_functions)
             completed_machines.append(machine)
         else:
             logging.info("Skipping unit: {}. Machine: {} already upgraded. "
@@ -330,7 +377,8 @@ def series_upgrade_application(application, pause_non_leader_primary=True,
 def series_upgrade(unit_name, machine_num,
                    from_series="trusty", to_series="xenial",
                    origin='openstack-origin',
-                   files=None, workaround_script=None):
+                   files=None, workaround_script=None,
+                   post_upgrade_functions=None):
     """Perform series upgrade on a unit.
 
     :param unit_name: Unit Name
@@ -354,6 +402,8 @@ def series_upgrade(unit_name, machine_num,
     logging.info("Series upgrade {}".format(unit_name))
     application = unit_name.split('/')[0]
     set_dpkg_non_interactive_on_unit(unit_name)
+    dist_upgrade(unit_name)
+    model.block_until_all_units_idle()
     logging.info("Prepare series upgrade on {}".format(machine_num))
     model.prepare_series_upgrade(machine_num, to_series=to_series)
     logging.info("Waiting for workload status 'blocked' on {}"
@@ -379,6 +429,9 @@ def series_upgrade(unit_name, machine_num,
     logging.info("Complete series upgrade on {}".format(machine_num))
     model.complete_series_upgrade(machine_num)
     model.block_until_all_units_idle()
+    logging.info("Running run_post_upgrade_functions {}".format(
+        post_upgrade_functions))
+    run_post_upgrade_functions(post_upgrade_functions)
     logging.info("Waiting for workload status 'active' on {}"
                  .format(unit_name))
     model.block_until_unit_wl_status(unit_name, "active")
@@ -466,6 +519,51 @@ def run_via_ssh(unit_name, cmd):
     except subprocess.CalledProcessError as e:
         logging.warn("Failed command {} on {}".format(cmd, unit_name))
         logging.warn(e)
+
+
+def dist_upgrade(unit_name):
+    """Run dist-upgrade on unit after update package db.
+
+    :param unit_name: Unit Name
+    :type unit_name: str
+    :returns: None
+    :rtype: None
+    """
+    logging.info('Updating package db ' + unit_name)
+    update_cmd = 'sudo apt update'
+    model.run_on_unit(unit_name, update_cmd)
+
+    logging.info('Updating existing packages ' + unit_name)
+    dist_upgrade_cmd = (
+        """sudo DEBIAN_FRONTEND=noninteractive apt --assume-yes """
+        """-o "Dpkg::Options::=--force-confdef" """
+        """-o "Dpkg::Options::=--force-confold" dist-upgrade""")
+    model.run_on_unit(unit_name, dist_upgrade_cmd)
+
+
+def check_commands_on_units(commands, units):
+    """Check that all commands in a list exit zero on all units in a list.
+
+    :param commands:  list of bash commands
+    :param units:  list of unit pointers
+    :returns: None if successful; Failure message otherwise
+    """
+    logging.debug('Checking exit codes for {} commands on {} '
+                  'units...'.format(len(commands),
+                                    len(units)))
+
+    for u in units:
+        for cmd in commands:
+            output = model.run_on_unit(u.entity_id, cmd)
+            if int(output['Code']) == 0:
+                logging.debug('{} `{}` returned {} '
+                              '(OK)'.format(u.entity_id,
+                                            cmd, output['Code']))
+            else:
+                return ('{} `{}` returned {} '
+                        '{}'.format(u.entity_id,
+                                    cmd, output['Code'], output))
+    return None
 
 
 def do_release_upgrade(unit_name):
@@ -669,3 +767,106 @@ def get_ubuntu_release(ubuntu_name):
                format(ubuntu_name, UBUNTU_OPENSTACK_RELEASE))
         raise zaza_exceptions.UbuntuReleaseNotFound(msg)
     return index
+
+
+def get_file_contents(unit, f):
+    """Get contents of a file on a remote unit."""
+    return model.run_on_unit(unit.entity_id,
+                             "cat {}".format(f))['Stdout']
+
+
+def is_port_open(port, address):
+        """Determine if TCP port is accessible.
+
+        Connect to the MySQL port on the VIP.
+
+        :param port: Port number
+        :type port: str
+        :param address: IP address
+        :type port: str
+        :returns: True if port is reachable
+        :rtype: boolean
+        """
+        try:
+            telnetlib.Telnet(address, port)
+            return True
+        except socket.error as e:
+            if e.errno == 113:
+                logging.error("could not connect to {}:{}"
+                              .format(address, port))
+            if e.errno == 111:
+                logging.error("connection refused connecting"
+                              " to {}:{}".format(address, port))
+            return False
+
+
+def port_knock_units(units, port=22, expect_success=True):
+    """Check if specific port is open on units.
+
+    Open a TCP socket to check for a listening sevice on each listed juju unit.
+    :param units: list of unit pointers
+    :param port: TCP port number, default to 22
+    :param timeout: Connect timeout, default to 15 seconds
+    :expect_success: True by default, set False to invert logic
+    :returns: None if successful, Failure message otherwise
+    """
+    for u in units:
+        host = u.public_address
+        connected = is_port_open(port, host)
+        if not connected and expect_success:
+            return 'Socket connect failed.'
+        elif connected and not expect_success:
+            return 'Socket connected unexpectedly.'
+
+
+def get_series(unit):
+    """Ubuntu release name running on unit."""
+    result = model.run_on_unit(unit.entity_id,
+                               "lsb_release -cs")
+    return result['Stdout'].strip()
+
+
+def systemctl(unit, service, command="restart"):
+    """Run systemctl command on a unit.
+
+    :param unit: Unit object or unit name
+    :type unit: Union[Unit,string]
+    :param service: Name of service to act on
+    :type service: string
+    :param command: Name of command. i.e. start, stop, restart
+    :type command: string
+    :raises: AssertionError if the command is unsuccessful
+    :returns: None if successful
+    """
+    cmd = "/bin/systemctl {} {}".format(command, service)
+
+    # Check if this is a unit object or string name of a unit
+    try:
+        unit.entity_id
+    except AttributeError:
+        unit = model.get_unit_from_name(unit)
+
+    result = model.run_on_unit(
+        unit.entity_id, cmd)
+    assert int(result['Code']) == 0, (
+        "{} of {} on {} failed".format(command, service, unit.entity_id))
+
+
+def get_mojo_cacert_path():
+    """Retrieve cacert from Mojo storage location.
+
+    :returns: Path to cacert
+    :rtype: str
+    :raises: zaza_exceptions.CACERTNotFound
+    :raises: :class:`zaza_exceptions.CACERTNotfound`
+    """
+    try:
+        cert_dir = os.environ['MOJO_LOCAL_DIR']
+    except KeyError:
+        raise zaza_exceptions.CACERTNotFound(
+            "Could not find cacert.pem, MOJO_LOCAL_DIR unset")
+    cacert = os.path.join(cert_dir, 'cacert.pem')
+    if os.path.exists(cacert):
+        return cacert
+    else:
+        raise zaza_exceptions.CACERTNotFound("Could not find cacert.pem")

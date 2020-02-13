@@ -25,8 +25,11 @@ from .os_versions import (
 
 from openstack import connection
 
+from aodhclient.v2 import client as aodh_client
 from cinderclient import client as cinderclient
+from heatclient import client as heatclient
 from glanceclient import Client as GlanceClient
+from designateclient.client import Client as DesignateClient
 
 from keystoneclient.v2_0 import client as keystoneclient_v2
 from keystoneclient.v3 import client as keystoneclient_v3
@@ -44,6 +47,7 @@ from swiftclient import client as swiftclient
 
 import datetime
 import io
+import itertools
 import juju_wait
 import logging
 import os
@@ -54,6 +58,7 @@ import subprocess
 import sys
 import tempfile
 import tenacity
+import textwrap
 import urllib
 
 from zaza import model
@@ -99,18 +104,28 @@ CHARM_TYPES = {
         'pkg': 'ceilometer-common',
         'origin_setting': 'openstack-origin'
     },
+    'designate': {
+        'pkg': 'designate-common',
+        'origin_setting': 'openstack-origin'
+    },
 }
+
+# Older tests use the order the services appear in the list to imply
+# the order they should be upgraded in. This approach has been superceded and
+# zaza.openstack.utilities.openstack_upgrade.get_upgrade_groups should be used
+# instead.
 UPGRADE_SERVICES = [
     {'name': 'keystone', 'type': CHARM_TYPES['keystone']},
-    {'name': 'nova-cloud-controller', 'type': CHARM_TYPES['nova']},
-    {'name': 'nova-compute', 'type': CHARM_TYPES['nova']},
     {'name': 'neutron-api', 'type': CHARM_TYPES['neutron']},
-    {'name': 'neutron-gateway', 'type': CHARM_TYPES['neutron']},
+    {'name': 'nova-cloud-controller', 'type': CHARM_TYPES['nova']},
     {'name': 'glance', 'type': CHARM_TYPES['glance']},
     {'name': 'cinder', 'type': CHARM_TYPES['cinder']},
+    {'name': 'neutron-gateway', 'type': CHARM_TYPES['neutron']},
+    {'name': 'ceilometer', 'type': CHARM_TYPES['ceilometer']},
+    {'name': 'designate', 'type': CHARM_TYPES['designate']},
+    {'name': 'nova-compute', 'type': CHARM_TYPES['nova']},
     {'name': 'openstack-dashboard',
      'type': CHARM_TYPES['openstack-dashboard']},
-    {'name': 'ceilometer', 'type': CHARM_TYPES['ceilometer']},
 ]
 
 
@@ -129,7 +144,12 @@ WORKLOAD_STATUS_EXCEPTIONS = {
         'workload-status': 'unknown',
         'workload-status-message': ''},
     'postgresql': {
-        'workload-status-message': 'Live'}}
+        'workload-status-message': 'Live'},
+    'ceilometer': {
+        'workload-status': 'blocked',
+        'workload-status-message':
+            ('Run the ceilometer-upgrade action on the leader to initialize '
+             'ceilometer and gnocchi')}}
 
 # For vault TLS certificates
 KEYSTONE_CACERT = "keystone_juju_ca_cert.crt"
@@ -187,6 +207,18 @@ def get_glance_session_client(session):
     :rtype: glanceclient.Client
     """
     return GlanceClient('2', session=session)
+
+
+def get_designate_session_client(**kwargs):
+    """Return designateclient authenticated by keystone session.
+
+    :param kwargs: Designate Client Arguments
+    :returns: Authenticated designateclient
+    :rtype: DesignateClient
+    """
+    version = kwargs.pop('version', None) or 2
+    return DesignateClient(version=str(version),
+                           **kwargs)
 
 
 def get_nova_session_client(session):
@@ -251,6 +283,19 @@ def get_octavia_session_client(session, service_type='load-balancer',
                                     endpoint=endpoint.url)
 
 
+def get_heat_session_client(session, version=1):
+    """Return heatclient authenticated by keystone session.
+
+    :param session: Keystone session object
+    :type session: keystoneauth1.session.Session object
+    :param version: Heat API version
+    :type version: int
+    :returns: Authenticated cinderclient
+    :rtype: heatclient.Client object
+    """
+    return heatclient.Client(session=session, version=version)
+
+
 def get_cinder_session_client(session, version=2):
     """Return cinderclient authenticated by keystone session.
 
@@ -283,13 +328,27 @@ def get_masakari_session_client(session, interface='internal',
     return conn.instance_ha
 
 
-def get_keystone_scope():
+def get_aodh_session_client(session):
+    """Return aodh client authenticated by keystone session.
+
+    :param session: Keystone session object
+    :type session: keystoneauth1.session.Session object
+    :returns: Authenticated aodh client
+    :rtype: openstack.instance_ha.v1._proxy.Proxy
+    """
+    return aodh_client.Client(session=session)
+
+
+def get_keystone_scope(model_name=None):
     """Return Keystone scope based on OpenStack release of the overcloud.
 
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns: String keystone scope
     :rtype: string
     """
-    os_version = get_current_os_versions("keystone")["keystone"]
+    os_version = get_current_os_versions("keystone",
+                                         model_name=model_name)["keystone"]
     # Keystone policy.json shipped the charm with liberty requires a domain
     # scoped token. Bug #1649106
     if os_version == "liberty":
@@ -324,17 +383,20 @@ def get_keystone_session(openrc_creds, scope='PROJECT', verify=None):
     return session.Session(auth=auth, verify=verify)
 
 
-def get_overcloud_keystone_session(verify=None):
+def get_overcloud_keystone_session(verify=None, model_name=None):
     """Return Over cloud keystone session.
 
     :param verify: Control TLS certificate verification behaviour
     :type verify: any
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns keystone_session: keystoneauth1.session.Session object
     :rtype: keystoneauth1.session.Session
     """
-    return get_keystone_session(get_overcloud_auth(),
-                                scope=get_keystone_scope(),
-                                verify=verify)
+    return get_keystone_session(
+        get_overcloud_auth(model_name=model_name),
+        scope=get_keystone_scope(model_name=model_name),
+        verify=verify)
 
 
 def get_undercloud_keystone_session(verify=None):
@@ -416,7 +478,7 @@ def get_gateway_uuids():
     """Return machine uuids for neutron-gateway(s).
 
     :returns: List of uuids
-    :rtype: list
+    :rtype: Iterator[str]
     """
     return juju_utils.get_machine_uuids_for_application('neutron-gateway')
 
@@ -425,28 +487,64 @@ def get_ovs_uuids():
     """Return machine uuids for neutron-openvswitch(s).
 
     :returns: List of uuids
-    :rtype: list
+    :rtype: Iterator[str]
     """
-    return (juju_utils
-            .get_machine_uuids_for_application('neutron-openvswitch'))
+    return juju_utils.get_machine_uuids_for_application('neutron-openvswitch')
+
+
+def get_ovn_uuids():
+    """Provide machine uuids for OVN Chassis.
+
+    :returns: List of uuids
+    :rtype: Iterator[str]
+    """
+    return itertools.chain(
+        juju_utils.get_machine_uuids_for_application('ovn-chassis'),
+        juju_utils.get_machine_uuids_for_application('ovn-dedicated-chassis'),
+    )
+
+
+def dvr_enabled():
+    """Check whether DVR is enabled in deployment.
+
+    :returns: True when DVR is enabled, False otherwise
+    :rtype: bool
+    """
+    return get_application_config_option('neutron-api', 'enable-dvr')
+
+
+def ovn_present():
+    """Check whether OVN is present in deployment.
+
+    :returns: True when OVN is present, False otherwise
+    :rtype: bool
+    """
+    app_presence = []
+    for name in ('ovn-chassis', 'ovn-dedicated-chassis'):
+        try:
+            model.get_application(name)
+            app_presence.append(True)
+        except KeyError:
+            app_presence.append(False)
+    return any(app_presence)
 
 
 BRIDGE_MAPPINGS = 'bridge-mappings'
 NEW_STYLE_NETWORKING = 'physnet1:br-ex'
 
 
-def deprecated_external_networking(dvr_mode=False):
+def deprecated_external_networking():
     """Determine whether deprecated external network mode is in use.
 
-    :param dvr_mode: Using DVR mode or not
-    :type dvr_mode: boolean
     :returns: True or False
     :rtype: boolean
     """
     bridge_mappings = None
-    if dvr_mode:
+    if dvr_enabled():
         bridge_mappings = get_application_config_option('neutron-openvswitch',
                                                         BRIDGE_MAPPINGS)
+    elif ovn_present():
+        return False
     else:
         bridge_mappings = get_application_config_option('neutron-gateway',
                                                         BRIDGE_MAPPINGS)
@@ -483,29 +581,116 @@ def get_admin_net(neutron_client):
             return net
 
 
-def configure_gateway_ext_port(novaclient, neutronclient,
-                               dvr_mode=None, net_id=None):
+def add_interface_to_netplan(server_name, mac_address):
+    """In guest server_name, add nic with mac_address to netplan.
+
+    :param server_name: Hostname of instance
+    :type server_name: string
+    :param mac_address: mac address of nic to be added to netplan
+    :type mac_address: string
+    """
+    if dvr_enabled():
+        application_name = 'neutron-openvswitch'
+    elif ovn_present():
+        # OVN chassis is a subordinate to nova-compute
+        application_name = 'nova-compute'
+    else:
+        application_name = 'neutron-gateway'
+
+    unit_name = juju_utils.get_unit_name_from_host_name(
+        server_name, application_name)
+    run_cmd_nic = "ip -f link -br -o addr|grep {}".format(mac_address)
+    interface = model.run_on_unit(unit_name, run_cmd_nic)
+    interface = interface['Stdout'].split(' ')[0]
+
+    run_cmd_netplan = """sudo egrep -iR '{}|{}$' /etc/netplan/
+                        """.format(mac_address, interface)
+
+    netplancfg = model.run_on_unit(unit_name, run_cmd_netplan)
+
+    if (mac_address in str(netplancfg)) or (interface in str(netplancfg)):
+        logging.warn("mac address {} or nic {} already exists in "
+                     "/etc/netplan".format(mac_address, interface))
+        return
+    body_value = textwrap.dedent("""\
+        network:
+            ethernets:
+                {0}:
+                    dhcp4: false
+                    dhcp6: true
+                    optional: true
+                    match:
+                        macaddress: {1}
+                    set-name: {0}
+            version: 2
+    """.format(interface, mac_address))
+    logging.debug("plumb guest interface debug info:")
+    logging.debug("body_value: {}\nunit_name: {}\ninterface: {}\nmac_address:"
+                  "{}\nserver_name: {}".format(body_value, unit_name,
+                                               interface, mac_address,
+                                               server_name))
+    with tempfile.NamedTemporaryFile(mode="w") as netplan_file:
+        netplan_file.write(body_value)
+        netplan_file.flush()
+        model.scp_to_unit(unit_name, netplan_file.name,
+                          '/home/ubuntu/60-dataport.yaml', user="ubuntu")
+    run_cmd_mv = "sudo mv /home/ubuntu/60-dataport.yaml /etc/netplan/"
+    model.run_on_unit(unit_name, run_cmd_mv)
+    model.run_on_unit(unit_name, "sudo netplan apply")
+
+
+def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
+                               add_dataport_to_netplan=False,
+                               limit_gws=None):
     """Configure the neturong-gateway external port.
 
     :param novaclient: Authenticated novaclient
     :type novaclient: novaclient.Client object
     :param neutronclient: Authenticated neutronclient
     :type neutronclient: neutronclient.Client object
-    :param dvr_mode: Using DVR mode or not
-    :type dvr_mode: boolean
     :param net_id: Network ID
     :type net_id: string
+    :param limit_gws: Limit the number of gateways that get a port attached
+    :type limit_gws: Optional[int]
     """
-    if dvr_mode:
-        uuids = get_ovs_uuids()
-    else:
-        uuids = get_gateway_uuids()
+    deprecated_extnet_mode = deprecated_external_networking()
 
-    deprecated_extnet_mode = deprecated_external_networking(dvr_mode)
-
-    config_key = 'data-port'
+    port_config_key = 'data-port'
     if deprecated_extnet_mode:
-        config_key = 'ext-port'
+        port_config_key = 'ext-port'
+
+    config = {}
+    if dvr_enabled():
+        uuids = itertools.islice(itertools.chain(get_ovs_uuids(),
+                                                 get_gateway_uuids()),
+                                 limit_gws)
+        # If dvr, do not attempt to persist nic in netplan
+        # https://github.com/openstack-charmers/zaza-openstack-tests/issues/78
+        add_dataport_to_netplan = False
+        application_names = ['neutron-openvswitch']
+        try:
+            ngw = 'neutron-gateway'
+            model.get_application(ngw)
+            application_names.append(ngw)
+        except KeyError:
+            # neutron-gateway not in deployment
+            pass
+    elif ovn_present():
+        uuids = itertools.islice(get_ovn_uuids(), limit_gws)
+        application_names = ['ovn-chassis']
+        try:
+            ovn_dc_name = 'ovn-dedicated-chassis'
+            model.get_application(ovn_dc_name)
+            application_names.append(ovn_dc_name)
+        except KeyError:
+            # ovn-dedicated-chassis not in deployment
+            pass
+        port_config_key = 'bridge-interface-mappings'
+        config.update({'ovn-bridge-mappings': 'physnet1:br-ex'})
+        add_dataport_to_netplan = True
+    else:
+        uuids = itertools.islice(get_gateway_uuids(), limit_gws)
+        application_names = ['neutron-gateway']
 
     if not net_id:
         net_id = get_admin_net(neutronclient)['id']
@@ -515,7 +700,8 @@ def configure_gateway_ext_port(novaclient, neutronclient,
         ext_port_name = "{}_ext-port".format(server.name)
         for port in neutronclient.list_ports(device_id=server.id)['ports']:
             if port['name'] == ext_port_name:
-                logging.warning('Neutron Gateway already has additional port')
+                logging.warning(
+                    'Neutron Gateway already has additional port')
                 break
         else:
             logging.info('Attaching additional port to instance, '
@@ -531,6 +717,10 @@ def configure_gateway_ext_port(novaclient, neutronclient,
             port = neutronclient.create_port(body=body_value)
             server.interface_attach(port_id=port['port']['id'],
                                     net_id=None, fixed_ip=None)
+            if add_dataport_to_netplan:
+                mac_address = get_mac_from_port(port, neutronclient)
+                add_interface_to_netplan(server.name,
+                                         mac_address=mac_address)
     ext_br_macs = []
     for port in neutronclient.list_ports(network_id=net_id)['ports']:
         if 'ext-port' in port['name']:
@@ -540,23 +730,43 @@ def configure_gateway_ext_port(novaclient, neutronclient,
                 ext_br_macs.append('br-ex:{}'.format(port['mac_address']))
     ext_br_macs.sort()
     ext_br_macs_str = ' '.join(ext_br_macs)
-    if dvr_mode:
-        application_name = 'neutron-openvswitch'
-    else:
-        application_name = 'neutron-gateway'
 
     if ext_br_macs:
-        logging.info('Setting {} on {} external port to {}'.format(
-            config_key, application_name, ext_br_macs_str))
-        current_data_port = get_application_config_option(application_name,
-                                                          config_key)
-        if current_data_port == ext_br_macs_str:
-            logging.info('Config already set to value')
-            return
-        model.set_application_config(
-            application_name,
-            configuration={config_key: ext_br_macs_str})
+        config.update({port_config_key: ext_br_macs_str})
+        for application_name in application_names:
+            logging.info('Setting {} on {}'.format(
+                config, application_name))
+            current_data_port = get_application_config_option(application_name,
+                                                              port_config_key)
+            if current_data_port == ext_br_macs_str:
+                logging.info('Config already set to value')
+                return
+
+            model.set_application_config(
+                application_name,
+                configuration=config)
+        # NOTE(fnordahl): We are stuck with juju_wait until we figure out how
+        # to deal with all the non ['active', 'idle', 'Unit is ready.']
+        # workload/agent states and msgs that our mojo specs are exposed to.
         juju_wait.wait(wait_for_workload=True)
+
+
+@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
+                reraise=True, retry=tenacity.retry_if_exception_type(KeyError))
+def get_mac_from_port(port, neutronclient):
+    """Get mac address from port, with tenacity due to openstack async.
+
+    :param port: neutron port
+    :type port: neutron port
+    :param neutronclient: Authenticated neutronclient
+    :type neutronclient: neutronclient.Client object
+    :returns: mac address
+    :rtype: string
+    """
+    logging.info("Trying to get mac address from port:"
+                 "{}".format(port['port']['id']))
+    refresh_port = neutronclient.show_port(port['port']['id'])
+    return refresh_port['port']['mac_address']
 
 
 def create_project_network(neutron_client, project_id, net_name='private',
@@ -599,16 +809,13 @@ def create_project_network(neutron_client, project_id, net_name='private',
     return network
 
 
-def create_external_network(neutron_client, project_id, dvr_mode,
-                            net_name='ext_net'):
+def create_external_network(neutron_client, project_id, net_name='ext_net'):
     """Create the external network.
 
     :param neutron_client: Authenticated neutronclient
     :type neutron_client: neutronclient.Client object
     :param project_id: Project ID
     :type project_id: string
-    :param dvr_mode: Using DVR mode or not
-    :type dvr_mode: boolean
     :param net_name: Network name
     :type net_name: string
     :returns: Network object
@@ -1031,13 +1238,15 @@ def add_peer_to_bgp_speaker(neutron_client, bgp_speaker, bgp_peer):
                         .format(bgp_peer['name']))
 
 
-def add_neutron_secgroup_rules(neutron_client, project_id):
+def add_neutron_secgroup_rules(neutron_client, project_id, custom_rules=[]):
     """Add neutron security group rules.
 
     :param neutron_client: Authenticated neutronclient
     :type neutron_client: neutronclient.Client object
     :param project_id: Project ID
     :type project_id: string
+    :param custom_rules: List of ``security_group_rule`` dicts to create
+    :type custom_rules: list
     """
     secgroup = None
     for group in neutron_client.list_security_groups().get('security_groups'):
@@ -1078,6 +1287,18 @@ def add_neutron_secgroup_rules(neutron_client, project_id):
                  'direction': 'ingress',
                  }
              })
+
+    for rule in custom_rules:
+        rule_port = rule.get('port_range_min')
+        if rule_port and int(rule_port) in port_rules:
+            logging.warn('Custom security group for port {} appears to '
+                         'already exist, skipping.'.format(rule_port))
+        else:
+            logging.info('Adding custom port {} security group rule'
+                         .format(rule_port))
+            rule.update({'security_group_id': secgroup.get('id')})
+            neutron_client.create_security_group_rule(
+                {'security_group_rule': rule})
 
 
 def create_port(neutron_client, name, network_name):
@@ -1198,11 +1419,13 @@ def get_os_code_info(package, pkg_version):
             return OPENSTACK_CODENAMES[vers]
 
 
-def get_current_os_versions(deployed_applications):
+def get_current_os_versions(deployed_applications, model_name=None):
     """Determine OpenStack codename of deployed applications.
 
     :param deployed_applications: List of deployed applications
     :type deployed_applications: list
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns: List of aplication to codenames dictionaries
     :rtype: list
     """
@@ -1212,7 +1435,8 @@ def get_current_os_versions(deployed_applications):
             continue
 
         version = generic_utils.get_pkg_version(application['name'],
-                                                application['type']['pkg'])
+                                                application['type']['pkg'],
+                                                model_name=model_name)
         versions[application['name']] = (
             get_os_code_info(application['type']['pkg'], version))
     return versions
@@ -1241,10 +1465,9 @@ def get_current_os_release_pair(application='keystone'):
     :raises: exceptions.SeriesNotFound
     :raises: exceptions.OSVersionNotFound
     """
-    machines = juju_utils.get_machines_for_application(application)
-    if len(machines) >= 1:
-        machine = machines[0]
-    else:
+    try:
+        machine = list(juju_utils.get_machines_for_application(application))[0]
+    except IndexError:
         raise exceptions.ApplicationNotFound(application)
 
     series = juju_utils.get_machine_series(machine)
@@ -1278,17 +1501,21 @@ def get_os_release(release_pair=None):
     return index
 
 
-def get_application_config_option(application, option):
+def get_application_config_option(application, option, model_name=None):
     """Return application configuration.
 
     :param application: Name of application
     :type application: string
     :param option: Specific configuration option
     :type option: string
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns: Value of configuration option
     :rtype: Configuration option value type
     """
-    application_config = model.get_application_config(application)
+    application_config = model.get_application_config(
+        application,
+        model_name=model_name)
     try:
         return application_config.get(option).get('value')
     except AttributeError:
@@ -1362,27 +1589,39 @@ def get_undercloud_auth():
 
 
 # Openstack Client helpers
-def get_keystone_ip():
+def get_keystone_ip(model_name=None):
     """Return the IP address to use when communicating with keystone api.
 
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns: IP address
     :rtype: str
     """
-    if get_application_config_option('keystone', 'vip'):
-        return get_application_config_option('keystone', 'vip')
-    unit = model.get_units('keystone')[0]
+    vip_option = get_application_config_option(
+        'keystone',
+        'vip',
+        model_name=model_name)
+    if vip_option:
+        return vip_option
+    unit = model.get_units('keystone', model_name=model_name)[0]
     return unit.public_address
 
 
-def get_keystone_api_version():
+def get_keystone_api_version(model_name=None):
     """Return the keystone api version.
 
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns: Keystone's api version
     :rtype: int
     """
-    os_version = get_current_os_versions('keystone')['keystone']
-    api_version = get_application_config_option('keystone',
-                                                'preferred-api-version')
+    os_version = get_current_os_versions(
+        'keystone',
+        model_name=model_name)['keystone']
+    api_version = get_application_config_option(
+        'keystone',
+        'preferred-api-version',
+        model_name=model_name)
     if os_version >= 'queens':
         api_version = 3
     elif api_version is None:
@@ -1391,15 +1630,21 @@ def get_keystone_api_version():
     return int(api_version)
 
 
-def get_overcloud_auth(address=None):
+def get_overcloud_auth(address=None, model_name=None):
     """Get overcloud OpenStack authentication from the environment.
 
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns: Dictionary of authentication settings
     :rtype: dict
     """
     tls_rid = model.get_relation_id('keystone', 'vault',
+                                    model_name=model_name,
                                     remote_interface_name='certificates')
-    ssl_config = get_application_config_option('keystone', 'ssl_cert')
+    ssl_config = get_application_config_option(
+        'keystone',
+        'ssl_cert',
+        model_name=model_name)
     if tls_rid or ssl_config:
         transport = 'https'
         port = 35357
@@ -1408,11 +1653,14 @@ def get_overcloud_auth(address=None):
         port = 5000
 
     if not address:
-        address = get_keystone_ip()
+        address = get_keystone_ip(model_name=model_name)
 
-    password = juju_utils.leader_get('keystone', 'admin_passwd')
+    password = juju_utils.leader_get(
+        'keystone',
+        'admin_passwd',
+        model_name=model_name)
 
-    if get_keystone_api_version() == 2:
+    if get_keystone_api_version(model_name=model_name) == 2:
         # V2 Explicitly, or None when charm does not possess the config key
         logging.info('Using keystone API V2 for overcloud auth')
         auth_settings = {
@@ -1438,7 +1686,7 @@ def get_overcloud_auth(address=None):
             'API_VERSION': 3,
         }
     if tls_rid:
-        unit = model.get_first_unit_name('keystone')
+        unit = model.get_first_unit_name('keystone', model_name=model_name)
         model.scp_from_unit(
             unit,
             KEYSTONE_REMOTE_CACERT,
@@ -1456,14 +1704,14 @@ def get_urllib_opener():
 
     Using urllib.request.urlopen will automatically handle proxies so none
     of this function is needed except we are currently specifying proxies
-    via AMULET_HTTP_PROXY rather than http_proxy so a ProxyHandler is needed
+    via OS_TEST_HTTP_PROXY rather than http_proxy so a ProxyHandler is needed
     explicitly stating the proxies.
 
     :returns: An opener which opens URLs via BaseHandlers chained together
     :rtype: urllib.request.OpenerDirector
     """
-    http_proxy = os.getenv('AMULET_HTTP_PROXY')
-    logging.debug('AMULET_HTTP_PROXY: {}'.format(http_proxy))
+    http_proxy = os.getenv('OS_TEST_HTTP_PROXY')
+    logging.debug('OS_TEST_HTTP_PROXY: {}'.format(http_proxy))
 
     if http_proxy:
         handler = urllib.request.ProxyHandler({'http': http_proxy})
@@ -1676,6 +1924,29 @@ def delete_image(glance, img_id):
     delete_resource(glance.images, img_id, msg="glance image")
 
 
+def delete_volume(cinder, vol_id):
+    """Delete the given volume from cinder.
+
+    :param cinder: Authenticated cinderclient
+    :type cinder: cinderclient.Client
+    :param vol_id: unique name or id for the openstack resource
+    :type vol_id: str
+    """
+    delete_resource(cinder.volumes, vol_id, msg="deleting cinder volume")
+
+
+def delete_volume_backup(cinder, vol_backup_id):
+    """Delete the given volume from cinder.
+
+    :param cinder: Authenticated cinderclient
+    :type cinder: cinderclient.Client
+    :param vol_backup_id: unique name or id for the openstack resource
+    :type vol_backup_id: str
+    """
+    delete_resource(cinder.backups, vol_backup_id,
+                    msg="deleting cinder volume backup")
+
+
 def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
                            visibility='public', container_format='bare'):
     """Upload the given image to glance and apply the given label.
@@ -1753,6 +2024,76 @@ def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[]):
             'applying tag to image: glance.image_tags.update({}, {}) = {}'
             .format(image.id, tags, result))
     return image
+
+
+def create_volume(cinder, size, name=None, image=None):
+    """Create cinder volume.
+
+    :param cinder: Authenticated cinderclient
+    :type cinder: cinder.Client
+    :param size: Size of the volume
+    :type size: int
+    :param name: display name for new volume
+    :type name: Option[str, None]
+    :param image: Image to download to volume.
+    :type image: Option[str, None]
+    :returns: cinder volume pointer
+    :rtype: cinderclient.common.utils.RequestIdProxy
+    """
+    logging.debug('Creating volume')
+    # Create volume
+    volume = cinder.volumes.create(
+        size=size,
+        name=name,
+        imageRef=image)
+
+    resource_reaches_status(
+        cinder.volumes,
+        volume.id,
+        expected_status='available',
+        msg='Volume status wait')
+    return volume
+
+
+def create_volume_backup(cinder, volume_id, name=None):
+    """Create cinder volume backup.
+
+    :param cinder: Authenticated cinderclient
+    :type cinder: cinder.Client
+    :param volume_id: the source volume's id for backup
+    :type volume_id: str
+    :param name: display name for new volume backup
+    :type name: Option[str, None]
+    :returns: cinder volume backup pointer
+    :rtype: cinderclient.common.utils.RequestIdProxy
+    """
+    logging.debug('Creating volume backup')
+    # Create volume backup
+    volume_backup = cinder.backups.create(
+        volume_id,
+        name=name)
+
+    resource_reaches_status(
+        cinder.backups,
+        volume_backup.id,
+        expected_status='available',
+        msg='Volume status wait')
+    return volume_backup
+
+
+def get_volume_backup_metadata(cinder, backup_id):
+    """Get cinder volume backup record.
+
+    :param cinder: Authenticated cinderclient
+    :type cinder: cinder.Client
+    :param backup_id: the source backup id
+    """
+    logging.debug('Request volume backup record')
+    # Request volume backup record
+    volume_backup_record = cinder.backups.export_record(
+        backup_id)
+
+    return volume_backup_record
 
 
 def create_ssh_key(nova_client, keypair_name, replace=False):
@@ -1868,8 +2209,8 @@ def get_ports_from_device_id(neutron_client, device_id):
     return ports
 
 
-@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
-                reraise=True, stop=tenacity.stop_after_attempt(8))
+@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=120),
+                reraise=True, stop=tenacity.stop_after_attempt(12))
 def cloud_init_complete(nova_client, vm_id, bootstring):
     """Wait for cloud init to complete on the given vm.
 
@@ -1888,11 +2229,13 @@ def cloud_init_complete(nova_client, vm_id, bootstring):
     instance = nova_client.servers.find(id=vm_id)
     console_log = instance.get_console_output()
     if bootstring not in console_log:
-        raise exceptions.CloudInitIncomplete()
+        raise exceptions.CloudInitIncomplete(
+            "'{}' not found in console log: {}"
+            .format(bootstring, console_log))
 
 
 @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
-                reraise=True, stop=tenacity.stop_after_attempt(8))
+                reraise=True, stop=tenacity.stop_after_attempt(16))
 def ping_response(ip):
     """Wait for ping to respond on the given IP.
 
@@ -2127,7 +2470,8 @@ def get_keystone_session_from_relation(client_app,
                                        identity_app='keystone',
                                        relation_name='identity-service',
                                        scope='PROJECT',
-                                       verify=None):
+                                       verify=None,
+                                       model_name=None):
     """Extract credentials information from a relation & return a session.
 
     :param client_app: Name of application receiving credentials.
@@ -2143,16 +2487,19 @@ def get_keystone_session_from_relation(client_app,
                        False - do not verify,
                        None  - defer to requests library to find certs,
                        str   - path to a CA cert bundle)
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns: Keystone session object
     :rtype: keystoneauth1.session.Session object
     """
     relation = juju_utils.get_relation_from_unit(
         client_app,
         identity_app,
-        relation_name)
+        relation_name,
+        model_name=model_name)
 
     api_version = int(relation.get('api_version', 2))
-    creds = get_overcloud_auth()
+    creds = get_overcloud_auth(model_name=model_name)
     creds['OS_USERNAME'] = relation['service_username']
     creds['OS_PASSWORD'] = relation['service_password']
     creds['OS_PROJECT_NAME'] = relation['service_tenant']

@@ -18,14 +18,14 @@
 
 from datetime import datetime
 import logging
+import tenacity
 
 import novaclient
 
 import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
-import openstack as openstack_utils
 import zaza.openstack.utilities.juju as juju_utils
-import zaza.openstack.utilities.openstack as openstack
+import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.configure.guest
 import zaza.openstack.configure.hacluster
 import zaza.openstack.configure.masakari
@@ -52,7 +52,7 @@ class MasakariTest(test_utils.OpenStackBaseTest):
             zaza.openstack.configure.masakari.simulate_compute_host_recovery(
                 unit.entity_id,
                 model_name=cls.model_name)
-        openstack.enable_all_nova_services(cls.nova_client)
+        openstack_utils.enable_all_nova_services(cls.nova_client)
         zaza.openstack.configure.masakari.enable_hosts()
 
     def ensure_guest(self, vm_name):
@@ -83,7 +83,7 @@ class MasakariTest(test_utils.OpenStackBaseTest):
         :returns: Hypervisor name and juju unit name
         :rtype: (str, str)
         """
-        current_hypervisor = openstack.get_hypervisor_for_guest(
+        current_hypervisor = openstack_utils.get_hypervisor_for_guest(
             self.nova_client,
             vm_name)
         unit_name = juju_utils.get_unit_name_from_host_name(
@@ -102,6 +102,7 @@ class MasakariTest(test_utils.OpenStackBaseTest):
         :type model_name: str
         :returns: PID of qemu process
         :rtype: int
+        :raises: ValueError
         """
         pid_find_cmd = 'pgrep -u libvirt-qemu -f {}'.format(vm_uuid)
         out = zaza.model.run_on_unit(
@@ -109,6 +110,27 @@ class MasakariTest(test_utils.OpenStackBaseTest):
             pid_find_cmd,
             model_name=self.model_name)
         return int(out['Stdout'].strip())
+
+    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=2, max=60),
+                    reraise=True, stop=tenacity.stop_after_attempt(5),
+                    retry=tenacity.retry_if_exception_type(ValueError))
+    def wait_for_guest_pid(self, compute_unit_name, vm_uuid, model_name=None):
+        """Wait for the qemu process running guest to appear & return its pid.
+
+        :param compute_unit_name: Juju unit name of hypervisor running guest
+        :type compute_unit_name: str
+        :param vm_uuid: Guests UUID
+        :type vm_uuid: str
+        :param model_name: Name of model running cloud.
+        :type model_name: str
+        :returns: PID of qemu process
+        :rtype: int
+        :raises: ValueError
+        """
+        return self.get_guest_qemu_pid(
+            compute_unit_name,
+            vm_uuid,
+            model_name=self.model_name)
 
     def test_instance_failover(self):
         """Test masakari managed guest migration."""
@@ -129,7 +151,7 @@ class MasakariTest(test_utils.OpenStackBaseTest):
         logging.info('Waiting for guest to move away from {}'.format(
             current_hypervisor))
         # wait_for_server_migration will throw an exception if migration fails
-        openstack.wait_for_server_migration(
+        openstack_utils.wait_for_server_migration(
             self.nova_client,
             vm_name,
             current_hypervisor)
@@ -138,7 +160,7 @@ class MasakariTest(test_utils.OpenStackBaseTest):
         zaza.openstack.configure.masakari.simulate_compute_host_recovery(
             unit_name,
             model_name=self.model_name)
-        openstack.enable_all_nova_services(self.nova_client)
+        openstack_utils.enable_all_nova_services(self.nova_client)
         zaza.openstack.configure.masakari.enable_hosts()
 
     def test_instance_restart_on_fail(self):
@@ -162,11 +184,11 @@ class MasakariTest(test_utils.OpenStackBaseTest):
             model_name=self.model_name)
         logging.info('Waiting for {} to be updated and become active'.format(
             vm_name))
-        openstack.wait_for_server_update_and_active(
+        openstack_utils.wait_for_server_update_and_active(
             self.nova_client,
             vm_name,
             inital_update_time)
-        new_guest_pid = self.get_guest_qemu_pid(
+        new_guest_pid = self.wait_for_guest_pid(
             unit_name,
             vm.id,
             model_name=self.model_name)

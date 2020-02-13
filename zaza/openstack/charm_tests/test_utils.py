@@ -11,22 +11,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Module containg base class for implementing charm tests."""
+"""Module containing base class for implementing charm tests."""
 import contextlib
 import logging
+import subprocess
 import unittest
-import zaza.model
 
 import zaza.model as model
 import zaza.charm_lifecycle.utils as lifecycle_utils
 import zaza.openstack.utilities.openstack as openstack_utils
+import zaza.openstack.utilities.generic as generic_utils
 
 
 def skipIfNotHA(service_name):
     """Run decorator to skip tests if application not in HA configuration."""
     def _skipIfNotHA_inner_1(f):
         def _skipIfNotHA_inner_2(*args, **kwargs):
-            ips = zaza.model.get_app_ips(
+            ips = model.get_app_ips(
                 service_name)
             if len(ips) > 1:
                 return f(*args, **kwargs)
@@ -36,6 +37,25 @@ def skipIfNotHA(service_name):
         return _skipIfNotHA_inner_2
 
     return _skipIfNotHA_inner_1
+
+
+def skipUntilVersion(service, package, release):
+    """Run decorator to skip this test if application version is too low."""
+    def _skipUntilVersion_inner_1(f):
+        def _skipUntilVersion_inner_2(*args, **kwargs):
+            package_version = generic_utils.get_pkg_version(service, package)
+            try:
+                subprocess.check_call(['dpkg', '--compare-versions',
+                                       package_version, 'ge', release],
+                                      stderr=subprocess.STDOUT,
+                                      universal_newlines=True)
+                return f(*args, **kwargs)
+            except subprocess.CalledProcessError as cp:
+                logging.warn("Skipping test for older ({})"
+                             "service {}, requested {}".format(
+                                 package_version, service, release))
+        return _skipUntilVersion_inner_2
+    return _skipUntilVersion_inner_1
 
 
 def audit_assertions(action,
@@ -49,7 +69,7 @@ def audit_assertions(action,
     :param expected_passes: List of test names that are expected to pass
     :type expected_passes: List[str]
     :param expected_failures: List of test names that are expected to fail
-    :type expexted_failures: List[str]
+    :type expected_failures: List[str]
     :raises: AssertionError if the assertion fails.
     """
     if expected_failures is None:
@@ -72,17 +92,89 @@ def audit_assertions(action,
 class OpenStackBaseTest(unittest.TestCase):
     """Generic helpers for testing OpenStack API charms."""
 
+    run_resource_cleanup = False
+
     @classmethod
-    def setUpClass(cls):
-        """Run setup for test class to create common resourcea."""
-        cls.keystone_session = openstack_utils.get_overcloud_keystone_session()
-        cls.model_name = model.get_juju_model()
-        cls.test_config = lifecycle_utils.get_charm_config()
-        cls.application_name = cls.test_config['charm_name']
+    def resource_cleanup(cls):
+        """Cleanup any resources created during the test run.
+
+        Override this method with a method which removes any resources
+        which were created during the test run. If the test sets
+        "self.run_resource_cleanup = True" then cleanup will be
+        performed.
+        """
+        pass
+
+    @classmethod
+    def tearDown(cls):
+        """Run teardown for test class."""
+        if cls.run_resource_cleanup:
+            logging.info('Running resource cleanup')
+            cls.resource_cleanup()
+
+    @classmethod
+    def setUpClass(cls, application_name=None, model_alias=None):
+        """Run setup for test class to create common resources."""
+        cls.model_aliases = model.get_juju_model_aliases()
+        if model_alias:
+            cls.model_name = cls.model_aliases[model_alias]
+        else:
+            cls.model_name = model.get_juju_model()
+        cls.keystone_session = openstack_utils.get_overcloud_keystone_session(
+            model_name=cls.model_name)
+        cls.test_config = lifecycle_utils.get_charm_config(fatal=False)
+        if application_name:
+            cls.application_name = application_name
+        else:
+            cls.application_name = cls.test_config['charm_name']
         cls.lead_unit = model.get_lead_unit_name(
             cls.application_name,
             model_name=cls.model_name)
         logging.debug('Leader unit is {}'.format(cls.lead_unit))
+
+    def config_current(self, application_name=None, keys=None):
+        """Get Current Config of an application normalized into key-values.
+
+        :param application_name: String application name for use when called
+                                 by a charm under test other than the object's
+                                 application.
+        :type application_name:  Optional[str]
+        :param keys: iterable of strs to index into the current config.  If
+                     None, return all keys from the config
+        :type keys:  Optional[Iterable[str]]
+        :return: Dictionary of requested config from application
+        :rtype: Dict[str, Any]
+        """
+        if not application_name:
+            application_name = self.application_name
+
+        _app_config = model.get_application_config(application_name)
+
+        keys = keys or _app_config.keys()
+        return {
+            k: _app_config.get(k, {}).get('value')
+            for k in keys
+        }
+
+    @staticmethod
+    def _stringed_value_config(config):
+        """Stringify values in a dict.
+
+        Workaround:
+        libjuju refuses to accept data with types other than strings
+        through the zuzu.model.set_application_config
+
+        :param config: Config dictionary with any typed values
+        :type  config: Dict[str,Any]
+        :return:       Config Dictionary with string-ly typed values
+        :rtype:        Dict[str,str]
+        """
+        # if v is None, stringify to ''
+        # otherwise use a strict cast with str(...)
+        return {
+            k: '' if v is None else str(v)
+            for k, v in config.items()
+        }
 
     @contextlib.contextmanager
     def config_change(self, default_config, alternate_config,
@@ -109,17 +201,14 @@ class OpenStackBaseTest(unittest.TestCase):
         """
         if not application_name:
             application_name = self.application_name
+
         # we need to compare config values to what is already applied before
         # attempting to set them.  otherwise the model will behave differently
         # than we would expect while waiting for completion of the change
-        _app_config = model.get_application_config(application_name)
-        app_config = {}
-        # convert the more elaborate config structure from libjuju to something
-        # we can compare to what the caller supplies to this function
-        for k in alternate_config.keys():
-            # note that conversion to string for all values is due to
-            # attempting to set any config with other types lead to Traceback
-            app_config[k] = str(_app_config.get(k, {}).get('value', ''))
+        app_config = self.config_current(
+            application_name, keys=alternate_config.keys()
+        )
+
         if all(item in app_config.items()
                 for item in alternate_config.items()):
             logging.debug('alternate_config equals what is already applied '
@@ -136,7 +225,7 @@ class OpenStackBaseTest(unittest.TestCase):
                           .format(alternate_config))
             model.set_application_config(
                 application_name,
-                alternate_config,
+                self._stringed_value_config(alternate_config),
                 model_name=self.model_name)
 
             logging.debug(
@@ -156,7 +245,7 @@ class OpenStackBaseTest(unittest.TestCase):
         logging.debug('Restoring charm setting to {}'.format(default_config))
         model.set_application_config(
             application_name,
-            default_config,
+            self._stringed_value_config(default_config),
             model_name=self.model_name)
 
         logging.debug(
@@ -168,7 +257,8 @@ class OpenStackBaseTest(unittest.TestCase):
         model.block_until_all_units_idle()
 
     def restart_on_changed(self, config_file, default_config, alternate_config,
-                           default_entry, alternate_entry, services):
+                           default_entry, alternate_entry, services,
+                           pgrep_full=False):
         """Run restart on change tests.
 
         Test that changing config results in config file being updates and
@@ -189,6 +279,9 @@ class OpenStackBaseTest(unittest.TestCase):
         :param services: Services expected to be restarted when config_file is
                          changed.
         :type services: list
+        :param pgrep_full: Should pgrep be used rather than pidof to identify
+                           a service.
+        :type  pgrep_full: bool
         """
         # lead_unit is only useed to grab a timestamp, the assumption being
         # that all the units times are in sync.
@@ -199,13 +292,18 @@ class OpenStackBaseTest(unittest.TestCase):
         logging.debug('Remote unit timestamp {}'.format(mtime))
 
         with self.config_change(default_config, alternate_config):
-            logging.debug(
-                'Waiting for updates to propagate to {}'.format(config_file))
-            model.block_until_oslo_config_entries_match(
-                self.application_name,
-                config_file,
-                alternate_entry,
-                model_name=self.model_name)
+            # If this is not an OSLO config file set default_config={}
+            if alternate_entry:
+                logging.debug(
+                    'Waiting for updates to propagate to {}'
+                    .format(config_file))
+                model.block_until_oslo_config_entries_match(
+                    self.application_name,
+                    config_file,
+                    alternate_entry,
+                    model_name=self.model_name)
+            else:
+                model.block_until_all_units_idle(model_name=self.model_name)
 
             # Config update has occured and hooks are idle. Any services should
             # have been restarted by now:
@@ -215,18 +313,23 @@ class OpenStackBaseTest(unittest.TestCase):
                 self.application_name,
                 mtime,
                 services,
-                model_name=self.model_name)
+                model_name=self.model_name,
+                pgrep_full=pgrep_full)
 
-        logging.debug(
-            'Waiting for updates to propagate to '.format(config_file))
-        model.block_until_oslo_config_entries_match(
-            self.application_name,
-            config_file,
-            default_entry,
-            model_name=self.model_name)
+        # If this is not an OSLO config file set default_config={}
+        if default_entry:
+            logging.debug(
+                'Waiting for updates to propagate to '.format(config_file))
+            model.block_until_oslo_config_entries_match(
+                self.application_name,
+                config_file,
+                default_entry,
+                model_name=self.model_name)
+        else:
+            model.block_until_all_units_idle(model_name=self.model_name)
 
     @contextlib.contextmanager
-    def pause_resume(self, services):
+    def pause_resume(self, services, pgrep_full=False):
         """Run Pause and resume tests.
 
         Pause and then resume a unit checking that services are in the
@@ -235,12 +338,16 @@ class OpenStackBaseTest(unittest.TestCase):
         :param services: Services expected to be restarted when config_file is
                          changed.
         :type services: list
+        :param pgrep_full: Should pgrep be used rather than pidof to identify
+                           a service.
+        :type  pgrep_full: bool
         """
         model.block_until_service_status(
             self.lead_unit,
             services,
             'running',
-            model_name=self.model_name)
+            model_name=self.model_name,
+            pgrep_full=pgrep_full)
         model.block_until_unit_wl_status(
             self.lead_unit,
             'active',
@@ -258,7 +365,8 @@ class OpenStackBaseTest(unittest.TestCase):
             self.lead_unit,
             services,
             'stopped',
-            model_name=self.model_name)
+            model_name=self.model_name,
+            pgrep_full=pgrep_full)
         yield
         model.run_action(
             self.lead_unit,
@@ -273,4 +381,5 @@ class OpenStackBaseTest(unittest.TestCase):
             self.lead_unit,
             services,
             'running',
-            model_name=self.model_name)
+            model_name=self.model_name,
+            pgrep_full=pgrep_full)

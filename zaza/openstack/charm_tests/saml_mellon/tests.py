@@ -20,6 +20,7 @@ import requests
 
 import zaza.model
 from zaza.openstack.charm_tests.keystone import BaseKeystoneTest
+import zaza.charm_lifecycle.utils as lifecycle_utils
 
 
 class FailedToReachIDP(Exception):
@@ -35,6 +36,11 @@ class CharmKeystoneSAMLMellonTest(BaseKeystoneTest):
     def setUpClass(cls):
         """Run class setup for running Keystone SAML Mellon charm tests."""
         super(CharmKeystoneSAMLMellonTest, cls).setUpClass()
+        # Note: The BaseKeystoneTest class sets the application_name to
+        # "keystone" which breaks keystone-saml-mellon actions. Explicitly set
+        # application name here.
+        cls.test_config = lifecycle_utils.get_charm_config()
+        cls.application_name = cls.test_config['charm_name']
         cls.action = "get-sp-metadata"
 
     def test_run_get_sp_metadata_action(self):

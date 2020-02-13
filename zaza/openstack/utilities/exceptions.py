@@ -162,6 +162,12 @@ class CephPoolNotFound(Exception):
     pass
 
 
+class CephPoolNotConfigured(Exception):
+    """Ceph pool not configured properly."""
+
+    pass
+
+
 class NovaGuestMigrationFailed(Exception):
     """Nova guest migration failed."""
 
@@ -170,5 +176,17 @@ class NovaGuestMigrationFailed(Exception):
 
 class NovaGuestRestartFailed(Exception):
     """Nova guest restart failed."""
+
+    pass
+
+
+class PolicydError(Exception):
+    """Policyd override failed."""
+
+    pass
+
+
+class CACERTNotFound(Exception):
+    """Could not find cacert."""
 
     pass

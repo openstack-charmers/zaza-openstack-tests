@@ -205,13 +205,18 @@ class CephRBDMirrorTest(CephRBDMirrorBase):
         #
         # We do not use tenacity here as it will interfere with tenacity used
         # in ``resource_reaches_status``
-        def create_volume_from_image(cinder, image, retry=5):
+        def create_volume_from_image(cinder, image, retry=20):
             if retry < 1:
                 return
             volume = cinder.volumes.create(8, name='zaza', imageRef=image.id)
             try:
+                # Note(coreycb): stop_after_attempt is increased because using
+                # juju storage for ceph-osd backed by cinder on undercloud
+                # takes longer than the prior method of directory-backed OSD
+                # devices.
                 openstack.resource_reaches_status(
-                    cinder.volumes, volume.id, msg='volume')
+                    cinder.volumes, volume.id, msg='volume',
+                    stop_after_attempt=20)
                 return volume
             except AssertionError:
                 logging.info('retrying')

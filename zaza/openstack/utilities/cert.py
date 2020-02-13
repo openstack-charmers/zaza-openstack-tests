@@ -94,10 +94,10 @@ def generate_cert(common_name,
             cryptography.x509.oid.NameOID.COMMON_NAME, issuer_name),
     ]))
     builder = builder.not_valid_before(
-        datetime.datetime.today() - datetime.timedelta(0, 1, 0),
+        datetime.datetime.utcnow() - datetime.timedelta(0, 1, 0),
     )
     builder = builder.not_valid_after(
-        datetime.datetime.today() + datetime.timedelta(30, 0, 0),
+        datetime.datetime.utcnow() + datetime.timedelta(30, 0, 0),
     )
     builder = builder.serial_number(cryptography.x509.random_serial_number())
     builder = builder.public_key(public_key)
@@ -190,7 +190,7 @@ def sign_csr(csr, ca_private_key, ca_cert=None, issuer_name=None,
         datetime.datetime.today() - datetime.timedelta(1, 0, 0),
     )
     builder = builder.not_valid_after(
-        datetime.datetime.today() + datetime.timedelta(80, 0, 0),
+        datetime.datetime.today() + datetime.timedelta(4000, 0, 0),
     )
     builder = builder.subject_name(new_csr.subject)
     builder = builder.public_key(new_csr.public_key())

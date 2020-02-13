@@ -125,23 +125,30 @@ class TestGenericUtils(ut_utils.BaseTestCase):
             return _env.get(key)
         self.get.side_effect = _get_env
 
-        # OSCI backward compatible env vars
+        # Prefered OSCI TEST_ env vars
         _env = {"NET_ID": "netid",
-                "NAMESERVER": "10.0.0.10",
+                "NAME_SERVER": "10.0.0.10",
                 "GATEWAY": "10.0.0.1",
                 "CIDR_EXT": "10.0.0.0/24",
-                "FIP_RANGE": "10.0.200.0:10.0.200.254"}
+                "FIP_RANGE": "10.0.200.0:10.0.200.254",
+                "TEST_NET_ID": "test_netid",
+                "TEST_NAME_SERVER": "10.9.0.10",
+                "TEST_GATEWAY": "10.9.0.1",
+                "TEST_CIDR_EXT": "10.9.0.0/24",
+                "TEST_FIP_RANGE": "10.9.200.0:10.0.200.254"}
         _expected_result = {}
-        _expected_result["net_id"] = _env["NET_ID"]
-        _expected_result["external_dns"] = _env["NAMESERVER"]
-        _expected_result["default_gateway"] = _env["GATEWAY"]
-        _expected_result["external_net_cidr"] = _env["CIDR_EXT"]
-        _expected_result["start_floating_ip"] = _env["FIP_RANGE"].split(":")[0]
-        _expected_result["end_floating_ip"] = _env["FIP_RANGE"].split(":")[1]
+        _expected_result["net_id"] = _env["TEST_NET_ID"]
+        _expected_result["external_dns"] = _env["TEST_NAME_SERVER"]
+        _expected_result["default_gateway"] = _env["TEST_GATEWAY"]
+        _expected_result["external_net_cidr"] = _env["TEST_CIDR_EXT"]
+        _expected_result["start_floating_ip"] = _env[
+            "TEST_FIP_RANGE"].split(":")[0]
+        _expected_result["end_floating_ip"] = _env[
+            "TEST_FIP_RANGE"].split(":")[1]
         self.assertEqual(generic_utils.get_undercloud_env_vars(),
                          _expected_result)
 
-        # Overriding configure.network named variables
+        # Overriding local configure.network named variables
         _override = {"start_floating_ip": "10.100.50.0",
                      "end_floating_ip": "10.100.50.254",
                      "default_gateway": "10.100.0.1",
@@ -165,6 +172,17 @@ class TestGenericUtils(ut_utils.BaseTestCase):
         self.assertEqual(generic_utils.get_yaml_config(_filename),
                          _yaml_dict)
         self._open.assert_called_once_with(_filename, "r")
+
+    def test_dist_upgrade(self):
+        _unit = "app/2"
+        generic_utils.dist_upgrade(_unit)
+        dist_upgrade_cmd = (
+            """sudo DEBIAN_FRONTEND=noninteractive apt --assume-yes """
+            """-o "Dpkg::Options::=--force-confdef" """
+            """-o "Dpkg::Options::=--force-confold" dist-upgrade""")
+        self.model.run_on_unit.assert_has_calls([
+            mock.call(_unit, 'sudo apt update'),
+            mock.call(_unit, dist_upgrade_cmd)])
 
     def test_do_release_upgrade(self):
         _unit = "app/2"
@@ -276,7 +294,8 @@ class TestGenericUtils(ut_utils.BaseTestCase):
                 mock.call("{}/{}".format(_application, machine_num),
                           machine_num, origin=_origin,
                           from_series=_from_series, to_series=_to_series,
-                          workaround_script=_workaround_script, files=_files),
+                          workaround_script=_workaround_script, files=_files,
+                          post_upgrade_functions=None),
             )
 
         # Pause primary peers and subordinates
@@ -314,7 +333,8 @@ class TestGenericUtils(ut_utils.BaseTestCase):
                 mock.call("{}/{}".format(_application, machine_num),
                           machine_num, origin=_origin,
                           from_series=_from_series, to_series=_to_series,
-                          workaround_script=_workaround_script, files=_files),
+                          workaround_script=_workaround_script, files=_files,
+                          post_upgrade_functions=None),
             )
 
         # Pause subordinates
@@ -345,7 +365,8 @@ class TestGenericUtils(ut_utils.BaseTestCase):
                 mock.call("{}/{}".format(_application, machine_num),
                           machine_num, origin=_origin,
                           from_series=_from_series, to_series=_to_series,
-                          workaround_script=_workaround_script, files=_files),
+                          workaround_script=_workaround_script, files=_files,
+                          post_upgrade_functions=None),
             )
 
         # No Pausiing
@@ -545,3 +566,128 @@ class TestGenericUtils(ut_utils.BaseTestCase):
         bad_name = 'bad_name'
         with self.assertRaises(zaza_exceptions.UbuntuReleaseNotFound):
             generic_utils.get_ubuntu_release(bad_name)
+
+    def test_is_port_open(self):
+        self.patch(
+            'zaza.openstack.utilities.generic.telnetlib.Telnet',
+            new_callable=mock.MagicMock(),
+            name='telnet'
+        )
+
+        _port = "80"
+        _addr = "10.5.254.20"
+
+        self.assertTrue(generic_utils.is_port_open(_port, _addr))
+        self.telnet.assert_called_with(_addr, _port)
+
+        self.telnet.side_effect = generic_utils.socket.error
+        self.assertFalse(generic_utils.is_port_open(_port, _addr))
+
+    def test_get_unit_hostnames(self):
+        self.patch(
+            "zaza.openstack.utilities.generic.model.run_on_unit",
+            new_callable=mock.MagicMock(),
+            name="_run"
+        )
+
+        _unit1 = mock.MagicMock()
+        _unit1.entity_id = "testunit/1"
+        _unit2 = mock.MagicMock()
+        _unit2.entity_id = "testunit/2"
+
+        _hostname1 = "host1.domain"
+        _hostname2 = "host2.domain"
+
+        expected = {
+            _unit1.entity_id: _hostname1,
+            _unit2.entity_id: _hostname2,
+        }
+
+        _units = [_unit1, _unit2]
+
+        self._run.side_effect = [{"Stdout": _hostname1},
+                                 {"Stdout": _hostname2}]
+
+        actual = generic_utils.get_unit_hostnames(_units)
+
+        self.assertEqual(actual, expected)
+
+    def test_port_knock_units(self):
+        self.patch(
+            "zaza.openstack.utilities.generic.is_port_open",
+            new_callable=mock.MagicMock(),
+            name="_is_port_open"
+        )
+
+        _units = [
+            mock.MagicMock(),
+            mock.MagicMock(),
+        ]
+
+        self._is_port_open.side_effect = [True, True]
+        self.assertIsNone(generic_utils.port_knock_units(_units))
+        self.assertEqual(self._is_port_open.call_count, len(_units))
+
+        self._is_port_open.side_effect = [True, False]
+        self.assertIsNotNone(generic_utils.port_knock_units(_units))
+
+        # check when func is expecting failure, i.e. should succeed
+        self._is_port_open.reset_mock()
+        self._is_port_open.side_effect = [False, False]
+        self.assertIsNone(generic_utils.port_knock_units(_units,
+                                                         expect_success=False))
+        self.assertEqual(self._is_port_open.call_count, len(_units))
+
+    def test_check_commands_on_units(self):
+        self.patch(
+            "zaza.openstack.utilities.generic.model.run_on_unit",
+            new_callable=mock.MagicMock(),
+            name="_run"
+        )
+
+        num_units = 2
+        _units = [mock.MagicMock() for i in range(num_units)]
+
+        num_cmds = 3
+        cmds = ["/usr/bin/fakecmd"] * num_cmds
+
+        # Test success, all calls return 0
+        # zero is a string to replicate run_on_unit return data type
+        _cmd_results = [{"Code": "0"}] * len(_units) * len(cmds)
+        self._run.side_effect = _cmd_results
+
+        result = generic_utils.check_commands_on_units(cmds, _units)
+        self.assertIsNone(result)
+        self.assertEqual(self._run.call_count, len(_units) * len(cmds))
+
+        # Test failure, some call returns 1
+        _cmd_results[2] = {"Code": "1"}
+        self._run.side_effect = _cmd_results
+
+        result = generic_utils.check_commands_on_units(cmds, _units)
+        self.assertIsNotNone(result)
+
+    def test_systemctl(self):
+        self.patch_object(generic_utils.model, "get_unit_from_name")
+        self.patch_object(generic_utils.model, "run_on_unit")
+        _unit = mock.MagicMock()
+        _unit.entity_id = "unit/2"
+        _command = "stop"
+        _service = "servicename"
+        _systemctl = "/bin/systemctl {} {}".format(_command, _service)
+        self.run_on_unit.return_value = {"Code": 0}
+        self.get_unit_from_name.return_value = _unit
+
+        # With Unit object
+        generic_utils.systemctl(_unit, _service, command=_command)
+        self.run_on_unit.assert_called_with(_unit.entity_id, _systemctl)
+
+        # With string name unit
+        generic_utils.systemctl(_unit.entity_id, _service, command=_command)
+        self.run_on_unit.assert_called_with(_unit.entity_id, _systemctl)
+
+        # Failed return code
+        self.run_on_unit.return_value = {"Code": 1}
+        with self.assertRaises(AssertionError):
+            generic_utils.systemctl(
+                _unit.entity_id, _service, command=_command)

@@ -110,7 +110,7 @@ def add_demo_user():
         # under test other than keystone.
         with _singleton.config_change(
                 {'preferred-api-version': _singleton.default_api_version},
-                {'preferred-api-version': '3'}, application_name="keystone"):
+                {'preferred-api-version': 3}, application_name="keystone"):
             _v3()
     else:
         # create only V3 user
