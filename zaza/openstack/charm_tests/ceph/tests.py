@@ -23,7 +23,6 @@ from os import (
 )
 import tempfile
 import tenacity
-import json
 
 from swiftclient.exceptions import ClientException
 
