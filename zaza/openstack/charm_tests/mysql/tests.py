@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import re
+import tempfile
 import time
 
 import zaza.charm_lifecycle.utils as lifecycle_utils
@@ -547,6 +548,107 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
         logging.debug("Wait for application states ...")
         for unit in zaza.model.get_units(self.application):
             zaza.model.run_on_unit(unit.entity_id, "hooks/update-status")
+        test_config = lifecycle_utils.get_charm_config(fatal=False)
+        zaza.model.wait_for_application_states(
+            states=test_config.get("target_deploy_status", {}))
+
+
+class MySQL8MigrationTests(MySQLBaseTest):
+    """Percona Cluster to MySQL InnoDB Cluster Tests."""
+
+    def test_999_migrate_percona_to_mysql(self):
+        """Migrate DBs from percona-cluster to mysql-innodb-cluster.
+        
+        Do not rely on self.application_name or other pre-set class values as
+        we will be pointing to both percona-cluster and mysql-innodb-cluster.
+        """
+        # Current set of Databases and application names
+        DBS = ["keystone", "glance"]
+        percona_application = "percona-cluster"
+        mysql_application = "mysql-innodb-cluster"
+        percona_leader = zaza.model.get_unit_from_name(
+            zaza.model.get_lead_unit_name(percona_application))
+        mysql_leader = zaza.model.get_unit_from_name(
+            zaza.model.get_lead_unit_name(mysql_application))
+        logging.info("Remove percona-cluster:shared-db relations ...")
+        for client in DBS:
+            # Remove relations
+            zaza.model.remove_relation(
+                percona_application,
+                "{}:shared-db".format(percona_application),
+                "{}:shared-db".format(client))
+        logging.info("Wait till model is idle ...")
+        zaza.model.block_until_all_units_idle()
+        # Set PXC Strict Mode to MASTER
+        logging.info("Set PXC Strict Mode MASTER ...")
+        action = zaza.model.run_action_on_leader(
+            percona_application,
+            "set-pxc-strict-mode",
+            action_params={"mode": "MASTER"})
+        assert "failed" not in action.data["status"], (
+            "Set PXC Strict Mode MASTER action failed: {}"
+            .format(action.data))
+        # Dump the percona db
+        logging.info("mysqldump percona-cluster DBs ...")
+        action = zaza.model.run_action_on_leader(
+            percona_application,
+            "mysqldump",
+            action_params={
+                "databases": ",".join(DBS)})
+        assert "failed" not in action.data["status"], (
+            "mysqldump action failed: {}"
+            .format(action.data))
+        remote_file = action.data["results"]["mysqldump-file"]
+        remote_backup_dir = "/var/backups/mysql"
+        # Permissions for ubuntu user to read
+        logging.info("Set permissions to read percona-cluster:{} ..."
+                     .format(remote_backup_dir))
+        zaza.model.run_on_leader(
+            percona_application,
+            "chmod 755 {}".format(remote_backup_dir))
+
+        # SCP back and forth
+        dump_file = "dump.sql.gz"
+        logging.info("SCP percona-cluster:{} to mysql-innodb-cluster:{} ..."
+                     .format(remote_file, dump_file))
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            tmp_file = "{}/{}".format(tmpdirname, dump_file)
+            zaza.model.scp_from_unit(
+                percona_leader.name,
+                remote_file,
+                tmp_file)
+            zaza.model.scp_to_unit(
+                mysql_leader.name,
+                tmp_file,
+                dump_file)
+        # Restore mysqldump to mysql-innodb-cluster
+        logging.info("restore-mysqldump DBs onto mysql-innodb-cluster ...")
+        action = zaza.model.run_action_on_leader(
+            mysql_application,
+            "restore-mysqldump",
+            action_params={
+                "dump-file": "/home/ubuntu/{}".format(dump_file)})
+        assert "failed" not in action.data["status"], (
+            "restore-mysqldump action failed: {}"
+            .format(action.data))
+        # Add db router relations
+        logging.info("Add mysql-router:shared-db relations ...")
+        for client in DBS:
+            # add relations
+            zaza.model.add_relation(
+                mysql_application,
+                "{}:shared-db".format(client),
+                "{}-mysql-router:shared-db".format(client))
+        # Set PXC Strict Mode back to ENFORCING
+        logging.info("Set PXC Strict Mode ENFORCING ...")
+        action = zaza.model.run_action_on_leader(
+            percona_application,
+            "set-pxc-strict-mode",
+            action_params={"mode": "ENFORCING"})
+        assert "failed" not in action.data["status"], (
+            "Set PXC Strict Mode ENFORCING action failed: {}"
+            .format(action.data))
+        logging.info("Wait for application states ...")
         test_config = lifecycle_utils.get_charm_config(fatal=False)
         zaza.model.wait_for_application_states(
             states=test_config.get("target_deploy_status", {}))
