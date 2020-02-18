@@ -558,7 +558,7 @@ class MySQL8MigrationTests(MySQLBaseTest):
 
     def test_999_migrate_percona_to_mysql(self):
         """Migrate DBs from percona-cluster to mysql-innodb-cluster.
-        
+
         Do not rely on self.application_name or other pre-set class values as
         we will be pointing to both percona-cluster and mysql-innodb-cluster.
         """
