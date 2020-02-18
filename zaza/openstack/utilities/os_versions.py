@@ -66,7 +66,7 @@ OPENSTACK_RELEASES_PAIRS = [
     'xenial_pike', 'artful_pike', 'xenial_queens',
     'bionic_queens', 'bionic_rocky', 'cosmic_rocky',
     'bionic_stein', 'disco_stein', 'bionic_train',
-    'eoan_train', 'focal_ussuri']
+    'eoan_train', 'bionic_ussuri', 'focal_ussuri']
 
 # The ugly duckling - must list releases oldest to newest
 SWIFT_CODENAMES = OrderedDict([
