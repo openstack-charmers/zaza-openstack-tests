@@ -52,8 +52,15 @@ class SeriesUpgradeTest(unittest.TestCase):
             origin = "openstack-origin"
             pause_non_leader_subordinate = True
             pause_non_leader_primary = True
+            post_upgrade_functions = []
             # Skip subordinates
             if applications[application]["subordinate-to"]:
+                continue
+            if "easyrsa" in applications[application]["charm"]:
+                logging.warn("Skipping series upgrade of easyrsa Bug #1850121")
+                continue
+            if "etcd" in applications[application]["charm"]:
+                logging.warn("Skipping series upgrade of easyrsa Bug #1850124")
                 continue
             if "percona-cluster" in applications[application]["charm"]:
                 origin = "source"
@@ -70,19 +77,30 @@ class SeriesUpgradeTest(unittest.TestCase):
                 origin = "source"
                 pause_non_leader_primary = False
                 pause_non_leader_subordinate = False
+            if "designate-bind" in applications[application]["charm"]:
+                origin = None
+            if "tempest" in applications[application]["charm"]:
+                origin = None
             if "memcached" in applications[application]["charm"]:
                 origin = None
                 pause_non_leader_primary = False
                 pause_non_leader_subordinate = False
-            if ("mongodb" in applications[application]["charm"] or
-                    "vault" in applications[application]["charm"]):
-                # Mongodb and vault need to run series upgrade
+            if "vault" in applications[application]["charm"]:
+                origin = None
+                pause_non_leader_primary = False
+                pause_non_leader_subordinate = True
+                post_upgrade_functions = [
+                    ('zaza.openstack.charm_tests.vault.setup.'
+                     'mojo_unseal_by_unit')]
+            if "mongodb" in applications[application]["charm"]:
+                # Mongodb needs to run series upgrade
                 # on its secondaries first.
                 generic_utils.series_upgrade_non_leaders_first(
                     application,
                     from_series=self.from_series,
                     to_series=self.to_series,
-                    completed_machines=completed_machines)
+                    completed_machines=completed_machines,
+                    post_upgrade_functions=post_upgrade_functions)
                 continue
 
             # The rest are likley APIs use defaults
@@ -96,7 +114,26 @@ class SeriesUpgradeTest(unittest.TestCase):
                 origin=origin,
                 completed_machines=completed_machines,
                 workaround_script=self.workaround_script,
-                files=self.files)
+                files=self.files,
+                post_upgrade_functions=post_upgrade_functions)
+
+            if "rabbitmq-server" in applications[application]["charm"]:
+                logging.info(
+                    "Running complete-cluster-series-upgrade action on leader")
+                model.run_action_on_leader(
+                    'rabbitmq-server',
+                    'complete-cluster-series-upgrade',
+                    action_params={})
+                model.block_until_all_units_idle()
+
+            if "percona-cluster" in applications[application]["charm"]:
+                logging.info(
+                    "Running complete-cluster-series-upgrade action on leader")
+                model.run_action_on_leader(
+                    'mysql',
+                    'complete-cluster-series-upgrade',
+                    action_params={})
+                model.block_until_all_units_idle()
 
 
 class OpenStackSeriesUpgrade(SeriesUpgradeTest):

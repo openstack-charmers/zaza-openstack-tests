@@ -159,7 +159,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
 
         # Already exists
         network = openstack_utils.create_external_network(
-            self.neutronclient, self.project_id, False)
+            self.neutronclient, self.project_id)
         self.assertEqual(network, self.network["network"])
         self.neutronclient.create_network.assert_not_called()
 
@@ -169,7 +169,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         network_msg = copy.deepcopy(self.network)
         network_msg["network"].pop("id")
         network = openstack_utils.create_external_network(
-            self.neutronclient, self.project_id, False)
+            self.neutronclient, self.project_id)
         self.assertEqual(network, self.network["network"])
         self.neutronclient.create_network.assert_called_once_with(
             network_msg)
@@ -813,13 +813,16 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             name='_get_machine_series'
         )
 
+        _machine = mock.MagicMock()
+
         # No machine returned
         self._get_machines.return_value = []
         with self.assertRaises(exceptions.ApplicationNotFound):
             openstack_utils.get_current_os_release_pair()
+        self._get_machines.side_effect = None
 
         # No series returned
-        self._get_machines.return_value = ['6']
+        self._get_machines.return_value = [_machine]
         self._get_machine_series.return_value = None
         with self.assertRaises(exceptions.SeriesNotFound):
             openstack_utils.get_current_os_release_pair()
@@ -1106,7 +1109,8 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.get_relation_from_unit.assert_called_once_with(
             'swift-proxy',
             'keystone',
-            'identity-service')
+            'identity-service',
+            model_name=None)
         self.get_keystone_session.assert_called_once_with(
             {
                 'OS_AUTH_URL': 'http://10.5.0.61:5000/v3',
@@ -1153,7 +1157,8 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.get_relation_from_unit.assert_called_once_with(
             'swift-proxy',
             'keystone',
-            'identity-service')
+            'identity-service',
+            model_name=None)
         self.get_keystone_session.assert_called_once_with(
             {
                 'OS_AUTH_URL': 'http://10.5.0.36:5000/v2.0',
@@ -1165,3 +1170,45 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 'OS_PROJECT_NAME': 'services'},
             scope='PROJECT',
             verify=None)
+
+    def test_get_gateway_uuids(self):
+        self.patch_object(openstack_utils.juju_utils,
+                          'get_machine_uuids_for_application')
+        self.get_machine_uuids_for_application.return_value = 'ret'
+        self.assertEquals(openstack_utils.get_gateway_uuids(), 'ret')
+        self.get_machine_uuids_for_application.assert_called_once_with(
+            'neutron-gateway')
+
+    def test_get_ovs_uuids(self):
+        self.patch_object(openstack_utils.juju_utils,
+                          'get_machine_uuids_for_application')
+        self.get_machine_uuids_for_application.return_value = 'ret'
+        self.assertEquals(openstack_utils.get_ovs_uuids(), 'ret')
+        self.get_machine_uuids_for_application.assert_called_once_with(
+            'neutron-openvswitch')
+
+    def test_get_ovn_uuids(self):
+        self.patch_object(openstack_utils.juju_utils,
+                          'get_machine_uuids_for_application')
+        self.get_machine_uuids_for_application.return_value = ['ret']
+        self.assertEquals(list(openstack_utils.get_ovn_uuids()),
+                          ['ret', 'ret'])
+        self.get_machine_uuids_for_application.assert_has_calls([
+            mock.call('ovn-chassis'),
+            mock.call('ovn-dedicated-chassis'),
+        ])
+
+    def test_dvr_enabled(self):
+        self.patch_object(openstack_utils, 'get_application_config_option')
+        openstack_utils.dvr_enabled()
+        self.get_application_config_option.assert_called_once_with(
+            'neutron-api', 'enable-dvr')
+
+    def test_ovn_present(self):
+        self.patch_object(openstack_utils.model, 'get_application')
+        self.get_application.side_effect = [None, KeyError]
+        self.assertTrue(openstack_utils.ovn_present())
+        self.get_application.side_effect = [KeyError, None]
+        self.assertTrue(openstack_utils.ovn_present())
+        self.get_application.side_effect = [KeyError, KeyError]
+        self.assertFalse(openstack_utils.ovn_present())

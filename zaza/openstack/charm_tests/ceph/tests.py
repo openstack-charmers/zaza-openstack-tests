@@ -15,6 +15,7 @@
 """Ceph Testing."""
 
 import unittest
+import json
 import logging
 from os import (
     listdir,
@@ -56,7 +57,7 @@ class CephLowLevelTest(test_utils.OpenStackBaseTest):
         }
 
         ceph_osd_processes = {
-            'ceph-osd': [2, 3]
+            'ceph-osd': [1, 2, 3]
         }
 
         # Units with process names and PID quantities expected
@@ -94,6 +95,16 @@ class CephLowLevelTest(test_utils.OpenStackBaseTest):
                 services=unit_services,
                 target_status='running'
             )
+
+    @test_utils.skipUntilVersion('ceph-mon', 'ceph', '14.2.0')
+    def test_pg_tuning(self):
+        """Verify that auto PG tuning is enabled for Nautilus+."""
+        unit_name = 'ceph-mon/0'
+        cmd = "ceph osd pool autoscale-status --format=json"
+        result = zaza_model.run_on_unit(unit_name, cmd)
+        self.assertEqual(result['Code'], '0')
+        for pool in json.loads(result['Stdout']):
+            self.assertEqual(pool['pg_autoscale_mode'], 'on')
 
 
 class CephRelationTest(test_utils.OpenStackBaseTest):
@@ -138,7 +149,6 @@ class CephRelationTest(test_utils.OpenStackBaseTest):
         fsid = result.get('Stdout').strip()
         expected = {
             'private-address': remote_ip,
-            'auth': 'none',
             'ceph-public-address': remote_ip,
             'fsid': fsid,
         }
@@ -408,8 +418,13 @@ class CephTest(test_utils.OpenStackBaseTest):
 
         set_default = {
             'ephemeral-unmount': '',
-            'osd-devices': '/dev/vdb /srv/ceph',
+            'osd-devices': '/dev/vdb',
         }
+
+        current_release = zaza_openstack.get_os_release()
+        bionic_train = zaza_openstack.get_os_release('bionic_train')
+        if current_release < bionic_train:
+            set_default['osd-devices'] = '/dev/vdb /srv/ceph'
 
         logging.info('Restoring to default configuration...')
         zaza_model.set_application_config(juju_service, set_default)
@@ -706,7 +721,31 @@ class CephProxyTest(unittest.TestCase):
 
     def test_ceph_health(self):
         """Make sure ceph-proxy can communicate with ceph."""
+        logging.info('Wait for idle/ready status...')
+        zaza_model.wait_for_application_states()
+
         self.assertEqual(
             zaza_model.run_on_leader("ceph-proxy", "sudo ceph health")["Code"],
             "0"
         )
+
+    def test_cinder_ceph_restrict_pool_setup(self):
+        """Make sure cinder-ceph restrict pool was created successfully."""
+        logging.info('Wait for idle/ready status...')
+        zaza_model.wait_for_application_states()
+
+        pools = zaza_ceph.get_ceph_pools('ceph-mon/0')
+        if 'cinder-ceph' not in pools:
+            msg = 'cinder-ceph pool was not found upon querying ceph-mon/0'
+            raise zaza_exceptions.CephPoolNotFound(msg)
+
+        expected = "pool=cinder-ceph, allow class-read " \
+                   "object_prefix rbd_children"
+        cmd = "sudo ceph auth get client.cinder-ceph"
+        result = zaza_model.run_on_unit('ceph-mon/0', cmd)
+        output = result.get('Stdout').strip()
+
+        if expected not in output:
+            msg = ('cinder-ceph pool restriction was not configured correctly.'
+                   ' Found: {}'.format(output))
+            raise zaza_exceptions.CephPoolNotConfigured(msg)

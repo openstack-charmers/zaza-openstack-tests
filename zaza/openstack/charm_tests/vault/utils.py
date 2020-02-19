@@ -33,6 +33,62 @@ CharmVaultClient = collections.namedtuple(
     'CharmVaultClient', ['addr', 'hvac_client', 'vip_client'])
 
 
+class VaultFacade:
+    """Provide a facade for interacting with vault.
+
+    For example to setup new vault deployment::
+
+        vault_svc = VaultFacade()
+        vault_svc.unseal()
+        vault_svc.authorize()
+    """
+
+    def __init__(self, cacert=None, initialize=True):
+        """Create a facade for interacting with vault.
+
+        :param cacert: Path to CA cert used for vaults api cert.
+        :type cacert: str
+        :param initialize: Whether to initialize vault.
+        :type initialize: bool
+        """
+        self.clients = get_clients(cacert=cacert)
+        self.vip_client = get_vip_client(cacert=cacert)
+        if self.vip_client:
+            self.unseal_client = self.vip_client
+        else:
+            self.unseal_client = self.clients[0]
+        self.initialized = is_initialized(self.unseal_client)
+        if initialize:
+            self.initialize()
+
+    @property
+    def is_initialized(self):
+        """Check if vault is initialized."""
+        return self.initialized
+
+    def initialize(self):
+        """Initialise vault and store resulting credentials."""
+        if self.is_initialized:
+            self.vault_creds = get_credentails()
+        else:
+            self.vault_creds = init_vault(self.unseal_client)
+            store_credentails(self.vault_creds)
+        self.initialized = is_initialized(self.unseal_client)
+
+    def unseal(self):
+        """Unseal all the vaults clients."""
+        unseal_all(self.clients, self.vault_creds['keys'][0])
+
+    def authorize(self):
+        """Authorize charm to perfom certain actions.
+
+        Run vault charm action to authorize the charm to perform a limited
+        set of calls against the vault API.
+        """
+        auth_all(self.clients, self.vault_creds['root_token'])
+        run_charm_authorize(self.vault_creds['root_token'])
+
+
 def get_unit_api_url(ip):
     """Return URL for api access.
 
@@ -117,6 +173,37 @@ def get_clients(units=None, cacert=None):
     return clients
 
 
+def extract_lead_unit_client(
+        clients=None, application_name='vault', cacert=None):
+    """Find the lead unit client.
+
+    This returns the lead unit client from a list of clients.  If no clients
+    are passed, then the clients are resolved using the cacert (if needed) and
+    the application_name.  The client is then matched to the lead unit.  If
+    clients are passed, but no leader is found in them, then the function
+    raises a RuntimeError.
+
+    :param clients: List of CharmVaultClient
+    :type clients: List[CharmVaultClient]
+    :param application_name: The application name
+    :type application_name: str
+    :param cacert: Path to CA cert used for vaults api cert.
+    :type cacert: str
+    :returns: The leader client
+    :rtype: CharmVaultClient
+    :raises: RuntimeError if the lead unit cannot be found
+    """
+    if clients is None:
+        units = zaza.model.get_app_ips('vault')
+        clients = get_clients(units, cacert)
+    lead_ip = zaza.model.get_lead_unit_ip(application_name)
+    for client in clients:
+        if client.addr == lead_ip:
+            return client
+    raise RuntimeError("Leader client not found for application: {}"
+                       .format(application_name))
+
+
 def is_initialized(client):
     """Check if vault is initialized.
 
@@ -133,6 +220,8 @@ def is_initialized(client):
                 urllib3.exceptions.NewConnectionError,
                 urllib3.exceptions.MaxRetryError,
                 requests.exceptions.ConnectionError):
+            # XXX time.sleep roundup
+            # https://github.com/openstack-charmers/zaza-openstack-tests/issues/46
             time.sleep(2)
         else:
             break
@@ -157,6 +246,22 @@ def ensure_secret_backend(client):
         pass
 
 
+def find_unit_with_creds():
+    """Find the unit thats has stored the credentials.
+
+    :returns: unit name
+    :rtype: str
+    """
+    unit = None
+    for vault_unit in zaza.model.get_units('vault'):
+        cmd = 'ls -l ~ubuntu/{}'.format(AUTH_FILE)
+        resp = zaza.model.run_on_unit(vault_unit.name, cmd)
+        if resp.get('Code') == '0':
+            unit = vault_unit.name
+            break
+    return unit
+
+
 def get_credentails():
     """Retrieve vault token and keys from unit.
 
@@ -166,7 +271,7 @@ def get_credentails():
     :returns: Tokens and keys for accessing test environment
     :rtype: dict
     """
-    unit = zaza.model.get_first_unit_name('vault')
+    unit = find_unit_with_creds()
     with tempfile.TemporaryDirectory() as tmpdirname:
         tmp_file = '{}/{}'.format(tmpdirname, AUTH_FILE)
         zaza.model.scp_from_unit(

@@ -23,6 +23,8 @@ import zaza.openstack.charm_tests.vault.utils as vault_utils
 import zaza.model
 import zaza.openstack.utilities.cert
 import zaza.openstack.utilities.openstack
+import zaza.openstack.utilities.generic
+import zaza.utilities.juju as juju_utils
 
 
 def basic_setup(cacert=None, unseal_and_authorize=False):
@@ -33,26 +35,35 @@ def basic_setup(cacert=None, unseal_and_authorize=False):
     :param unseal_and_authorize: Whether to unseal and authorize vault.
     :type unseal_and_authorize: bool
     """
-    clients = vault_utils.get_clients(cacert=cacert)
-    vip_client = vault_utils.get_vip_client(cacert=cacert)
-    if vip_client:
-        unseal_client = vip_client
-    else:
-        unseal_client = clients[0]
-    initialized = vault_utils.is_initialized(unseal_client)
-    # The credentials are written to a file to allow the tests to be re-run
-    # this is mainly useful for manually working on the tests.
-    if initialized:
-        vault_creds = vault_utils.get_credentails()
-    else:
-        vault_creds = vault_utils.init_vault(unseal_client)
-        vault_utils.store_credentails(vault_creds)
-
-    # For use by charms or bundles other than vault
+    vault_svc = vault_utils.VaultFacade(cacert=cacert)
     if unseal_and_authorize:
-        vault_utils.unseal_all(clients, vault_creds['keys'][0])
-        vault_utils.auth_all(clients, vault_creds['root_token'])
-        vault_utils.run_charm_authorize(vault_creds['root_token'])
+        vault_svc.unseal()
+        vault_svc.authorize()
+
+
+def basic_setup_and_unseal(cacert=None):
+    """Initialize (if needed) and unseal vault.
+
+    :param cacert: Path to CA cert used for vaults api cert.
+    :type cacert: str
+    """
+    vault_svc = vault_utils.VaultFacade(cacert=cacert)
+    vault_svc.unseal()
+    for unit in zaza.model.get_units('vault'):
+        zaza.model.run_on_unit(unit.name, './hooks/update-status')
+
+
+def mojo_unseal_by_unit():
+    """Unseal any units reported as sealed using mojo cacert."""
+    cacert = zaza.openstack.utilities.generic.get_mojo_cacert_path()
+    vault_creds = vault_utils.get_credentails()
+    for client in vault_utils.get_clients(cacert=cacert):
+        if client.hvac_client.is_sealed():
+            client.hvac_client.unseal(vault_creds['keys'][0])
+            unit_name = juju_utils.get_unit_name_from_ip_address(
+                client.addr,
+                'vault')
+            zaza.model.run_on_unit(unit_name, './hooks/update-status')
 
 
 def auto_initialize(cacert=None, validation_application='keystone'):
@@ -87,20 +98,31 @@ def auto_initialize(cacert=None, validation_application='keystone'):
         root_ca=cacertificate,
         allowed_domains='openstack.local')
 
+    zaza.model.wait_for_agent_status()
+    test_config = lifecycle_utils.get_charm_config(fatal=False)
+    zaza.model.wait_for_application_states(
+        states=test_config.get('target_deploy_status', {}))
+
     if validation_application:
         validate_ca(cacertificate, application=validation_application)
         # Once validation has completed restart nova-compute to work around
         # bug #1826382
-        try:
-            cmd = 'systemctl restart nova-compute'
-            for unit in zaza.model.get_units('nova-compute'):
-                result = zaza.model.run_on_unit(unit.entity_id, cmd)
-                assert int(result['Code']) == 0, (
-                    'Restart of nova-compute on {} failed'.format(
-                        unit.entity_id))
-        except KeyError:
-            # Nothing todo if there are no nova-compute units
-            pass
+        cmd_map = {
+            'nova-cloud-controller': ('systemctl restart '
+                                      'nova-scheduler nova-conductor'),
+            'nova-compute': 'systemctl restart nova-compute',
+        }
+        for app in ('nova-compute', 'nova-cloud-controller',):
+            try:
+                for unit in zaza.model.get_units(app):
+                    result = zaza.model.run_on_unit(
+                        unit.entity_id, cmd_map[app])
+                    assert int(result['Code']) == 0, (
+                        'Restart of services on {} failed'.format(
+                            unit.entity_id))
+            except KeyError:
+                # Nothing todo if there are no app units
+                pass
 
 
 auto_initialize_no_validation = functools.partial(
@@ -124,9 +146,6 @@ def validate_ca(cacertificate, application="keystone", port=5000):
         application,
         zaza.openstack.utilities.openstack.KEYSTONE_REMOTE_CACERT,
         cacertificate.decode().strip())
-    test_config = lifecycle_utils.get_charm_config()
-    zaza.model.wait_for_application_states(
-        states=test_config.get('target_deploy_status', {}))
     vip = (zaza.model.get_application_config(application)
            .get("vip").get("value"))
     if vip:

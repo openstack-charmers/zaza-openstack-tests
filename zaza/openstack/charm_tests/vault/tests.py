@@ -16,7 +16,9 @@
 
 """Collection of tests for vault."""
 
+import contextlib
 import hvac
+import logging
 import time
 import unittest
 import uuid
@@ -31,12 +33,15 @@ import zaza.openstack.utilities.openstack
 import zaza.model
 
 
-class BaseVaultTest(unittest.TestCase):
+class BaseVaultTest(test_utils.OpenStackBaseTest):
     """Base class for vault tests."""
 
     @classmethod
     def setUpClass(cls):
         """Run setup for Vault tests."""
+        cls.model_name = zaza.model.get_juju_model()
+        cls.lead_unit = zaza.model.get_lead_unit_name(
+            "vault", model_name=cls.model_name)
         cls.clients = vault_utils.get_clients()
         cls.vip_client = vault_utils.get_vip_client()
         if cls.vip_client:
@@ -45,6 +50,39 @@ class BaseVaultTest(unittest.TestCase):
         vault_utils.unseal_all(cls.clients, cls.vault_creds['keys'][0])
         vault_utils.auth_all(cls.clients, cls.vault_creds['root_token'])
         vault_utils.ensure_secret_backend(cls.clients[0])
+
+    @contextlib.contextmanager
+    def pause_resume(self, services, pgrep_full=False):
+        """Override pause_resume for Vault behavior."""
+        zaza.model.block_until_service_status(
+            self.lead_unit,
+            services,
+            'running',
+            model_name=self.model_name)
+        zaza.model.block_until_unit_wl_status(
+            self.lead_unit,
+            'active',
+            model_name=self.model_name)
+        zaza.model.block_until_all_units_idle(model_name=self.model_name)
+        zaza.model.run_action(
+            self.lead_unit,
+            'pause',
+            model_name=self.model_name)
+        zaza.model.block_until_service_status(
+            self.lead_unit,
+            services,
+            'blocked',  # Service paused
+            model_name=self.model_name)
+        yield
+        zaza.model.run_action(
+            self.lead_unit,
+            'resume',
+            model_name=self.model_name)
+        zaza.model.block_until_service_status(
+            self.lead_unit,
+            services,
+            'blocked',  # Service sealed
+            model_name=self.model_name)
 
 
 class UnsealVault(BaseVaultTest):
@@ -132,6 +170,8 @@ class VaultTest(BaseVaultTest):
                 try:
                     self.assertTrue(client.hvac_client.is_authenticated())
                 except hvac.exceptions.InternalServerError:
+                    # XXX time.sleep roundup
+                    # https://github.com/openstack-charmers/zaza-openstack-tests/issues/46
                     time.sleep(2)
                 else:
                     break
@@ -194,6 +234,25 @@ class VaultTest(BaseVaultTest):
         self.assertIn(
             'local-charm-policy',
             client.hvac_client.list_policies())
+
+    def test_zzz_pause_resume(self):
+        """Run pause and resume tests.
+
+        Pause service and check services are stopped, then resume and check
+        they are started.
+        """
+        # Restarting vault process will set it as sealed so it's
+        # important to have the test executed at the end.
+        vault_actions = zaza.model.get_actions(
+            'vault')
+        if 'pause' not in vault_actions or 'resume' not in vault_actions:
+            raise unittest.SkipTest("The version of charm-vault tested does "
+                                    "not have pause/resume actions")
+        # this pauses and resumes the LEAD unit
+        with self.pause_resume(['vault']):
+            logging.info("Testing pause resume")
+        lead_client = vault_utils.extract_lead_unit_client(self.clients)
+        self.assertTrue(lead_client.hvac_client.seal_status['sealed'])
 
 
 if __name__ == '__main__':

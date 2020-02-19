@@ -1,9 +1,8 @@
-
 aiounittest
 async_generator
 juju
 juju_wait
-PyYAML<=4.2,>=3.0 
+PyYAML<=4.2,>=3.0
 flake8>=2.2.4,<=3.5.0
 flake8-docstrings
 flake8-per-file-ignores
@@ -27,6 +26,7 @@ python-cinderclient
 python-glanceclient
 python-heatclient
 python-keystoneclient
+python-manilaclient
 python-neutronclient
 python-novaclient
 python-octaviaclient
@@ -34,6 +34,7 @@ python-swiftclient
 tenacity
 distro-info
 paramiko
+
 # Documentation requirements
 sphinx
 sphinxcontrib-asyncio
