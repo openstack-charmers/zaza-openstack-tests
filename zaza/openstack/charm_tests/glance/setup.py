@@ -18,6 +18,7 @@ import logging
 import zaza.openstack.utilities.openstack as openstack_utils
 
 CIRROS_IMAGE_NAME = "cirros"
+CIRROS_ALT_IMAGE_NAME = "cirros_alt"
 LTS_RELEASE = "bionic"
 LTS_IMAGE_NAME = "bionic"
 
@@ -71,6 +72,21 @@ def add_cirros_image(glance_client=None, image_name=None):
     :type image_name: str
     """
     image_name = image_name or CIRROS_IMAGE_NAME
+    image_url = openstack_utils.find_cirros_image(arch='x86_64')
+    add_image(image_url,
+              glance_client=glance_client,
+              image_name=image_name)
+
+
+def add_cirros_alt_image(glance_client=None, image_name=None):
+    """Add a cirros image to the current deployment.
+
+    :param glance: Authenticated glanceclient
+    :type glance: glanceclient.Client
+    :param image_name: Label for the image in glance
+    :type image_name: str
+    """
+    image_name = image_name or CIRROS_ALT_IMAGE_NAME
     image_url = openstack_utils.find_cirros_image(arch='x86_64')
     add_image(image_url,
               glance_client=glance_client,
