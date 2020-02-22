@@ -15,11 +15,13 @@
 """Code for configuring tempest."""
 import urllib.parse
 import os
+import subprocess
 
 import zaza.model
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.glance.setup as glance_setup
 import zaza.openstack.charm_tests.tempest.templates.tempest_v3 as tempest_v3
+import zaza.openstack.charm_tests.tempest.templates.accounts as accounts
 
 SETUP_ENV_VARS = [
     'OS_TEST_GATEWAY',
@@ -119,16 +121,30 @@ def render_tempest_config(target_file, ctxt, tempest_template):
         f.write(tempest_template.file_contents.format(**ctxt))
 
 
-def setup_tempest(tempest_template):
+def setup_tempest(tempest_template, accounts_template):
     try:
-        os.mkdir('tempest')
+        os.makedirs('tempest/etc/')
     except FileExistsError:
         pass
     render_tempest_config(
-        'tempest/tempest.conf',
+        'tempest/etc/tempest.conf',
         get_tempest_context(),
         tempest_template)
+    render_tempest_config(
+        'tempest/etc/accounts.yaml',
+        get_tempest_context(),
+        accounts_template)
 
 
 def tempest_keystone_v3():
-    setup_tempest(tempest_v3)
+    setup_tempest(tempest_v3, accounts)
+
+
+def clone_tempest():
+    if not os.path.isdir('tempest'):
+        subprocess.check_call(
+            [
+                'git',
+                'clone', 
+                'https://opendev.org/openstack/tempest',
+                'tempest'])
