@@ -6,17 +6,17 @@ log_file = tempest.log
 
 [auth]
 test_accounts_file = accounts.yaml
-default_credentials_domain_name = admin_domain
-admin_username = admin
-admin_project_name = admin
-admin_password = openstack
-admin_domain_name = admin_domain
+default_credentials_domain_name = {default_credentials_domain_name}
+admin_username = {admin_username}
+admin_project_name = {admin_project_name}
+admin_password = {admin_password}
+admin_domain_name = {admin_domain_name}
 
 [compute]
 image_ref = {image_id}
 image_ref_alt = {image_alt_id}
-flavor_ref = 7
-flavor_ref_alt = 8
+flavor_ref = {flavor_ref}
+flavor_ref_alt = {flavor_ref_alt}
 min_compute_nodes = 3
 
 # TODO: review this as its release specific
