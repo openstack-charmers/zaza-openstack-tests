@@ -218,6 +218,6 @@ def add_tempest_roles():
         keystone_session)
     for role_name in ['Member', 'ResellerAdmin']:
         try:
-            keystone_client.roles.create('Member')
+            keystone_client.roles.create(role_name)
         except keystoneauth1.exceptions.http.Conflict:
             pass
