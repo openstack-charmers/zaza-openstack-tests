@@ -562,8 +562,18 @@ class MySQL8MigrationTests(MySQLBaseTest):
         Do not rely on self.application_name or other pre-set class values as
         we will be pointing to both percona-cluster and mysql-innodb-cluster.
         """
-        # Current set of Databases and application names
-        DBS = ["keystone", "glance"]
+        # Map application name to db name
+        apps_to_dbs = {
+            "keystone": ["keystone"],
+            "glance": ["glance"],
+            "cinder": ["cinder"],
+            "nova-cloud-controller": ["nova", "nova_api", "nova_cell0"],
+            "neutron-api": ["neutron"],
+            "openstack-dashboard": ["horizon"],
+            "placement": ["placement"],
+            "vault": ["vault"]}
+        # TODO: This could do an automated check of what is actually deployed
+        dbs = [db for mapped_dbs in apps_to_dbs.values() for db in mapped_dbs]
         percona_application = "percona-cluster"
         mysql_application = "mysql-innodb-cluster"
         percona_leader = zaza.model.get_unit_from_name(
@@ -571,12 +581,12 @@ class MySQL8MigrationTests(MySQLBaseTest):
         mysql_leader = zaza.model.get_unit_from_name(
             zaza.model.get_lead_unit_name(mysql_application))
         logging.info("Remove percona-cluster:shared-db relations ...")
-        for client in DBS:
+        for app in apps_to_dbs.keys():
             # Remove relations
             zaza.model.remove_relation(
                 percona_application,
                 "{}:shared-db".format(percona_application),
-                "{}:shared-db".format(client))
+                "{}:shared-db".format(app))
         logging.info("Wait till model is idle ...")
         zaza.model.block_until_all_units_idle()
         # Set PXC Strict Mode to MASTER
@@ -594,7 +604,7 @@ class MySQL8MigrationTests(MySQLBaseTest):
             percona_application,
             "mysqldump",
             action_params={
-                "databases": ",".join(DBS)})
+                "databases": ",".join(dbs)})
         assert "failed" not in action.data["status"], (
             "mysqldump action failed: {}"
             .format(action.data))
@@ -633,12 +643,12 @@ class MySQL8MigrationTests(MySQLBaseTest):
             .format(action.data))
         # Add db router relations
         logging.info("Add mysql-router:shared-db relations ...")
-        for client in DBS:
+        for app in apps_to_dbs.keys():
             # add relations
             zaza.model.add_relation(
                 mysql_application,
-                "{}:shared-db".format(client),
-                "{}-mysql-router:shared-db".format(client))
+                "{}:shared-db".format(app),
+                "{}-mysql-router:shared-db".format(app))
         # Set PXC Strict Mode back to ENFORCING
         logging.info("Set PXC Strict Mode ENFORCING ...")
         action = zaza.model.run_action_on_leader(
