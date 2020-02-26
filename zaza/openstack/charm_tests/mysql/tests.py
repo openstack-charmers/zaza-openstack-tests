@@ -33,9 +33,9 @@ class MySQLBaseTest(test_utils.OpenStackBaseTest):
     """Base for mysql charm tests."""
 
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls, application_name=None):
         """Run class setup for running mysql tests."""
-        super(MySQLBaseTest, cls).setUpClass()
+        super().setUpClass(application_name=application_name)
         cls.application = "mysql"
         cls.services = ["mysqld"]
         # Config file affected by juju set config change
@@ -555,6 +555,13 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
 
 class MySQL8MigrationTests(MySQLBaseTest):
     """Percona Cluster to MySQL InnoDB Cluster Tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running migration tests."""
+        # Having application_name set avoids breakage in the OpenStackBaseTest class
+        # when running bundle tests without charm_name specified
+        super().setUpClass(application_name="mysql-innodb-cluster")
 
     def test_999_migrate_percona_to_mysql(self):
         """Migrate DBs from percona-cluster to mysql-innodb-cluster.
