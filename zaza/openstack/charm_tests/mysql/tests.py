@@ -559,8 +559,9 @@ class MySQL8MigrationTests(MySQLBaseTest):
     @classmethod
     def setUpClass(cls):
         """Run class setup for running migration tests."""
-        # Having application_name set avoids breakage in the OpenStackBaseTest class
-        # when running bundle tests without charm_name specified
+        # Having application_name set avoids breakage in the
+        # OpenStackBaseTest class when running bundle tests without
+        # charm_name specified
         super().setUpClass(application_name="mysql-innodb-cluster")
 
     def test_999_migrate_percona_to_mysql(self):
