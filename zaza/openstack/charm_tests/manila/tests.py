@@ -16,7 +16,7 @@
 
 """Encapsulate Manila testing."""
 
-from tenacity import Retrying, stop_after_attempt, wait_exponential
+import tenacity
 
 from manilaclient import client as manilaclient
 
@@ -35,8 +35,10 @@ class ManilaTests(test_utils.OpenStackBaseTest):
 
     def test_manila_api(self):
         """Test that the Manila API is working."""
-        # now just try a list the shares
-        for attempt in Retrying(
-                stop=stop_after_attempt(3),
-                wait=wait_exponential(multiplier=1, min=2, max=10)):
-            self.manila_client.shares.list()
+        self.assertEqual([], self._list_shares())
+
+    @tenacity.retry(
+        stop=tenacity.stop_after_attempt(5),
+        wait=tenacity.wait_exponential(multiplier=3, min=2, max=10))
+    def _list_shares(self):
+        return self.manila_client.shares.list()
