@@ -33,6 +33,7 @@ import zaza.openstack.utilities.ceph as zaza_ceph
 import zaza.openstack.utilities.exceptions as zaza_exceptions
 import zaza.openstack.utilities.generic as zaza_utils
 import zaza.openstack.utilities.juju as zaza_juju
+import zaza.openstack.utilities.kubernetes as zaza_k8s
 import zaza.openstack.utilities.openstack as zaza_openstack
 
 
@@ -760,3 +761,24 @@ class CephProxyTest(unittest.TestCase):
             msg = ('cinder-ceph pool restriction was not configured correctly.'
                    ' Found: {}'.format(output))
             raise zaza_exceptions.CephPoolNotConfigured(msg)
+
+
+class CephK8sTest(unittest.TestCase):
+    """Test Ceph RBD integration with CK."""
+
+    def test_k8s_ceph_rbd(self):
+        logging.info('Wait for idle/ready status...')
+        zaza_model.wait_for_application_states()
+
+        zaza_k8s.validate_storage_class("ceph-ext4")
+        zaza_k8s.validate_storage_class("ceph-xfs")
+
+
+class CephFSK8sTest(unittest.TestCase):
+    """Test CephFS integration with CK."""
+
+    def test_k8s_ceph_fs(self):
+        logging.info('Wait for idle/ready status...')
+        zaza_model.wait_for_application_states()
+
+        zaza_k8s.validate_storage_class("ceph-fs")
