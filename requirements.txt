@@ -1,4 +1,5 @@
 aiounittest
+asyncio
 async_generator
 boto3
 juju

@@ -23,7 +23,7 @@ import unittest
 from zaza import model
 from zaza.openstack.utilities import (
     cli as cli_utils,
-    generic as generic_utils,
+    series_upgrade as series_upgrade_utils,
 )
 from zaza.openstack.charm_tests.nova.tests import LTSGuestCreateTest
 
@@ -95,7 +95,7 @@ class SeriesUpgradeTest(unittest.TestCase):
             if "mongodb" in applications[application]["charm"]:
                 # Mongodb needs to run series upgrade
                 # on its secondaries first.
-                generic_utils.series_upgrade_non_leaders_first(
+                series_upgrade_utils.series_upgrade_non_leaders_first(
                     application,
                     from_series=self.from_series,
                     to_series=self.to_series,
@@ -105,7 +105,7 @@ class SeriesUpgradeTest(unittest.TestCase):
 
             # The rest are likley APIs use defaults
 
-            generic_utils.series_upgrade_application(
+            series_upgrade_utils.series_upgrade_application(
                 application,
                 pause_non_leader_primary=pause_non_leader_primary,
                 pause_non_leader_subordinate=pause_non_leader_subordinate,
