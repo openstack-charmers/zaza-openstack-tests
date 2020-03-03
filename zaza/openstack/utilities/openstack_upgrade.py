@@ -22,20 +22,10 @@ import zaza.openstack.utilities.juju as juju_utils
 
 import zaza.model
 from zaza import sync_wrapper
-
-SERVICE_GROUPS = {
-    'Core Identity': ['keystone'],
-    'Storage': [
-        'ceph-mon', 'ceph-osd', 'ceph-fs', 'ceph-radosgw', 'swift-proxy',
-        'swift-storage'],
-    'Control Plane': [
-        'aodh', 'barbican', 'ceilometer', 'cinder', 'designate',
-        'designate-bind', 'glance', 'gnocchi', 'heat', 'manila',
-        'manila-generic', 'neutron-api', 'neutron-gateway', 'placement',
-        'nova-cloud-controller', 'openstack-dashboard'],
-    'Compute': ['nova-compute']}
-
-UPGRADE_EXCLUDE_LIST = ['rabbitmq-server', 'percona-cluster']
+from zaza.openstack.utilities.upgrade_utils import (
+    SERVICE_GROUPS,
+    UPGRADE_EXCLUDE_LIST,
+)
 
 
 async def async_pause_units(units, model_name=None):
