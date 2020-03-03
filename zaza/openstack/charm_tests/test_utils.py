@@ -335,8 +335,8 @@ class OpenStackBaseTest(unittest.TestCase):
         Pause and then resume a unit checking that services are in the
         required state after each action
 
-        :param services: Services expected to be restarted when config_file is
-                         changed.
+        :param services: Services expected to be restarted when the unit is
+                         paused/resumed.
         :type services: list
         :param pgrep_full: Should pgrep be used rather than pidof to identify
                            a service.
