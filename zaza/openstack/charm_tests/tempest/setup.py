@@ -168,11 +168,10 @@ def render_tempest_config_keystone_v3():
 def clone_tempest():
     if not os.path.isdir('tempest'):
         subprocess.check_call(
-            [
-                'git',
-                'clone',
-                'https://opendev.org/openstack/tempest',
-                'tempest'])
+            ['git',
+             'clone',
+             'https://opendev.org/openstack/tempest',
+             'tempest'])
 
 
 def add_cirros_alt_image():
