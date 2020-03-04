@@ -19,6 +19,8 @@ class TempestTest():
             if model_alias == zaza.charm_lifecycle.utils.DEFAULT_MODEL_ALIAS:
                 tempest_test_key = 'default'
             config = charm_config['tests_options']['tempest'][tempest_test_key]
+            if config.get('smoke'):
+                tempest_options.extend(['--smoke'])
             if config.get('regex'):
                 tempest_options.extend(['--regex', config.get('regex')])
             if config.get('black-regex'):
@@ -42,14 +44,3 @@ class TempestTest():
                 if not _exec_tempest:
                     return False
         return True
-
-class TempestSmokeTest():
-
-    test_runner = zaza.charm_lifecycle.test.DIRECT
-
-    def run(self):
-        the_app = tempest.cmd.main.Main()
-        return the_app.run([
-            'run',
-            '--smoke',
-            '--config', 'tempest/etc/tempest.conf'])
