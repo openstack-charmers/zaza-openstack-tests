@@ -22,9 +22,13 @@ class TempestTest():
             if config.get('smoke'):
                 tempest_options.extend(['--smoke'])
             if config.get('regex'):
-                tempest_options.extend(['--regex', config.get('regex')])
+                tempest_options.extend(
+                    ['--regex',
+                     ' '.join([reg for reg in config.get('regex')])])
             if config.get('black-regex'):
-                tempest_options.extend(['--black-regex', config.get('black-regex')])
+                tempest_options.extend(
+                    ['--black-regex',
+                     ' '.join([reg for reg in config.get('black-regex')])])
             with tempfile.TemporaryDirectory() as tmpdirname:
                 if config.get('whitelist'):
                     white_file = os.path.join(tmpdirname, 'white.cfg')
