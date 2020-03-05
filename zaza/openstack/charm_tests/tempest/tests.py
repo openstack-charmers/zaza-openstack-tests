@@ -7,20 +7,24 @@ import tempest.cmd.main
 import tempfile
 
 
+
 class TempestTest():
 
     test_runner = zaza.charm_lifecycle.test.DIRECT
 
     def run(self):
-        tempest_options = ['init', 'tempest_workspace']
-        the_app = tempest.cmd.main.Main()
-        print(tempest_options)
-        _exec_tempest = the_app.run(tempest_options)
-        #if not _exec_tempest:
-        #   return False
+        tempest_workspace = 'tempst_workspace'
+        tempest_options = ['init', tempest_workspace]
+        if not os.path.isdir(tempest_workspace):
+            the_app = tempest.cmd.main.Main()
+            print(tempest_options)
+            _exec_tempest = the_app.run(tempest_options)
+            if _exec_tempest != 0:
+               return False
 
         charm_config = zaza.charm_lifecycle.utils.get_charm_config()
-        tempest_options = ['run', '--config', 'tempest_workspace/etc/tempest.conf',
+        tempest_options = ['run', '--config',
+                           os.path.join(tempest_workspace, 'etc/tempest.conf'),
                            '--workspace', 'tempest_workspace']
         for model_alias in zaza.model.get_juju_model_aliases().keys():
             tempest_test_key = model_alias
@@ -53,6 +57,6 @@ class TempestTest():
                 print(tempest_options)
                 the_app = tempest.cmd.main.Main()
                 _exec_tempest = the_app.run(tempest_options)
-                if not _exec_tempest:
+                if _exec_tempest != 0:
                     return False
         return True
