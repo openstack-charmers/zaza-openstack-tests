@@ -148,15 +148,15 @@ def render_tempest_config(target_file, ctxt, tempest_template):
 
 def setup_tempest(tempest_template, accounts_template):
     try:
-        os.makedirs('tempest/etc/')
+        os.makedirs('tempest_workspace/etc/')
     except FileExistsError:
         pass
     render_tempest_config(
-        'tempest/etc/tempest.conf',
+        'tempest_workspace/etc/tempest.conf',
         get_tempest_context(),
         tempest_template)
     render_tempest_config(
-        'tempest/etc/accounts.yaml',
+        'tempest_workspace/etc/accounts.yaml',
         get_tempest_context(),
         accounts_template)
 
