@@ -123,8 +123,6 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
         assert(ceil.samples.list() == [])
         assert(ceil.meters.list() == [])
 
-    # NOTE(beisner): need to add more functional tests
-
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change."""
         config_name = 'debug'
