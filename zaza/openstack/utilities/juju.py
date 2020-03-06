@@ -137,7 +137,11 @@ def get_machine_status(machine, key=None, model_name=None):
     :rtype: dict
     """
     status = get_full_juju_status(model_name=model_name)
-    status = status.machines.get(machine)
+    if "lxd" in machine:
+        host = machine.split('/')[0]
+        status = status.machines.get(host)['containers'][machine]
+    else:
+        status = status.machines.get(machine)
     if key:
         status = status.get(key)
     return status
