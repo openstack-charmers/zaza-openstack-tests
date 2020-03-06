@@ -208,13 +208,17 @@ class NeutronGatewayTest(NeutronPluginApiSharedTests):
         return services
 
 
-class NeutronApiTest(test_utils.OpenStackBaseTest):
-    """Test basic Neutron API Charm functionality."""
+class NeutronCreateNetworkTest(test_utils.OpenStackBaseTest):
+    """Test creating a Neutron network through the API.
+
+    This is broken out into a separate class as it can be useful as standalone
+    tests for Neutron plugin subordinate charms.
+    """
 
     @classmethod
     def setUpClass(cls):
         """Run class setup for running Neutron Gateway tests."""
-        super(NeutronApiTest, cls).setUpClass()
+        super(NeutronCreateNetworkTest, cls).setUpClass()
         cls.current_os_release = openstack_utils.get_os_release()
 
         # set up clients
@@ -250,6 +254,10 @@ class NeutronApiTest(test_utils.OpenStackBaseTest):
         # Cleanup
         logging.debug('Deleting neutron network...')
         self.neutron_client.delete_network(network['id'])
+
+
+class NeutronApiTest(NeutronCreateNetworkTest):
+    """Test basic Neutron API Charm functionality."""
 
     def test_401_enable_qos(self):
         """Check qos settings set via neutron-api charm."""
