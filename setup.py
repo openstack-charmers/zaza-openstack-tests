@@ -44,6 +44,7 @@ install_require = [
     'python-novaclient',
     'python-neutronclient',
     'python-octaviaclient',
+    'python-ceilometerclient',
     'python-cinderclient',
     'python-swiftclient',
     'zaza@git+https://github.com/openstack-charmers/zaza.git#egg=zaza',
