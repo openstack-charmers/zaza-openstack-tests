@@ -21,6 +21,7 @@ import zaza.model
 import zaza.utilities.deployment_env as deployment_env
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.glance.setup as glance_setup
+import zaza.openstack.charm_tests.tempest.templates.tempest_v2 as tempest_v2
 import zaza.openstack.charm_tests.tempest.templates.tempest_v3 as tempest_v3
 import zaza.openstack.charm_tests.tempest.templates.accounts as accounts
 
@@ -159,6 +160,10 @@ def setup_tempest(tempest_template, accounts_template):
         'tempest_workspace/etc/accounts.yaml',
         get_tempest_context(),
         accounts_template)
+
+
+def render_tempest_config_keystone_v2():
+    setup_tempest(tempest_v2, accounts)
 
 
 def render_tempest_config_keystone_v3():
