@@ -13,7 +13,7 @@ class TempestTest():
     test_runner = zaza.charm_lifecycle.test.DIRECT
 
     def run(self):
-        tempest_workspace = 'tempst_workspace'
+        tempest_workspace = 'tempest_workspace'
         tempest_options = ['init', tempest_workspace]
         if not os.path.isdir(tempest_workspace):
             the_app = tempest.cmd.main.Main()
