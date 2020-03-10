@@ -15,6 +15,7 @@
 """Code for configuring tempest."""
 import urllib.parse
 import os
+import shutil
 import subprocess
 
 import zaza.model
@@ -24,6 +25,7 @@ import zaza.openstack.charm_tests.glance.setup as glance_setup
 import zaza.openstack.charm_tests.tempest.templates.tempest_v2 as tempest_v2
 import zaza.openstack.charm_tests.tempest.templates.tempest_v3 as tempest_v3
 import zaza.openstack.charm_tests.tempest.templates.accounts as accounts
+import tempest.cmd.main
 
 import keystoneauth1
 import novaclient
@@ -148,16 +150,18 @@ def render_tempest_config(target_file, ctxt, tempest_template):
 
 
 def setup_tempest(tempest_template, accounts_template):
-    try:
-        os.makedirs('tempest_workspace/etc/')
-    except FileExistsError:
-        pass
+    tempest_workspace = 'tempest_workspace'
+    the_app = tempest.cmd.main.Main()
+    tempest_options = ['init', '--workspace-path', './.tempest/workspace.yaml',
+                       tempest_workspace]
+    print(tempest_options)
+    _exec_tempest = the_app.run(tempest_options)
     render_tempest_config(
-        'tempest_workspace/etc/tempest.conf',
+        os.path.join(tempest_workspace, 'etc/tempest.conf'),
         get_tempest_context(),
         tempest_template)
     render_tempest_config(
-        'tempest_workspace/etc/accounts.yaml',
+        os.path.join(tempest_workspace, 'etc/accounts.yaml'),
         get_tempest_context(),
         accounts_template)
 
@@ -216,3 +220,4 @@ def add_tempest_roles():
             keystone_client.roles.create(role_name)
         except keystoneauth1.exceptions.http.Conflict:
             pass
+
