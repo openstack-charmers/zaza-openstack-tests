@@ -39,7 +39,7 @@ def roundrobin_assign_hosts_to_segments(nova_client, masakari_client):
     segment_ids = segment_ids * len(hypervisors)
     for hypervisor in hypervisors:
         target_segment = segment_ids.pop()
-        hostname = hypervisor.hypervisor_hostname.split('.')[0]
+        hostname = hypervisor.hypervisor_hostname
         logging.info('Adding {} to segment {}'.format(hostname,
                                                       target_segment))
         masakari_client.create_host(

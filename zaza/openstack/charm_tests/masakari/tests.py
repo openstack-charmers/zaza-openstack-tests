@@ -18,6 +18,7 @@
 
 from datetime import datetime
 import logging
+import unittest
 import tenacity
 
 import novaclient
@@ -165,6 +166,7 @@ class MasakariTest(test_utils.OpenStackBaseTest):
 
     def test_instance_restart_on_fail(self):
         """Test singlee guest crash and recovery."""
+        raise unittest.SkipTest("Bug #1866638")
         vm_name = 'zaza-test-instance-failover'
         vm = self.ensure_guest(vm_name)
         _, unit_name = self.get_guests_compute_info(vm_name)
