@@ -49,7 +49,9 @@ class TempestTest():
                     tempest_options.extend(['--blacklist-file', black_file])
                 print(tempest_options)
                 the_app = tempest.cmd.main.Main()
+                project_root = os.getcwd()
                 _exec_tempest = the_app.run(tempest_options)
+                os.chdir(project_root)
                 if _exec_tempest != 0:
                     return False
         return True
