@@ -125,10 +125,14 @@ def add_access_protocol(ctxt):
     ctxt['proto'] = urllib.parse.urlparse(overcloud_auth['OS_AUTH_URL']).scheme
     ctxt['admin_username'] = overcloud_auth['OS_USERNAME']
     ctxt['admin_password'] = overcloud_auth['OS_PASSWORD']
-    ctxt['admin_project_name'] = overcloud_auth['OS_PROJECT_NAME']
-    ctxt['admin_domain_name'] = overcloud_auth['OS_DOMAIN_NAME']
-    ctxt['default_credentials_domain_name'] = overcloud_auth[
-        'OS_PROJECT_DOMAIN_NAME']
+    if overcloud_auth['API_VERSION'] == 3:
+        ctxt['admin_project_name'] = overcloud_auth['OS_PROJECT_NAME']
+        ctxt['admin_domain_name'] = overcloud_auth['OS_DOMAIN_NAME']
+        ctxt['default_credentials_domain_name'] = overcloud_auth[
+             'OS_PROJECT_DOMAIN_NAME']
+    elif overcloud_auth['API_VERSION'] == 2:
+        #ctxt['admin_tenant_name'] = overcloud_auth['OS_TENANT_NAME']
+        pass
 
 
 def get_tempest_context():
