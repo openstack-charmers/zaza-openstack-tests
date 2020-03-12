@@ -148,7 +148,7 @@ def _svc_set_systemd_restart_mode(unit_name, service_name, mode, model_name):
         mode))
     cmds = [
         ("sed -i -e 's/^Restart=.*/Restart={}/g' "
-         "/lib/systemd/system/{}.service'").format(mode, service_name),
+         "/lib/systemd/system/{}.service").format(mode, service_name),
         'systemctl daemon-reload']
     logging.info('Running {} on {}'.format(cmds, unit_name))
     zaza.model.run_on_unit(
