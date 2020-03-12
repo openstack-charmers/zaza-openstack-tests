@@ -6,17 +6,18 @@ log_file = tempest.log
 
 [auth]
 test_accounts_file = accounts.yaml
-default_credentials_domain_name = {default_credentials_domain_name}
+default_credentials_domain_name = Default
 admin_username = {admin_username}
-admin_project_name = {admin_project_name}
+admin_project_name = admin
 admin_password = {admin_password}
-admin_domain_name = {admin_domain_name}
+admin_domain_name = Default
 
 [compute]
 image_ref = {image_id}
 image_ref_alt = {image_alt_id}
 flavor_ref = {flavor_ref}
 flavor_ref_alt = {flavor_ref_alt}
+region = RegionOne
 min_compute_nodes = 3
 
 # TODO: review this as its release specific
@@ -35,8 +36,6 @@ uri = {proto}://{keystone}:5000/v2.0
 auth_version = v2
 admin_role = Admin
 region = RegionOne
-default_domain_id = {default_domain_id}
-admin_domain_scope = true
 
 [identity-feature-enabled]
 api_v2 = true
@@ -89,6 +88,10 @@ zaqar = false
 [volume]
 backend_names = cinder-ceph
 storage_protocol = ceph
+# NOTE(coreycb): Need to enalbe catalog_type, determined by:
+# volume_version=$(openstack endpoint list -c 'Service Type' -f value | grep -m 1 volumev3 ||
+#                  openstack endpoint list -c 'Service Type' -f value | grep -m 1 volumev2)
+# catalog_type = __VOLUME_VERSION__
 
 [volume-feature-enabled]
 backup = false"""
