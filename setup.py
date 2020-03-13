@@ -37,6 +37,7 @@ install_require = [
     'oslo.config',
     'aodhclient',
     'gnocchiclient>=7.0.5,<8.0.0',
+    'pika>=1.1.0,<2.0.0',
     'python-designateclient>=1.5,<3.0.0',
     'python-heatclient',
     'python-glanceclient',
