@@ -26,6 +26,7 @@ from setuptools.command.test import test as TestCommand
 version = "0.0.1.dev1"
 install_require = [
     'async_generator',
+    'boto3',
     'cryptography',
     'hvac<0.7.0',
     'jinja2',

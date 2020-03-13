@@ -1,5 +1,6 @@
 aiounittest
 async_generator
+boto3
 juju
 juju_wait
 PyYAML<=4.2,>=3.0
