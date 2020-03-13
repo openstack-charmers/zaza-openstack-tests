@@ -1,6 +1,6 @@
 file_contents = """
 [DEFAULT]
-debug = true
+debug = false
 use_stderr = false
 log_file = tempest.log
 
