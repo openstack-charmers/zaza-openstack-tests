@@ -154,18 +154,36 @@ def render_tempest_config(target_file, ctxt, tempest_template):
 
 
 def setup_tempest(tempest_template, accounts_template):
-    tempest_workspace = 'tempest_workspace'
+    config_dir = '.tempest'
+    config_etc_dir = os.path.join(config_dir, 'etc')
+    config_etc_tempest = os.path.join(config_etc_dir, 'tempest.conf')
+    config_workspace_yaml = os.path.join(config_dir, 'workspace.yaml')
+    workspace_name = 'workspace'
+    workspace_dir = os.path.join(config_dir, workspace_name)
+    workspace_etc_dir = os.path.join(workspace_dir, 'etc')
+    workspace_etc_accounts = os.path.join(workspace_etc_dir, 'accounts.yaml')
+    workspace_etc_tempest = os.path.join(workspace_etc_dir, 'tempest.conf')
     the_app = tempest.cmd.main.Main()
-    tempest_options = ['init', '--workspace-path', './.tempest/workspace.yaml',
-                       tempest_workspace]
+
+    # note sure this is needed or not
+    if not os.path.isdir(config_dir):
+        os.mkdir(config_dir)
+        os.mkdir(config_etc_dir)
+    render_tempest_config(
+        config_etc_tempest,
+        get_tempest_context(),
+        tempest_template)
+    tempest_options = ['init', '--workspace-path', config_workspace_yaml,
+                       '--name', workspace_name, workspace_dir]
     print(tempest_options)
     _exec_tempest = the_app.run(tempest_options)
+    # This was mising /etc/tempest/ and just going to /etc/
     render_tempest_config(
-        os.path.join(tempest_workspace, 'etc/tempest.conf'),
+        workspace_etc_tempest,
         get_tempest_context(),
         tempest_template)
     render_tempest_config(
-        os.path.join(tempest_workspace, 'etc/accounts.yaml'),
+        workspace_etc_accounts,
         get_tempest_context(),
         accounts_template)
 
