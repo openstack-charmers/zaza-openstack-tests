@@ -15,10 +15,10 @@ class TempestTest():
     def run(self):
         charm_config = zaza.charm_lifecycle.utils.get_charm_config()
         tempest_workspace = 'tempest_workspace'
-        tempest_options = ['run', '--config',
+        tempest_options = ['run', '--config-file',
                            os.path.join(tempest_workspace, 'etc/tempest.conf'),
                            '--workspace-path', './.tempest/workspace.yaml',
-                           '--workspace', 'tempest_workspace']
+                           '--workspace', tempest_workspace]
         for model_alias in zaza.model.get_juju_model_aliases().keys():
             tempest_test_key = model_alias
             if model_alias == zaza.charm_lifecycle.utils.DEFAULT_MODEL_ALIAS:
