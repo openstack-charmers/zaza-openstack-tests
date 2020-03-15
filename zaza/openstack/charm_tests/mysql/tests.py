@@ -149,6 +149,25 @@ class PerconaClusterBaseTest(MySQLBaseTest):
         value = self.get_wsrep_value("wsrep_ready")
         return value.lower() in ["on", "ready"]
 
+    def is_pxc_seeded_file_present(self, unit):
+        """Check if seeded file is present with the expected content.
+
+        :param unit: unit to check the seeded file.
+        :returns: True if the file is present.
+        :rtype: boolean
+        """
+        cmd = "sudo cat /var/lib/percona-xtradb-cluster/seeded"
+        logging.info("Checking {}".format(unit.entity_id))
+        result = zaza.model.run_on_unit(unit.entity_id, cmd)
+        output = result.get("Stdout").strip()
+        stderr = result.get("Stderr").strip()
+
+        if stderr:
+            logging.warn("Stderr: %s" % stderr)
+
+        logging.info("code: %s , output: %s" % (result["Code"], output))
+        return result["Code"] == "0" and output == "done"
+
     def get_cluster_size(self):
         """Determine the cluster size.
 
@@ -195,6 +214,12 @@ class PerconaClusterCharmTests(MySQLCommonTests, PerconaClusterBaseTest):
         logging.info("Ensuring PXC is bootstrapped")
         msg = "Percona cluster failed to bootstrap"
         assert self.is_pxc_bootstrapped(), msg
+
+        logging.info("Ensyring PXC seeded file is present")
+        msg = "Percona cluster 'seeded' file is missing in {}"
+        for unit in zaza.model.get_units(self.application):
+            assert self.is_pxc_seeded_file_present(unit), \
+                msg.format(unit.entity_id)
 
         logging.info("Checking PXC cluster size >= {}".format(self.units))
         cluster_size = int(self.get_cluster_size())
