@@ -29,6 +29,8 @@ import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.utilities.generic as generic_utils
 
 
+PXC_SEEDED_FILE = "/var/lib/percona-xtradb-cluster/seeded"
+
 class MySQLBaseTest(test_utils.OpenStackBaseTest):
     """Base for mysql charm tests."""
 
@@ -149,6 +151,25 @@ class PerconaClusterBaseTest(MySQLBaseTest):
         value = self.get_wsrep_value("wsrep_ready")
         return value.lower() in ["on", "ready"]
 
+    def is_pxc_seeded_file_present(self, unit):
+        """Check if seeded file is present with the expected content.
+
+        :param unit: unit to check the seeded file.
+        :returns: True if the file is present.
+        :rtype: boolean
+        """
+        cmd = "sudo cat {}".format(PXC_SEEDED_FILE)
+        logging.info("Checking {}".format(unit.entity_id))
+        result = zaza.model.run_on_unit(unit.entity_id, cmd)
+        output = result.get("Stdout").strip()
+        stderr = result.get("Stderr").strip()
+
+        if stderr:
+            logging.warn("Stderr: %s" % stderr)
+
+        logging.info("code: %s , output: %s" % (result["Code"], output))
+        return result["Code"] == "0" and output == "done"
+
     def get_cluster_size(self):
         """Determine the cluster size.
 
@@ -201,6 +222,10 @@ class PerconaClusterCharmTests(MySQLCommonTests, PerconaClusterBaseTest):
         msg = ("Percona cluster unexpected size"
                " (wanted=%s, cluster_size=%s)" % (self.units, cluster_size))
         assert cluster_size >= self.units, msg
+
+        logging.info("Ensuring PXC seeded file is present")
+        zaza.model.block_until_file_has_contents(self.application,
+                                                 PXC_SEEDED_FILE, "done")
 
     def test_130_change_root_password(self):
         """Change root password.
