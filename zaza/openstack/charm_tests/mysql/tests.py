@@ -31,6 +31,7 @@ import zaza.openstack.utilities.generic as generic_utils
 
 PXC_SEEDED_FILE = "/var/lib/percona-xtradb-cluster/seeded"
 
+
 class MySQLBaseTest(test_utils.OpenStackBaseTest):
     """Base for mysql charm tests."""
 
@@ -255,6 +256,22 @@ class PerconaClusterCharmTests(MySQLCommonTests, PerconaClusterBaseTest):
             output = result.get("Stdout").strip()
 
             assert code == "0", output
+
+    def test_140_mark_seeded_action(self):
+        """Test mark-seeded action in leader unit.
+
+        Remove seeded file and recreate it using the action.
+        """
+        cmd = "sudo rm {}".format(PXC_SEEDED_FILE)
+        result = zaza.model.run_on_leader(self.application, cmd)
+        msg = "Stdout: %s, Stderr: %s" % (result.get("Stdout"),
+                                          result.get("Stderr"))
+        assert result.get("Code") == "0", msg
+
+        action = zaza.model.run_action_on_leader(self.application,
+                                                 "mark-seeded")
+        assert "Success" in action.data["results"]["outcome"], \
+            "mark-seeded action failed: {}".format(action.data)
 
 
 class PerconaClusterColdStartTest(PerconaClusterBaseTest):
