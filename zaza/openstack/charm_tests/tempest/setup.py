@@ -138,13 +138,13 @@ def add_access_protocol(ctxt):
 def get_tempest_context():
     keystone_session = openstack_utils.get_overcloud_keystone_session()
     ctxt = {}
-    add_application_ips(ctxt)
-    add_nova_config(ctxt, keystone_session)
-    add_neutron_config(ctxt, keystone_session)
-    add_glance_config(ctxt, keystone_session)
-    add_keystone_config(ctxt, keystone_session)
-    add_environment_var_config(ctxt)
-    add_access_protocol(ctxt)
+    #add_application_ips(ctxt)
+    #add_nova_config(ctxt, keystone_session)
+    #add_neutron_config(ctxt, keystone_session)
+    #add_glance_config(ctxt, keystone_session)
+    #add_keystone_config(ctxt, keystone_session)
+    #add_environment_var_config(ctxt)
+    #add_access_protocol(ctxt)
     return ctxt
 
 
