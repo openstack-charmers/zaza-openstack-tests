@@ -101,6 +101,68 @@ def series_upgrade_non_leaders_first(application, from_series="trusty",
         model.block_until_all_units_idle()
 
 
+async def async_series_upgrade_non_leaders_first(application, from_series="trusty",
+                                                 to_series="xenial",
+                                                 completed_machines=[],
+                                                 post_upgrade_functions=None):
+    """Series upgrade non leaders first.
+
+    Wrap all the functionality to handle series upgrade for charms
+    which must have non leaders upgraded first.
+
+    :param application: Name of application to upgrade series
+    :type application: str
+    :param from_series: The series from which to upgrade
+    :type from_series: str
+    :param to_series: The series to which to upgrade
+    :type to_series: str
+    :param completed_machines: List of completed machines which do no longer
+                               require series upgrade.
+    :type completed_machines: list
+    :returns: None
+    :rtype: None
+    """
+    status = (await model.async_get_status()).applications[application]
+    leader = None
+    non_leaders = []
+    for unit in status["units"]:
+        if status["units"][unit].get("leader"):
+            leader = unit
+        else:
+            non_leaders.append(unit)
+
+    # Series upgrade the non-leaders first
+    for unit in non_leaders:
+        machine = status["units"][unit]["machine"]
+        if machine not in completed_machines:
+            logging.info("Series upgrade non-leader unit: {}"
+                         .format(unit))
+            await async_series_upgrade(unit, machine,
+                           from_series=from_series, to_series=to_series,
+                           origin=None,
+                           post_upgrade_functions=post_upgrade_functions)
+            await async_run_post_upgrade_functions(post_upgrade_functions)
+            completed_machines.append(machine)
+        else:
+            logging.info("Skipping unit: {}. Machine: {} already upgraded. "
+                         .format(unit, machine, application))
+            await model.async_block_until_all_units_idle()
+
+    # Series upgrade the leader
+    machine = status["units"][leader]["machine"]
+    logging.info("Series upgrade leader: {}".format(leader))
+    if machine not in completed_machines:
+        await async_series_upgrade(leader, machine,
+                       from_series=from_series, to_series=to_series,
+                       origin=None,
+                       post_upgrade_functions=post_upgrade_functions)
+        completed_machines.append(machine)
+    else:
+        logging.info("Skipping unit: {}. Machine: {} already upgraded."
+                     .format(unit, machine, application))
+        await model.async_block_until_all_units_idle()
+
+
 def series_upgrade_application(application, pause_non_leader_primary=True,
                                pause_non_leader_subordinate=True,
                                from_series="trusty", to_series="xenial",
@@ -209,6 +271,144 @@ def series_upgrade_application(application, pause_non_leader_primary=True,
             model.block_until_all_units_idle()
 
 
+async def async_series_upgrade_application(application,
+                                           pause_non_leader_primary=True,
+                                           pause_non_leader_subordinate=True,
+                                           from_series="trusty",
+                                           to_series="xenial",
+                                           origin='openstack-origin',
+                                           completed_machines=None,
+                                           files=None, workaround_script=None,
+                                           post_upgrade_functions=None):
+    """Series upgrade application.
+
+    Wrap all the functionality to handle series upgrade for a given
+    application. Including pausing non-leader units.
+
+    :param application: Name of application to upgrade series
+    :type application: str
+    :param pause_non_leader_primary: Whether the non-leader applications should
+                                     be paused
+    :type pause_non_leader_primary: bool
+    :param pause_non_leader_subordinate: Whether the non-leader subordinate
+                                         hacluster applications should be
+                                         paused
+    :type pause_non_leader_subordinate: bool
+    :param from_series: The series from which to upgrade
+    :type from_series: str
+    :param to_series: The series to which to upgrade
+    :type to_series: str
+    :param origin: The configuration setting variable name for changing origin
+                   source. (openstack-origin or source)
+    :type origin: str
+    :param completed_machines: List of completed machines which do no longer
+                               require series upgrade.
+    :type completed_machines: list
+    :param files: Workaround files to scp to unit under upgrade
+    :type files: list
+    :param workaround_script: Workaround script to run during series upgrade
+    :type workaround_script: str
+    :returns: None
+    :rtype: None
+    """
+    if completed_machines is None:
+        completed_machines = []
+    status = (await model.async_get_status()).applications[application]
+
+    # For some applications (percona-cluster) the leader unit must upgrade
+    # first. For API applications the non-leader haclusters must be paused
+    # before upgrade. Finally, for some applications this is arbitrary but
+    # generalized.
+    leader = None
+    non_leaders = []
+    for unit in status["units"]:
+        if status["units"][unit].get("leader"):
+            leader = unit
+        else:
+            non_leaders.append(unit)
+
+    # Pause the non-leaders
+    for unit in non_leaders:
+        if pause_non_leader_subordinate:
+            if status["units"][unit].get("subordinates"):
+                for subordinate in status["units"][unit]["subordinates"]:
+                    _app = subordinate.split('/')[0]
+                    if _app in SUBORDINATE_PAUSE_RESUME_BLACKLIST:
+                        logging.info("Skipping pausing {} - blacklisted"
+                                     .format(subordinate))
+                    else:
+                        logging.info("Pausing {}".format(subordinate))
+                        await model.async_run_action(
+                            subordinate, "pause", action_params={})
+        if pause_non_leader_primary:
+            logging.info("Pausing {}".format(unit))
+            await model.async_run_action(unit, "pause", action_params={})
+
+    machine = status["units"][leader]["machine"]
+    # Series upgrade the leader
+    logging.info("Series upgrade leader: {}".format(leader))
+    if machine not in completed_machines:
+        await async_series_upgrade(leader, machine,
+                                   from_series=from_series,
+                                   to_series=to_series,
+                                   origin=origin,
+                                   workaround_script=workaround_script,
+                                   files=files,
+                                   post_upgrade_functions=post_upgrade_functions)
+        completed_machines.append(machine)
+    else:
+        logging.info("Skipping unit: {}. Machine: {} already upgraded."
+                     "But setting origin on the application {}"
+                     .format(unit, machine, application))
+        logging.info("Set origin on {}".format(application))
+        await os_utils.async_set_origin(application, origin)
+        await wait_for_unit_idle(unit)
+
+    # Series upgrade the non-leaders
+    for unit in non_leaders:
+        machine = status["units"][unit]["machine"]
+        if machine not in completed_machines:
+            logging.info("Series upgrade non-leader unit: {}"
+                         .format(unit))
+            await async_series_upgrade(unit, machine,
+                                       from_series=from_series,
+                                       to_series=to_series,
+                                       origin=origin,
+                                       workaround_script=workaround_script,
+                                       files=files,
+                                       post_upgrade_functions=post_upgrade_functions)
+            completed_machines.append(machine)
+        else:
+            logging.info("Skipping unit: {}. Machine: {} already upgraded. "
+                         "But setting origin on the application {}"
+                         .format(unit, machine, application))
+            logging.info("Set origin on {}".format(application))
+            await os_utils.async_set_origin(application, origin)
+            await wait_for_unit_idle(unit)
+
+
+async def wait_for_unit_idle(unit_name):
+    app = unit_name.split('/')[0]
+    try:
+        await model.async_block_until(_unit_idle(app, unit_name),
+            timeout=600)
+    except concurrent.futures._base.TimeoutError:
+        raise ModelTimeout("Zaza has timed out waiting on the unit to "
+                           "reach idle state.")
+
+def _unit_idle(app, unit_name):
+    async def f():
+        x = await get_agent_status(app, unit_name)
+        return x == "idle"
+    return f
+    #return await get_agent_status(app, unit_name) is "idle"
+
+async def get_agent_status(app, unit_name):
+    return (await model.async_get_status()). \
+        applications[app]['units'][unit_name] \
+        ['agent-status']['status']
+
+
 def series_upgrade(unit_name, machine_num,
                    from_series="trusty", to_series="xenial",
                    origin='openstack-origin',
@@ -305,42 +505,93 @@ async def async_series_upgrade(unit_name, machine_num,
     application = unit_name.split('/')[0]
     await os_utils.async_set_dpkg_non_interactive_on_unit(unit_name)
     await async_dist_upgrade(unit_name)
-    await model.async_block_until_all_units_idle()
+    await wait_for_unit_idle(unit_name)
     logging.info("Prepare series upgrade on {}".format(machine_num))
-    await model.async_prepare_series_upgrade(machine_num, to_series=to_series)
+    await async_prepare_series_upgrade(machine_num, to_series=to_series)
     logging.info("Waiting for workload status 'blocked' on {}"
                  .format(unit_name))
     await model.async_block_until_unit_wl_status(unit_name, "blocked")
-    logging.info("Waiting for model idleness")
-    await model.async_block_until_all_units_idle()
+    logging.info("Waiting for unit {} idleness".format(unit_name))
+    await wait_for_unit_idle(unit_name)
     await async_wrap_do_release_upgrade(unit_name, from_series=from_series,
                                         to_series=to_series, files=files,
                                         workaround_script=workaround_script)
     logging.info("Reboot {}".format(unit_name))
-    os_utils.reboot(unit_name)
+    await os_utils.async_reboot(unit_name)
     logging.info("Waiting for workload status 'blocked' on {}"
                  .format(unit_name))
     await model.async_block_until_unit_wl_status(unit_name, "blocked")
-    logging.info("Waiting for model idleness")
-    await model.async_block_until_all_units_idle()
+    logging.info("Waiting for unit {} idleness".format(unit_name))
+    await wait_for_unit_idle(unit_name)
     logging.info("Set origin on {}".format(application))
     # Allow for charms which have neither source nor openstack-origin
     if origin:
         await os_utils.async_set_origin(application, origin)
-    await model.async_block_until_all_units_idle()
+    await wait_for_unit_idle(unit_name)
     logging.info("Complete series upgrade on {}".format(machine_num))
-    await model.async_complete_series_upgrade(machine_num)
-    await model.async_block_until_all_units_idle()
+    await async_complete_series_upgrade(machine_num)
+    await wait_for_unit_idle(unit_name)
     logging.info("Running run_post_upgrade_functions {}".format(
         post_upgrade_functions))
     run_post_upgrade_functions(post_upgrade_functions)
     logging.info("Waiting for workload status 'active' on {}"
                  .format(unit_name))
     await model.async_block_until_unit_wl_status(unit_name, "active")
-    await model.async_block_until_all_units_idle()
+    await wait_for_unit_idle(unit_name)
     # This step may be performed by juju in the future
     logging.info("Set series on {} to {}".format(application, to_series))
-    await model.async_set_series(application, to_series)
+    await async_set_series(application, to_series)
+
+
+async def async_prepare_series_upgrade(machine_num, to_series="xenial"):
+    """Execute juju series-upgrade prepare on machine.
+    NOTE: This is a new feature in juju behind a feature flag and not yet in
+    libjuju.
+    export JUJU_DEV_FEATURE_FLAGS=upgrade-series
+    :param machine_num: Machine number
+    :type machine_num: str
+    :param to_series: The series to which to upgrade
+    :type to_series: str
+    :returns: None
+    :rtype: None
+    """
+    juju_model = await model.async_get_juju_model()
+    cmd = ["juju", "upgrade-series", "-m", juju_model,
+           machine_num, "prepare", to_series, "--yes"]
+    logging.info("About to call '{}'".format(cmd))
+    await os_utils.check_call(cmd)
+
+
+async def async_complete_series_upgrade(machine_num):
+    """Execute juju series-upgrade complete on machine.
+    NOTE: This is a new feature in juju behind a feature flag and not yet in
+    libjuju.
+    export JUJU_DEV_FEATURE_FLAGS=upgrade-series
+    :param machine_num: Machine number
+    :type machine_num: str
+    :returns: None
+    :rtype: None
+    """
+    juju_model = await model.async_get_juju_model()
+    cmd = ["juju", "upgrade-series", "-m", juju_model,
+           machine_num, "complete"]
+    await os_utils.check_call(cmd)
+
+
+async def async_set_series(application, to_series):
+    """Execute juju set-series complete on application.
+    NOTE: This is a new feature in juju and not yet in libjuju.
+    :param application: Name of application to upgrade series
+    :type application: str
+    :param to_series: The series to which to upgrade
+    :type to_series: str
+    :returns: None
+    :rtype: None
+    """
+    juju_model = await model.async_get_juju_model()
+    cmd = ["juju", "set-series", "-m", juju_model,
+           application, to_series]
+    await os_utils.check_call(cmd)
 
 def wrap_do_release_upgrade(unit_name, from_series="trusty",
                             to_series="xenial",
@@ -416,10 +667,10 @@ async def async_wrap_do_release_upgrade(unit_name, from_series="trusty",
     # Run Script
     if workaround_script:
         logging.info("Running workaround script")
-        os_utils.run_via_ssh(unit_name, workaround_script)
+        await os_utils.async_run_via_ssh(unit_name, workaround_script)
 
     # Actually do the do_release_upgrade
-    do_release_upgrade(unit_name)
+    await async_do_release_upgrade(unit_name)
 
 
 def dist_upgrade(unit_name):
@@ -477,3 +728,21 @@ def do_release_upgrade(unit_name):
         unit_name,
         'DEBIAN_FRONTEND=noninteractive '
         'do-release-upgrade -f DistUpgradeViewNonInteractive')
+
+
+async def async_do_release_upgrade(unit_name):
+    """Run do-release-upgrade noninteractive.
+
+    :param unit_name: Unit Name
+    :type unit_name: str
+    :returns: None
+    :rtype: None
+    """
+    logging.info('Upgrading ' + unit_name)
+    # NOTE: It is necessary to run this via juju ssh rather than juju run due
+    # to timeout restrictions and error handling.
+    await os_utils.async_run_via_ssh(
+        unit_name,
+        'DEBIAN_FRONTEND=noninteractive '
+        'do-release-upgrade -f DistUpgradeViewNonInteractive')
+

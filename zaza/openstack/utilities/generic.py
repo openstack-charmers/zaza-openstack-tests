@@ -14,6 +14,7 @@
 
 """Collection of functions that did not fit anywhere else."""
 
+import asyncio
 import logging
 import os
 import socket
@@ -205,6 +206,25 @@ def set_origin(application, origin='openstack-origin', pocket='distro'):
     model.set_application_config(application, {origin: pocket})
 
 
+async def async_set_origin(application, origin='openstack-origin',
+                           pocket='distro'):
+    """Set the configuration option for origin source.
+
+    :param application: Name of application to upgrade series
+    :type application: str
+    :param origin: The configuration setting variable name for changing origin
+                   source. (openstack-origin or source)
+    :type origin: str
+    :param pocket: Origin source cloud pocket.
+                   i.e. 'distro' or 'cloud:xenial-newton'
+    :type pocket: str
+    :returns: None
+    :rtype: None
+    """
+    logging.info("Set origin on {} to {}".format(application, origin))
+    await model.async_set_application_config(application, {origin: pocket})
+
+
 def run_via_ssh(unit_name, cmd):
     """Run command on unit via ssh.
 
@@ -222,6 +242,28 @@ def run_via_ssh(unit_name, cmd):
     logging.info("Running {} on {}".format(cmd, unit_name))
     try:
         subprocess.check_call(cmd)
+    except subprocess.CalledProcessError as e:
+        logging.warn("Failed command {} on {}".format(cmd, unit_name))
+        logging.warn(e)
+
+
+async def async_run_via_ssh(unit_name, cmd):
+    """Run command on unit via ssh.
+
+    For executing commands on units when the juju agent is down.
+
+    :param unit_name: Unit Name
+    :param cmd: Command to execute on remote unit
+    :type cmd: str
+    :returns: None
+    :rtype: None
+    """
+    if "sudo" not in cmd:
+        # cmd.insert(0, "sudo")
+        cmd = "sudo {}".format(cmd)
+    cmd = ['juju', 'ssh', unit_name, cmd]
+    try:
+        await check_call(cmd)
     except subprocess.CalledProcessError as e:
         logging.warn("Failed command {} on {}".format(cmd, unit_name))
         logging.warn(e)
@@ -270,6 +312,29 @@ def reboot(unit_name):
         pass
 
 
+async def async_reboot(unit_name):
+    """Reboot unit.
+
+    :param unit_name: Unit Name
+    :type unit_name: str
+    :returns: None
+    :rtype: None
+    """
+    # NOTE: When used with series upgrade the agent will be down.
+    # Even juju run will not work
+    await async_run_via_ssh(unit_name, "sudo reboot && exit")
+
+
+async def check_call(cmd):
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE)
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise subprocess.CalledProcessError(proc.returncode, cmd)
+
+
 def set_dpkg_non_interactive_on_unit(
         unit_name, apt_conf_d="/etc/apt/apt.conf.d/50unattended-upgrades"):
     """Set dpkg options on unit.
@@ -284,6 +349,22 @@ def set_dpkg_non_interactive_on_unit(
     cmd = ("grep '{option}' {file_name} || echo '{option}' >> {file_name}"
            .format(option=DPKG_NON_INTERACTIVE, file_name=apt_conf_d))
     model.run_on_unit(unit_name, cmd)
+
+
+async def async_set_dpkg_non_interactive_on_unit(
+        unit_name, apt_conf_d="/etc/apt/apt.conf.d/50unattended-upgrades"):
+    """Set dpkg options on unit.
+
+    :param unit_name: Unit Name
+    :type unit_name: str
+    :param apt_conf_d: Apt.conf file to update
+    :type apt_conf_d: str
+    """
+    DPKG_NON_INTERACTIVE = 'DPkg::options { "--force-confdef"; };'
+    # Check if the option exists. If not, add it to the apt.conf.d file
+    cmd = ("grep '{option}' {file_name} || echo '{option}' >> {file_name}"
+           .format(option=DPKG_NON_INTERACTIVE, file_name=apt_conf_d))
+    await model.async_run_on_unit(unit_name, cmd)
 
 
 def get_process_id_list(unit_name, process_name,
