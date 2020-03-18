@@ -744,5 +744,6 @@ async def async_do_release_upgrade(unit_name):
     await os_utils.async_run_via_ssh(
         unit_name,
         'DEBIAN_FRONTEND=noninteractive '
-        'do-release-upgrade -f DistUpgradeViewNonInteractive')
+        'do-release-upgrade -f DistUpgradeViewNonInteractive',
+        raise_exceptions=True)
 

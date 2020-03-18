@@ -247,7 +247,7 @@ def run_via_ssh(unit_name, cmd):
         logging.warn(e)
 
 
-async def async_run_via_ssh(unit_name, cmd):
+async def async_run_via_ssh(unit_name, cmd, raise_exceptions=False):
     """Run command on unit via ssh.
 
     For executing commands on units when the juju agent is down.
@@ -267,6 +267,8 @@ async def async_run_via_ssh(unit_name, cmd):
     except subprocess.CalledProcessError as e:
         logging.warn("Failed command {} on {}".format(cmd, unit_name))
         logging.warn(e)
+        if raise_exceptions:
+            raise e
 
 
 def check_commands_on_units(commands, units):

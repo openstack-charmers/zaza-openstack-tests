@@ -328,7 +328,7 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
                     post_upgrade_functions=post_upgrade_functions))
 
             asyncio.get_event_loop().run_until_complete(
-                asyncio.gather(*upgrade_group, return_exceptions=True))
+                asyncio.gather(*upgrade_group))
             if "rabbitmq-server" in group:
                 logging.info(
                     "Running complete-cluster-series-upgrade action on leader")
