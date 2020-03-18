@@ -33,12 +33,6 @@ SERVICE_GROUPS = collections.OrderedDict([
 
 UPGRADE_EXCLUDE_LIST = ['rabbitmq-server', 'percona-cluster']
 
-# Series upgrade ordering should be: [
-#     UPGRADE_EXCLUDE_LIST,
-#     SERVICE_GROUPS['Core Identity'],
-#     SERVICE_GROUPS['Control Plane'] + SERVICE_GROUPS['Storage'],
-#     SERVICE_GROUPS['Data Plane'],
-# ]
 
 def get_upgrade_candidates(model_name=None):
     """Extract list of apps from model that can be upgraded.
@@ -106,6 +100,7 @@ def get_upgrade_groups(model_name=None):
 
     groups['sweep_up'] = sweep_up
     return groups
+
 
 def extract_charm_name_from_url(charm_url):
     """Extract the charm name from the charm url.

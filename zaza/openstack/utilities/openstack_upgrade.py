@@ -22,9 +22,6 @@ import zaza.openstack.utilities.juju as juju_utils
 import zaza.model
 from zaza import sync_wrapper
 from zaza.openstack.utilities.upgrade_utils import (
-    SERVICE_GROUPS,
-    UPGRADE_EXCLUDE_LIST,
-    get_upgrade_candidates,
     get_upgrade_groups,
 )
 

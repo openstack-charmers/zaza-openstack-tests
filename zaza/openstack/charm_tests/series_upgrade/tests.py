@@ -49,7 +49,7 @@ class SeriesUpgradeTest(unittest.TestCase):
 
         applications = model.get_status().applications
         completed_machines = []
-        for application in applications:
+        for application, app_details in applications:
             # Defaults
             origin = "openstack-origin"
             pause_non_leader_subordinate = True
@@ -240,7 +240,6 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
             if app in applications.keys()]
         upgrade_groups['deferred'] = []
         completed_machines = []
-        deferred_applications = []
         for group_name, group in upgrade_groups.items():
             logging.warn("About to upgrade {} ({})".format(group_name, group))
             upgrade_group = []
@@ -253,11 +252,11 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
                 name = upgrade_utils.extract_charm_name_from_url(
                     app_details['charm'])
                 if name not in group and application not in group:
-                    if group_name is not "deferred" and \
+                    if group_name != "deferred" and \
                             name not in upgrade_groups['deferred']:
                         upgrade_groups['deferred'].append(name)
                     continue
-                if group_name is not "deferred" and \
+                if group_name != "deferred" and \
                         name in upgrade_groups['deferred']:
                     upgrade_groups['deferred'].remove(name)
                 # Skip subordinates
@@ -305,27 +304,30 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
                 if "mongodb" in app_details["charm"]:
                     # Mongodb needs to run series upgrade
                     # on its secondaries first.
-                    upgrade_group.append(series_upgrade_utils.async_series_upgrade_non_leaders_first(
-                        application,
-                        from_series=self.from_series,
-                        to_series=self.to_series,
-                        completed_machines=completed_machines,
-                        post_upgrade_functions=post_upgrade_functions))
+                    upgrade_group.append(
+                        series_upgrade_utils
+                        .async_series_upgrade_non_leaders_first(
+                            application,
+                            from_series=self.from_series,
+                            to_series=self.to_series,
+                            completed_machines=completed_machines,
+                            post_upgrade_functions=post_upgrade_functions))
                     continue
 
                 # The rest are likley APIs use defaults
-
-                upgrade_group.append(series_upgrade_utils.async_series_upgrade_application(
-                    application,
-                    pause_non_leader_primary=pause_non_leader_primary,
-                    pause_non_leader_subordinate=pause_non_leader_subordinate,
-                    from_series=self.from_series,
-                    to_series=self.to_series,
-                    origin=origin,
-                    completed_machines=completed_machines,
-                    workaround_script=self.workaround_script,
-                    files=self.files,
-                    post_upgrade_functions=post_upgrade_functions))
+                pause = pause_non_leader_subordinate
+                upgrade_group.append(
+                    series_upgrade_utils.async_series_upgrade_application(
+                        application,
+                        pause_non_leader_primary=pause_non_leader_primary,
+                        pause_non_leader_subordinate=pause,
+                        from_series=self.from_series,
+                        to_series=self.to_series,
+                        origin=origin,
+                        completed_machines=completed_machines,
+                        workaround_script=self.workaround_script,
+                        files=self.files,
+                        post_upgrade_functions=post_upgrade_functions))
 
             asyncio.get_event_loop().run_until_complete(
                 asyncio.gather(*upgrade_group))
@@ -346,7 +348,6 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
                     'complete-cluster-series-upgrade',
                     action_params={})
                 model.block_until_all_units_idle()
-
 
 
 class ParallelTrustyXenialSeriesUpgrade(ParallelSeriesUpgradeTest):
@@ -376,6 +377,6 @@ class ParallelXenialBionicSeriesUpgrade(ParallelSeriesUpgradeTest):
         cls.from_series = "xenial"
         cls.to_series = "bionic"
 
+
 if __name__ == "__main__":
     unittest.main()
-

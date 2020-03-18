@@ -328,6 +328,13 @@ async def async_reboot(unit_name):
 
 
 async def check_call(cmd):
+    """Asynchronous function to check a subprocess call.
+
+    :param cmd: Command to execute
+    :type cmd: List[str]
+    :returns: None
+    :rtype: None
+    """
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,

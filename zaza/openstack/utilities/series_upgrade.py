@@ -14,6 +14,7 @@
 
 """Collection of functions for testing series upgrade."""
 
+import concurrent
 import logging
 import os
 
@@ -101,7 +102,8 @@ def series_upgrade_non_leaders_first(application, from_series="trusty",
         model.block_until_all_units_idle()
 
 
-async def async_series_upgrade_non_leaders_first(application, from_series="trusty",
+async def async_series_upgrade_non_leaders_first(application,
+                                                 from_series="trusty",
                                                  to_series="xenial",
                                                  completed_machines=[],
                                                  post_upgrade_functions=None):
@@ -137,11 +139,12 @@ async def async_series_upgrade_non_leaders_first(application, from_series="trust
         if machine not in completed_machines:
             logging.info("Series upgrade non-leader unit: {}"
                          .format(unit))
-            await async_series_upgrade(unit, machine,
-                           from_series=from_series, to_series=to_series,
-                           origin=None,
-                           post_upgrade_functions=post_upgrade_functions)
-            await async_run_post_upgrade_functions(post_upgrade_functions)
+            await async_series_upgrade(
+                unit, machine,
+                from_series=from_series, to_series=to_series,
+                origin=None,
+                post_upgrade_functions=post_upgrade_functions)
+            run_post_upgrade_functions(post_upgrade_functions)
             completed_machines.append(machine)
         else:
             logging.info("Skipping unit: {}. Machine: {} already upgraded. "
@@ -152,10 +155,11 @@ async def async_series_upgrade_non_leaders_first(application, from_series="trust
     machine = status["units"][leader]["machine"]
     logging.info("Series upgrade leader: {}".format(leader))
     if machine not in completed_machines:
-        await async_series_upgrade(leader, machine,
-                       from_series=from_series, to_series=to_series,
-                       origin=None,
-                       post_upgrade_functions=post_upgrade_functions)
+        await async_series_upgrade(
+            leader, machine,
+            from_series=from_series, to_series=to_series,
+            origin=None,
+            post_upgrade_functions=post_upgrade_functions)
         completed_machines.append(machine)
     else:
         logging.info("Skipping unit: {}. Machine: {} already upgraded."
@@ -348,13 +352,14 @@ async def async_series_upgrade_application(application,
     # Series upgrade the leader
     logging.info("Series upgrade leader: {}".format(leader))
     if machine not in completed_machines:
-        await async_series_upgrade(leader, machine,
-                                   from_series=from_series,
-                                   to_series=to_series,
-                                   origin=origin,
-                                   workaround_script=workaround_script,
-                                   files=files,
-                                   post_upgrade_functions=post_upgrade_functions)
+        await async_series_upgrade(
+            leader, machine,
+            from_series=from_series,
+            to_series=to_series,
+            origin=origin,
+            workaround_script=workaround_script,
+            files=files,
+            post_upgrade_functions=post_upgrade_functions)
         completed_machines.append(machine)
     else:
         logging.info("Skipping unit: {}. Machine: {} already upgraded."
@@ -370,13 +375,14 @@ async def async_series_upgrade_application(application,
         if machine not in completed_machines:
             logging.info("Series upgrade non-leader unit: {}"
                          .format(unit))
-            await async_series_upgrade(unit, machine,
-                                       from_series=from_series,
-                                       to_series=to_series,
-                                       origin=origin,
-                                       workaround_script=workaround_script,
-                                       files=files,
-                                       post_upgrade_functions=post_upgrade_functions)
+            await async_series_upgrade(
+                unit, machine,
+                from_series=from_series,
+                to_series=to_series,
+                origin=origin,
+                workaround_script=workaround_script,
+                files=files,
+                post_upgrade_functions=post_upgrade_functions)
             completed_machines.append(machine)
         else:
             logging.info("Skipping unit: {}. Machine: {} already upgraded. "
@@ -387,26 +393,44 @@ async def async_series_upgrade_application(application,
             await wait_for_unit_idle(unit)
 
 
+# TODO: Move these functions into zaza.model
 async def wait_for_unit_idle(unit_name):
+    """Wait until the unit's agent is idle.
+
+    :param unit_name: The unit name of the application, ex: mysql/0
+    :type unit_name: str
+    :returns: None
+    :rtype: None
+    """
     app = unit_name.split('/')[0]
     try:
-        await model.async_block_until(_unit_idle(app, unit_name),
+        await model.async_block_until(
+            _unit_idle(app, unit_name),
             timeout=600)
     except concurrent.futures._base.TimeoutError:
-        raise ModelTimeout("Zaza has timed out waiting on the unit to "
-                           "reach idle state.")
+        raise model.ModelTimeout("Zaza has timed out waiting on the unit to "
+                                 "reach idle state.")
+
 
 def _unit_idle(app, unit_name):
     async def f():
         x = await get_agent_status(app, unit_name)
         return x == "idle"
     return f
-    #return await get_agent_status(app, unit_name) is "idle"
+
 
 async def get_agent_status(app, unit_name):
+    """Get the current status of the specified unit.
+
+    :param app: The name of the Juju application, ex: mysql
+    :type app: str
+    :param unit_name: The unit name of the application, ex: mysql/0
+    :type unit_name: str
+    :returns: The agent status, either active / idle, returned by Juju
+    :rtype: str
+    """
     return (await model.async_get_status()). \
-        applications[app]['units'][unit_name] \
-        ['agent-status']['status']
+        applications[app]['units'][unit_name]['agent-status']['status']
 
 
 def series_upgrade(unit_name, machine_num,
@@ -545,6 +569,7 @@ async def async_series_upgrade(unit_name, machine_num,
 
 async def async_prepare_series_upgrade(machine_num, to_series="xenial"):
     """Execute juju series-upgrade prepare on machine.
+
     NOTE: This is a new feature in juju behind a feature flag and not yet in
     libjuju.
     export JUJU_DEV_FEATURE_FLAGS=upgrade-series
@@ -564,6 +589,7 @@ async def async_prepare_series_upgrade(machine_num, to_series="xenial"):
 
 async def async_complete_series_upgrade(machine_num):
     """Execute juju series-upgrade complete on machine.
+
     NOTE: This is a new feature in juju behind a feature flag and not yet in
     libjuju.
     export JUJU_DEV_FEATURE_FLAGS=upgrade-series
@@ -580,6 +606,7 @@ async def async_complete_series_upgrade(machine_num):
 
 async def async_set_series(application, to_series):
     """Execute juju set-series complete on application.
+
     NOTE: This is a new feature in juju and not yet in libjuju.
     :param application: Name of application to upgrade series
     :type application: str
@@ -592,6 +619,7 @@ async def async_set_series(application, to_series):
     cmd = ["juju", "set-series", "-m", juju_model,
            application, to_series]
     await os_utils.check_call(cmd)
+
 
 def wrap_do_release_upgrade(unit_name, from_series="trusty",
                             to_series="xenial",
@@ -662,7 +690,8 @@ async def async_wrap_do_release_upgrade(unit_name, from_series="trusty",
         logging.info("SCP files")
         for _file in files:
             logging.info("SCP {}".format(_file))
-            await model.async_scp_to_unit(unit_name, _file, os.path.basename(_file))
+            await model.async_scp_to_unit(
+                unit_name, _file, os.path.basename(_file))
 
     # Run Script
     if workaround_script:
@@ -746,4 +775,3 @@ async def async_do_release_upgrade(unit_name):
         'DEBIAN_FRONTEND=noninteractive '
         'do-release-upgrade -f DistUpgradeViewNonInteractive',
         raise_exceptions=True)
-
