@@ -18,7 +18,6 @@ import json
 import logging
 import pprint
 import keystoneauth1
-import requests
 
 import zaza.model
 import zaza.openstack.utilities.exceptions as zaza_exceptions
@@ -443,70 +442,3 @@ class LdapTests(BaseKeystoneTest):
                 self.assertIsNotNone(johndoe, "user 'john doe' was unknown")
                 janedoe = self._find_keystone_v3_user('jane doe', 'userdomain')
                 self.assertIsNotNone(janedoe, "user 'jane doe' was unknown")
-
-
-class KerberosTests(BaseKeystoneTest):
-    """Keystone Kerberos-Ldap tests."""
-
-    @classmethod
-    def setUpClass(cls):
-        """Run class setup for running Keystone Kerberos-Ldap tests."""
-        super(KerberosTests, cls).setUpClass()
-
-    def _get_kerberos_config(self):
-        """Generate kerberos-ldap config for current model.
-
-        :return: tuple of whether kerberos-server is running and if so, config
-            for the keystone-kerberos application.
-        :rtype: Tuple[bool, Dict[str,str]]
-        """
-        kerberos_ips = zaza.model.get_app_ips("kerberos-server")
-        self.assertTrue(ldap_ips, "Should be at least one kerberos server")
-        return {
-            'ldap-server': "ldap://{}".format(kerberos_ips[0]),
-            'ldap-user': 'cn=admin,dc=test,dc=com',
-            'ldap-password': 'password123',
-            'ldap-suffix': 'dc=test,dc=com',
-            'domain-name': 'userdomain',
-            'ldap-config-flags': "{user_tree_dn: 'cn=users,cn=accounts,"
-                                 "dc=testubuntu,dc=com', "
-                                 "user_objectclass: person, "
-                                 "user_name_attribute: uid, "
-                                 "user_allow_create: False,  "
-                                 "user_allow_delete: False}",
-            'kerberos-enabled': True,
-            'kerberos-realm': 'TESTUBUNTU.COM',
-            'kerberos-server': 'freeipa.testubuntu.com',
-            'kerberos-keytab-path': 'admin.keytab',
-        }
-
-    # def _get_kerberos_keytab(self): #unsure if I should put it with the previous function get_config or separate.
-    #     """Retrieve kerberos keytab file from kerberos server.
-    #
-    #     :return: tuple of whether kerberos-server is running and if so, config
-    #         for the keystone-kerberos application.
-    #     :rtype: Tuple[bool, Dict[str,str]]
-    #     """
-
-    def test_100_keystone_kerberos_authentication_keytab(self):
-        """Validate authentication to the kerberos principal server with keytab."""
-        config = self._get_kerberos_config()
-        cmd = ['kinit', '-kt', config['kerberos-keytab-path'],
-               config['ldap-user']]
-        result = subprocess.run(cmd, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE,
-                                universal_newlines=True)
-        assert result.returncode == 0, result.stderr
-
-    def test_101_keystone_kerberos_authentication_password(self):
-        """Validate authentication to the kerberos principal server with keytab."""
-        config = self._get_kerberos_config()
-        ps = subprocess.Popen(('echo', config['ldap-password']),
-                              stdout=subprocess.PIPE)
-        result = subprocess.run(('kinit', 'admin'),
-                                stdin=ps.stdout,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE,
-                                universal_newlines=True)
-        ps.wait()
-        self.assertFalse(result.stderr) #empty string should return False, to confirm
