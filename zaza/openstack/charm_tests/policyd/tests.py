@@ -258,7 +258,7 @@ class BasePolicydSpecialization(PolicydTest,
 
         class KeystonePolicydTest(BasePolicydSpecialization):
 
-            _rule = {'rule.yaml': "{'identity:list_services': '!'}"}
+            _rule = {'rule.yaml': "{'identity:list_credentials': '!'}"}
 
             def get_client_and_attempt_operation(self, keystone_session):
                 ... etc.
@@ -485,7 +485,7 @@ class BasePolicydSpecialization(PolicydTest,
 class KeystoneTests(BasePolicydSpecialization):
     """Test the policyd override using the keystone client."""
 
-    _rule = {'rule.yaml': "{'identity:list_services': '!'}"}
+    _rule = {'rule.yaml': "{'identity:list_credentials': '!'}"}
 
     @classmethod
     def setUpClass(cls, application_name=None):
@@ -506,7 +506,7 @@ class KeystoneTests(BasePolicydSpecialization):
         keystone_client = openstack_utils.get_keystone_session_client(
             self.get_keystone_session_demo_admin_user(ip))
         try:
-            keystone_client.services.list()
+            keystone_client.credentials.list()
         except keystoneauth1.exceptions.http.Forbidden:
             raise PolicydOperationFailedException()
 
