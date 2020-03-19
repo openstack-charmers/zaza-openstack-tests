@@ -341,6 +341,8 @@ async def check_call(cmd):
         stderr=asyncio.subprocess.PIPE)
     stdout, stderr = await proc.communicate()
     if proc.returncode != 0:
+        logging.warn("STDOUT: {}".format(stdout))
+        logging.warn("STDERR: {}".format(stderr))
         raise subprocess.CalledProcessError(proc.returncode, cmd)
 
 

@@ -60,6 +60,7 @@ def _include_app(app, app_config, filters, model_name=None):
             return False
     return True
 
+
 def _filter_subordinates(app, app_config, model_name=None):
     if app_config.get("subordinate-to"):
         logging.warning(
@@ -70,7 +71,6 @@ def _filter_subordinates(app, app_config, model_name=None):
 
 def _filter_openstack_upgrade_list(app, app_config, model_name=None):
     charm_name = extract_charm_name_from_url(app_config['charm'])
-    print("About to check if {} or {} in {}".format(app, charm_name, UPGRADE_EXCLUDE_LIST))
     if app in UPGRADE_EXCLUDE_LIST or charm_name in UPGRADE_EXCLUDE_LIST:
         print("Excluding {} from upgrade, on the exclude list".format(app))
         logging.warning(
@@ -80,14 +80,14 @@ def _filter_openstack_upgrade_list(app, app_config, model_name=None):
 
 
 def _filter_non_openstack_services(app, app_config, model_name=None):
-        charm_options = zaza.model.get_application_config(
-            app, model_name=model_name).keys()
-        src_options = ['openstack-origin', 'source']
-        if not [x for x in src_options if x in charm_options]:
-            logging.warning(
-                "Excluding {} from upgrade, no src option".format(app))
-            return True
-        return False
+    charm_options = zaza.model.get_application_config(
+        app, model_name=model_name).keys()
+    src_options = ['openstack-origin', 'source']
+    if not [x for x in src_options if x in charm_options]:
+        logging.warning(
+            "Excluding {} from upgrade, no src option".format(app))
+        return True
+    return False
 
 
 def get_upgrade_groups(model_name=None):
@@ -107,9 +107,10 @@ def get_upgrade_groups(model_name=None):
             _filter_subordinates,
             _filter_openstack_upgrade_list,
             _filter_non_openstack_services,
-    ])
+        ])
 
     return _build_service_groups(apps_in_model)
+
 
 def get_series_upgrade_groups(model_name=None):
     """Place apps in the model into their upgrade groups.
@@ -124,9 +125,7 @@ def get_series_upgrade_groups(model_name=None):
     """
     apps_in_model = get_upgrade_candidates(
         model_name=model_name,
-        filters=[
-            _filter_subordinates,
-    ])
+        filters=[_filter_subordinates])
 
     return _build_service_groups(apps_in_model)
 
@@ -146,8 +145,9 @@ def _build_service_groups(applications):
         if not (app in [a for group in groups.values() for a in group]):
             sweep_up.append(app)
     groups['sweep_up'] = sweep_up
+    for name, group in groups.items():
+        group.sort()
     return groups
-
 
 
 def extract_charm_name_from_url(charm_url):

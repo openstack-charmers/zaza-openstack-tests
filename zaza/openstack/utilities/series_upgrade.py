@@ -43,6 +43,12 @@ def run_post_upgrade_functions(post_upgrade_functions):
 
 
 def get_charm_settings():
+    """Application series upgrade settings.
+
+    :returns: A Dict of the settings to manage a series upgrade
+    :rtype: Dict
+
+    """
     default = {
         'origin': 'openstack-origin',
         'pause_non_leader_subordinate': True,
@@ -56,7 +62,7 @@ def get_charm_settings():
             'origin': 'source',
             'pause_non_leader_subordinate': False},
         'percona-cluster': {'origin': 'source'},
-        'nova-compute' : {
+        'nova-compute': {
             'pause_non_leader_primary': False,
             'pause_non_leader_subordinate': False},
         'mongodb': {
@@ -305,16 +311,17 @@ def series_upgrade_application(application, pause_non_leader_primary=True,
             model.block_until_all_units_idle()
 
 
-async def async_series_upgrade_application(application,
-                                           pause_non_leader_primary=True,
-                                           pause_non_leader_subordinate=True,
-                                           from_series="trusty",
-                                           to_series="xenial",
-                                           origin='openstack-origin',
-                                           completed_machines=None,
-                                           files=None, workaround_script=None,
-                                           post_upgrade_functions=None,
-                                           post_application_upgrade_functions=None):
+async def async_series_upgrade_application(
+        application,
+        pause_non_leader_primary=True,
+        pause_non_leader_subordinate=True,
+        from_series="trusty",
+        to_series="xenial",
+        origin='openstack-origin',
+        completed_machines=None,
+        files=None, workaround_script=None,
+        post_upgrade_functions=None,
+        post_application_upgrade_functions=None):
     """Series upgrade application.
 
     Wrap all the functionality to handle series upgrade for a given
@@ -433,11 +440,13 @@ async def async_series_upgrade_application(application,
 
 
 # TODO: Move these functions into zaza.model
-async def wait_for_unit_idle(unit_name):
+async def wait_for_unit_idle(unit_name, timeout=600):
     """Wait until the unit's agent is idle.
 
     :param unit_name: The unit name of the application, ex: mysql/0
     :type unit_name: str
+    :param timeout: How long to wait before timing out
+    :type timeout: int
     :returns: None
     :rtype: None
     """
@@ -445,10 +454,10 @@ async def wait_for_unit_idle(unit_name):
     try:
         await model.async_block_until(
             _unit_idle(app, unit_name),
-            timeout=600)
+            timeout=timeout)
     except concurrent.futures._base.TimeoutError:
-        raise model.ModelTimeout("Zaza has timed out waiting on the unit to "
-                                 "reach idle state.")
+        raise model.ModelTimeout("Zaza has timed out waiting on {} to "
+                                 "reach idle state.".format(unit_name))
 
 
 def _unit_idle(app, unit_name):
@@ -593,7 +602,7 @@ async def async_series_upgrade(unit_name, machine_num,
     await wait_for_unit_idle(unit_name)
     logging.info("Complete series upgrade on {}".format(machine_num))
     await async_complete_series_upgrade(machine_num)
-    await wait_for_unit_idle(unit_name)
+    await wait_for_unit_idle(unit_name, timeout=1200)
     logging.info("Running run_post_upgrade_functions {}".format(
         post_upgrade_functions))
     run_post_upgrade_functions(post_upgrade_functions)

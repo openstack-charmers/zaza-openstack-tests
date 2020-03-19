@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import collections
 import copy
 import mock
+import pprint
 
 import unit_tests.utils as ut_utils
 import zaza.openstack.utilities.upgrade_utils as openstack_upgrade
@@ -81,29 +83,36 @@ class TestUpgradeUtils(ut_utils.BaseTestCase):
                                 'charm': 'cs:cinder-ceph-2'}}}}}}
 
     def test_get_upgrade_candidates(self):
-        self.maxDiff = None
-        expect = copy.deepcopy(self.juju_status.applications)
+        expected = copy.deepcopy(self.juju_status.applications)
         self.assertEqual(
             openstack_upgrade.get_upgrade_candidates(),
-            expect)
+            expected)
 
     def test_get_upgrade_groups(self):
+        expected = collections.OrderedDict([
+            ('Core Identity', []),
+            ('Control Plane', ['cinder']),
+            ('Data Plane', ['nova-compute']),
+            ('sweep_up', [])])
+        actual = openstack_upgrade.get_upgrade_groups()
+        pprint.pprint(expected)
+        pprint.pprint(actual)
         self.assertEqual(
-            openstack_upgrade.get_upgrade_groups(),
-            {
-                'Core Identity': [],
-                'Control Plane': ['cinder'],
-                'Data Plane': ['nova-compute'],
-                'sweep_up': []})
+            actual,
+            expected)
 
     def test_get_series_upgrade_groups(self):
+        expected = collections.OrderedDict([
+            ('Core Identity', []),
+            ('Control Plane', ['cinder']),
+            ('Data Plane', ['nova-compute']),
+            ('sweep_up', ['mydb', 'ntp'])])
+        actual = openstack_upgrade.get_series_upgrade_groups()
+        pprint.pprint(expected)
+        pprint.pprint(actual)
         self.assertEqual(
-            openstack_upgrade.get_series_upgrade_groups(),
-            {
-                'Core Identity': [],
-                'Control Plane': ['cinder'],
-                'Data Plane': ['nova-compute'],
-                'sweep_up': ['mydb', 'ntp']})
+            actual,
+            expected)
 
     def test_extract_charm_name_from_url(self):
         self.assertEqual(
