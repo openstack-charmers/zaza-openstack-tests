@@ -81,10 +81,8 @@ class TestUpgradeUtils(ut_utils.BaseTestCase):
                                 'charm': 'cs:cinder-ceph-2'}}}}}}
 
     def test_get_upgrade_candidates(self):
+        self.maxDiff = None
         expect = copy.deepcopy(self.juju_status.applications)
-        del expect['mydb']  # Filter as it is on UPGRADE_EXCLUDE_LIST
-        del expect['ntp']  # Filter as it has no source option
-        del expect['neutron-openvswitch']  # Filter as it is a subordinates
         self.assertEqual(
             openstack_upgrade.get_upgrade_candidates(),
             expect)
@@ -97,6 +95,15 @@ class TestUpgradeUtils(ut_utils.BaseTestCase):
                 'Control Plane': ['cinder'],
                 'Data Plane': ['nova-compute'],
                 'sweep_up': []})
+
+    def test_get_series_upgrade_groups(self):
+        self.assertEqual(
+            openstack_upgrade.get_series_upgrade_groups(),
+            {
+                'Core Identity': [],
+                'Control Plane': ['cinder'],
+                'Data Plane': ['nova-compute'],
+                'sweep_up': ['mydb', 'ntp']})
 
     def test_extract_charm_name_from_url(self):
         self.assertEqual(

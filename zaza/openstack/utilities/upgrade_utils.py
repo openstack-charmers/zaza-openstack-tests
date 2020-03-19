@@ -49,14 +49,18 @@ def get_upgrade_candidates(model_name=None, filters=None):
     status = zaza.model.get_status(model_name=model_name)
     candidates = {}
     for app, app_config in status.applications.items():
-        for f in filters:
-            if f(app, model_name=model_name):
-                continue
-        candidates[app] = app_config
+        if _include_app(app, app_config, filters, model_name=model_name):
+            candidates[app] = app_config
     return candidates
 
 
-def _filter_subordinates(app, model_name=None):
+def _include_app(app, app_config, filters, model_name=None):
+    for filt in filters:
+        if filt(app, app_config, model_name=model_name):
+            return False
+    return True
+
+def _filter_subordinates(app, app_config, model_name=None):
     if app_config.get("subordinate-to"):
         logging.warning(
             "Excluding {} from upgrade, it is a subordinate".format(app))
@@ -64,16 +68,18 @@ def _filter_subordinates(app, model_name=None):
     return False
 
 
-def _filter_openstack_upgrade_list(app, model_name=None):
+def _filter_openstack_upgrade_list(app, app_config, model_name=None):
     charm_name = extract_charm_name_from_url(app_config['charm'])
+    print("About to check if {} or {} in {}".format(app, charm_name, UPGRADE_EXCLUDE_LIST))
     if app in UPGRADE_EXCLUDE_LIST or charm_name in UPGRADE_EXCLUDE_LIST:
+        print("Excluding {} from upgrade, on the exclude list".format(app))
         logging.warning(
             "Excluding {} from upgrade, on the exclude list".format(app))
         return True
     return False
 
 
-def _filter_non_openstack_services(app, model_name=None):
+def _filter_non_openstack_services(app, app_config, model_name=None):
         charm_options = zaza.model.get_application_config(
             app, model_name=model_name).keys()
         src_options = ['openstack-origin', 'source']
