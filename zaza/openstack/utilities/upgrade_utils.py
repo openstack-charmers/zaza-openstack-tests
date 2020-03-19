@@ -34,41 +34,54 @@ SERVICE_GROUPS = collections.OrderedDict([
 UPGRADE_EXCLUDE_LIST = ['rabbitmq-server', 'percona-cluster']
 
 
-def get_upgrade_candidates(model_name=None):
+def get_upgrade_candidates(model_name=None, filters=None):
     """Extract list of apps from model that can be upgraded.
 
     :param model_name: Name of model to query.
     :type model_name: str
+    :param filters: List of filter functions to apply
+    :type filters: List[fn]
     :returns: List of application that can have their payload upgraded.
     :rtype: []
     """
+    if filters is None:
+        filters = []
     status = zaza.model.get_status(model_name=model_name)
     candidates = {}
     for app, app_config in status.applications.items():
-        # Filter out subordinates
-        if app_config.get("subordinate-to"):
-            logging.warning(
-                "Excluding {} from upgrade, it is a subordinate".format(app))
-            continue
+        for f in filters:
+            if f(app, model_name=model_name):
+                continue
+        candidates[app] = app_config
+    return candidates
 
-        # Filter out charms on the naughty list
-        charm_name = extract_charm_name_from_url(app_config['charm'])
-        if app in UPGRADE_EXCLUDE_LIST or charm_name in UPGRADE_EXCLUDE_LIST:
-            logging.warning(
-                "Excluding {} from upgrade, on the exclude list".format(app))
-            continue
 
-        # Filter out charms that have no source option
+def _filter_subordinates(app, model_name=None):
+    if app_config.get("subordinate-to"):
+        logging.warning(
+            "Excluding {} from upgrade, it is a subordinate".format(app))
+        return True
+    return False
+
+
+def _filter_openstack_upgrade_list(app, model_name=None):
+    charm_name = extract_charm_name_from_url(app_config['charm'])
+    if app in UPGRADE_EXCLUDE_LIST or charm_name in UPGRADE_EXCLUDE_LIST:
+        logging.warning(
+            "Excluding {} from upgrade, on the exclude list".format(app))
+        return True
+    return False
+
+
+def _filter_non_openstack_services(app, model_name=None):
         charm_options = zaza.model.get_application_config(
             app, model_name=model_name).keys()
         src_options = ['openstack-origin', 'source']
         if not [x for x in src_options if x in charm_options]:
             logging.warning(
                 "Excluding {} from upgrade, no src option".format(app))
-            continue
-
-        candidates[app] = app_config
-    return candidates
+            return True
+        return False
 
 
 def get_upgrade_groups(model_name=None):
@@ -82,24 +95,53 @@ def get_upgrade_groups(model_name=None):
     :returns: Dict of group lists keyed on group name.
     :rtype: collections.OrderedDict
     """
-    apps_in_model = get_upgrade_candidates(model_name=model_name)
+    apps_in_model = get_upgrade_candidates(
+        model_name=model_name,
+        filters=[
+            _filter_subordinates,
+            _filter_openstack_upgrade_list,
+            _filter_non_openstack_services,
+    ])
 
+    return _build_service_groups(apps_in_model)
+
+def get_series_upgrade_groups(model_name=None):
+    """Place apps in the model into their upgrade groups.
+
+    Place apps in the model into their upgrade groups. If an app is deployed
+    but is not in SERVICE_GROUPS then it is placed in a sweep_up group.
+
+    :param model_name: Name of model to query.
+    :type model_name: str
+    :returns: Dict of group lists keyed on group name.
+    :rtype: collections.OrderedDict
+    """
+    apps_in_model = get_upgrade_candidates(
+        model_name=model_name,
+        filters=[
+            _filter_subordinates,
+    ])
+
+    return _build_service_groups(apps_in_model)
+
+
+def _build_service_groups(applications):
     groups = collections.OrderedDict()
     for phase_name, charms in SERVICE_GROUPS.items():
         group = []
-        for app, app_config in apps_in_model.items():
+        for app, app_config in applications.items():
             charm_name = extract_charm_name_from_url(app_config['charm'])
             if charm_name in charms:
                 group.append(app)
         groups[phase_name] = group
 
     sweep_up = []
-    for app in apps_in_model:
+    for app in applications:
         if not (app in [a for group in groups.values() for a in group]):
             sweep_up.append(app)
-
     groups['sweep_up'] = sweep_up
     return groups
+
 
 
 def extract_charm_name_from_url(charm_url):

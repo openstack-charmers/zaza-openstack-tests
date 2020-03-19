@@ -14,6 +14,8 @@
 
 """Collection of functions for testing series upgrade."""
 
+import collections
+import copy
 import concurrent
 import logging
 import os
@@ -38,6 +40,34 @@ def run_post_upgrade_functions(post_upgrade_functions):
         for func in post_upgrade_functions:
             logging.info("Running {}".format(func))
             cl_utils.get_class(func)()
+
+
+def get_charm_settings():
+    default = {
+        'origin': 'openstack-origin',
+        'pause_non_leader_subordinate': True,
+        'pause_non_leader_primary': True,
+        'upgrade_function': async_series_upgrade_application,
+        'post_upgrade_functions': []}
+
+    _app_settings = collections.defaultdict(lambda: default)
+    exceptions = {
+        'rabbitmq-server': {
+            'origin': 'source',
+            'pause_non_leader_subordinate': False},
+        'percona-cluster': {'origin': 'source'},
+        'nova-compute' : {
+            'pause_non_leader_primary': False,
+            'pause_non_leader_subordinate': False},
+        'mongodb': {
+            'upgrade_function': async_series_upgrade_non_leaders_first,
+            'origin': None,
+
+        }}
+    for key, value in exceptions.items():
+        _app_settings[key] = copy.deepcopy(default)
+        _app_settings[key].update(value)
+    return _app_settings
 
 
 def series_upgrade_non_leaders_first(application, from_series="trusty",
@@ -283,7 +313,8 @@ async def async_series_upgrade_application(application,
                                            origin='openstack-origin',
                                            completed_machines=None,
                                            files=None, workaround_script=None,
-                                           post_upgrade_functions=None):
+                                           post_upgrade_functions=None,
+                                           post_application_upgrade_functions=None):
     """Series upgrade application.
 
     Wrap all the functionality to handle series upgrade for a given
@@ -312,6 +343,13 @@ async def async_series_upgrade_application(application,
     :type files: list
     :param workaround_script: Workaround script to run during series upgrade
     :type workaround_script: str
+    :param post_upgrade_functions: A list of functions to call after upgrading
+                                   each unit of an application
+    :type post_upgrade_functions: List[fn]
+    :param post_application_upgrade_functions: A list of functions to call
+                                               once after updating all units
+                                               of an application
+    :type post_application_upgrade_functions: List[fn]
     :returns: None
     :rtype: None
     """
@@ -391,6 +429,7 @@ async def async_series_upgrade_application(application,
             logging.info("Set origin on {}".format(application))
             await os_utils.async_set_origin(application, origin)
             await wait_for_unit_idle(unit)
+    run_post_upgrade_functions(post_application_upgrade_functions)
 
 
 # TODO: Move these functions into zaza.model

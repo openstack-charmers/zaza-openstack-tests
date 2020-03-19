@@ -233,12 +233,8 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
         """Run series upgrade."""
         # Set Feature Flag
         os.environ["JUJU_DEV_FEATURE_FLAGS"] = "upgrade-series"
-        upgrade_groups = upgrade_utils.get_upgrade_groups()
+        upgrade_groups = upgrade_utils.get_series_upgrade_groups()
         applications = model.get_status().applications
-        upgrade_groups['support'] = [
-            app for app in upgrade_utils.UPGRADE_EXCLUDE_LIST
-            if app in applications.keys()]
-        upgrade_groups['deferred'] = []
         completed_machines = []
         for group_name, group in upgrade_groups.items():
             logging.warn("About to upgrade {} ({})".format(group_name, group))
@@ -249,16 +245,6 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
                 pause_non_leader_subordinate = True
                 pause_non_leader_primary = True
                 post_upgrade_functions = []
-                name = upgrade_utils.extract_charm_name_from_url(
-                    app_details['charm'])
-                if name not in group and application not in group:
-                    if group_name != "deferred" and \
-                            name not in upgrade_groups['deferred']:
-                        upgrade_groups['deferred'].append(name)
-                    continue
-                if group_name != "deferred" and \
-                        name in upgrade_groups['deferred']:
-                    upgrade_groups['deferred'].remove(name)
                 # Skip subordinates
                 if app_details["subordinate-to"]:
                     continue
