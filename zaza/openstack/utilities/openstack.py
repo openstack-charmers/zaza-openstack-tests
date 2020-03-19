@@ -1534,7 +1534,7 @@ def get_undercloud_auth():
     else:
         logging.error('Missing OS authentication setting: OS_AUTH_URL')
         raise exceptions.MissingOSAthenticationException(
-            'One or more OpenStack authetication variables could '
+            'One or more OpenStack authentication variables could '
             'be found in the environment. Please export the OS_* '
             'settings into the environment.')
 
@@ -1581,7 +1581,7 @@ def get_undercloud_auth():
             logging.error('Missing OS authentication setting: {}'
                           ''.format(key))
             raise exceptions.MissingOSAthenticationException(
-                'One or more OpenStack authetication variables could '
+                'One or more OpenStack authentication variables could '
                 'be found in the environment. Please export the OS_* '
                 'settings into the environment.')
 

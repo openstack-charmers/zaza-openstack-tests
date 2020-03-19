@@ -1,5 +1,6 @@
 aiounittest
 async_generator
+boto3
 juju
 juju_wait
 PyYAML<=4.2,>=3.0
@@ -20,6 +21,7 @@ dnspython>=1.12.0
 psutil>=1.1.1,<2.0.0
 python-openstackclient>=3.14.0
 aodhclient
+gnocchiclient>=7.0.5,<8.0.0
 python-designateclient
 python-ceilometerclient
 python-cinderclient

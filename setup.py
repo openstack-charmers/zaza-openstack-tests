@@ -26,6 +26,7 @@ from setuptools.command.test import test as TestCommand
 version = "0.0.1.dev1"
 install_require = [
     'async_generator',
+    'boto3',
     'cryptography',
     'hvac<0.7.0',
     'jinja2',
@@ -36,6 +37,7 @@ install_require = [
     'tenacity',
     'oslo.config',
     'aodhclient',
+    'gnocchiclient>=7.0.5,<8.0.0',
     'python-designateclient>=1.5,<3.0.0',
     'python-heatclient',
     'python-glanceclient',
@@ -44,6 +46,7 @@ install_require = [
     'python-novaclient',
     'python-neutronclient',
     'python-octaviaclient',
+    'python-ceilometerclient',
     'python-cinderclient',
     'python-swiftclient',
     'zaza@git+https://github.com/openstack-charmers/zaza.git#egg=zaza',

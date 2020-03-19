@@ -39,7 +39,7 @@ def roundrobin_assign_hosts_to_segments(nova_client, masakari_client):
     segment_ids = segment_ids * len(hypervisors)
     for hypervisor in hypervisors:
         target_segment = segment_ids.pop()
-        hostname = hypervisor.hypervisor_hostname.split('.')[0]
+        hostname = hypervisor.hypervisor_hostname
         logging.info('Adding {} to segment {}'.format(hostname,
                                                       target_segment))
         masakari_client.create_host(
@@ -148,7 +148,7 @@ def _svc_set_systemd_restart_mode(unit_name, service_name, mode, model_name):
         mode))
     cmds = [
         ("sed -i -e 's/^Restart=.*/Restart={}/g' "
-         "/lib/systemd/system/{}.service'").format(mode, service_name),
+         "/lib/systemd/system/{}.service").format(mode, service_name),
         'systemctl daemon-reload']
     logging.info('Running {} on {}'.format(cmds, unit_name))
     zaza.model.run_on_unit(

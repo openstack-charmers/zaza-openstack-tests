@@ -114,8 +114,9 @@ def get_unit_name_from_host_name(host_name, application, model_name=None):
     :param model_name: Name of model to query.
     :type model_name: str
     """
-    # Assume that a juju managed hostname always ends in the machine number.
-    machine_number = host_name.split('-')[-1]
+    # Assume that a juju managed hostname always ends in the machine number and
+    # remove the domain name if it present.
+    machine_number = host_name.split('-')[-1].split('.')[0]
     unit_names = [
         u.entity_id
         for u in model.get_units(application_name=application,
@@ -137,7 +138,11 @@ def get_machine_status(machine, key=None, model_name=None):
     :rtype: dict
     """
     status = get_full_juju_status(model_name=model_name)
-    status = status.machines.get(machine)
+    if "lxd" in machine:
+        host = machine.split('/')[0]
+        status = status.machines.get(host)['containers'][machine]
+    else:
+        status = status.machines.get(machine)
     if key:
         status = status.get(key)
     return status
