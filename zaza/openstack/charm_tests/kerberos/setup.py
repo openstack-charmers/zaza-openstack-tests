@@ -41,30 +41,34 @@ from zaza.openstack.charm_tests.keystone import (
 # with an empty keytab file
 # Steps
 # - Find keystone hostname
-unit_hostname = {}
-for unit in zaza.model.get_units('keystone'):
-    result = zaza.model.run_on_unit(unit.entity_id, 'hostname -f')
-    hostname = result['Stdout'].rstrip()
-    unit_hostname[unit] = hostname
-    logging.info('hostname: "{}"'.format(hostname))
 
+def _get_unit_full_hostname(unit_name):
+    #currently works for one unit deployed
+    unit_hostname = {}
+    for unit in zaza.model.get_units(unit_name):
+        result = zaza.model.run_on_unit(unit.entity_id, 'hostname -f')
+        hostname = result['Stdout'].rstrip()
+        unit_hostname[unit] = hostname
+        logging.info('hostname: "{}"'.format(hostname))
+    return unit_hostname
+
+def _get_unit_ip(unit_name):
 
 # - adding entry to etc/hosts of keystone
 
-def add_dns_entry_to_keystone(kerberos_hostname, kerberos_ip, keystone_unit):
+def add_dns_entry_to_keystone(kerberos_hostname="kerberos.testubuntu.com"):
     """In the keystone server, add a dns entry in /etc/hosts for the kerberos
-    server.
+    test server.
 
     :param kerberos_hostname: FQDN of Kerberos server
     :type kerberos_hostname: string
-    :param kerberos_ip: IP address of the Kerberos server
-    :type kerberos_ip: string
-    :param keystone_unit: Keystone unit to edit
-    :type keystone_unit: string
-    :return:
     """
-    run_cmd = "sudo sed -i '/localhost/i\\{}\t{}' /etc/hosts".format(kerberos_ip, kerberos_hostname)
-    zaza.model.run_on_unit(keystone_unit, run_cmd)
+    kerberos_ip = zaza.model.get_app_ips("kerberos-test-fixture")[0]
+    cmd = "sudo sed -i '/localhost/i\\{}\t{}' /etc/hosts"\
+        .format(kerberos_ip, kerberos_hostname)
+    keystone_units = zaza.model.get_units("keystone")
+    for keystone_unit in keystone_units:
+        zaza.model.run_on_unit(keystone_unit.entity_id, cmd)
 
 #
 # - In kerberos server, configure host, service, add host to service (and alias)
