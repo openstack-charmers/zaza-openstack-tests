@@ -66,14 +66,13 @@ def configure_keystone_service_in_kerberos():
     logging.info('Configure keystone service in Kerberos')
     unit = zaza.model.get_units('kerberos-server')[0]
     keystone_hostname = _get_unit_full_hostname('keystone')
-    commands = []
-    commands[0] = 'sudo su -'
-    commands[1] = 'sudo kadmin.local -q "addprinc -randkey ' \
-                  'HTTP/{}"'.format(keystone_hostname)
-    commands[2] = 'sudo kadmin.local -q "ktadd ' \
-                  '-k /home/ubuntu/keystone.keytab ' \
-                  'HTTP/{}"'.format(keystone_hostname)
-    commands[3] = 'sudo chmod 777 /home/ubuntu/keystone.keytab'
+    commands = ['sudo su -',
+                'sudo kadmin.local -q "addprinc -randkey ' \
+                             'HTTP/{}"'.format(keystone_hostname),
+                'sudo kadmin.local -q "ktadd ' \
+                    '-k /home/ubuntu/keystone.keytab ' \
+                    'HTTP/{}"'.format(keystone_hostname),
+                'sudo chmod 777 /home/ubuntu/keystone.keytab']
 
     try:
         for command in commands:
