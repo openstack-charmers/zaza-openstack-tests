@@ -15,6 +15,7 @@
 """Setup for keystone-kerberos tests."""
 
 import logging
+import os
 import tempfile
 import zaza.model
 from zaza.openstack.utilities import openstack as openstack_utils
@@ -34,12 +35,13 @@ def add_empty_resource_file_to_keystone_kerberos():
     """Add an empty resource to keystone kerberos to complete the setup."""
     logging.info('Attaching an empty keystone keytab to the keystone-kerberos'
                  ' unit')
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.keytab') as tmp_file:
-        tmp_file.write('')
-        tmp_file.flush()
-        zaza.model.attach_resource('keystone-kerberos',
-                                   'keystone_keytab',
-                                   tmp_file)
+    tmp_file = '/tmp/empty.keytab'
+    with open(tmp_file, 'w') as fp:
+        pass
+
+    zaza.model.attach_resource('keystone-kerberos',
+                               'keystone_keytab',
+                               tmp_file)
     zaza.model.block_until_all_units_idle()
 
 
