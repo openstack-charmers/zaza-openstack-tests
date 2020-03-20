@@ -12,27 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Keystone Kerberos Testing"""
+"""Keystone Kerberos Tests."""
 
 import logging
-from lxml import etree
-import requests
+import mock
 
-import zaza.model
 from zaza.openstack.charm_tests.keystone import BaseKeystoneTest
+from zaza.openstack.utilities import openstack as openstack_utils
 import zaza.charm_lifecycle.utils as lifecycle_utils
+
 
 class FailedToReachKerberos(Exception):
     """Custom Exception for failing to reach the Kerberos Server."""
 
     pass
 
+
 class CharmKeystoneKerberosTest(BaseKeystoneTest):
-    """Charm Keystone Kerberos Test"""
+    """Charm Keystone Kerberos Test."""
 
     @classmethod
     def setUpClass(cls):
-        """Run class setup for running Keystone Kerberos charm tests"""
+        """Run class setup for running Keystone Kerberos charm tests."""
         super(CharmKeystoneKerberosTest, cls).setUpClass()
         # Note: The BaseKeystoneTest class sets the application_name to
         # "keystone" which breaks subordinate charm actions. Explicitly set
@@ -41,10 +42,11 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
         cls.application_name = cls.test_config['charm_name']
 
     def test_get_keystone_session(self):
+        """Run test to retrieve a keystone session."""
         self.patch_object(openstack_utils, "session")
         self.patch_object(openstack_utils, "v3")
         _auth = mock.MagicMock()
-        self.v2.Password.return_value = _auth
+        self.v3.Password.return_value = _auth
         _openrc = {
             "OS_AUTH_URL": "https://{}:5000/krb/v3".format(keystone_hostname),
             "OS_PROJECT_ID": test_project_id,
