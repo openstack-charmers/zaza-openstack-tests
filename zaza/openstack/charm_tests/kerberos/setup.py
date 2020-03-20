@@ -39,6 +39,18 @@ def _get_unit_full_hostname(unit_name):
     return hostname
 
 
+def add_empty_resource_file_to_keystone_kerberos():
+    """Add an empty resource to keystone kerberos to complete the setup."""
+
+    logging.info('Attaching an empty file as keystone keytab')
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.keytab') as tmp_file:
+        tmp_file.write('')
+        tmp_file.flush()
+        zaza.model.attach_resource('keystone-kerberos',
+                                   'keystone_keytab',
+                                   tmp_file)
+
+
 def add_dns_entry_to_keystone(kerberos_hostname="kerberos.testubuntu.com"):
     """In keystone, add a dns entry in /etc/hosts for the kerberos test server.
 
@@ -68,7 +80,7 @@ def configure_keystone_service_in_kerberos():
     keystone_hostname = _get_unit_full_hostname('keystone')
     commands = ['sudo su -',
                 'sudo kadmin.local -q "addprinc -randkey ' \
-                             'HTTP/{}"'.format(keystone_hostname),
+                    'HTTP/{}"'.format(keystone_hostname),
                 'sudo kadmin.local -q "ktadd ' \
                     '-k /home/ubuntu/keystone.keytab ' \
                     'HTTP/{}"'.format(keystone_hostname),
