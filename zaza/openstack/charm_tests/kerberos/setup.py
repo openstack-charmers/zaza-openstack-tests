@@ -44,7 +44,7 @@ def add_empty_resource_file_to_keystone_kerberos():
                                tmp_file)
     logging.info('Waiting for keystone-kerberos unit to be active and idle')
     unit_name = zaza.model.get_units('keystone-kerberos')[0].name
-    zaza.model.block_unit_until_wl_status(unit_name, "active")
+    zaza.model.block_until_unit_wl_status(unit_name, "active")
     zaza.model.block_until_all_units_idle()
 
 
