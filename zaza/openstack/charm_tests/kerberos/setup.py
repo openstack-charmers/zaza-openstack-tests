@@ -42,6 +42,7 @@ def add_empty_resource_file_to_keystone_kerberos():
     zaza.model.attach_resource('keystone-kerberos',
                                'keystone_keytab',
                                tmp_file)
+    logging.info('Waiting for keystone-kerberos unit to be idle')
     zaza.model.block_until_all_units_idle()
 
 
