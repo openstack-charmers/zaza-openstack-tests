@@ -60,7 +60,9 @@ def configure_keystone_service_in_kerberos():
     this service. The keytab is used for the authentication of the keystone
     service.
     """
+    logging.info('Configure keystone service in Kerberos')
     unit = zaza.model.get_units('kerberos-server')[0]
+    logging.info('Retrieving keystone full hostname')
     keystone_hostname = _get_unit_full_hostname('keystone')
 
     run_as_root = "sudo su -"
@@ -69,11 +71,15 @@ def configure_keystone_service_in_kerberos():
     # doit avoir eu une auth kadmin.local successful prealablement
     run_cmd_add_princ = 'sudo kadmin.local -q "addprinc -randkey ' \
                         'HTTP/{}"'.format(keystone_hostname)
+    logging.info(
+        'Command to send to kerberos-server: {}'.format(run_cmd_add_princ))
     result = zaza.model.run_on_unit(unit.name, run_cmd_add_princ)
     logging.info(result)
 
     run_cmd_keytab = 'sudo kadmin.local -q "ktadd -k /home/ubuntu/keystone.keytab ' \
                      'HTTP/{}"'.format(keystone_hostname)
+    logging.info(
+        'Command to send to kerberos-server: {}'.format(run_cmd_keytab)
     result = zaza.model.run_on_unit(unit.name, run_cmd_keytab)
     logging.info(result)
 
