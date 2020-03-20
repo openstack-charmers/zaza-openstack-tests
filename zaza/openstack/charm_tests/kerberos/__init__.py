@@ -13,3 +13,9 @@
 # limitations under the License.
 
 """Collection of code for setting up and testing keystone-kerberos."""
+
+
+class KerberosConfigurationError(Exception):
+    """Custom exception for Kerberos test server."""
+
+    pass

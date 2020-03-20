@@ -18,17 +18,7 @@ import logging
 import tempfile
 import zaza.model
 from zaza.openstack.utilities import openstack as openstack_utils
-
-# at this point, the kerberos-test-fixture and the bundle should be deployed
-# with an empty keytab file
-# Steps
-# - Find keystone hostname
-
-
-class KerberosConfigurationError(Exception):
-    """Custom exception for Kerberos test server."""
-
-    pass
+from zaza.openstack.charm_tests.kerberos import KerberosConfigurationError
 
 
 def _get_unit_full_hostname(unit_name):
