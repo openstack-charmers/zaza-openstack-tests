@@ -41,6 +41,7 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
         cls.test_config = lifecycle_utils.get_charm_config()
         cls.application_name = cls.test_config['charm_name']
 
+
     def test_get_keystone_session(self):
         """Run test to retrieve a keystone session."""
         self.patch_object(openstack_utils, "session")

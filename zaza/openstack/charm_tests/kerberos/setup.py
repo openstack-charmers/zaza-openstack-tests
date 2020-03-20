@@ -24,6 +24,7 @@ from zaza.openstack.utilities import openstack as openstack_utils
 # Steps
 # - Find keystone hostname
 
+
 class KerberosConfigurationError(Exception):
     """Custom exception for Kerberos test server."""
 
@@ -41,14 +42,15 @@ def _get_unit_full_hostname(unit_name):
 
 def add_empty_resource_file_to_keystone_kerberos():
     """Add an empty resource to keystone kerberos to complete the setup."""
-
-    logging.info('Attaching an empty file as keystone keytab')
+    logging.info('Attaching an empty keystone keytab to the keystone-kerberos'
+                 ' unit')
     with tempfile.NamedTemporaryFile(mode='w', suffix='.keytab') as tmp_file:
         tmp_file.write('')
         tmp_file.flush()
         zaza.model.attach_resource('keystone-kerberos',
                                    'keystone_keytab',
                                    tmp_file)
+    zaza.model.block_until_all_units_idle()
 
 
 def add_dns_entry_to_keystone(kerberos_hostname="kerberos.testubuntu.com"):
@@ -65,7 +67,9 @@ def add_dns_entry_to_keystone(kerberos_hostname="kerberos.testubuntu.com"):
     for keystone_unit in keystone_units:
         zaza.model.run_on_unit(keystone_unit.entity_id, cmd)
         logging.info('DNS entry added to unit {}: {} {}'
-                     .format(keystone_unit.name,kerberos_ip,kerberos_hostname))
+                     .format(keystone_unit.name,
+                             kerberos_ip,
+                             kerberos_hostname))
 
 
 def configure_keystone_service_in_kerberos():
@@ -79,11 +83,11 @@ def configure_keystone_service_in_kerberos():
     unit = zaza.model.get_units('kerberos-server')[0]
     keystone_hostname = _get_unit_full_hostname('keystone')
     commands = ['sudo su -',
-                'sudo kadmin.local -q "addprinc -randkey ' \
-                    'HTTP/{}"'.format(keystone_hostname),
-                'sudo kadmin.local -q "ktadd ' \
-                    '-k /home/ubuntu/keystone.keytab ' \
-                    'HTTP/{}"'.format(keystone_hostname),
+                'sudo kadmin.local -q "addprinc -randkey '
+                'HTTP/{}"'.format(keystone_hostname),
+                'sudo kadmin.local -q "ktadd '
+                '-k /home/ubuntu/keystone.keytab '
+                'HTTP/{}"'.format(keystone_hostname),
                 'sudo chmod 777 /home/ubuntu/keystone.keytab']
 
     try:
@@ -157,6 +161,23 @@ def openstack_setup_kerberos():
         domain=domain
     )
 
+
+def retrieve_token_and_conf_for_test_host():
+    """Retrieve the admin keytab and krb5.conf to setup the test host."""
+    kerberos_server = zaza.model.get_units('kerberos-server')[0]
+
+    dump_file = "keystone.keytab"
+    remote_file = "/etc/krb5.conf"
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        tmp_file = "{}/{}".format(tmpdirname, dump_file)
+        zaza.model.scp_from_unit(
+            kerberos_server.name,
+            remote_file,
+            tmp_file)
+
+        zaza.model.attach_resource('keystone-kerberos',
+                                   'keystone_keytab',
+                                   tmp_file)
 
 # source and test authentication
 # that will go in the test section
