@@ -24,16 +24,19 @@ from zaza.openstack.utilities import openstack as openstack_utils
 # Steps
 # - Find keystone hostname
 
+class KerberosConfigurationError(Exception):
+    """Custom exception for Kerberos test server."""
+
+    pass
+
 
 def _get_unit_full_hostname(unit_name):
     """Retrieve the full hostname of a unit."""
-    unit_hostname = {}
     for unit in zaza.model.get_units(unit_name):
         result = zaza.model.run_on_unit(unit.entity_id, 'hostname -f')
         hostname = result['Stdout'].rstrip()
-        unit_hostname[unit] = hostname
-        logging.info('hostname: "{}"'.format(hostname))
-    return unit_hostname
+        logging.info('{} full hostname: "{}"'.format(unit_name, hostname))
+    return hostname
 
 
 def add_dns_entry_to_keystone(kerberos_hostname="kerberos.testubuntu.com"):
@@ -62,30 +65,27 @@ def configure_keystone_service_in_kerberos():
     """
     logging.info('Configure keystone service in Kerberos')
     unit = zaza.model.get_units('kerberos-server')[0]
-    logging.info('Retrieving keystone full hostname')
     keystone_hostname = _get_unit_full_hostname('keystone')
+    commands = []
+    commands[0] = 'sudo su -'
+    commands[1] = 'sudo kadmin.local -q "addprinc -randkey ' \
+                  'HTTP/{}"'.format(keystone_hostname)
+    commands[2] = 'sudo kadmin.local -q "ktadd ' \
+                  '-k /home/ubuntu/keystone.keytab ' \
+                  'HTTP/{}"'.format(keystone_hostname)
+    commands[3] = 'sudo chmod 777 /home/ubuntu/keystone.keytab'
 
-    run_as_root = "sudo su -"
-    zaza.model.run_on_unit(unit.name, run_as_root)
+    try:
+        for command in commands:
+            logging.info(
+                'Command to send to kerberos-server: {}'.format(command))
+            result = zaza.model.run_on_unit(unit.name, command)
+            logging.info('Stdout: {}'.format(result['Stdout']))
+            if result['Stderr']:
+                raise KerberosConfigurationError
 
-    # doit avoir eu une auth kadmin.local successful prealablement
-    run_cmd_add_princ = 'sudo kadmin.local -q "addprinc -randkey ' \
-                        'HTTP/{}"'.format(keystone_hostname)
-    logging.info(
-        'Command to send to kerberos-server: {}'.format(run_cmd_add_princ))
-    result = zaza.model.run_on_unit(unit.name, run_cmd_add_princ)
-    logging.info(result)
-
-    run_cmd_keytab = 'sudo kadmin.local -q "ktadd -k /home/ubuntu/keystone.keytab ' \
-                     'HTTP/{}"'.format(keystone_hostname)
-    logging.info(
-        'Command to send to kerberos-server: {}'.format(run_cmd_keytab)
-    result = zaza.model.run_on_unit(unit.name, run_cmd_keytab)
-    logging.info(result)
-
-    run_change_perm = 'sudo chmod 777 /home/ubuntu/keystone.keytab'
-    result = zaza.model.run_on_unit(unit.name, run_change_perm)
-    logging.info(result)
+    except KerberosConfigurationError:
+        logging.error('Stdout: {}'.format(result['Stderr']))
 
 
 #   and retrieve keytab
