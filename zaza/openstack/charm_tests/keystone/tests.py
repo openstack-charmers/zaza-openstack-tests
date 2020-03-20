@@ -345,7 +345,7 @@ class AuthenticationAuthorizationTest(BaseKeystoneTest):
 
 
 class SecurityTests(BaseKeystoneTest):
-    """Keystone security tests tests."""
+    """Keystone security tests."""
 
     @classmethod
     def setUpClass(cls):
@@ -382,7 +382,7 @@ class SecurityTests(BaseKeystoneTest):
 
 
 class LdapTests(BaseKeystoneTest):
-    """Keystone ldap tests tests."""
+    """Keystone ldap tests."""
 
     @classmethod
     def setUpClass(cls):
