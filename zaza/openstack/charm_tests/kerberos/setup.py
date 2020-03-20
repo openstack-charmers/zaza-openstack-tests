@@ -42,7 +42,9 @@ def add_empty_resource_file_to_keystone_kerberos():
     zaza.model.attach_resource('keystone-kerberos',
                                'keystone_keytab',
                                tmp_file)
-    logging.info('Waiting for keystone-kerberos unit to be idle')
+    logging.info('Waiting for keystone-kerberos unit to be active and idle')
+    unit_name = zaza.model.get_units('keystone-kerberos')[0].name
+    zaza.model.block_unit_until_wl_status(unit_name, "active")
     zaza.model.block_until_all_units_idle()
 
 
@@ -157,8 +159,8 @@ def retrieve_token_and_conf_for_test_host():
     """Retrieve the admin keytab and krb5.conf to setup the test host."""
     kerberos_server = zaza.model.get_units('kerberos-server')[0]
 
-    dump_file = "keystone.keytab"
-    remote_file = "/etc/krb5.conf"
+    dump_file = "krb5.keytab"
+    remote_file = "/etc/krb5.keytab"
     with tempfile.TemporaryDirectory() as tmpdirname:
         tmp_file = "{}/{}".format(tmpdirname, dump_file)
         zaza.model.scp_from_unit(
@@ -166,9 +168,13 @@ def retrieve_token_and_conf_for_test_host():
             remote_file,
             tmp_file)
 
-        zaza.model.attach_resource('keystone-kerberos',
-                                   'keystone_keytab',
-                                   tmp_file)
+    dump_file = "krb5.conf"
+    remote_file = "/etc/krb5.conf"
+    zaza.model.scp_from_unit(
+        kerberos_server.name,
+        remote_file,
+        tmp_file)
+
 
 # source and test authentication
 # that will go in the test section
