@@ -42,12 +42,15 @@ def add_dns_entry_to_keystone(kerberos_hostname="kerberos.testubuntu.com"):
     :param kerberos_hostname: FQDN of Kerberos server
     :type kerberos_hostname: string
     """
-    kerberos_ip = zaza.model.get_app_ips("kerberos-test-fixture")[0]
+    logging.info('Retrieving kerberos IP and hostname')
+    kerberos_ip = zaza.model.get_app_ips("kerberos-server")[0]
     cmd = "sudo sed -i '/localhost/i\\{}\t{}' /etc/hosts"\
         .format(kerberos_ip, kerberos_hostname)
     keystone_units = zaza.model.get_units("keystone")
     for keystone_unit in keystone_units:
         zaza.model.run_on_unit(keystone_unit.entity_id, cmd)
+        logging.info('DNS entry added to unit {}: {} {}'
+                     .format(keystone_unit.name,kerberos_ip,kerberos_hostname))
 
 
 def configure_keystone_service_in_kerberos():
@@ -57,17 +60,19 @@ def configure_keystone_service_in_kerberos():
     this service. The keytab is used for the authentication of the keystone
     service.
     """
-    unit = zaza.model.get_units('kerberos-test-fixture')
+    unit = zaza.model.get_units('kerberos-server')[0]
+    keystone_hostname = _get_unit_full_hostname('keystone')
+
     run_as_root = "sudo su -"
     zaza.model.run_on_unit(unit.name, run_as_root)
 
     # doit avoir eu une auth kadmin.local successful prealablement
     run_cmd_add_princ = 'sudo kadmin.local -q "addprinc -randkey ' \
-                        'HTTP/juju-6c92ea-test1-1.project.serverstack"'
+                        'HTTP/{}"'.format(keystone_hostname)
     zaza.model.run_on_unit(unit.name, run_cmd_add_princ)
 
     run_cmd_keytab = 'sudo kadmin.local -q "ktadd -k keystone.keytab ' \
-                     'HTTP/juju-6c92ea-test1-1.project.serverstack"'
+                     'HTTP/{}"'.format(keystone_hostname)
     zaza.model.run_on_unit(unit.name, run_cmd_keytab)
 
     run_change_perm = 'sudo chmod 777 keystone.keytab'
@@ -78,7 +83,7 @@ def configure_keystone_service_in_kerberos():
 # - add resource to keystone server with juju attach-resource
 def retrieve_and_attach_keytab():
     """Retrieve and attach the keytab to the keystone-kerberos unit."""
-    kerberos_app_name = "kerberos-test-fixture"
+    kerberos_app_name = "kerberos-server"
     kerberos_server = zaza.model.get_unit_from_name(kerberos_app_name)
 
     dump_file = "keystone.keytab"
