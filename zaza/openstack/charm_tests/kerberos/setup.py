@@ -1,4 +1,4 @@
-# Copyright 2018 Canonical Ltd.
+# Copyright 2020 Canonical Ltd.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -93,8 +93,6 @@ def configure_keystone_service_in_kerberos():
         logging.error('Stdout: {}'.format(result['Stderr']))
 
 
-#   and retrieve keytab
-# - add resource to keystone server with juju attach-resource
 def retrieve_and_attach_keytab():
     """Retrieve and attach the keytab to the keystone-kerberos unit."""
     kerberos_server = zaza.model.get_units('kerberos-server')[0]
