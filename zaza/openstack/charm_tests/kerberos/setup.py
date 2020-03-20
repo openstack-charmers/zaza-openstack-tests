@@ -72,12 +72,12 @@ def configure_keystone_service_in_kerberos():
     result = zaza.model.run_on_unit(unit.name, run_cmd_add_princ)
     logging.info(result)
 
-    run_cmd_keytab = 'sudo kadmin.local -q "ktadd -k keystone.keytab ' \
+    run_cmd_keytab = 'sudo kadmin.local -q "ktadd -k /home/ubuntu/keystone.keytab ' \
                      'HTTP/{}"'.format(keystone_hostname)
     result = zaza.model.run_on_unit(unit.name, run_cmd_keytab)
     logging.info(result)
 
-    run_change_perm = 'sudo chmod 777 keystone.keytab'
+    run_change_perm = 'sudo chmod 777 /home/ubuntu/keystone.keytab'
     result = zaza.model.run_on_unit(unit.name, run_change_perm)
     logging.info(result)
 
@@ -86,8 +86,7 @@ def configure_keystone_service_in_kerberos():
 # - add resource to keystone server with juju attach-resource
 def retrieve_and_attach_keytab():
     """Retrieve and attach the keytab to the keystone-kerberos unit."""
-    kerberos_unit_name = "kerberos-server/0"
-    kerberos_server = zaza.model.get_unit_from_name(kerberos_unit_name)
+    kerberos_server = zaza.model.get_units('kerberos-server')[0]
 
     dump_file = "keystone.keytab"
     remote_file = "/home/ubuntu/keystone.keytab"
