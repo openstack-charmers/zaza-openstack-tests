@@ -23,7 +23,7 @@ from zaza.openstack.utilities import openstack as openstack_utils
 from zaza.openstack.charm_tests.kerberos import KerberosConfigurationError
 
 
-def _get_unit_full_hostname(unit_name):
+def get_unit_full_hostname(unit_name):
     """Retrieve the full hostname of a unit."""
     for unit in zaza.model.get_units(unit_name):
         result = zaza.model.run_on_unit(unit.entity_id, 'hostname -f')
@@ -77,7 +77,7 @@ def configure_keystone_service_in_kerberos():
     """
     logging.info('Configure keystone service in Kerberos')
     unit = zaza.model.get_units('kerberos-server')[0]
-    keystone_hostname = _get_unit_full_hostname('keystone')
+    keystone_hostname = get_unit_full_hostname('keystone')
     commands = ['sudo kadmin.local -q "addprinc -randkey -clearpolicy '
                 'HTTP/{}"'.format(keystone_hostname),
                 'sudo kadmin.local -q "ktadd '

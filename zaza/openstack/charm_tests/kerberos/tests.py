@@ -17,6 +17,7 @@
 import logging
 import mock
 
+from zaza.openstack.charm_tests.kerberos.setup import get_unit_full_hostname
 from zaza.openstack.charm_tests.keystone import BaseKeystoneTest
 from zaza.openstack.utilities import openstack as openstack_utils
 import zaza.charm_lifecycle.utils as lifecycle_utils
@@ -66,6 +67,7 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
             keystone_session)
         domain_id = keystone_client.domain.find(name=domain_name).id
         project_id = keystone_client.project.find(name=project_name).id
+        keystone_hostname = get_unit_full_hostname('keystone')
 
         _openrc = {
             "OS_AUTH_URL": "https://{}:5000/krb/v3".format(keystone_hostname),
