@@ -16,6 +16,7 @@
 
 import logging
 import mock
+import os
 import subprocess
 from keystoneauth1 import session
 from keystoneauth1.identity import v3
@@ -72,24 +73,28 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
         project_id = keystone_client.projects.find(name=project_name).id
         keystone_hostname = get_unit_full_hostname('keystone')
 
-        _openrc = {
-            "OS_AUTH_URL": "https://{}:5000/krb/v3".format(keystone_hostname),
-            "OS_PROJECT_ID": project_id,
-            "OS_PROJECT_NAME": project_name,
-            "OS_PROJECT_DOMAIN_ID": domain_id,
-            "OS_REGION_NAME": "RegionOne",
-            "OS_INTERFACE": "public",
-            "OS_IDENTITY_API_VERSION": 3,
-            "OS_AUTH_TYPE": "v3kerberos",
-        }
-        auth = v3.Password(**_openrc)
-        user_session = session.Session(auth=auth, verify=None) #openstack_utils.get_keystone_session(_openrc)
-        token =user_session.get_token()
-        if len(token) < 180:
-            raise zaza_exceptions.KeystoneWrongTokenProvider(
-                'We expected a Fernet token and got this: "{}"'
-                    .format(token))
+        # _openrc = {
+        #     "OS_AUTH_URL": "https://{}:5000/krb/v3".format(keystone_hostname),
+        #     "OS_PROJECT_ID": project_id,
+        #     "OS_PROJECT_NAME": project_name,
+        #     "OS_PROJECT_DOMAIN_ID": domain_id,
+        #     "OS_REGION_NAME": "RegionOne",
+        #     "OS_INTERFACE": "public",
+        #     "OS_IDENTITY_API_VERSION": 3,
+        #     "OS_AUTH_TYPE": "v3kerberos",
+        # }
+        os.environ['OS_AUTH_URL'] = "https://{}:5000/krb/v3".format(keystone_hostname)
+        os.environ['OS_PROJECT_ID'] = project_id
+        os.environ['OS_PROJECT_NAME'] = project_name
+        os.environ['OS_PROJECT_DOMAIN_ID'] = domain_id
+        os.environ['OS_REGION_NAME'] = "RegionOne"
+        os.environ['OS_INTERFACE'] = "public"
+        os.environ['OS_IDENTITY_API_VERSION'] = 3
+        os.environ['OS_AUTH_TYPE'] = 'v3kerberos'
 
-        logging.info('token: "{}"'.format(pprint.pformat(token)))
-
+        cmd = 'openstack token issue -f value -c id'
+        result = subprocess.run(cmd, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE,
+                                universal_newlines=True)
+        assert result.returncode == 0, result.stderr
 
