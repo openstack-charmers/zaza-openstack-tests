@@ -49,8 +49,7 @@ def add_empty_resource_file_to_keystone_kerberos():
 
 
 def add_dns_entry(kerberos_hostname="kerberos.testubuntu.com"):
-    """In keystone and the local host, add a dns entry in
-    /etc/hosts for the kerberos test server.
+    """Add a dns entry in /etc/hosts for the kerberos test server.
 
     :param kerberos_hostname: FQDN of Kerberos server
     :type kerberos_hostname: string
@@ -174,7 +173,8 @@ def setup_kerberos_configuration_for_test_host():
     host_keytab_path = '/home/ubuntu/krb5.keytab'
     with tempfile.TemporaryDirectory() as tmpdirname:
         tmp_file = "{}/{}".format(tmpdirname, dump_file)
-        logging.info("Retrieving {} from {}.".format(remote_file, kerberos_server.name))
+        logging.info("Retrieving {} from {}.".format(remote_file,
+                                                     kerberos_server.name))
         zaza.model.scp_from_unit(
             kerberos_server.name,
             remote_file,
@@ -182,13 +182,13 @@ def setup_kerberos_configuration_for_test_host():
         logging.info("Copying {} to {}".format(tmp_file, host_keytab_path))
         shutil.copy(tmp_file, host_keytab_path)
 
-
     dump_file = "krb5.conf"
     remote_file = "/etc/krb5.conf"
     host_krb5_path = "/etc/krb5.conf"
     with tempfile.TemporaryDirectory() as tmpdirname:
         tmp_file = "{}/{}".format(tmpdirname, dump_file)
-        logging.info("Retrieving {} from {}".format(remote_file, kerberos_server.name))
+        logging.info("Retrieving {} from {}".format(remote_file,
+                                                    kerberos_server.name))
         zaza.model.scp_from_unit(
             kerberos_server.name,
             remote_file,
@@ -200,6 +200,7 @@ def setup_kerberos_configuration_for_test_host():
 
 
 def run_all_tests():
+    """Execute all the necessary functions for the tests setup."""
     add_empty_resource_file_to_keystone_kerberos()
     add_dns_entry()
     configure_keystone_service_in_kerberos()

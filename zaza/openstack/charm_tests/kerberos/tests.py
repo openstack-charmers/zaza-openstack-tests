@@ -15,18 +15,12 @@
 """Keystone Kerberos Tests."""
 
 import logging
-import mock
 import os
 import subprocess
-from keystoneauth1 import session
-from keystoneauth1.identity import v3
 
-import zaza.charm_lifecycle.utils as lifecycle_utils
-import zaza.openstack.utilities.exceptions as zaza_exceptions
 from zaza.openstack.charm_tests.kerberos.setup import get_unit_full_hostname
 from zaza.openstack.charm_tests.keystone import BaseKeystoneTest
 from zaza.openstack.utilities import openstack as openstack_utils
-
 
 
 class FailedToReachKerberos(Exception):
@@ -42,15 +36,9 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
     def setUpClass(cls):
         """Run class setup for running Keystone Kerberos charm tests."""
         super(CharmKeystoneKerberosTest, cls).setUpClass()
-        # Note: The BaseKeystoneTest class sets the application_name to
-        # "keystone" which breaks subordinate charm actions. Explicitly set
-        # application name here.
-        cls.test_config = lifecycle_utils.get_charm_config()
-        cls.application_name = cls.test_config['charm_name']
-
 
     def test_100_keystone_kerberos_authentication(self):
-        """Validate authentication to the kerberos principal server with keytab."""
+        """Validate auth to Openstack through the kerberos method."""
         logging.info('Retrieving a kerberos token with kinit for admin user')
         cmd = ['echo', 'password123', '|', 'kinit', 'admin']
         result = subprocess.run(cmd, stdout=subprocess.PIPE,
@@ -70,7 +58,8 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
         keystone_hostname = get_unit_full_hostname('keystone')
 
         logging.info('Exporting OS environment variables.')
-        os.environ['OS_AUTH_URL'] = "http://{}:5000/krb/v3".format(keystone_hostname)
+        os.environ['OS_AUTH_URL'] = "http://{}:5000/krb/v3".format(
+            keystone_hostname)
         os.environ['OS_PROJECT_ID'] = project_id
         os.environ['OS_PROJECT_NAME'] = project_name
         os.environ['OS_PROJECT_DOMAIN_ID'] = domain_id
@@ -85,4 +74,3 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
                                 stderr=subprocess.PIPE,
                                 universal_newlines=True)
         assert result.returncode == 0, result.stderr
-
