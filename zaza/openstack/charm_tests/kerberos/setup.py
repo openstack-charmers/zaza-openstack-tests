@@ -183,9 +183,3 @@ def setup_kerberos_configuration_for_test_host():
         subprocess.check_call(['sudo', 'mv', tmp_file, '/etc/krb5.conf'],
                               stderr=subprocess.STDOUT,
                               universal_newlines=True)
-
-
-
-# source and test authentication
-# that will go in the test section
-# will need the extra packages installed to run that test -> should be done in test requirements
