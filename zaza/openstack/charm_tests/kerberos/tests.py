@@ -49,20 +49,16 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
         cls.application_name = cls.test_config['charm_name']
 
 
-    def test_100_keystone_kerberos_authentication_keytab(self):
+    def test_100_keystone_kerberos_authentication(self):
         """Validate authentication to the kerberos principal server with keytab."""
-        logging.info('Retrieving a kerberos token with kinit')
-        host_keytab_path = '/home/ubuntu/krb5.keytab'
-        cmd = ['kinit', '-kt', host_keytab_path, '-p',
-               'HTTP/kerberos.testubuntu.com' ]
+        logging.info('Retrieving a kerberos token with kinit for admin user')
+        cmd = ['echo', 'password123', '|', 'kinit', 'admin']
         result = subprocess.run(cmd, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE,
                                 universal_newlines=True)
         assert result.returncode == 0, result.stderr
 
-
-    def test_get_keystone_token(self):
-        """Run test to retrieve a keystone token."""
+        logging.info('Fetching user/project info in Openstack')
 
         domain_name = 'k8s'
         project_name = 'k8s'
@@ -73,17 +69,8 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
         project_id = keystone_client.projects.find(name=project_name).id
         keystone_hostname = get_unit_full_hostname('keystone')
 
-        # _openrc = {
-        #     "OS_AUTH_URL": "https://{}:5000/krb/v3".format(keystone_hostname),
-        #     "OS_PROJECT_ID": project_id,
-        #     "OS_PROJECT_NAME": project_name,
-        #     "OS_PROJECT_DOMAIN_ID": domain_id,
-        #     "OS_REGION_NAME": "RegionOne",
-        #     "OS_INTERFACE": "public",
-        #     "OS_IDENTITY_API_VERSION": 3,
-        #     "OS_AUTH_TYPE": "v3kerberos",
-        # }
-        os.environ['OS_AUTH_URL'] = "https://{}:5000/krb/v3".format(keystone_hostname)
+        logging.info('Exporting OS environment variables.')
+        os.environ['OS_AUTH_URL'] = "http://{}:5000/krb/v3".format(keystone_hostname)
         os.environ['OS_PROJECT_ID'] = project_id
         os.environ['OS_PROJECT_NAME'] = project_name
         os.environ['OS_PROJECT_DOMAIN_ID'] = domain_id
@@ -92,7 +79,8 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
         os.environ['OS_IDENTITY_API_VERSION'] = 3
         os.environ['OS_AUTH_TYPE'] = 'v3kerberos'
 
-        cmd = 'openstack token issue -f value -c id'
+        logging.info('Retrieving an openstack token')
+        cmd = ['openstack', 'token', 'issue', '-f', 'value', '-c', 'id']
         result = subprocess.run(cmd, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE,
                                 universal_newlines=True)

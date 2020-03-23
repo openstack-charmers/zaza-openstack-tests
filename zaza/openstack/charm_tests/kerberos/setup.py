@@ -28,7 +28,6 @@ def get_unit_full_hostname(unit_name):
     for unit in zaza.model.get_units(unit_name):
         result = zaza.model.run_on_unit(unit.entity_id, 'hostname -f')
         hostname = result['Stdout'].rstrip()
-        logging.info('{} full hostname: "{}"'.format(unit_name, hostname))
     return hostname
 
 
