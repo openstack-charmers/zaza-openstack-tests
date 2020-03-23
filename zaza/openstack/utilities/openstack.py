@@ -158,6 +158,16 @@ KEYSTONE_REMOTE_CACERT = (
 KEYSTONE_LOCAL_CACERT = ("/tmp/{}".format(KEYSTONE_CACERT))
 
 
+def get_cacert():
+    """Return path to CA Certificate bundle for verification during test.
+
+    :returns: Path to CA Certificate bundle or None.
+    :rtype: Optional[str]
+    """
+    if os.path.exists(KEYSTONE_LOCAL_CACERT):
+        return KEYSTONE_LOCAL_CACERT
+
+
 # Openstack Client helpers
 def get_ks_creds(cloud_creds, scope='PROJECT'):
     """Return the credentials for authenticating against keystone.
@@ -244,18 +254,22 @@ def get_neutron_session_client(session):
 
 
 def get_swift_session_client(session,
-                             region_name='RegionOne'):
+                             region_name='RegionOne',
+                             cacert=None):
     """Return swiftclient authenticated by keystone session.
 
     :param session: Keystone session object
     :type session: keystoneauth1.session.Session object
     :param region_name: Optional region name to use
     :type region_name: str
+    :param cacert: Path to CA Certificate
+    :type cacert: Optional[str]
     :returns: Authenticated swiftclient
     :rtype: swiftclient.Client object
     """
     return swiftclient.Connection(session=session,
-                                  os_options={'region_name': region_name})
+                                  os_options={'region_name': region_name},
+                                  cacert=cacert)
 
 
 def get_octavia_session_client(session, service_type='load-balancer',
