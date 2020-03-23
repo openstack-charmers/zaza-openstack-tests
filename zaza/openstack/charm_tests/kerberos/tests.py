@@ -56,12 +56,8 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
         assert result.returncode == 0, result.stderr
 
 
-    def test_get_keystone_session(self):
-        """Run test to retrieve a keystone session."""
-        self.patch_object(openstack_utils, "session")
-        self.patch_object(openstack_utils, "v3")
-        _auth = mock.MagicMock()
-        self.v3.Password.return_value = _auth
+    def test_get_keystone_token(self):
+        """Run test to retrieve a keystone token."""
 
         domain_name = 'k8s'
         project_name = 'k8s'
@@ -83,8 +79,6 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
             "OS_AUTH_TYPE": "v3kerberos",
         }
         user_session = openstack_utils.get_keystone_session(_openrc)
-        self.session.Session.assert_called_once_with(auth=_auth, verify=None)
-        user_client = openstack_utils.get_keystone_session_client(user_session)
         token =user_session.get_token()
         if len(token) < 180:
             raise zaza_exceptions.KeystoneWrongTokenProvider(
