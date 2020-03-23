@@ -16,6 +16,7 @@
 
 import logging
 import shutil
+import subprocess
 import tempfile
 import zaza.model
 from zaza.openstack.utilities import openstack as openstack_utils
@@ -172,11 +173,13 @@ def setup_kerberos_configuration_for_test_host():
             kerberos_server.name,
             remote_file,
             tmp_file)
+        logging.info("Copying {} to {}".format(tmp_file, host_keytab_path))
         shutil.copy(tmp_file, host_keytab_path)
 
 
     dump_file = "krb5.conf"
     remote_file = "/etc/krb5.conf"
+    host_krb5_path = "/etc/krb5.conf"
     with tempfile.TemporaryDirectory() as tmpdirname:
         tmp_file = "{}/{}".format(tmpdirname, dump_file)
         logging.info("Retrieving {} from {}".format(remote_file, kerberos_server.name))
@@ -184,7 +187,7 @@ def setup_kerberos_configuration_for_test_host():
             kerberos_server.name,
             remote_file,
             tmp_file)
-        logging.info("Copying temporary krb5.conf to /etc/krb5.conf")
-        subprocess.check_call(['sudo', 'mv', tmp_file, '/etc/krb5.conf'],
+        logging.info("Copying {} to {}".format(tmp_file, host_krb5_path))
+        subprocess.check_call(['sudo', 'mv', tmp_file, host_krb5_path],
                               stderr=subprocess.STDOUT,
                               universal_newlines=True)

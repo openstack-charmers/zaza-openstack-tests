@@ -69,9 +69,9 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
 
         _openrc = {
             "OS_AUTH_URL": "https://{}:5000/krb/v3".format(keystone_hostname),
-            "OS_PROJECT_ID": test_project_id,
-            "OS_PROJECT_NAME": test_project_name,
-            "OS_PROJECT_DOMAIN_ID": test_domain_id,
+            "OS_PROJECT_ID": project_id,
+            "OS_PROJECT_NAME": project_name,
+            "OS_PROJECT_DOMAIN_ID": domain_id,
             "OS_REGION_NAME": "RegionOne",
             "OS_INTERFACE": "public",
             "OS_IDENTITY_API_VERSION": 3,
