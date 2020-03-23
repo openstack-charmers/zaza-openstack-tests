@@ -17,10 +17,11 @@
 import logging
 import mock
 
+import zaza.charm_lifecycle.utils as lifecycle_utils
+import zaza.openstack.utilities.exceptions as zaza_exceptions
 from zaza.openstack.charm_tests.kerberos.setup import get_unit_full_hostname
 from zaza.openstack.charm_tests.keystone import BaseKeystoneTest
 from zaza.openstack.utilities import openstack as openstack_utils
-import zaza.charm_lifecycle.utils as lifecycle_utils
 
 
 class FailedToReachKerberos(Exception):
@@ -45,6 +46,7 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
 
     def test_100_keystone_kerberos_authentication_keytab(self):
         """Validate authentication to the kerberos principal server with keytab."""
+        logging.info('Retrieving a kerberos token with kinit')
         host_keytab_path = '/home/ubuntu/krb5.keytab'
         cmd = ['kinit', '-kt', host_keytab_path ]
         result = subprocess.run(cmd, stdout=subprocess.PIPE,
@@ -79,5 +81,15 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
             "OS_IDENTITY_API_VERSION": 3,
             "OS_AUTH_TYPE": "v3kerberos",
         }
-        openstack_utils.get_keystone_session(_openrc)
+        user_session = openstack_utils.get_keystone_session(_openrc)
         self.session.Session.assert_called_once_with(auth=_auth, verify=None)
+        user_client = openstack_utils.get_keystone_session_client(user_session)
+        token =user_session.get_token()
+        if len(token) < 180:
+            raise zaza_exceptions.KeystoneWrongTokenProvider(
+                'We expected a Fernet token and got this: "{}"'
+                    .format(token))
+
+        logging.info('token: "{}"'.format(pprint.pformat(token)))
+
+
