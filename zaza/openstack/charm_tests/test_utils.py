@@ -131,6 +131,7 @@ class OpenStackBaseTest(unittest.TestCase):
             cls.application_name,
             model_name=cls.model_name)
         logging.debug('Leader unit is {}'.format(cls.lead_unit))
+        cls.cacert = openstack_utils.get_cacert()
 
     def config_current(self, application_name=None, keys=None):
         """Get Current Config of an application normalized into key-values.

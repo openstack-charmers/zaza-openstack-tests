@@ -605,7 +605,8 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
         region_name = 'RegionOne'
         swift_client = zaza_openstack.get_swift_session_client(
             keystone_session,
-            region_name
+            region_name,
+            cacert=self.cacert,
         )
         _container = 'demo-container'
         _test_data = 'Test data from Zaza'
@@ -629,7 +630,8 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
         keystone_session = zaza_openstack.get_overcloud_keystone_session()
         source_client = zaza_openstack.get_swift_session_client(
             keystone_session,
-            region_name='east-1'
+            region_name='east-1',
+            cacert=self.cacert,
         )
         _container = 'demo-container'
         _test_data = 'Test data from Zaza'
@@ -643,7 +645,8 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
 
         target_client = zaza_openstack.get_swift_session_client(
             keystone_session,
-            region_name='east-1'
+            region_name='east-1',
+            cacert=self.cacert,
         )
 
         @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
@@ -675,11 +678,13 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
         keystone_session = zaza_openstack.get_overcloud_keystone_session()
         source_client = zaza_openstack.get_swift_session_client(
             keystone_session,
-            region_name='east-1'
+            region_name='east-1',
+            cacert=self.cacert,
         )
         target_client = zaza_openstack.get_swift_session_client(
             keystone_session,
-            region_name='west-1'
+            region_name='west-1',
+            cacert=self.cacert,
         )
         zaza_model.run_action_on_leader(
             'slave-ceph-radosgw',

@@ -266,6 +266,7 @@ class S3APITest(test_utils.OpenStackBaseTest):
             'aws_access_key_id': self.ec2_creds.access,
             'aws_secret_access_key': self.ec2_creds.secret,
             'endpoint_url': self.s3_endpoint,
+            'verify': self.cacert,
         }
         s3_client = boto3.client('s3', **kwargs)
         s3 = boto3.resource('s3', **kwargs)
