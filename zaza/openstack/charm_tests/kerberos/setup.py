@@ -15,7 +15,7 @@
 """Setup for keystone-kerberos tests."""
 
 import logging
-import os
+import shutil
 import tempfile
 import zaza.model
 from zaza.openstack.utilities import openstack as openstack_utils
@@ -36,7 +36,7 @@ def add_empty_resource_file_to_keystone_kerberos():
     logging.info('Attaching an empty keystone keytab to the keystone-kerberos'
                  ' unit')
     tmp_file = '/tmp/empty.keytab'
-    with open(tmp_file, 'w') as fp:
+    with open(tmp_file, 'w'):
         pass
 
     zaza.model.attach_resource('keystone-kerberos',
@@ -77,8 +77,7 @@ def configure_keystone_service_in_kerberos():
     logging.info('Configure keystone service in Kerberos')
     unit = zaza.model.get_units('kerberos-server')[0]
     keystone_hostname = _get_unit_full_hostname('keystone')
-    commands = ['sudo su -',
-                'sudo kadmin.local -q "addprinc -randkey '
+    commands = ['sudo kadmin.local -q "addprinc -randkey -clearpolicy '
                 'HTTP/{}"'.format(keystone_hostname),
                 'sudo kadmin.local -q "ktadd '
                 '-k /home/ubuntu/keystone.keytab '
@@ -88,14 +87,14 @@ def configure_keystone_service_in_kerberos():
     try:
         for command in commands:
             logging.info(
-                'Command to send to kerberos-server: {}'.format(command))
+                'Sending command to the kerberos-server: {}'.format(command))
             result = zaza.model.run_on_unit(unit.name, command)
-            logging.info('Stdout: {}'.format(result['Stdout']))
             if result['Stderr']:
                 raise KerberosConfigurationError
-
+            elif result['Stdout']:
+                logging.info('Stdout: {}'.format(result['Stdout']))
     except KerberosConfigurationError:
-        logging.error('Stdout: {}'.format(result['Stderr']))
+        logging.error('Stderr: {}'.format(result['Stderr']))
 
 
 def retrieve_and_attach_keytab():
@@ -155,7 +154,7 @@ def openstack_setup_kerberos():
     )
 
 
-def retrieve_token_and_conf_for_test_host():
+def setup_kerberos_configuration_for_test_host():
     """Retrieve the admin keytab and krb5.conf to setup the test host."""
     kerberos_server = zaza.model.get_units('kerberos-server')[0]
 
@@ -163,19 +162,30 @@ def retrieve_token_and_conf_for_test_host():
     remote_file = "/etc/krb5.keytab"
     with tempfile.TemporaryDirectory() as tmpdirname:
         tmp_file = "{}/{}".format(tmpdirname, dump_file)
+        logging.info("Retrieving {} from {}.".format(remote_file, kerberos_server.name))
         zaza.model.scp_from_unit(
             kerberos_server.name,
             remote_file,
             tmp_file)
+        shutil.copy(tmp_file, '/home/ubuntu/krb5.keytab')
+
 
     dump_file = "krb5.conf"
     remote_file = "/etc/krb5.conf"
-    zaza.model.scp_from_unit(
-        kerberos_server.name,
-        remote_file,
-        tmp_file)
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        tmp_file = "{}/{}".format(tmpdirname, dump_file)
+        logging.info("Retrieving {} from {}".format(remote_file, kerberos_server.name))
+        zaza.model.scp_from_unit(
+            kerberos_server.name,
+            remote_file,
+            tmp_file)
+        logging.info("Copying temporary krb5.conf to /etc/krb5.conf")
+        subprocess.check_call(['sudo', 'mv', tmp_file, '/etc/krb5.conf'],
+                              stderr=subprocess.STDOUT,
+                              universal_newlines=True)
+
 
 
 # source and test authentication
 # that will go in the test section
-# will need the extra packages installed to run that test
+# will need the extra packages installed to run that test -> should be done in test requirements
