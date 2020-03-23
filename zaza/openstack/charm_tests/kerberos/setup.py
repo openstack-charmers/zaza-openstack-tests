@@ -49,8 +49,9 @@ def add_empty_resource_file_to_keystone_kerberos():
     zaza.model.block_until_all_units_idle()
 
 
-def add_dns_entry_to_keystone(kerberos_hostname="kerberos.testubuntu.com"):
-    """In keystone, add a dns entry in /etc/hosts for the kerberos test server.
+def add_dns_entry(kerberos_hostname="kerberos.testubuntu.com"):
+    """In keystone and the local host, add a dns entry in
+    /etc/hosts for the kerberos test server.
 
     :param kerberos_hostname: FQDN of Kerberos server
     :type kerberos_hostname: string
@@ -60,12 +61,18 @@ def add_dns_entry_to_keystone(kerberos_hostname="kerberos.testubuntu.com"):
     cmd = "sudo sed -i '/localhost/i\\{}\t{}' /etc/hosts"\
         .format(kerberos_ip, kerberos_hostname)
     keystone_units = zaza.model.get_units("keystone")
+    logging.info('Adding dns entry to the keystone units.')
     for keystone_unit in keystone_units:
         zaza.model.run_on_unit(keystone_unit.entity_id, cmd)
         logging.info('DNS entry added to unit {}: {} {}'
                      .format(keystone_unit.name,
                              kerberos_ip,
                              kerberos_hostname))
+
+    logging.info('Adding dns entry to the test host.')
+    subprocess.check_call(cmd.split(),
+                          stderr=subprocess.STDOUT,
+                          universal_newlines=True)
 
 
 def configure_keystone_service_in_kerberos():
@@ -191,3 +198,12 @@ def setup_kerberos_configuration_for_test_host():
         subprocess.check_call(['sudo', 'mv', tmp_file, host_krb5_path],
                               stderr=subprocess.STDOUT,
                               universal_newlines=True)
+
+
+def run_all_tests():
+    add_empty_resource_file_to_keystone_kerberos()
+    add_dns_entry()
+    configure_keystone_service_in_kerberos()
+    retrieve_and_attach_keytab()
+    openstack_setup_kerberos()
+    setup_kerberos_configuration_for_test_host()

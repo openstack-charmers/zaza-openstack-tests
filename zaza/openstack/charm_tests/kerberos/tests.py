@@ -16,6 +16,7 @@
 
 import logging
 import mock
+import subprocess
 
 import zaza.charm_lifecycle.utils as lifecycle_utils
 import zaza.openstack.utilities.exceptions as zaza_exceptions
