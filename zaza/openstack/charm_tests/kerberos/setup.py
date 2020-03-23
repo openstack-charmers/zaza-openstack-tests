@@ -94,7 +94,7 @@ def configure_keystone_service_in_kerberos():
             elif result['Stdout']:
                 logging.info('Stdout: {}'.format(result['Stdout']))
     except KerberosConfigurationError:
-        logging.error('Stderr: {}'.format(result['Stderr']))
+        logging.error('An error occured : {}'.format(result['Stderr']))
 
 
 def retrieve_and_attach_keytab():
@@ -105,11 +105,13 @@ def retrieve_and_attach_keytab():
     remote_file = "/home/ubuntu/keystone.keytab"
     with tempfile.TemporaryDirectory() as tmpdirname:
         tmp_file = "{}/{}".format(tmpdirname, dump_file)
+        logging.info('Retrieving keystone.keytab from the kerberos server.')
         zaza.model.scp_from_unit(
             kerberos_server.name,
             remote_file,
             tmp_file)
-
+        logging.info('Attaching the keystone_keytab resource to '
+                     'keystone-kerberos')
         zaza.model.attach_resource('keystone-kerberos',
                                    'keystone_keytab',
                                    tmp_file)
@@ -123,9 +125,11 @@ def openstack_setup_kerberos():
     kerberos_password = 'password123'
     role = 'admin'
 
+    logging.info('Retrieving a keystone session and client.')
     keystone_session = openstack_utils.get_overcloud_keystone_session()
     keystone_client = openstack_utils.get_keystone_session_client(
         keystone_session)
+    logging.info('Creating domain, project and user for Kerberos tests.')
     domain = keystone_client.domains.create(kerberos_domain,
                                             description='Kerberos Domain',
                                             enabled=True)
@@ -160,6 +164,7 @@ def setup_kerberos_configuration_for_test_host():
 
     dump_file = "krb5.keytab"
     remote_file = "/etc/krb5.keytab"
+    host_keytab_path = '/home/ubuntu/krb5.keytab'
     with tempfile.TemporaryDirectory() as tmpdirname:
         tmp_file = "{}/{}".format(tmpdirname, dump_file)
         logging.info("Retrieving {} from {}.".format(remote_file, kerberos_server.name))
@@ -167,7 +172,7 @@ def setup_kerberos_configuration_for_test_host():
             kerberos_server.name,
             remote_file,
             tmp_file)
-        shutil.copy(tmp_file, '/home/ubuntu/krb5.keytab')
+        shutil.copy(tmp_file, host_keytab_path)
 
 
     dump_file = "krb5.conf"

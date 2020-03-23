@@ -42,12 +42,31 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
         cls.application_name = cls.test_config['charm_name']
 
 
+    def test_100_keystone_kerberos_authentication_keytab(self):
+        """Validate authentication to the kerberos principal server with keytab."""
+        host_keytab_path = '/home/ubuntu/krb5.keytab'
+        cmd = ['kinit', '-kt', host_keytab_path ]
+        result = subprocess.run(cmd, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE,
+                                universal_newlines=True)
+        assert result.returncode == 0, result.stderr
+
+
     def test_get_keystone_session(self):
         """Run test to retrieve a keystone session."""
         self.patch_object(openstack_utils, "session")
         self.patch_object(openstack_utils, "v3")
         _auth = mock.MagicMock()
         self.v3.Password.return_value = _auth
+
+        domain_name = 'k8s'
+        project_name = 'k8s'
+        keystone_session = openstack_utils.get_overcloud_keystone_session()
+        keystone_client = openstack_utils.get_keystone_session_client(
+            keystone_session)
+        domain_id = keystone_client.domain.find(name=domain_name).id
+        project_id = keystone_client.project.find(name=project_name).id
+
         _openrc = {
             "OS_AUTH_URL": "https://{}:5000/krb/v3".format(keystone_hostname),
             "OS_PROJECT_ID": test_project_id,
