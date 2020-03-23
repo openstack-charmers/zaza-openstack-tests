@@ -592,6 +592,13 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
                     target_status='running'
                 )
 
+    # When testing with TLS there is a chance the deployment will appear done
+    # and idle prior to ceph-radosgw and Keystone have updated the service
+    # catalog.  Retry the test in this circumstance.
+    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=10, max=300),
+                    reraise=True, stop=tenacity.stop_after_attempt(10),
+                    retry=tenacity.retry_if_exception_type(
+                        ConnectionRefusedError))
     def test_object_storage(self):
         """Verify object storage API.
 
