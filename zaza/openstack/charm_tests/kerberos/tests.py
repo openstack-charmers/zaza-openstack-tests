@@ -17,12 +17,15 @@
 import logging
 import mock
 import subprocess
+from keystoneauth1 import session
+from keystoneauth1.identity import v3
 
 import zaza.charm_lifecycle.utils as lifecycle_utils
 import zaza.openstack.utilities.exceptions as zaza_exceptions
 from zaza.openstack.charm_tests.kerberos.setup import get_unit_full_hostname
 from zaza.openstack.charm_tests.keystone import BaseKeystoneTest
 from zaza.openstack.utilities import openstack as openstack_utils
+
 
 
 class FailedToReachKerberos(Exception):
@@ -49,7 +52,8 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
         """Validate authentication to the kerberos principal server with keytab."""
         logging.info('Retrieving a kerberos token with kinit')
         host_keytab_path = '/home/ubuntu/krb5.keytab'
-        cmd = ['kinit', '-kt', host_keytab_path ]
+        cmd = ['kinit', '-kt', host_keytab_path, '-p',
+               'HTTP/kerberos.testubuntu.com' ]
         result = subprocess.run(cmd, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE,
                                 universal_newlines=True)
@@ -64,8 +68,8 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
         keystone_session = openstack_utils.get_overcloud_keystone_session()
         keystone_client = openstack_utils.get_keystone_session_client(
             keystone_session)
-        domain_id = keystone_client.domain.find(name=domain_name).id
-        project_id = keystone_client.project.find(name=project_name).id
+        domain_id = keystone_client.domains.find(name=domain_name).id
+        project_id = keystone_client.projects.find(name=project_name).id
         keystone_hostname = get_unit_full_hostname('keystone')
 
         _openrc = {
@@ -78,7 +82,8 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
             "OS_IDENTITY_API_VERSION": 3,
             "OS_AUTH_TYPE": "v3kerberos",
         }
-        user_session = openstack_utils.get_keystone_session(_openrc)
+        auth = v3.Password(**_openrc)
+        user_session = session.Session(auth=auth, verify=None) #openstack_utils.get_keystone_session(_openrc)
         token =user_session.get_token()
         if len(token) < 180:
             raise zaza_exceptions.KeystoneWrongTokenProvider(

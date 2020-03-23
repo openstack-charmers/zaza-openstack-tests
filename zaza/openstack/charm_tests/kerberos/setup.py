@@ -129,7 +129,7 @@ def openstack_setup_kerberos():
     """Create a test domain, project, and user for kerberos tests."""
     kerberos_domain = 'k8s'
     kerberos_project = 'k8s'
-    kerberos_user = 'user_kerberos'
+    kerberos_user = 'admin'
     kerberos_password = 'password123'
     role = 'admin'
 
