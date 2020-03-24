@@ -50,8 +50,10 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
                                 universal_newlines=True)
         assert result.returncode == 0, result.stderr
 
-        logging.info('Fetching user/project info in Openstack')
+        logging.info('Verifying if the cached token has been created')
+        assert os.path.exists('/tmp/krb5cc_100') == True
 
+        logging.info('Fetching user/project info in Openstack')
         domain_name = 'k8s'
         project_name = 'k8s'
         keystone_session = openstack_utils.get_overcloud_keystone_session()
