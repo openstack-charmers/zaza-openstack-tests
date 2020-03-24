@@ -24,14 +24,29 @@ import unittest
 from zaza import model
 from zaza.openstack.utilities import (
     cli as cli_utils,
-    series_upgrade as series_upgrade_utils,
     upgrade_utils as upgrade_utils,
 )
 from zaza.openstack.charm_tests.nova.tests import LTSGuestCreateTest
 
 
+def _filter_easyrsa(app, app_config, model_name=None):
+    logging.warn("Skipping series upgrade of easyrsa Bug #1850121")
+    charm_name = upgrade_utils.extract_charm_name_from_url(app_config['charm'])
+    if "easyrsa" in charm_name:
+        return True
+    return False
+
+
+def _filter_etcd(app, app_config, model_name=None):
+    logging.warn("Skipping series upgrade of easyrsa Bug #1850124")
+    charm_name = upgrade_utils.extract_charm_name_from_url(app_config['charm'])
+    if "etcd" in charm_name:
+        return True
+    return False
+
+
 class SeriesUpgradeTest(unittest.TestCase):
-    """Class to encapsulate Sereis Upgrade Tests."""
+    """Class to encapsulate Series Upgrade Tests."""
 
     @classmethod
     def setUpClass(cls):
@@ -50,75 +65,31 @@ class SeriesUpgradeTest(unittest.TestCase):
         applications = model.get_status().applications
         completed_machines = []
         for application, app_details in applications:
-            # Defaults
-            origin = "openstack-origin"
-            pause_non_leader_subordinate = True
-            pause_non_leader_primary = True
-            post_upgrade_functions = []
             # Skip subordinates
             if app_details["subordinate-to"]:
                 continue
             if "easyrsa" in app_details["charm"]:
-                logging.warn("Skipping series upgrade of easyrsa Bug #1850121")
+                logging.warn(
+                    "Skipping series upgrade of easyrsa Bug #1850121")
                 continue
             if "etcd" in app_details["charm"]:
-                logging.warn("Skipping series upgrade of easyrsa Bug #1850124")
+                logging.warn(
+                    "Skipping series upgrade of easyrsa Bug #1850124")
                 continue
-            if "percona-cluster" in app_details["charm"]:
-                origin = "source"
-                pause_non_leader_primary = True
-                pause_non_leader_subordinate = True
-            if "rabbitmq-server" in app_details["charm"]:
-                origin = "source"
-                pause_non_leader_primary = True
-                pause_non_leader_subordinate = False
-            if "nova-compute" in app_details["charm"]:
-                pause_non_leader_primary = False
-                pause_non_leader_subordinate = False
-            if "ceph" in app_details["charm"]:
-                origin = "source"
-                pause_non_leader_primary = False
-                pause_non_leader_subordinate = False
-            if "designate-bind" in app_details["charm"]:
-                origin = None
-            if "tempest" in app_details["charm"]:
-                origin = None
-            if "memcached" in app_details["charm"]:
-                origin = None
-                pause_non_leader_primary = False
-                pause_non_leader_subordinate = False
-            if "vault" in app_details["charm"]:
-                origin = None
-                pause_non_leader_primary = False
-                pause_non_leader_subordinate = True
-                post_upgrade_functions = [
-                    ('zaza.openstack.charm_tests.vault.setup.'
-                     'mojo_unseal_by_unit')]
-            if "mongodb" in app_details["charm"]:
-                # Mongodb needs to run series upgrade
-                # on its secondaries first.
-                series_upgrade_utils.series_upgrade_non_leaders_first(
-                    application,
-                    from_series=self.from_series,
-                    to_series=self.to_series,
-                    completed_machines=completed_machines,
-                    post_upgrade_functions=post_upgrade_functions)
-                continue
-
-            # The rest are likley APIs use defaults
-
-            series_upgrade_utils.series_upgrade_application(
+            upgrade_config = upgrade_utils.app_config(
+                app_details['charm'],
+                async=False)
+            upgrade_function = upgrade_config.pop('upgrade_function')
+            logging.warn("About to upgrade {}".format(application))
+            upgrade_function(
                 application,
-                pause_non_leader_primary=pause_non_leader_primary,
-                pause_non_leader_subordinate=pause_non_leader_subordinate,
+                **upgrade_config,
                 from_series=self.from_series,
                 to_series=self.to_series,
-                origin=origin,
                 completed_machines=completed_machines,
                 workaround_script=self.workaround_script,
                 files=self.files,
-                post_upgrade_functions=post_upgrade_functions)
-
+            )
             if "rabbitmq-server" in app_details["charm"]:
                 logging.info(
                     "Running complete-cluster-series-upgrade action on leader")
@@ -218,7 +189,7 @@ class XenialBionicSeriesUpgrade(SeriesUpgradeTest):
 
 
 class ParallelSeriesUpgradeTest(unittest.TestCase):
-    """Class to encapsulate Sereis Upgrade Tests."""
+    """Class to encapsulate Series Upgrade Tests."""
 
     @classmethod
     def setUpClass(cls):
@@ -233,88 +204,30 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
         """Run series upgrade."""
         # Set Feature Flag
         os.environ["JUJU_DEV_FEATURE_FLAGS"] = "upgrade-series"
-        upgrade_groups = upgrade_utils.get_series_upgrade_groups()
+        upgrade_groups = upgrade_utils.get_series_upgrade_groups(
+            extra_filters=[_filter_etcd, _filter_easyrsa])
         applications = model.get_status().applications
         completed_machines = []
         for group_name, group in upgrade_groups.items():
             logging.warn("About to upgrade {} ({})".format(group_name, group))
             upgrade_group = []
             for application, app_details in applications.items():
-                # Defaults
-                origin = "openstack-origin"
-                pause_non_leader_subordinate = True
-                pause_non_leader_primary = True
-                post_upgrade_functions = []
-                # Skip subordinates
-                if app_details["subordinate-to"]:
+                if application not in group:
                     continue
-                if "easyrsa" in app_details["charm"]:
-                    logging.warn(
-                        "Skipping series upgrade of easyrsa Bug #1850121")
-                    continue
-                if "etcd" in app_details["charm"]:
-                    logging.warn(
-                        "Skipping series upgrade of easyrsa Bug #1850124")
-                    continue
+                upgrade_config = upgrade_utils.app_config(app_details['charm'])
+                upgrade_function = upgrade_config.pop('upgrade_function')
                 logging.warn("About to upgrade {}".format(application))
-                if "percona-cluster" in app_details["charm"]:
-                    origin = "source"
-                    pause_non_leader_primary = True
-                    pause_non_leader_subordinate = True
-                if "rabbitmq-server" in app_details["charm"]:
-                    origin = "source"
-                    pause_non_leader_primary = True
-                    pause_non_leader_subordinate = False
-                if "nova-compute" in app_details["charm"]:
-                    pause_non_leader_primary = False
-                    pause_non_leader_subordinate = False
-                if "ceph" in app_details["charm"]:
-                    origin = "source"
-                    pause_non_leader_primary = False
-                    pause_non_leader_subordinate = False
-                if "designate-bind" in app_details["charm"]:
-                    origin = None
-                if "tempest" in app_details["charm"]:
-                    origin = None
-                if "memcached" in app_details["charm"]:
-                    origin = None
-                    pause_non_leader_primary = False
-                    pause_non_leader_subordinate = False
-                if "vault" in app_details["charm"]:
-                    origin = None
-                    pause_non_leader_primary = False
-                    pause_non_leader_subordinate = True
-                    post_upgrade_functions = [
-                        ('zaza.openstack.charm_tests.vault.setup.'
-                         'mojo_unseal_by_unit')]
-                if "mongodb" in app_details["charm"]:
-                    # Mongodb needs to run series upgrade
-                    # on its secondaries first.
-                    upgrade_group.append(
-                        series_upgrade_utils
-                        .async_series_upgrade_non_leaders_first(
-                            application,
-                            from_series=self.from_series,
-                            to_series=self.to_series,
-                            completed_machines=completed_machines,
-                            post_upgrade_functions=post_upgrade_functions))
-                    continue
-
-                # The rest are likley APIs use defaults
-                pause = pause_non_leader_subordinate
+                logging.info("\tConfig: {}".format(upgrade_config))
                 upgrade_group.append(
-                    series_upgrade_utils.async_series_upgrade_application(
+                    upgrade_function(
                         application,
-                        pause_non_leader_primary=pause_non_leader_primary,
-                        pause_non_leader_subordinate=pause,
+                        **upgrade_config,
                         from_series=self.from_series,
                         to_series=self.to_series,
-                        origin=origin,
                         completed_machines=completed_machines,
                         workaround_script=self.workaround_script,
                         files=self.files,
-                        post_upgrade_functions=post_upgrade_functions))
-
+                    ))
             asyncio.get_event_loop().run_until_complete(
                 asyncio.gather(*upgrade_group))
             if "rabbitmq-server" in group:

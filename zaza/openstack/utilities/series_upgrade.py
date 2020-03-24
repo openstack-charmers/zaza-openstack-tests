@@ -42,40 +42,6 @@ def run_post_upgrade_functions(post_upgrade_functions):
             cl_utils.get_class(func)()
 
 
-def get_charm_settings():
-    """Application series upgrade settings.
-
-    :returns: A Dict of the settings to manage a series upgrade
-    :rtype: Dict
-
-    """
-    default = {
-        'origin': 'openstack-origin',
-        'pause_non_leader_subordinate': True,
-        'pause_non_leader_primary': True,
-        'upgrade_function': async_series_upgrade_application,
-        'post_upgrade_functions': []}
-
-    _app_settings = collections.defaultdict(lambda: default)
-    exceptions = {
-        'rabbitmq-server': {
-            'origin': 'source',
-            'pause_non_leader_subordinate': False},
-        'percona-cluster': {'origin': 'source'},
-        'nova-compute': {
-            'pause_non_leader_primary': False,
-            'pause_non_leader_subordinate': False},
-        'mongodb': {
-            'upgrade_function': async_series_upgrade_non_leaders_first,
-            'origin': None,
-
-        }}
-    for key, value in exceptions.items():
-        _app_settings[key] = copy.deepcopy(default)
-        _app_settings[key].update(value)
-    return _app_settings
-
-
 def series_upgrade_non_leaders_first(application, from_series="trusty",
                                      to_series="xenial",
                                      completed_machines=[],
@@ -370,6 +336,7 @@ async def async_series_upgrade_application(
     # generalized.
     leader = None
     non_leaders = []
+    logging.info("Configuring leader / non leaders for {}".format(application))
     for unit in status["units"]:
         if status["units"][unit].get("leader"):
             leader = unit
