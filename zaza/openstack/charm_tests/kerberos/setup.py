@@ -70,7 +70,7 @@ def add_dns_entry(kerberos_hostname="kerberos.testubuntu.com"):
     logging.info('Adding dns entry to the test host.')
     cmd = ['sudo', 'sed', '-i', '/localhost/i\\{}\t{}'.format(
         kerberos_ip, kerberos_hostname), '/etc/hosts']
-    subprocess.check_call(cmd.split(),
+    subprocess.check_call(cmd,
                           stderr=subprocess.STDOUT,
                           universal_newlines=True)
 

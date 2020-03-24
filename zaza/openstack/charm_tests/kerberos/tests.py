@@ -65,7 +65,7 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
         os.environ['OS_PROJECT_DOMAIN_ID'] = domain_id
         os.environ['OS_REGION_NAME'] = "RegionOne"
         os.environ['OS_INTERFACE'] = "public"
-        os.environ['OS_IDENTITY_API_VERSION'] = 3
+        os.environ['OS_IDENTITY_API_VERSION'] = '3'
         os.environ['OS_AUTH_TYPE'] = 'v3kerberos'
 
         logging.info('Retrieving an openstack token')
