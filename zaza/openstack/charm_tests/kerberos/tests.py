@@ -51,7 +51,8 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
         assert result.returncode == 0, result.stderr
 
         logging.info('Verifying if the cached token has been created')
-        assert os.path.exists('/tmp/krb5cc_100') == True
+        default_cache_location = '/tmp/krb5cc_1000'
+        assert os.path.exists(default_cache_location) == True
 
         logging.info('Fetching user/project info in Openstack')
         domain_name = 'k8s'
