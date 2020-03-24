@@ -40,8 +40,12 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
     def test_100_keystone_kerberos_authentication(self):
         """Validate auth to Openstack through the kerberos method."""
         logging.info('Retrieving a kerberos token with kinit for admin user')
-        cmd = ['echo', 'password123', '|', 'kinit', 'admin']
-        result = subprocess.run(cmd, stdout=subprocess.PIPE,
+
+        password = subprocess.Popen(('echo', 'password123'),
+                                    stdout=subprocess.PIPE)
+        result = subprocess.run(('kinit', 'admin'),
+                                stdin = password.stdout,
+                                stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE,
                                 universal_newlines=True)
         assert result.returncode == 0, result.stderr
