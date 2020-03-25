@@ -192,9 +192,10 @@ def setup_kerberos_configuration_for_test_host():
             kerberos_server.name,
             remote_file,
             tmp_file)
-        logging.info("SCP to test unit {} to {}".format(tmp_file, host_keytab_path))
-        # shutil.copy(tmp_file, host_keytab_path)
 
+        logging.info("SCP {} to {} on {}.".format(tmp_file,
+                                                  host_keytab_path,
+                                                  ubuntu_test_host.name))
         zaza.model.scp_to_unit(
             ubuntu_test_host.name,
             tmp_file,
@@ -203,7 +204,7 @@ def setup_kerberos_configuration_for_test_host():
 
     dump_file = "krb5.conf"
     remote_file = "/etc/krb5.conf"
-    host_krb5_path = "/etc/krb5.conf"
+    temp_krb5_path = "/home/ubuntu/krb5.conf"
     with tempfile.TemporaryDirectory() as tmpdirname:
         tmp_file = "{}/{}".format(tmpdirname, dump_file)
         logging.info("Retrieving {} from {}".format(remote_file,
@@ -212,14 +213,20 @@ def setup_kerberos_configuration_for_test_host():
             kerberos_server.name,
             remote_file,
             tmp_file)
-        logging.info("Copying {} to {}".format(tmp_file, host_krb5_path))
-        # subprocess.check_call(['sudo', 'mv', tmp_file, host_krb5_path],
-        #                       stderr=subprocess.STDOUT,
-        #                       universal_newlines=True)
+
+        logging.info("SCP {} to {} on {}.".format(tmp_file,
+                                                  temp_krb5_path,
+                                                  ubuntu_test_host))
         zaza.model.scp_to_unit(
             ubuntu_test_host.name,
             tmp_file,
-            host_krb5_path)
+            temp_krb5_path)
+        logging.info('Moving {} to {} on {}.'.format(temp_krb5_path,
+                                                    remote_file,
+                                                    ubuntu_test_host.name))
+        zaza.model.run_on_unit(ubuntu_test_host.name,
+                               ('sudo mv {} {}'.format(temp_krb5_path,
+                                                       remote_file)))
 
 
 def run_all_tests():
