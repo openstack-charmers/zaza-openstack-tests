@@ -65,25 +65,6 @@ def add_dns_entry(kerberos_hostname="kerberos.testubuntu.com"):
         zaza_unit = zaza.model.get_units(app_name)[0]
         zaza.model.run_on_unit(zaza_unit.entity_id, cmd)
 
-    # units = []
-    # units[0] = zaza.model.get_units("keystone")[0]
-    # units[1] = zaza.model.get_units('ubuntu-test-host')[0]
-    # logging.info('Adding dns entry to the keystone unit.')
-    # zaza.model.run_on_unit(keystone_unit.entity_id, cmd)
-    # logging.info('DNS entry added to unit {}: {} {}'
-    #              .format(keystone_unit.name,
-    #                      kerberos_ip,
-    #                      kerberos_hostname))
-    #
-    # logging.info('Adding dns entry to the test host.')
-    #
-    #
-    # # cmd = ['sudo', 'sed', '-i', '/localhost/i\\{}\t{}'.format(
-    # #     kerberos_ip, kerberos_hostname), '/etc/hosts']
-    # # subprocess.check_call(cmd,
-    # #                       stderr=subprocess.STDOUT,
-    # #                       universal_newlines=True)
-
 
 def configure_keystone_service_in_kerberos():
     """Configure the keystone service in Kerberos.
