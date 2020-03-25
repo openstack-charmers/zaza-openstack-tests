@@ -77,7 +77,8 @@ class SeriesUpgradeTest(unittest.TestCase):
                 logging.warn(
                     "Skipping series upgrade of easyrsa Bug #1850124")
                 continue
-            charm_name = upgrade_utils.extract_charm_name_from_url(app_details['charm'])
+            charm_name = upgrade_utils.extract_charm_name_from_url(
+                app_details['charm'])
             upgrade_config = series_upgrade_utils.app_config(
                 charm_name,
                 is_async=False)
@@ -216,7 +217,8 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
             for application, app_details in applications.items():
                 if application not in group:
                     continue
-                charm_name = upgrade_utils.extract_charm_name_from_url(app_details['charm'])
+                charm_name = upgrade_utils.extract_charm_name_from_url(
+                    app_details['charm'])
                 upgrade_config = series_upgrade_utils.app_config(charm_name)
                 upgrade_function = upgrade_config.pop('upgrade_function')
                 logging.warn("About to upgrade {}".format(application))
