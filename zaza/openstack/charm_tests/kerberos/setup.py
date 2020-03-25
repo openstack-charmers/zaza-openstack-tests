@@ -210,6 +210,12 @@ def setup_kerberos_configuration_for_test_host():
                                                        remote_file)))
 
 
+def install_krb5_client_on_ubuntu_test_host():
+    ubuntu_test_host = zaza.model.get_units('ubuntu-test-host')[0]
+    package = 'krb5-user'
+    zaza.model.run_on_unit(ubuntu_test_host.name,
+                           "sudo apt-get install {} -y".format(package))
+
 def run_all_tests():
     """Execute all the necessary functions for the tests setup."""
     add_empty_resource_file_to_keystone_kerberos()
@@ -218,3 +224,4 @@ def run_all_tests():
     retrieve_and_attach_keytab()
     openstack_setup_kerberos()
     setup_kerberos_configuration_for_test_host()
+    install_krb5_client_on_ubuntu_test_host()
