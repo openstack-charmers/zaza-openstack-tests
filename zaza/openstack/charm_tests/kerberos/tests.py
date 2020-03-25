@@ -48,6 +48,7 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE,
                                 universal_newlines=True)
+        password.wait()
         assert result.returncode == 0, result.stderr
 
         logging.info('Verifying if the cached token has been created')
