@@ -58,21 +58,31 @@ def add_dns_entry(kerberos_hostname="kerberos.testubuntu.com"):
     kerberos_ip = zaza.model.get_app_ips("kerberos-server")[0]
     cmd = "sudo sed -i '/localhost/i\\{}\t{}' /etc/hosts"\
         .format(kerberos_ip, kerberos_hostname)
-    keystone_units = zaza.model.get_units("keystone")
-    logging.info('Adding dns entry to the keystone units.')
-    for keystone_unit in keystone_units:
-        zaza.model.run_on_unit(keystone_unit.entity_id, cmd)
-        logging.info('DNS entry added to unit {}: {} {}'
-                     .format(keystone_unit.name,
-                             kerberos_ip,
-                             kerberos_hostname))
 
-    logging.info('Adding dns entry to the test host.')
-    cmd = ['sudo', 'sed', '-i', '/localhost/i\\{}\t{}'.format(
-        kerberos_ip, kerberos_hostname), '/etc/hosts']
-    subprocess.check_call(cmd,
-                          stderr=subprocess.STDOUT,
-                          universal_newlines=True)
+    app_names = ['keystone', 'ubuntu-test-host']
+    for app_name in app_names:
+        logging.info('Adding dns entry to the {} unit'.format(app_name))
+        zaza_unit = zaza.model.get_units(app_name)[0]
+        zaza.model.run_on_unit(zaza_unit.entity_id, cmd)
+
+    # units = []
+    # units[0] = zaza.model.get_units("keystone")[0]
+    # units[1] = zaza.model.get_units('ubuntu-test-host')[0]
+    # logging.info('Adding dns entry to the keystone unit.')
+    # zaza.model.run_on_unit(keystone_unit.entity_id, cmd)
+    # logging.info('DNS entry added to unit {}: {} {}'
+    #              .format(keystone_unit.name,
+    #                      kerberos_ip,
+    #                      kerberos_hostname))
+    #
+    # logging.info('Adding dns entry to the test host.')
+    #
+    #
+    # # cmd = ['sudo', 'sed', '-i', '/localhost/i\\{}\t{}'.format(
+    # #     kerberos_ip, kerberos_hostname), '/etc/hosts']
+    # # subprocess.check_call(cmd,
+    # #                       stderr=subprocess.STDOUT,
+    # #                       universal_newlines=True)
 
 
 def configure_keystone_service_in_kerberos():
@@ -167,8 +177,9 @@ def openstack_setup_kerberos():
 
 
 def setup_kerberos_configuration_for_test_host():
-    """Retrieve the admin keytab and krb5.conf to setup the test host."""
+    """Retrieve the keytab and krb5.conf to setup the ubuntu test host."""
     kerberos_server = zaza.model.get_units('kerberos-server')[0]
+    ubuntu_test_host = zaza.model.get_units('ubuntu-test-host')[0]
 
     dump_file = "krb5.keytab"
     remote_file = "/etc/krb5.keytab"
@@ -181,8 +192,14 @@ def setup_kerberos_configuration_for_test_host():
             kerberos_server.name,
             remote_file,
             tmp_file)
-        logging.info("Copying {} to {}".format(tmp_file, host_keytab_path))
-        shutil.copy(tmp_file, host_keytab_path)
+        logging.info("SCP to test unit {} to {}".format(tmp_file, host_keytab_path))
+        # shutil.copy(tmp_file, host_keytab_path)
+
+        zaza.model.scp_to_unit(
+            ubuntu_test_host.name,
+            tmp_file,
+            host_keytab_path)
+
 
     dump_file = "krb5.conf"
     remote_file = "/etc/krb5.conf"
@@ -196,9 +213,13 @@ def setup_kerberos_configuration_for_test_host():
             remote_file,
             tmp_file)
         logging.info("Copying {} to {}".format(tmp_file, host_krb5_path))
-        subprocess.check_call(['sudo', 'mv', tmp_file, host_krb5_path],
-                              stderr=subprocess.STDOUT,
-                              universal_newlines=True)
+        # subprocess.check_call(['sudo', 'mv', tmp_file, host_krb5_path],
+        #                       stderr=subprocess.STDOUT,
+        #                       universal_newlines=True)
+        zaza.model.scp_to_unit(
+            ubuntu_test_host.name,
+            tmp_file,
+            host_krb5_path)
 
 
 def run_all_tests():
