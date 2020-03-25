@@ -41,19 +41,26 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
         """Validate auth to Openstack through the kerberos method."""
         logging.info('Retrieving a kerberos token with kinit for admin user')
 
-        password = subprocess.Popen(('echo', 'password123'),
-                                    stdout=subprocess.PIPE)
-        result = subprocess.run(('kinit', 'admin'),
-                                stdin = password.stdout,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE,
-                                universal_newlines=True)
-        password.wait()
+        # password = subprocess.Popen(('echo', 'password123'),
+        #                             stdout=subprocess.PIPE)
+        # result = subprocess.run(('kinit', 'admin'),
+        #                         stdin = password.stdout,
+        #                         stdout=subprocess.PIPE,
+        #                         stderr=subprocess.PIPE,
+        #                         universal_newlines=True)
+        # password.wait()
+
+        ubuntu_test_host = zaza.model.get_units('ubuntu-test-host')[0]
+        result = zaza.model.run_on_unit(ubuntu_test_host.name,
+                                        "echo password123 | kinit admin")
         assert result.returncode == 0, result.stderr
 
-        logging.info('Verifying if the cached token has been created')
-        default_cache_location = '/tmp/krb5cc_1000'
-        assert os.path.exists(default_cache_location) == True
+        logging.info('Changing token mod for user access')
+        result = zaza.model.run_on_unit(
+            ubuntu_test_host.name,
+            "sudo install -m 777 /tmp/krb5cc_0 /tmp/krb5cc_1000"
+        )
+        assert result.returncode == 0, result.stderr
 
         logging.info('Fetching user/project info in Openstack')
         domain_name = 'k8s'
@@ -66,19 +73,35 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
         keystone_hostname = get_unit_full_hostname('keystone')
 
         logging.info('Exporting OS environment variables.')
-        os.environ['OS_AUTH_URL'] = "http://{}:5000/krb/v3".format(
-            keystone_hostname)
-        os.environ['OS_PROJECT_ID'] = project_id
-        os.environ['OS_PROJECT_NAME'] = project_name
-        os.environ['OS_PROJECT_DOMAIN_ID'] = domain_id
-        os.environ['OS_REGION_NAME'] = "RegionOne"
-        os.environ['OS_INTERFACE'] = "public"
-        os.environ['OS_IDENTITY_API_VERSION'] = '3'
-        os.environ['OS_AUTH_TYPE'] = 'v3kerberos'
+        cmd = ['openstack token issue -f value -c id '
+               '--os-auth-url http://{}:5000/krb/v3 '
+               '--os-project-id {} '
+               '--os-project-name {} '
+               '--os-project-domain-id {} '
+               '--os-region-name RegionOne '
+               '--os interface public '
+               '--os-identity-api-version 3 '
+               '--os-auth-type v3kerberos'.format(keystone_hostname,
+                                          project_id,
+                                          project_name,
+                                          domain_id,
+                                          )]
+        result = zaza.model.run_on_unit(ubuntu_test_host.name, cmd)
+        # os.environ['OS_AUTH_URL'] = "http://{}:5000/krb/v3".format(
+        #     keystone_hostname)
+        # os.environ['OS_PROJECT_ID'] = project_id
+        # os.environ['OS_PROJECT_NAME'] = project_name
+        # os.environ['OS_PROJECT_DOMAIN_ID'] = domain_id
+        # os.environ['OS_REGION_NAME'] = "RegionOne"
+        # os.environ['OS_INTERFACE'] = "public"
+        # os.environ['OS_IDENTITY_API_VERSION'] = '3'
+        # os.environ['OS_AUTH_TYPE'] = 'v3kerberos'
+        #
+        # logging.info('Retrieving an openstack token')
+        # cmd = ['openstack', 'token', 'issue', '-f', 'value', '-c', 'id']
+        # result = subprocess.run(cmd, stdout=subprocess.PIPE,
+        #                         stderr=subprocess.PIPE,
+        #                         universal_newlines=True)
 
-        logging.info('Retrieving an openstack token')
-        cmd = ['openstack', 'token', 'issue', '-f', 'value', '-c', 'id']
-        result = subprocess.run(cmd, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE,
-                                universal_newlines=True)
         assert result.returncode == 0, result.stderr
+
