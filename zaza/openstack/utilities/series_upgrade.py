@@ -30,6 +30,71 @@ SUBORDINATE_PAUSE_RESUME_BLACKLIST = [
 ]
 
 
+def app_config(charm_name, is_async=True):
+    """Return a dict with the upgrade config for an application.
+
+    :param charm_name: Name of the charm about to upgrade
+    :type charm_name: str
+    :param async: Whether the upgreade functions should be async
+    :type async: bool
+    :returns: A dicitonary of the upgrade config for the application
+    :rtype: Dict
+    """
+    if is_async:
+        default_upgrade = async_series_upgrade_application
+        secondary_first_upgrade = async_series_upgrade_non_leaders_first
+    else:
+        default_upgrade = series_upgrade_application
+        secondary_first_upgrade = series_upgrade_non_leaders_first
+    default = {
+        'origin': 'openstack-origin',
+        'pause_non_leader_subordinate': True,
+        'pause_non_leader_primary': True,
+        'upgrade_function': default_upgrade,
+        'post_upgrade_functions': []}
+    _app_settings = collections.defaultdict(lambda: default)
+    ceph = {
+        'origin': "source",
+        'pause_non_leader_primary': False,
+        'pause_non_leader_subordinate': False,
+    }
+    exceptions = {
+        'rabbitmq-server': {
+            'origin': 'source',
+            'pause_non_leader_subordinate': False, },
+        'percona-cluster': {'origin': 'source', },
+        'nova-compute': {
+            'pause_non_leader_primary': False,
+            'pause_non_leader_subordinate': False, },
+        'ceph': ceph,
+        'ceph-mon': ceph,
+        'ceph-osd': ceph,
+        'designate-bind': {'origin': None, },
+        'tempest': {'origin': None, },
+        'memcached': {
+            'origin': None,
+            'pause_non_leader_primary': False,
+            'pause_non_leader_subordinate': False,
+        },
+        'vault': {
+            'origin': None,
+            'pause_non_leader_primary': False,
+            'pause_non_leader_subordinate': True,
+            'post_upgrade_functions': [
+                ('zaza.openstack.charm_tests.vault.setup.'
+                 'mojo_unseal_by_unit')]
+        },
+        'mongodb': {
+            'upgrade_function': secondary_first_upgrade,
+        }
+
+    }
+    for key, value in exceptions.items():
+        _app_settings[key] = copy.deepcopy(default)
+        _app_settings[key].update(value)
+    return _app_settings[charm_name]
+
+
 def run_post_upgrade_functions(post_upgrade_functions):
     """Execute list supplied functions.
 

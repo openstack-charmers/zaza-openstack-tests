@@ -24,23 +24,24 @@ import unittest
 from zaza import model
 from zaza.openstack.utilities import (
     cli as cli_utils,
+    series_upgrade as series_upgrade_utils,
     upgrade_utils as upgrade_utils,
 )
 from zaza.openstack.charm_tests.nova.tests import LTSGuestCreateTest
 
 
 def _filter_easyrsa(app, app_config, model_name=None):
-    logging.warn("Skipping series upgrade of easyrsa Bug #1850121")
     charm_name = upgrade_utils.extract_charm_name_from_url(app_config['charm'])
     if "easyrsa" in charm_name:
+        logging.warn("Skipping series upgrade of easyrsa Bug #1850121")
         return True
     return False
 
 
 def _filter_etcd(app, app_config, model_name=None):
-    logging.warn("Skipping series upgrade of easyrsa Bug #1850124")
     charm_name = upgrade_utils.extract_charm_name_from_url(app_config['charm'])
     if "etcd" in charm_name:
+        logging.warn("Skipping series upgrade of easyrsa Bug #1850124")
         return True
     return False
 
@@ -76,9 +77,10 @@ class SeriesUpgradeTest(unittest.TestCase):
                 logging.warn(
                     "Skipping series upgrade of easyrsa Bug #1850124")
                 continue
-            upgrade_config = upgrade_utils.app_config(
-                app_details['charm'],
-                async=False)
+            charm_name = upgrade_utils.extract_charm_name_from_url(app_details['charm'])
+            upgrade_config = series_upgrade_utils.app_config(
+                charm_name,
+                is_async=False)
             upgrade_function = upgrade_config.pop('upgrade_function')
             logging.warn("About to upgrade {}".format(application))
             upgrade_function(
@@ -214,10 +216,10 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
             for application, app_details in applications.items():
                 if application not in group:
                     continue
-                upgrade_config = upgrade_utils.app_config(app_details['charm'])
+                charm_name = upgrade_utils.extract_charm_name_from_url(app_details['charm'])
+                upgrade_config = series_upgrade_utils.app_config(charm_name)
                 upgrade_function = upgrade_config.pop('upgrade_function')
                 logging.warn("About to upgrade {}".format(application))
-                logging.info("\tConfig: {}".format(upgrade_config))
                 upgrade_group.append(
                     upgrade_function(
                         application,
