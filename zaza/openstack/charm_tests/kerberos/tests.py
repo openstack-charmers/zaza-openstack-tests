@@ -38,18 +38,9 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
         """Run class setup for running Keystone Kerberos charm tests."""
         super(CharmKeystoneKerberosTest, cls).setUpClass()
 
-    def test_100_keystone_kerberos_authentication(self):
+    def test_keystone_kerberos_authentication(self):
         """Validate auth to Openstack through the kerberos method."""
         logging.info('Retrieving a kerberos token with kinit for admin user')
-
-        # password = subprocess.Popen(('echo', 'password123'),
-        #                             stdout=subprocess.PIPE)
-        # result = subprocess.run(('kinit', 'admin'),
-        #                         stdin = password.stdout,
-        #                         stdout=subprocess.PIPE,
-        #                         stderr=subprocess.PIPE,
-        #                         universal_newlines=True)
-        # password.wait()
 
         ubuntu_test_host = zaza.model.get_units('ubuntu-test-host')[0]
         result = zaza.model.run_on_unit(ubuntu_test_host.name,
@@ -73,7 +64,7 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
         project_id = keystone_client.projects.find(name=project_name).id
         keystone_hostname = get_unit_full_hostname('keystone')
 
-        logging.info('Exporting OS environment variables.')
+        logging.info('Retrieving an Openstack token to validate auth')
         cmd = 'openstack token issue -f value -c id ' \
               '--os-auth-url http://{}:5000/krb/v3 ' \
               '--os-project-id {} ' \
@@ -87,6 +78,6 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
                                           project_name,
                                           domain_id,
                                           )
+
         result = zaza.model.run_on_unit(ubuntu_test_host.name, cmd)
         assert result['Code'] == '0', result['Stderr']
-

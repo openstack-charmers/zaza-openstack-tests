@@ -212,8 +212,10 @@ def setup_kerberos_configuration_for_test_host():
 
 def install_apt_packages_on_ubuntu_test_host():
     ubuntu_test_host = zaza.model.get_units('ubuntu-test-host')[0]
-    packages = ['krb5-user', 'python-openstackclient', 'python-pip']
+    packages = ['krb5-user', 'python-openstackclient', 'python-pip', 'gcc',
+                'python-dev', 'libkrb5-dev']
     for package in packages:
+        logging.info('Installing {}'.format(package))
         result = zaza.model.run_on_unit(ubuntu_test_host.name,
                            "apt install {} -y".format(package))
         assert result['Code'] == '0', result['Stderr']
@@ -221,8 +223,9 @@ def install_apt_packages_on_ubuntu_test_host():
 def install_python_packages_on_ubuntu_test_host():
     ubuntu_test_host = zaza.model.get_units('ubuntu-test-host')[0]
     package = 'keystoneauth1[kerberos]'
+    logging.info('Installing {}'.format(package))
     result = zaza.model.run_on_unit(ubuntu_test_host.name,
-                                    "pip install {} -y".format(package))
+                                    "pip install {} ".format(package))
     assert result['Code'] == '0', result['Stderr']
 
 
