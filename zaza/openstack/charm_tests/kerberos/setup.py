@@ -210,12 +210,21 @@ def setup_kerberos_configuration_for_test_host():
                                                        remote_file)))
 
 
-def install_krb5_client_on_ubuntu_test_host():
+def install_apt_packages_on_ubuntu_test_host():
     ubuntu_test_host = zaza.model.get_units('ubuntu-test-host')[0]
-    package = 'krb5-user'
+    packages = ['krb5-user', 'python-openstackclient', 'python-pip']
+    for package in packages:
+        result = zaza.model.run_on_unit(ubuntu_test_host.name,
+                           "apt install {} -y".format(package))
+        assert result['Code'] == 0, result['Stderr']
+
+def install_python_packages_on_ubuntu_test_host():
+    ubuntu_test_host = zaza.model.get_units('ubuntu-test-host')[0]
+    package = 'keystoneauth1[kerberos]'
     result = zaza.model.run_on_unit(ubuntu_test_host.name,
-                           "sudo apt-get install {} -y".format(package))
+                                    "pip install {} -y".format(package))
     assert result['Code'] == 0, result['Stderr']
+
 
 def run_all_tests():
     """Execute all the necessary functions for the tests setup."""
