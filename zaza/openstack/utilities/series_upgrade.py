@@ -625,13 +625,11 @@ async def async_series_upgrade(unit_name, machine_num,
     logging.info("Waiting for workload status 'blocked' on {}"
                  .format(unit_name))
     await model.async_block_until_unit_wl_status(unit_name, "blocked")
-    logging.info("Waiting for unit {} idleness".format(unit_name))
-    await wait_for_unit_idle(unit_name)
-    logging.info("Set origin on {}".format(application))
     # Allow for charms which have neither source nor openstack-origin
     if origin:
+        logging.info("Set origin on {}".format(application))
         await os_utils.async_set_origin(application, origin)
-    await wait_for_unit_idle(unit_name)
+        await wait_for_unit_idle(unit_name)
     logging.info("Complete series upgrade on {}".format(machine_num))
     await async_complete_series_upgrade(machine_num)
     await wait_for_unit_idle(unit_name, timeout=1200)
