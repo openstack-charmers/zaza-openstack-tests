@@ -234,5 +234,5 @@ def run_all_tests():
     retrieve_and_attach_keytab()
     openstack_setup_kerberos()
     setup_kerberos_configuration_for_test_host()
-    install_krb5_client_on_ubuntu_test_host()
+    install_apt_packages_on_ubuntu_test_host()
     install_python_packages_on_ubuntu_test_host()
