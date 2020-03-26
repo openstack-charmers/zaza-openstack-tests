@@ -22,12 +22,6 @@ from zaza.openstack.charm_tests.keystone import BaseKeystoneTest
 from zaza.openstack.utilities import openstack as openstack_utils
 
 
-class FailedToReachKerberos(Exception):
-    """Custom Exception for failing to reach the Kerberos Server."""
-
-    pass
-
-
 class CharmKeystoneKerberosTest(BaseKeystoneTest):
     """Charm Keystone Kerberos Test."""
 
