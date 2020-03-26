@@ -53,14 +53,14 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
         ubuntu_test_host = zaza.model.get_units('ubuntu-test-host')[0]
         result = zaza.model.run_on_unit(ubuntu_test_host.name,
                                         "echo password123 | kinit admin")
-        assert result.returncode == 0, result.stderr
+        assert result['Code'] == 0, result['Stderr']
 
         logging.info('Changing token mod for user access')
         result = zaza.model.run_on_unit(
             ubuntu_test_host.name,
             "sudo install -m 777 /tmp/krb5cc_0 /tmp/krb5cc_1000"
         )
-        assert result.returncode == 0, result.stderr
+        assert result['Code'] == 0, result['Stderr']
 
         logging.info('Fetching user/project info in Openstack')
         domain_name = 'k8s'
@@ -103,5 +103,5 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
         #                         stderr=subprocess.PIPE,
         #                         universal_newlines=True)
 
-        assert result.returncode == 0, result.stderr
+        assert result['Code'] == 0, result['Stderr']
 

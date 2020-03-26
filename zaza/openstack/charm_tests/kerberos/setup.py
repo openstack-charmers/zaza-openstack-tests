@@ -215,7 +215,7 @@ def install_krb5_client_on_ubuntu_test_host():
     package = 'krb5-user'
     result = zaza.model.run_on_unit(ubuntu_test_host.name,
                            "sudo apt-get install {} -y".format(package))
-    assert result.returncode == 0, result.stderr
+    assert result['Code'] == 0, result['Stderr']
 
 def run_all_tests():
     """Execute all the necessary functions for the tests setup."""
