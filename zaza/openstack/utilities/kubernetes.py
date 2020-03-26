@@ -61,6 +61,12 @@ spec:
 
 
 async def async_kubectl(cmd):
+    """
+    Invoke a kubectl command, assert that it was successful, and return output.
+
+    If the return code is not 0, it will raise an AssertionError with a message
+    containing the command, it's exit code, and the stderr output.
+    """
     cmd = "/snap/bin/kubectl {}".format(cmd)
     result = await zaza.model.async_run_on_leader("kubernetes-master", cmd)
     assert result["Code"] == 0, "'kubectl {}' failed ({}): {}".format(
@@ -73,6 +79,12 @@ kubectl = zaza.sync_wrapper(async_kubectl)
 
 
 async def async_wait_for_pod_complete(pod_name):
+    """
+    Watch for a pod to go to Completed status.
+
+    Will wait up to 60 seconds (6 attempts with 10 second intervals) before
+    raising a ModelTimeout exception.
+    """
     for attempt in range(6):
         pod_status = await async_kubectl("get pod {}".format(pod_name))
         if "Completed" in pod_status:
@@ -89,7 +101,6 @@ wait_for_pod_complete = zaza.sync_wrapper(async_wait_for_pod_complete)
 
 def validate_storage_class(sc_name):
     """Validate the given SC can be written to and read from."""
-
     write_pod_name = "{}-write-test".format(sc_name)
     read_pod_name = "{}-read-pod-test".format(sc_name)
 

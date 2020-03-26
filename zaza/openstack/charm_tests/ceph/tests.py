@@ -767,6 +767,12 @@ class CephK8sTest(unittest.TestCase):
     """Test Ceph RBD integration with CK."""
 
     def test_k8s_ceph_rbd(self):
+        """
+        Validate ceph-ext4 and ceph-xfs volumes backed by Ceph RBD.
+
+        Confirm that volumes for each filesystem type can be provisioned,
+        written to, then read from.
+        """
         logging.info('Wait for idle/ready status...')
         zaza_model.wait_for_application_states()
 
@@ -778,6 +784,11 @@ class CephFSK8sTest(unittest.TestCase):
     """Test CephFS integration with CK."""
 
     def test_k8s_ceph_fs(self):
+        """
+        Validate ceph-fs volumes backed by CephFS.
+
+        Confirm that volumes can be provisioned, written to, then read from.
+        """
         logging.info('Wait for idle/ready status...')
         zaza_model.wait_for_application_states()
 
