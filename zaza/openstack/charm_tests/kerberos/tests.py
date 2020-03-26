@@ -15,8 +15,6 @@
 """Keystone Kerberos Tests."""
 
 import logging
-import os
-import subprocess
 
 import zaza.model
 from zaza.openstack.charm_tests.kerberos.setup import get_unit_full_hostname
@@ -74,10 +72,9 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
               '--os-interface public ' \
               '--os-identity-api-version 3 ' \
               '--os-auth-type v3kerberos'.format(keystone_hostname,
-                                          project_id,
-                                          project_name,
-                                          domain_id,
-                                          )
+                                                 project_id,
+                                                 project_name,
+                                                 domain_id)
 
         result = zaza.model.run_on_unit(ubuntu_test_host.name, cmd)
         assert result['Code'] == '0', result['Stderr']

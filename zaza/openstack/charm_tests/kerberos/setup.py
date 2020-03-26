@@ -15,8 +15,6 @@
 """Setup for keystone-kerberos tests."""
 
 import logging
-import shutil
-import subprocess
 import tempfile
 import zaza.model
 from zaza.openstack.utilities import openstack as openstack_utils
@@ -182,7 +180,6 @@ def setup_kerberos_configuration_for_test_host():
             tmp_file,
             host_keytab_path)
 
-
     dump_file = "krb5.conf"
     remote_file = "/etc/krb5.conf"
     temp_krb5_path = "/home/ubuntu/krb5.conf"
@@ -203,24 +200,25 @@ def setup_kerberos_configuration_for_test_host():
             tmp_file,
             temp_krb5_path)
         logging.info('Moving {} to {} on {}.'.format(temp_krb5_path,
-                                                    remote_file,
-                                                    ubuntu_test_host.name))
-        zaza.model.run_on_unit(ubuntu_test_host.name,
-                               ('sudo mv {} {}'.format(temp_krb5_path,
-                                                       remote_file)))
+                     remote_file, ubuntu_test_host.name))
+        zaza.model.run_on_unit(ubuntu_test_host.name, ('sudo mv {} {}'.
+                               format(temp_krb5_path, remote_file)))
 
 
 def install_apt_packages_on_ubuntu_test_host():
+    """Install apt packages on a zaza unit."""
     ubuntu_test_host = zaza.model.get_units('ubuntu-test-host')[0]
     packages = ['krb5-user', 'python-openstackclient', 'python-pip', 'gcc',
                 'python-dev', 'libkrb5-dev']
     for package in packages:
         logging.info('Installing {}'.format(package))
         result = zaza.model.run_on_unit(ubuntu_test_host.name,
-                           "apt install {} -y".format(package))
+                                        "apt install {} -y".format(package))
         assert result['Code'] == '0', result['Stderr']
 
+
 def install_python_packages_on_ubuntu_test_host():
+    """Install python packages on a zaza unit."""
     ubuntu_test_host = zaza.model.get_units('ubuntu-test-host')[0]
     package = 'keystoneauth1[kerberos]'
     logging.info('Installing {}'.format(package))
