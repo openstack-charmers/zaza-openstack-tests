@@ -16,6 +16,7 @@
 
 """Define class for Series Upgrade."""
 
+import asyncio
 import logging
 import os
 import unittest
@@ -23,13 +24,30 @@ import unittest
 from zaza import model
 from zaza.openstack.utilities import (
     cli as cli_utils,
-    generic as generic_utils,
+    series_upgrade as series_upgrade_utils,
+    upgrade_utils as upgrade_utils,
 )
 from zaza.openstack.charm_tests.nova.tests import LTSGuestCreateTest
 
 
+def _filter_easyrsa(app, app_config, model_name=None):
+    charm_name = upgrade_utils.extract_charm_name_from_url(app_config['charm'])
+    if "easyrsa" in charm_name:
+        logging.warn("Skipping series upgrade of easyrsa Bug #1850121")
+        return True
+    return False
+
+
+def _filter_etcd(app, app_config, model_name=None):
+    charm_name = upgrade_utils.extract_charm_name_from_url(app_config['charm'])
+    if "etcd" in charm_name:
+        logging.warn("Skipping series upgrade of easyrsa Bug #1850124")
+        return True
+    return False
+
+
 class SeriesUpgradeTest(unittest.TestCase):
-    """Class to encapsulate Sereis Upgrade Tests."""
+    """Class to encapsulate Series Upgrade Tests."""
 
     @classmethod
     def setUpClass(cls):
@@ -47,77 +65,35 @@ class SeriesUpgradeTest(unittest.TestCase):
 
         applications = model.get_status().applications
         completed_machines = []
-        for application in applications:
-            # Defaults
-            origin = "openstack-origin"
-            pause_non_leader_subordinate = True
-            pause_non_leader_primary = True
-            post_upgrade_functions = []
+        for application, app_details in applications:
             # Skip subordinates
-            if applications[application]["subordinate-to"]:
+            if app_details["subordinate-to"]:
                 continue
-            if "easyrsa" in applications[application]["charm"]:
-                logging.warn("Skipping series upgrade of easyrsa Bug #1850121")
+            if "easyrsa" in app_details["charm"]:
+                logging.warn(
+                    "Skipping series upgrade of easyrsa Bug #1850121")
                 continue
-            if "etcd" in applications[application]["charm"]:
-                logging.warn("Skipping series upgrade of easyrsa Bug #1850124")
+            if "etcd" in app_details["charm"]:
+                logging.warn(
+                    "Skipping series upgrade of easyrsa Bug #1850124")
                 continue
-            if "percona-cluster" in applications[application]["charm"]:
-                origin = "source"
-                pause_non_leader_primary = True
-                pause_non_leader_subordinate = True
-            if "rabbitmq-server" in applications[application]["charm"]:
-                origin = "source"
-                pause_non_leader_primary = True
-                pause_non_leader_subordinate = False
-            if "nova-compute" in applications[application]["charm"]:
-                pause_non_leader_primary = False
-                pause_non_leader_subordinate = False
-            if "ceph" in applications[application]["charm"]:
-                origin = "source"
-                pause_non_leader_primary = False
-                pause_non_leader_subordinate = False
-            if "designate-bind" in applications[application]["charm"]:
-                origin = None
-            if "tempest" in applications[application]["charm"]:
-                origin = None
-            if "memcached" in applications[application]["charm"]:
-                origin = None
-                pause_non_leader_primary = False
-                pause_non_leader_subordinate = False
-            if "vault" in applications[application]["charm"]:
-                origin = None
-                pause_non_leader_primary = False
-                pause_non_leader_subordinate = True
-                post_upgrade_functions = [
-                    ('zaza.openstack.charm_tests.vault.setup.'
-                     'mojo_unseal_by_unit')]
-            if "mongodb" in applications[application]["charm"]:
-                # Mongodb needs to run series upgrade
-                # on its secondaries first.
-                generic_utils.series_upgrade_non_leaders_first(
-                    application,
-                    from_series=self.from_series,
-                    to_series=self.to_series,
-                    completed_machines=completed_machines,
-                    post_upgrade_functions=post_upgrade_functions)
-                continue
-
-            # The rest are likley APIs use defaults
-
-            generic_utils.series_upgrade_application(
+            charm_name = upgrade_utils.extract_charm_name_from_url(
+                app_details['charm'])
+            upgrade_config = series_upgrade_utils.app_config(
+                charm_name,
+                is_async=False)
+            upgrade_function = upgrade_config.pop('upgrade_function')
+            logging.warn("About to upgrade {}".format(application))
+            upgrade_function(
                 application,
-                pause_non_leader_primary=pause_non_leader_primary,
-                pause_non_leader_subordinate=pause_non_leader_subordinate,
+                **upgrade_config,
                 from_series=self.from_series,
                 to_series=self.to_series,
-                origin=origin,
                 completed_machines=completed_machines,
                 workaround_script=self.workaround_script,
                 files=self.files,
-                post_upgrade_functions=post_upgrade_functions)
-
-            if "rabbitmq-server" in applications[application]["charm"]:
+            )
+            if "rabbitmq-server" in app_details["charm"]:
                 logging.info(
                     "Running complete-cluster-series-upgrade action on leader")
                 model.run_action_on_leader(
@@ -126,7 +102,7 @@ class SeriesUpgradeTest(unittest.TestCase):
                     action_params={})
                 model.block_until_all_units_idle()
 
-            if "percona-cluster" in applications[application]["charm"]:
+            if "percona-cluster" in app_details["charm"]:
                 logging.info(
                     "Running complete-cluster-series-upgrade action on leader")
                 model.run_action_on_leader(
@@ -211,6 +187,96 @@ class XenialBionicSeriesUpgrade(SeriesUpgradeTest):
     def setUpClass(cls):
         """Run setup for Xenial to Bionic Series Upgrades."""
         super(XenialBionicSeriesUpgrade, cls).setUpClass()
+        cls.from_series = "xenial"
+        cls.to_series = "bionic"
+
+
+class ParallelSeriesUpgradeTest(unittest.TestCase):
+    """Class to encapsulate Series Upgrade Tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run setup for Series Upgrades."""
+        cli_utils.setup_logging()
+        cls.from_series = None
+        cls.to_series = None
+        cls.workaround_script = None
+        cls.files = []
+
+    def test_200_run_series_upgrade(self):
+        """Run series upgrade."""
+        # Set Feature Flag
+        os.environ["JUJU_DEV_FEATURE_FLAGS"] = "upgrade-series"
+        upgrade_groups = upgrade_utils.get_series_upgrade_groups(
+            extra_filters=[_filter_etcd, _filter_easyrsa])
+        applications = model.get_status().applications
+        completed_machines = []
+        for group_name, group in upgrade_groups.items():
+            logging.warn("About to upgrade {} ({})".format(group_name, group))
+            upgrade_group = []
+            for application, app_details in applications.items():
+                if application not in group:
+                    continue
+                charm_name = upgrade_utils.extract_charm_name_from_url(
+                    app_details['charm'])
+                upgrade_config = series_upgrade_utils.app_config(charm_name)
+                upgrade_function = upgrade_config.pop('upgrade_function')
+                logging.warn("About to upgrade {}".format(application))
+                upgrade_group.append(
+                    upgrade_function(
+                        application,
+                        **upgrade_config,
+                        from_series=self.from_series,
+                        to_series=self.to_series,
+                        completed_machines=completed_machines,
+                        workaround_script=self.workaround_script,
+                        files=self.files,
+                    ))
+            asyncio.get_event_loop().run_until_complete(
+                asyncio.gather(*upgrade_group))
+            if "rabbitmq-server" in group:
+                logging.info(
+                    "Running complete-cluster-series-upgrade action on leader")
+                model.run_action_on_leader(
+                    'rabbitmq-server',
+                    'complete-cluster-series-upgrade',
+                    action_params={})
+                model.block_until_all_units_idle()
+
+            if "percona-cluster" in group:
+                logging.info(
+                    "Running complete-cluster-series-upgrade action on leader")
+                model.run_action_on_leader(
+                    'mysql',
+                    'complete-cluster-series-upgrade',
+                    action_params={})
+                model.block_until_all_units_idle()
+
+
+class ParallelTrustyXenialSeriesUpgrade(ParallelSeriesUpgradeTest):
+    """Trusty to Xenial Series Upgrade.
+
+    Makes no assumptions about what is in the deployment.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """Run setup for Trusty to Xenial Series Upgrades."""
+        super(ParallelTrustyXenialSeriesUpgrade, cls).setUpClass()
+        cls.from_series = "trusty"
+        cls.to_series = "xenial"
+
+
+class ParallelXenialBionicSeriesUpgrade(ParallelSeriesUpgradeTest):
+    """Xenial to Bionic Series Upgrade.
+
+    Makes no assumptions about what is in the deployment.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """Run setup for Xenial to Bionic Series Upgrades."""
+        super(ParallelXenialBionicSeriesUpgrade, cls).setUpClass()
         cls.from_series = "xenial"
         cls.to_series = "bionic"
 
