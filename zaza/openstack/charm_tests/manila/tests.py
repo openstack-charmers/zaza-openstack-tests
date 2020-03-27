@@ -31,7 +31,7 @@ class ManilaTests(test_utils.OpenStackBaseTest):
         """Run class setup for running tests."""
         super(ManilaTests, cls).setUpClass()
         cls.manila_client = manilaclient.Client(
-            session=cls.keystone_session)
+            session=cls.keystone_session, client_version='2')
 
     def test_manila_api(self):
         """Test that the Manila API is working."""
