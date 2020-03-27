@@ -227,7 +227,7 @@ def install_python_packages_on_ubuntu_test_host():
     assert result['Code'] == '0', result['Stderr']
 
 
-def run_all_tests():
+def run_all_configuration_steps():
     """Execute all the necessary functions for the tests setup."""
     add_empty_resource_file_to_keystone_kerberos()
     add_dns_entry()
