@@ -89,8 +89,8 @@ def audit_assertions(action,
             assert value == "PASS", "Unexpected failure: {}".format(key)
 
 
-class OpenStackBaseTest(unittest.TestCase):
-    """Generic helpers for testing OpenStack API charms."""
+class BaseCharmTest(unittest.TestCase):
+    """Generic helpers for testing charms."""
 
     run_resource_cleanup = False
 
@@ -120,8 +120,6 @@ class OpenStackBaseTest(unittest.TestCase):
             cls.model_name = cls.model_aliases[model_alias]
         else:
             cls.model_name = model.get_juju_model()
-        cls.keystone_session = openstack_utils.get_overcloud_keystone_session(
-            model_name=cls.model_name)
         cls.test_config = lifecycle_utils.get_charm_config(fatal=False)
         if application_name:
             cls.application_name = application_name
@@ -131,7 +129,6 @@ class OpenStackBaseTest(unittest.TestCase):
             cls.application_name,
             model_name=cls.model_name)
         logging.debug('Leader unit is {}'.format(cls.lead_unit))
-        cls.cacert = openstack_utils.get_cacert()
 
     def config_current(self, application_name=None, keys=None):
         """Get Current Config of an application normalized into key-values.
@@ -384,3 +381,15 @@ class OpenStackBaseTest(unittest.TestCase):
             'running',
             model_name=self.model_name,
             pgrep_full=pgrep_full)
+
+
+class OpenStackBaseTest(BaseCharmTest):
+    """Generic helpers for testing OpenStack API charms."""
+
+    @classmethod
+    def setUpClass(cls, application_name=None, model_alias=None):
+        """Run setup for test class to create common resources."""
+        super(OpenStackBaseTest, cls).setUpClass()
+        cls.keystone_session = openstack_utils.get_overcloud_keystone_session(
+            model_name=cls.model_name)
+        cls.cacert = openstack_utils.get_cacert()
