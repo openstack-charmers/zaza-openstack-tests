@@ -85,9 +85,9 @@ def app_config(charm_name, is_async=True):
                  'mojo_unseal_by_unit')]
         },
         'mongodb': {
+            'origin': None,
             'upgrade_function': secondary_first_upgrade,
         }
-
     }
     for key, value in exceptions.items():
         _app_settings[key] = copy.deepcopy(default)
@@ -109,6 +109,7 @@ def run_post_upgrade_functions(post_upgrade_functions):
 
 def series_upgrade_non_leaders_first(application, from_series="trusty",
                                      to_series="xenial",
+                                     origin='openstack-origin',
                                      completed_machines=[],
                                      post_upgrade_functions=None):
     """Series upgrade non leaders first.
@@ -122,6 +123,9 @@ def series_upgrade_non_leaders_first(application, from_series="trusty",
     :type from_series: str
     :param to_series: The series to which to upgrade
     :type to_series: str
+    :param origin: The configuration setting variable name for changing origin
+                   source. (openstack-origin or source)
+    :type origin: str
     :param completed_machines: List of completed machines which do no longer
                                require series upgrade.
     :type completed_machines: list
@@ -145,7 +149,7 @@ def series_upgrade_non_leaders_first(application, from_series="trusty",
                          .format(unit))
             series_upgrade(unit, machine,
                            from_series=from_series, to_series=to_series,
-                           origin=None,
+                           origin=origin,
                            post_upgrade_functions=post_upgrade_functions)
             run_post_upgrade_functions(post_upgrade_functions)
             completed_machines.append(machine)
@@ -160,7 +164,7 @@ def series_upgrade_non_leaders_first(application, from_series="trusty",
     if machine not in completed_machines:
         series_upgrade(leader, machine,
                        from_series=from_series, to_series=to_series,
-                       origin=None,
+                       origin=origin,
                        post_upgrade_functions=post_upgrade_functions)
         completed_machines.append(machine)
     else:
@@ -172,6 +176,7 @@ def series_upgrade_non_leaders_first(application, from_series="trusty",
 async def async_series_upgrade_non_leaders_first(application,
                                                  from_series="trusty",
                                                  to_series="xenial",
+                                                 origin='openstack-origin',
                                                  completed_machines=[],
                                                  post_upgrade_functions=None):
     """Series upgrade non leaders first.
@@ -185,6 +190,9 @@ async def async_series_upgrade_non_leaders_first(application,
     :type from_series: str
     :param to_series: The series to which to upgrade
     :type to_series: str
+    :param origin: The configuration setting variable name for changing origin
+                   source. (openstack-origin or source)
+    :type origin: str
     :param completed_machines: List of completed machines which do no longer
                                require series upgrade.
     :type completed_machines: list
@@ -209,7 +217,7 @@ async def async_series_upgrade_non_leaders_first(application,
             await async_series_upgrade(
                 unit, machine,
                 from_series=from_series, to_series=to_series,
-                origin=None,
+                origin=origin,
                 post_upgrade_functions=post_upgrade_functions)
             run_post_upgrade_functions(post_upgrade_functions)
             completed_machines.append(machine)
@@ -225,7 +233,7 @@ async def async_series_upgrade_non_leaders_first(application,
         await async_series_upgrade(
             leader, machine,
             from_series=from_series, to_series=to_series,
-            origin=None,
+            origin=origin,
             post_upgrade_functions=post_upgrade_functions)
         completed_machines.append(machine)
     else:

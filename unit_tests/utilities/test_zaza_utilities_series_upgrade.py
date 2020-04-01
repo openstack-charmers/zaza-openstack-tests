@@ -237,3 +237,39 @@ class TestSeriesUpgrade(ut_utils.BaseTestCase):
         self.scp_to_unit.assert_has_calls(_scp_calls)
         self.run_via_ssh.assert_has_calls(_run_calls)
         self.do_release_upgrade.assert_called_once_with(_unit)
+
+    def test_app_config_openstack_charm(self):
+        upgrade = series_upgrade_utils.async_series_upgrade_application
+        expected = {
+            'origin': 'openstack-origin',
+            'pause_non_leader_subordinate': True,
+            'pause_non_leader_primary': True,
+            'upgrade_function': upgrade,
+            'post_upgrade_functions': [],
+        }
+        config = series_upgrade_utils.app_config('keystone')
+        self.assertEqual(expected, config)
+
+    def test_app_config_mongo(self):
+        upgrade = series_upgrade_utils.async_series_upgrade_non_leaders_first
+        expected = {
+            'origin': None,
+            'pause_non_leader_subordinate': True,
+            'pause_non_leader_primary': True,
+            'upgrade_function': upgrade,
+            'post_upgrade_functions': [],
+        }
+        config = series_upgrade_utils.app_config('mongodb')
+        self.assertEqual(expected, config)
+
+    def test_app_config_ceph(self):
+        upgrade = series_upgrade_utils.async_series_upgrade_application
+        expected = {
+            'origin': 'source',
+            'pause_non_leader_subordinate': False,
+            'pause_non_leader_primary': False,
+            'upgrade_function': upgrade,
+            'post_upgrade_functions': [],
+        }
+        config = series_upgrade_utils.app_config('ceph-mon')
+        self.assertEqual(expected, config)
