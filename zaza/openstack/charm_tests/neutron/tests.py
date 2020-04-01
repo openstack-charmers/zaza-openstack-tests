@@ -40,6 +40,7 @@ class NeutronPluginApiSharedTests(test_utils.OpenStackBaseTest):
         cls.current_os_release = openstack_utils.get_os_release()
         cls.bionic_stein = openstack_utils.get_os_release('bionic_stein')
         cls.trusty_mitaka = openstack_utils.get_os_release('trusty_mitaka')
+        cls.xenial_mitaka = openstack_utils.get_os_release('xenial_mitaka')
 
         if cls.current_os_release >= cls.bionic_stein:
             cls.pgrep_full = True
@@ -590,6 +591,28 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
         with self.pause_resume(['neutron-openvswitch-agent'],
                                pgrep_full=self.pgrep_full):
             logging.info('Testing pause resume')
+
+    def test_openvswitch_firewall_ovsdb_protocols(self):
+        """Validate activation of OpenFlow protocols on driver change.
+
+        This helps validate the effect and need for workaround for LP: #1852221
+        """
+        if self.current_os_release < self.xenial_mitaka:
+            logging.info('Skipping test for < xenial-mitaka')
+            return
+
+        with self.config_change({'firewall-driver': ''},
+                                {'firewall-driver': 'openvswitch'}):
+            for unit in zaza.model.get_units('neutron-openvswitch',
+                                             model_name=self.model_name):
+                # ``ovs-ofctl`` will throw an error if ovsdb-server refuses to
+                # agree on supported OpenFlow protocol versions
+                result = zaza.model.run_on_unit(
+                    unit.entity_id,
+                    'ovs-ofctl -O OpenFlow14 dump-flows br-int',
+                    model_name=self.model_name)
+                logging.info(result)
+                assert result['Code'] == '0'
 
 
 class NeutronNetworkingTest(unittest.TestCase):
