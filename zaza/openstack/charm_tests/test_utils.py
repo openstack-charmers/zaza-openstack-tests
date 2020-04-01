@@ -89,7 +89,53 @@ def audit_assertions(action,
             assert value == "PASS", "Unexpected failure: {}".format(key)
 
 
-class BaseCharmTest(unittest.TestCase):
+class CharmTestAssertions:
+    """Custom assertions to support zaza testings."""
+
+    def assertActionRanOK(self, action):
+        """Assert that the remote action ran successfully.
+
+        Example usage::
+
+            self.assertActionRanOK(model.run_action(
+                unit,
+                'pause',
+                model_name=self.model_name))
+
+            self.assertActionRanOK(model.run_action_on_leader(
+                unit,
+                'pause',
+                model_name=self.model_name))
+
+        :param action: Action object to check.
+        :type action: juju.action.Action
+        :raises: AssertionError if the assertion fails.
+        """
+        print("Checking action")
+        if action.status != 'completed':
+            msg = ("Action '{name}' exited with status '{status}': "
+                   "'{message}'").format(**action.data)
+            raise AssertionError(msg)
+
+    def assertRemoteRunOK(self, run_output):
+        """Use with zaza.model.run_on_unit.
+
+        Example usage::
+
+            self.assertRemoteRunOK(zaza.model.run_on_unit(
+                unit,
+                'ls /tmp/'))
+
+        :param action: Dict returned from remote run.
+        :type action: dict
+        :raises: AssertionError if the assertion fails.
+        """
+        print("Checking remote run")
+        if int(run_output['Code']) != 0:
+            raise AssertionError("Command failed: {}".format(run_output))
+
+
+class BaseCharmTest(unittest.TestCase, CharmTestAssertions):
     """Generic helpers for testing charms."""
 
     run_resource_cleanup = False
@@ -350,10 +396,10 @@ class BaseCharmTest(unittest.TestCase):
             self.lead_unit,
             'active',
             model_name=self.model_name)
-        model.run_action(
+        self.assertActionRanOK(model.run_action(
             self.lead_unit,
             'pause',
-            model_name=self.model_name)
+            model_name=self.model_name))
         model.block_until_unit_wl_status(
             self.lead_unit,
             'maintenance',
@@ -366,10 +412,10 @@ class BaseCharmTest(unittest.TestCase):
             model_name=self.model_name,
             pgrep_full=pgrep_full)
         yield
-        model.run_action(
+        self.assertActionRanOK(model.run_action(
             self.lead_unit,
             'resume',
-            model_name=self.model_name)
+            model_name=self.model_name))
         model.block_until_unit_wl_status(
             self.lead_unit,
             'active',
