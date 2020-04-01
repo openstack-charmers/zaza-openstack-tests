@@ -113,11 +113,14 @@ def get_network_config(net_topology, ignore_env_vars=False,
     return net_info
 
 
-def get_unit_hostnames(units):
+def get_unit_hostnames(units, fqdn=False):
     """Return a dict of juju unit names to hostnames."""
     host_names = {}
     for unit in units:
-        output = model.run_on_unit(unit.entity_id, 'hostname')
+        cmd = 'hostname'
+        if fqdn:
+            cmd = cmd + ' -f'
+        output = model.run_on_unit(unit.entity_id, cmd)
         hostname = output['Stdout'].strip()
         host_names[unit.entity_id] = hostname
     return host_names

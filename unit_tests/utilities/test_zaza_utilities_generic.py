@@ -429,6 +429,20 @@ class TestGenericUtils(ut_utils.BaseTestCase):
         actual = generic_utils.get_unit_hostnames(_units)
 
         self.assertEqual(actual, expected)
+        expected_run_calls = [
+            mock.call('testunit/1', 'hostname'),
+            mock.call('testunit/2', 'hostname')]
+        self._run.assert_has_calls(expected_run_calls)
+
+        self._run.reset_mock()
+        self._run.side_effect = [{"Stdout": _hostname1},
+                                 {"Stdout": _hostname2}]
+        expected_run_calls = [
+            mock.call('testunit/1', 'hostname -f'),
+            mock.call('testunit/2', 'hostname -f')]
+
+        actual = generic_utils.get_unit_hostnames(_units, fqdn=True)
+        self._run.assert_has_calls(expected_run_calls)
 
     def test_port_knock_units(self):
         self.patch(
