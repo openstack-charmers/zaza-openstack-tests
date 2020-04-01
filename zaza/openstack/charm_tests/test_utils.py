@@ -111,7 +111,6 @@ class CharmTestAssertions:
         :type action: juju.action.Action
         :raises: AssertionError if the assertion fails.
         """
-        print("Checking action")
         if action.status != 'completed':
             msg = ("Action '{name}' exited with status '{status}': "
                    "'{message}'").format(**action.data)
@@ -130,7 +129,6 @@ class CharmTestAssertions:
         :type action: dict
         :raises: AssertionError if the assertion fails.
         """
-        print("Checking remote run")
         if int(run_output['Code']) != 0:
             raise AssertionError("Command failed: {}".format(run_output))
 
