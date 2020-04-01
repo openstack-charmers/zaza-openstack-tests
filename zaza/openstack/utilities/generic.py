@@ -28,6 +28,48 @@ from zaza.openstack.utilities import exceptions as zaza_exceptions
 from zaza.openstack.utilities.os_versions import UBUNTU_OPENSTACK_RELEASE
 
 
+def assertActionRanOK(action):
+    """Assert that the remote action ran successfully.
+
+    Example usage::
+
+        self.assertActionRanOK(model.run_action(
+            unit,
+            'pause',
+            model_name=self.model_name))
+
+        self.assertActionRanOK(model.run_action_on_leader(
+            unit,
+            'pause',
+            model_name=self.model_name))
+
+    :param action: Action object to check.
+    :type action: juju.action.Action
+    :raises: AssertionError if the assertion fails.
+    """
+    if action.status != 'completed':
+        msg = ("Action '{name}' exited with status '{status}': "
+               "'{message}'").format(**action.data)
+        raise AssertionError(msg)
+
+
+def assertRemoteRunOK(run_output):
+    """Use with zaza.model.run_on_unit.
+
+    Example usage::
+
+        self.assertRemoteRunOK(zaza.model.run_on_unit(
+            unit,
+            'ls /tmp/'))
+
+    :param action: Dict returned from remote run.
+    :type action: dict
+    :raises: AssertionError if the assertion fails.
+    """
+    if int(run_output['Code']) != 0:
+        raise AssertionError("Command failed: {}".format(run_output))
+
+
 def dict_to_yaml(dict_data):
     """Return YAML from dictionary.
 
