@@ -14,7 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Encapsulating `neutron-openvswitch` testing."""
+"""Encapsulating testing of some `neutron-*` charms.
+
+`neutron-api`, `neutron-gateway` and `neutron-openvswitch`
+"""
 
 
 import copy
@@ -110,6 +113,31 @@ class NeutronGatewayTest(NeutronPluginApiSharedTests):
         super(NeutronGatewayTest, cls).setUpClass(cls)
         cls.services = cls._get_services()
 
+    _APP_NAME = 'neutron-gateway'
+
+    def test_800_ovs_bridges_are_managed_by_us(self):
+        """Checking OVS bridges' external-id.
+
+        OVS bridges created by us should be marked as managed by us in their
+        external-id. See
+        http://docs.openvswitch.org/en/latest/topics/integration/
+        """
+        for unit in zaza.model.get_units(self._APP_NAME,
+                                         model_name=self.model_name):
+            for bridge_name in ('br-int', 'br-ex'):
+                logging.info(
+                    'Checking that the bridge {}:{}'.format(
+                        unit.name, bridge_name
+                    ) + ' is marked as managed by us'
+                )
+                expected_external_id = 'charm-neutron-gateway=managed'
+                actual_external_id = zaza.model.run_on_unit(
+                    unit.entity_id,
+                    'ovs-vsctl br-get-external-id {}'.format(bridge_name),
+                    model_name=self.model_name
+                )['Stdout'].strip()
+                self.assertEqual(actual_external_id, expected_external_id)
+
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change.
 
@@ -118,7 +146,7 @@ class NeutronGatewayTest(NeutronPluginApiSharedTests):
         """
         # Expected default and alternate values
         current_value = zaza.model.get_application_config(
-            'neutron-gateway')['debug']['value']
+            self._APP_NAME)['debug']['value']
         new_value = str(not bool(current_value)).title()
         current_value = str(current_value).title()
 
@@ -132,7 +160,7 @@ class NeutronGatewayTest(NeutronPluginApiSharedTests):
 
         # Make config change, check for service restarts
         logging.info(
-            'Setting verbose on neutron-api {}'.format(set_alternate))
+            'Setting verbose on {} {}'.format(self._APP_NAME, set_alternate))
         self.restart_on_changed(
             conf_file,
             set_default,
@@ -170,7 +198,7 @@ class NeutronGatewayTest(NeutronPluginApiSharedTests):
         logging.debug('Remote unit timestamp {}'.format(mtime))
 
         with self.config_change(set_default, set_alternate):
-            for unit in zaza.model.get_units('neutron-gateway',
+            for unit in zaza.model.get_units(self._APP_NAME,
                                              model_name=self.model_name):
                 logging.info('Checking number of profiles in complain '
                              'mode in {}'.format(unit.entity_id))
