@@ -21,6 +21,7 @@ from os import (
     listdir,
     path
 )
+import requests
 import tempfile
 
 import tenacity
@@ -760,3 +761,32 @@ class CephProxyTest(unittest.TestCase):
             msg = ('cinder-ceph pool restriction was not configured correctly.'
                    ' Found: {}'.format(output))
             raise zaza_exceptions.CephPoolNotConfigured(msg)
+
+
+class CephPrometheusTest(unittest.TestCase):
+    """Test the Ceph <-> Prometheus relation."""
+
+    def test_prometheus_metrics(self):
+        """Validate that Prometheus has Ceph metrics."""
+        try:
+            zaza_model.get_application(
+                'prometheus2')
+        except KeyError:
+            raise unittest.SkipTest('Prometheus not present, skipping test')
+        unit = zaza_model.get_unit_from_name(
+            zaza_model.get_lead_unit_name('prometheus2'))
+        self.assertEqual(
+            '3', _get_mon_count_from_prometheus(unit.public_address))
+
+
+# NOTE: We might query before prometheus has fetch data
+@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1,
+                                               min=5, max=10),
+                reraise=True)
+def _get_mon_count_from_prometheus(prometheus_ip):
+    url = ('http://{}:9090/api/v1/query?query='
+           'count(ceph_mon_metadata)'.format(prometheus_ip))
+    client = requests.session()
+    response = client.get(url)
+    logging.debug("Prometheus response: {}".format(response.json()))
+    return response.json()['data']['result'][0]['value'][1]
