@@ -38,7 +38,7 @@ def _filter_easyrsa(app, app_config, model_name=None):
     return False
 
 
-def _filter_etcd(app, app_config, model_name=None):for application, app_details in applications
+def _filter_etcd(app, app_config, model_name=None):
     charm_name = upgrade_utils.extract_charm_name_from_url(app_config['charm'])
     if "etcd" in charm_name:
         logging.warn("Skipping series upgrade of easyrsa Bug #1850124")
