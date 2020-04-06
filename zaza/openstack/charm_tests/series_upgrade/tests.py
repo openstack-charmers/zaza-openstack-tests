@@ -65,7 +65,7 @@ class SeriesUpgradeTest(unittest.TestCase):
 
         applications = model.get_status().applications
         completed_machines = []
-        for application, app_details in applications:
+        for application, app_details in applications.items():
             # Skip subordinates
             if app_details["subordinate-to"]:
                 continue
