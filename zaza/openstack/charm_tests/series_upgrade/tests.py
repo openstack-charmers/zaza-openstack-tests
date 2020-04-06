@@ -38,7 +38,7 @@ def _filter_easyrsa(app, app_config, model_name=None):
     return False
 
 
-def _filter_etcd(app, app_config, model_name=None):
+def _filter_etcd(app, app_config, model_name=None):for application, app_details in applications
     charm_name = upgrade_utils.extract_charm_name_from_url(app_config['charm'])
     if "etcd" in charm_name:
         logging.warn("Skipping series upgrade of easyrsa Bug #1850124")
@@ -65,7 +65,7 @@ class SeriesUpgradeTest(unittest.TestCase):
 
         applications = model.get_status().applications
         completed_machines = []
-        for application, app_details in applications:
+        for application, app_details in applications.items():
             # Skip subordinates
             if app_details["subordinate-to"]:
                 continue
