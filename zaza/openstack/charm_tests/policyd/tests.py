@@ -214,8 +214,8 @@ class GenericPolicydTest(PolicydTest, test_utils.OpenStackBaseTest):
     def setUpClass(cls, application_name=None):
         """Run class setup for running KeystonePolicydTest tests."""
         super(GenericPolicydTest, cls).setUpClass(application_name)
-        if (openstack_utils.get_os_release()
-                < openstack_utils.get_os_release('xenial_queens')):
+        if (openstack_utils.get_os_release() <
+                openstack_utils.get_os_release('xenial_queens')):
             raise unittest.SkipTest(
                 "zaza.openstack.charm_tests.policyd.tests.GenericPolicydTest "
                 "not valid before xenial_queens")
@@ -276,8 +276,8 @@ class BasePolicydSpecialization(PolicydTest,
     def setUpClass(cls, application_name=None):
         """Run class setup for running KeystonePolicydTest tests."""
         super(BasePolicydSpecialization, cls).setUpClass(application_name)
-        if (openstack_utils.get_os_release()
-                < openstack_utils.get_os_release('xenial_queens')):
+        if (openstack_utils.get_os_release() <
+                openstack_utils.get_os_release('xenial_queens')):
             raise unittest.SkipTest(
                 "zaza.openstack.charm_tests.policyd.tests.* "
                 "not valid before xenial_queens")

@@ -1411,11 +1411,11 @@ def get_os_code_info(package, pkg_version):
         pkg_version = pkg_version.split(':')[1:][0]
     if 'swift' in package:
         # Fully x.y.z match for swift versions
-        match = re.match('^(\d+)\.(\d+)\.(\d+)', pkg_version)
+        match = re.match(r'^(\d+)\.(\d+)\.(\d+)', pkg_version)
     else:
         # x.y match only for 20XX.X
         # and ignore patch level for other packages
-        match = re.match('^(\d+)\.(\d+)', pkg_version)
+        match = re.match(r'^(\d+)\.(\d+)', pkg_version)
 
     if match:
         vers = match.group(0)

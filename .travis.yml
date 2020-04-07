@@ -13,5 +13,8 @@ matrix:
     - name: "Python 3.7"
       python: 3.7
       env: ENV=pep8,py3
+    - name: "Python 3.8"
+      python: 3.7
+      env: ENV=pep8,py3
 script:
   - tox -c tox.ini -e $ENV
