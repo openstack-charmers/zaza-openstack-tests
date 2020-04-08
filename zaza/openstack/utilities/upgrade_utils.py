@@ -20,15 +20,17 @@ import zaza.model
 
 
 SERVICE_GROUPS = collections.OrderedDict([
+    ('Stateful Services', ['percona-cluster', 'rabbitmq-server']),
     ('Core Identity', ['keystone']),
     ('Control Plane', [
-        'aodh', 'barbican', 'ceilometer', 'ceph-mon', 'ceph-fs',
+        'aodh', 'barbican', 'ceilometer', 'ceph-fs',
         'ceph-radosgw', 'cinder', 'designate',
         'designate-bind', 'glance', 'gnocchi', 'heat', 'manila',
         'manila-generic', 'neutron-api', 'neutron-gateway', 'placement',
         'nova-cloud-controller', 'openstack-dashboard']),
     ('Data Plane', [
-        'nova-compute', 'ceph-osd', 'swift-proxy', 'swift-storage'])
+        'nova-compute', 'ceph-mon', 'ceph-osd',
+        'swift-proxy', 'swift-storage'])
 ])
 
 UPGRADE_EXCLUDE_LIST = ['rabbitmq-server', 'percona-cluster']
