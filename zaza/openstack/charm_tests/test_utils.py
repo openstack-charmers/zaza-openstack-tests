@@ -50,7 +50,7 @@ def skipUntilVersion(service, package, release):
                                       stderr=subprocess.STDOUT,
                                       universal_newlines=True)
                 return f(*args, **kwargs)
-            except subprocess.CalledProcessError as cp:
+            except subprocess.CalledProcessError:
                 logging.warn("Skipping test for older ({})"
                              "service {}, requested {}".format(
                                  package_version, service, release))

@@ -579,28 +579,28 @@ def get_file_contents(unit, f):
 
 
 def is_port_open(port, address):
-        """Determine if TCP port is accessible.
+    """Determine if TCP port is accessible.
 
-        Connect to the MySQL port on the VIP.
+    Connect to the MySQL port on the VIP.
 
-        :param port: Port number
-        :type port: str
-        :param address: IP address
-        :type port: str
-        :returns: True if port is reachable
-        :rtype: boolean
-        """
-        try:
-            telnetlib.Telnet(address, port)
-            return True
-        except socket.error as e:
-            if e.errno == 113:
-                logging.error("could not connect to {}:{}"
-                              .format(address, port))
-            if e.errno == 111:
-                logging.error("connection refused connecting"
-                              " to {}:{}".format(address, port))
-            return False
+    :param port: Port number
+    :type port: str
+    :param address: IP address
+    :type port: str
+    :returns: True if port is reachable
+    :rtype: boolean
+    """
+    try:
+        telnetlib.Telnet(address, port)
+        return True
+    except socket.error as e:
+        if e.errno == 113:
+            logging.error("could not connect to {}:{}"
+                          .format(address, port))
+        if e.errno == 111:
+            logging.error("connection refused connecting"
+                          " to {}:{}".format(address, port))
+        return False
 
 
 def port_knock_units(units, port=22, expect_success=True):

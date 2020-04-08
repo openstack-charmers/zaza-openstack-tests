@@ -105,12 +105,12 @@ def _login(dashboard_ip, domain, username, password):
     # services/information missing that horizon wants to display data
     # for.
     # Redirect to /horizon/identity/ instead.
-    if (openstack_utils.get_os_release()
-            >= openstack_utils.get_os_release('xenial_queens')):
+    if (openstack_utils.get_os_release() >=
+            openstack_utils.get_os_release('xenial_queens')):
         auth['next'] = '/horizon/identity/'
 
-    if (openstack_utils.get_os_release()
-            >= openstack_utils.get_os_release('bionic_stein')):
+    if (openstack_utils.get_os_release() >=
+            openstack_utils.get_os_release('bionic_stein')):
         auth['region'] = 'default'
 
     if api_version == 2:
@@ -122,8 +122,8 @@ def _login(dashboard_ip, domain, username, password):
     # NOTE(ajkavanagh) there used to be a trusty/icehouse test in the
     # amulet test, but as the zaza tests only test from trusty/mitaka
     # onwards, the test has been dropped
-    if (openstack_utils.get_os_release()
-            >= openstack_utils.get_os_release('bionic_stein')):
+    if (openstack_utils.get_os_release() >=
+            openstack_utils.get_os_release('bionic_stein')):
         expect = "Sign Out"
         # update the in dashboard seems to require region to be default in
         # this test configuration
