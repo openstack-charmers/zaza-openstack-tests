@@ -73,6 +73,8 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         Note that resources created in the configure step prior to executing
         the test should not be touched here.
         """
+        if not cls.run_tearDown:
+            return
         for lb in cls.loadbalancers:
             cls.octavia_client.load_balancer_delete(lb['id'], cascade=True)
             try:
