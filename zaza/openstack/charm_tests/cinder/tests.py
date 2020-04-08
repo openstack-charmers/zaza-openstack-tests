@@ -63,6 +63,8 @@ class CinderTests(test_utils.OpenStackBaseTest):
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_new.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
         self.cinder_client.volumes.extend(
@@ -71,6 +73,8 @@ class CinderTests(test_utils.OpenStackBaseTest):
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_new.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
 
@@ -85,6 +89,8 @@ class CinderTests(test_utils.OpenStackBaseTest):
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_img.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
 
@@ -97,6 +103,8 @@ class CinderTests(test_utils.OpenStackBaseTest):
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_new.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
 
@@ -107,6 +115,8 @@ class CinderTests(test_utils.OpenStackBaseTest):
         openstack_utils.resource_reaches_status(
             self.cinder_client.volume_snapshots,
             snap_new.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
 
@@ -118,6 +128,8 @@ class CinderTests(test_utils.OpenStackBaseTest):
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_from_snap.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
 
@@ -129,6 +141,8 @@ class CinderTests(test_utils.OpenStackBaseTest):
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_new.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
         vol_new.force_delete()
