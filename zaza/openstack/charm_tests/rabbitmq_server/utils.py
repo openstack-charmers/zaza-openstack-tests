@@ -584,3 +584,11 @@ def _post_check_unit_cluster_nodes(unit, nodes, unit_node_names):
                           'after unit removal.\n'
                           ''.format(unit_name, node))
     return errors
+
+
+def complete_cluster_series_upgrade():
+    """Run the complete-cluster-series-upgrade action on the lead unit."""
+    zaza.model.run_action_on_leader(
+        'rabbitmq-server',
+        'complete-cluster-series-upgrade',
+        action_params={})

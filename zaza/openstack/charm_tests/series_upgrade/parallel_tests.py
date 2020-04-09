@@ -101,22 +101,6 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
                         files=files))
             asyncio.get_event_loop().run_until_complete(
                 asyncio.gather(*upgrade_functions))
-
-            if "rabbitmq-server" in apps:
-                logging.info(
-                    "Running complete-cluster-series-upgrade action on leader")
-                model.run_action_on_leader(
-                    'rabbitmq-server',
-                    'complete-cluster-series-upgrade',
-                    action_params={})
-
-            if "percona-cluster" in apps:
-                logging.info(
-                    "Running complete-cluster-series-upgrade action on leader")
-                model.run_action_on_leader(
-                    'mysql',
-                    'complete-cluster-series-upgrade',
-                    action_params={})
             model.block_until_all_units_idle()
             logging.info("Finished {}".format(group_name))
         logging.info("Done!")
