@@ -1,7 +1,9 @@
 sudo: true
 dist: xenial
 language: python
-install: pip install tox-travis
+install:
+  - pip install tox-travis
+  - pip install codecov
 matrix:
   include:
     - name: "Python 3.5"
@@ -15,3 +17,5 @@ matrix:
       env: ENV=pep8,py3
 script:
   - tox -c tox.ini -e $ENV
+after_success:
+  - codecov --verbose --gcov-glob unit_tests/*
