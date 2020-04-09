@@ -187,7 +187,7 @@ async def parallel_series_upgrade(
         .format(application, follower_first))
 
     status = (await model.async_get_status()).applications[application]
-    leader, non_leaders = await get_leader_and_non_leaders(application)
+    leader, non_leaders = await get_leader_and_non_leaders(status, application)
     for leader_name, leader_unit in leader.items():
         leader_machine = leader_unit["machine"]
         leader = leader_name
@@ -284,7 +284,6 @@ async def serial_series_upgrade(
     logging.info(
         "About to upgrade the units of {} in serial (follower first: {})"
         .format(application, follower_first))
-    # return
     status = (await model.async_get_status()).applications[application]
     leader, non_leaders = await get_leader_and_non_leaders(application)
     for leader_name, leader_unit in leader.items():
@@ -362,11 +361,8 @@ async def series_upgrade_machine(
         "About to dist-upgrade ({})".format(machine))
 
     run_pre_upgrade_functions(pre_upgrade_functions)
-    # upgrade the do the dist upgrade
     await async_dist_upgrade(machine)
-    # do a do-release-upgrade
     await async_do_release_upgrade(machine)
-    # do a reboot
     await reboot(machine)
     await series_upgrade_utils.async_complete_series_upgrade(machine)
     series_upgrade_utils.run_post_upgrade_functions(post_upgrade_functions)
@@ -440,19 +436,7 @@ async def maybe_pause_things(
     await asyncio.gather(*leader_pauses)
 
 
-async def get_units(application):
-    """Get all units for the named application.
-
-    :param application: The application to get units of
-    :type application: str
-    :returns: The units for a specified application
-    :rtype: Dict[str, juju.Unit]
-    """
-    status = (await model.async_get_status()).applications[application]
-    return status["units"]
-
-
-async def get_leader_and_non_leaders(application):
+async def get_leader_and_non_leaders(status, application):
     """Get the leader and non-leader Juju units.
 
     This function returns a tuple that looks like:
@@ -475,19 +459,13 @@ async def get_leader_and_non_leaders(application):
     """
     logging.info(
         "Configuring leader / non leaders for {}".format(application))
-    # if completed_machines is None:
-    #     completed_machines = []
     leader = None
     non_leaders = {}
-    for name, unit in (await get_units(application)).items():
+    for name, unit in status["units"].items():
         if unit.get("leader"):
             leader = {name: unit}
-            # leader = status["units"][unit]["machine"]
         else:
             non_leaders[name] = unit
-            # machine = status["units"][unit]["machine"]
-            # if machine not in completed_machines:
-            #     non_leaders.append(machine)
     return (leader, non_leaders)
 
 
