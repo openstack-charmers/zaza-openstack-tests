@@ -124,12 +124,20 @@ def upgrade_ubuntu_lite(from_series='xenial', to_series='bionic'):
 
 
 async def parallel_series_upgrade(
-        application, from_series='xenial', to_series='bionic',
-        origin='openstack-origin', pause_non_leader_primary=True,
-        pause_non_leader_subordinate=True, post_upgrade_functions=None,
-        completed_machines=None, files=None, workaround_script=None,
-        follower_first=False, pre_upgrade_functions=None,
-        post_application_upgrade_functions=None):
+    application,
+    from_series='xenial',
+    to_series='bionic',
+    origin='openstack-origin',
+    pause_non_leader_primary=True,
+    pause_non_leader_subordinate=True,
+    pre_upgrade_functions=None,
+    post_upgrade_functions=None,
+    post_application_upgrade_functions=None,
+    completed_machines=None,
+    follower_first=False,
+    files=None,
+    workaround_script=None
+):
     """Perform series upgrade on an application in parallel.
 
     :param unit_name: Unit Name
@@ -160,26 +168,18 @@ async def parallel_series_upgrade(
     :param post_application_upgrade_functions: A list of Zaza functions
                                    to call when the upgrade is complete
                                    on all machine in the application
+    :param follower_first: Should the follower(s) be upgraded first
+    :type follower_first: bool
     :type post_application_upgrade_functions: List[str]
     :param files: Workaround files to scp to unit under upgrade
     :type files: list
     :param workaround_script: Workaround script to run during series upgrade
     :type workaround_script: str
-    :param follower_first: Should the follower(s) be upgraded first
-    :type follower_first: bool
     :returns: None
     :rtype: None
     """
     if completed_machines is None:
         completed_machines = []
-    if files is None:
-        files = []
-    if post_upgrade_functions is None:
-        post_upgrade_functions = []
-    if pre_upgrade_functions is None:
-        pre_upgrade_functions = []
-    if post_application_upgrade_functions is None:
-        post_application_upgrade_functions = []
     if follower_first:
         logging.error("leader_first is ignored for parallel upgrade")
     logging.info(
@@ -213,8 +213,8 @@ async def parallel_series_upgrade(
         machines.append(leader_machine)
     upgrade_group = [
         series_upgrade_machine(
-            machine, from_series=from_series, to_series=to_series,
-            files=files, workaround_script=None,
+            machine,
+            files=files, workaround_script=workaround_script,
             post_upgrade_functions=post_upgrade_functions)
         for machine in machines
     ]
@@ -225,13 +225,21 @@ async def parallel_series_upgrade(
 
 
 async def serial_series_upgrade(
-        application, from_series='xenial', to_series='bionic',
-        origin='openstack-origin', pause_non_leader_primary=True,
-        pause_non_leader_subordinate=True, post_upgrade_functions=None,
-        completed_machines=None, files=None, workaround_script=None,
-        follower_first=False, pre_upgrade_functions=None,
-        post_application_upgrade_functions=None):
-    """Perform series upgrade on an application in series.
+    application,
+    from_series='xenial',
+    to_series='bionic',
+    origin='openstack-origin',
+    pause_non_leader_primary=True,
+    pause_non_leader_subordinate=True,
+    pre_upgrade_functions=None,
+    post_upgrade_functions=None,
+    post_application_upgrade_functions=None,
+    completed_machines=None,
+    follower_first=False,
+    files=None,
+    workaround_script=None
+):
+    """Perform series upgrade on an application in parallel.
 
     :param unit_name: Unit Name
     :type unit_name: str
@@ -251,6 +259,7 @@ async def serial_series_upgrade(
                                          hacluster applications should be
                                          paused
     :type pause_non_leader_subordinate: bool
+
     :param pre_upgrade_functions: A list of Zaza functions to call before
                                   the upgrade is started on each machine
     :type pre_upgrade_functions: List[str]
@@ -260,26 +269,18 @@ async def serial_series_upgrade(
     :param post_application_upgrade_functions: A list of Zaza functions
                                    to call when the upgrade is complete
                                    on all machine in the application
+    :param follower_first: Should the follower(s) be upgraded first
+    :type follower_first: bool
     :type post_application_upgrade_functions: List[str]
     :param files: Workaround files to scp to unit under upgrade
     :type files: list
     :param workaround_script: Workaround script to run during series upgrade
     :type workaround_script: str
-    :param follower_first: Should the follower(s) be upgraded first
-    :type follower_first: bool
     :returns: None
     :rtype: None
     """
     if completed_machines is None:
         completed_machines = []
-    if files is None:
-        files = []
-    if post_upgrade_functions is None:
-        post_upgrade_functions = []
-    if pre_upgrade_functions is None:
-        pre_upgrade_functions = []
-    if post_application_upgrade_functions is None:
-        post_application_upgrade_functions = []
     logging.info(
         "About to upgrade the units of {} in serial (follower first: {})"
         .format(application, follower_first))
@@ -308,8 +309,8 @@ async def serial_series_upgrade(
         logging.info("About to upgrade leader of {}: {}"
                      .format(application, leader_machine))
         await series_upgrade_machine(
-            leader_machine, from_series=from_series, to_series=to_series,
-            files=files, workaround_script=None,
+            leader_machine,
+            files=files, workaround_script=workaround_script,
             post_upgrade_functions=post_upgrade_functions)
 
     for machine in machines:
@@ -317,8 +318,8 @@ async def serial_series_upgrade(
         logging.info("About to upgrade follower of {}: {}"
                      .format(application, machine))
         await series_upgrade_machine(
-            machine, from_series=from_series, to_series=to_series,
-            files=files, workaround_script=None,
+            machine,
+            files=files, workaround_script=workaround_script,
             post_upgrade_functions=post_upgrade_functions)
 
     if follower_first and leader_machine not in completed_machines:
@@ -326,8 +327,8 @@ async def serial_series_upgrade(
         logging.info("About to upgrade leader of {}: {}"
                      .format(application, leader_machine))
         await series_upgrade_machine(
-            leader_machine, from_series=from_series, to_series=to_series,
-            files=files, workaround_script=None,
+            leader_machine,
+            files=files, workaround_script=workaround_script,
             post_upgrade_functions=post_upgrade_functions)
     if origin:
         await os_utils.async_set_origin(application, origin)
@@ -335,17 +336,15 @@ async def serial_series_upgrade(
 
 
 async def series_upgrade_machine(
-        machine, from_series='xenial', to_series='bionic',
-        files=None, workaround_script=None, post_upgrade_functions=None,
-        pre_upgrade_functions=None):
+        machine,
+        post_upgrade_functions=None,
+        pre_upgrade_functions=None,
+        files=None,
+        workaround_script=None):
     """Perform series upgrade on an machine.
 
     :param machine_num: Machine number
     :type machine_num: str
-    :param from_series: The series from which to upgrade
-    :type from_series: str
-    :param to_series: The series to which to upgrade
-    :type to_series: str
     :param files: Workaround files to scp to unit under upgrade
     :type files: list
     :param workaround_script: Workaround script to run during series upgrade
@@ -439,53 +438,6 @@ async def maybe_pause_things(
                 model.async_run_action(unit, "pause", action_params={}))
     await asyncio.gather(*subordinate_pauses)
     await asyncio.gather(*leader_pauses)
-
-
-async def dist_upgrades(machines):
-    """Run dist-upgrade on unit after update package db.
-
-    :param machines: List of machines to upgrade
-    :type machines: List[str]
-    :returns: None
-    :rtype: None
-    """
-    upgrade_group = []
-    for machine in machines:
-        upgrade_group.append(async_dist_upgrade(machine))
-    logging.info(
-        "About to await the dist upgrades of {}".format(machines))
-    await asyncio.gather(*upgrade_group)
-
-
-async def do_release_upgrades(machines):
-    """Run do-release-upgrade noninteractive.
-
-    :param machines: List of machines to upgrade
-    :type machines: List[str]
-    :returns: None
-    :rtype: None
-    """
-    upgrade_group = []
-    for machine in machines:
-        upgrade_group.append(async_do_release_upgrade(machine))
-    logging.info(
-        "About to await the do release upgrades of {}".format(machines))
-    await asyncio.gather(*upgrade_group)
-
-
-async def reboots(machines):
-    """Reboot all of the listed machines.
-
-    :param machines: A list of machines, ex: ['1', '2']
-    :type machines: List[str]
-    :returns: None
-    :rtype: None
-    """
-    upgrade_group = []
-    for machine in machines:
-        upgrade_group.append(reboot(machine))
-    logging.info("About to await the reboots of {}".format(machines))
-    await asyncio.gather(*upgrade_group)
 
 
 async def get_units(application):
