@@ -28,7 +28,7 @@ from zaza.openstack.utilities import (
     upgrade_utils as upgrade_utils,
 )
 from zaza.openstack.charm_tests.nova.tests import LTSGuestCreateTest
-from zaza.openstack.utilities.parallel_series_upgrade import (
+from zaza.openstack.utilities import (
     parallel_series_upgrade,
 )
 
