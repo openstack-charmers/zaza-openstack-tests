@@ -26,7 +26,7 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
     """Class for `ceph-iscsi` tests."""
 
     GW_IQN = "iqn.2003-03.com.canonical.iscsi-gw:iscsi-igw"
-    POOL_NAME = "iscsi"
+    DATA_POOL_NAME = 'superssd'
 
     def get_client_initiatorname(self, unit):
         """Return the initiatorname for the given unit."""
@@ -58,7 +58,7 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
         secondary_gw = gw_units[1]
         host_names = generic_utils.get_unit_hostnames(gw_units, fqdn=True)
         ctxt = {
-            'pool_name': self.POOL_NAME,
+            'pool_name': self.DATA_POOL_NAME,
             'client_entity_id': client.entity_id,
             'gw_iqn': self.GW_IQN,
             'gw1_ip': primary_gw.public_address,
@@ -103,6 +103,7 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
                     ctxt['gw1_entity_id'],
                     ctxt['gw2_entity_id']),
                 'iqn': self.GW_IQN,
+                'pool-name': self.DATA_POOL_NAME,
                 'image-size': ctxt['img_size'],
                 'image-name': ctxt['img_name'],
                 'client-initiatorname': ctxt['client_initiatorname'],
@@ -131,8 +132,16 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
             return '/dev/dm-0' in run['Stdout']
         zaza.model.block_until(check_device_present)
 
+    def create_data_pool(self):
+        generic_utils.assertActionRanOK(zaza.model.run_action_on_leader(
+            'ceph-mon',
+            'create-pool',
+            action_params={
+                'name': self.DATA_POOL_NAME}))
+
     def test_create_and_mount_volume(self):
         """Test creating a target and mounting it on a client."""
+        self.create_data_pool()
         ctxt = self.get_ctxt()
         self.create_iscsi_target(ctxt)
         self.mount_iscsi_target(ctxt)
