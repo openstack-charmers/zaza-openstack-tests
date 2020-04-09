@@ -20,8 +20,8 @@ import zaza.model
 
 
 SERVICE_GROUPS = collections.OrderedDict([
-    ('Stateful Services', ['percona-cluster', 'rabbitmq-server']),
-    ('Core Identity', ['keystone', 'ceph-mon']),
+    ('Stateful Services', ['percona-cluster', 'rabbitmq-server', 'ceph-mon']),
+    ('Core Identity', ['keystone']),
     ('Control Plane', [
         'aodh', 'barbican', 'ceilometer', 'ceph-fs',
         'ceph-radosgw', 'cinder', 'designate',

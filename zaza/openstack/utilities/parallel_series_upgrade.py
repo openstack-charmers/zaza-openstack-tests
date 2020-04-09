@@ -187,7 +187,9 @@ async def parallel_series_upgrade(
         .format(application, follower_first))
 
     status = (await model.async_get_status()).applications[application]
-    leader, non_leaders = await get_leader_and_non_leaders(status, application)
+    logging.info(
+        "Configuring leader / non leaders for {}".format(application))
+    leader, non_leaders = get_leader_and_non_leaders(status)
     for leader_name, leader_unit in leader.items():
         leader_machine = leader_unit["machine"]
         leader = leader_name
@@ -205,10 +207,12 @@ async def parallel_series_upgrade(
         application, to_series=to_series)
 
     prepare_group = [
-        prepare_series_upgrade(machine, to_series=to_series)
+        series_upgrade_utils.async_prepare_series_upgrade(
+            machine, to_series=to_series)
         for machine in machines]
     asyncio.gather(*prepare_group)
-    await prepare_series_upgrade(leader_machine, to_series=to_series)
+    await series_upgrade_utils.async_prepare_series_upgrade(
+        leader_machine, to_series=to_series)
     if leader_machine not in completed_machines:
         machines.append(leader_machine)
     upgrade_group = [
@@ -285,7 +289,9 @@ async def serial_series_upgrade(
         "About to upgrade the units of {} in serial (follower first: {})"
         .format(application, follower_first))
     status = (await model.async_get_status()).applications[application]
-    leader, non_leaders = await get_leader_and_non_leaders(application)
+    logging.info(
+        "Configuring leader / non leaders for {}".format(application))
+    leader, non_leaders = get_leader_and_non_leaders(status)
     for leader_name, leader_unit in leader.items():
         leader_machine = leader_unit["machine"]
         leader = leader_name
@@ -304,7 +310,8 @@ async def serial_series_upgrade(
         application, to_series=to_series)
 
     if not follower_first and leader_machine not in completed_machines:
-        await prepare_series_upgrade(leader_machine, to_series)
+        await series_upgrade_utils.async_prepare_series_upgrade(
+            leader_machine, to_series=to_series)
         logging.info("About to upgrade leader of {}: {}"
                      .format(application, leader_machine))
         await series_upgrade_machine(
@@ -313,7 +320,8 @@ async def serial_series_upgrade(
             post_upgrade_functions=post_upgrade_functions)
 
     for machine in machines:
-        await prepare_series_upgrade(machine, to_series)
+        await series_upgrade_utils.async_prepare_series_upgrade(
+            machine, to_series=to_series)
         logging.info("About to upgrade follower of {}: {}"
                      .format(application, machine))
         await series_upgrade_machine(
@@ -322,7 +330,8 @@ async def serial_series_upgrade(
             post_upgrade_functions=post_upgrade_functions)
 
     if follower_first and leader_machine not in completed_machines:
-        await prepare_series_upgrade(leader_machine, to_series)
+        await series_upgrade_utils.async_prepare_series_upgrade(
+            leader_machine, to_series=to_series)
         logging.info("About to upgrade leader of {}: {}"
                      .format(application, leader_machine))
         await series_upgrade_machine(
@@ -360,7 +369,7 @@ async def series_upgrade_machine(
     logging.info(
         "About to dist-upgrade ({})".format(machine))
 
-    run_pre_upgrade_functions(pre_upgrade_functions)
+    run_pre_upgrade_functions(machine, pre_upgrade_functions)
     await async_dist_upgrade(machine)
     await async_do_release_upgrade(machine)
     await reboot(machine)
@@ -436,7 +445,7 @@ async def maybe_pause_things(
     await asyncio.gather(*leader_pauses)
 
 
-async def get_leader_and_non_leaders(status, application):
+def get_leader_and_non_leaders(status):
     """Get the leader and non-leader Juju units.
 
     This function returns a tuple that looks like:
@@ -452,13 +461,9 @@ async def get_leader_and_non_leaders(status, application):
     The first entry of this tuple is the leader, and the second is
     all non-leader units.
 
-    :param application: Application to fetch details for
-    :type application: str
     :returns: A tuple of dicts identifying leader and non-leaders
     :rtype: Dict[str, List[juju.Unit]]
     """
-    logging.info(
-        "Configuring leader / non leaders for {}".format(application))
     leader = None
     non_leaders = {}
     for name, unit in status["units"].items():
@@ -487,40 +492,20 @@ async def prepare_series_upgrade(machine, to_series):
         machine, to_series=to_series)
 
 
-async def reboot(unit):
+async def reboot(machine):
     """Reboot the named machine.
 
-    :param unit: Machine to reboot
-    :type unit: str
+    :param machine: Machine to reboot
+    :type machine: str
     :returns: Nothing
     :rtype: None
     """
     try:
-        await run_on_machine(unit, 'shutdown --reboot now & exit')
+        await run_on_machine(machine, 'shutdown --reboot now & exit')
         # await run_on_machine(unit, "sudo reboot && exit")
     except subprocess.CalledProcessError as e:
         logging.warn("Error doing reboot: {}".format(e))
         pass
-
-
-async def complete_series_upgrade(machines, to_series):
-    """Execute juju series-upgrade complete on machine.
-
-    NOTE: This is a new feature in juju behind a feature flag and not yet in
-    libjuju.
-    export JUJU_DEV_FEATURE_FLAGS=upgrade-series
-    :param machine_num: Machine number
-    :type machine_num: str
-    :returns: None
-    :rtype: None
-    """
-    logging.info("Completing series upgrade for {}".format(machines))
-    group = []
-    for machine in machines:
-        # This can fail on the non-leaders if the leader goes first?
-        group.append(
-            series_upgrade_utils.async_complete_series_upgrade(machine))
-    await asyncio.gather(*group)
 
 
 async def run_on_machine(machine, command, model_name=None, timeout=None):
