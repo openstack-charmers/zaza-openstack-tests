@@ -14,6 +14,8 @@
 
 import asyncio
 import mock
+import sys
+import unittest
 import unit_tests.utils as ut_utils
 import zaza.openstack.utilities.generic as generic_utils
 import zaza.openstack.utilities.series_upgrade as series_upgrade
@@ -149,6 +151,8 @@ class AioTestCase(ut_utils.BaseTestCase):
 class TestParallelSeriesUpgrade(AioTestCase):
     def setUp(self):
         super(TestParallelSeriesUpgrade, self).setUp()
+        if sys.version_info < (3, 6, 0):
+            raise unittest.SkipTest("Can't AsyncMock in py35")
         self.patch_object(series_upgrade, "async_prepare_series_upgrade")
         self.patch_object(generic_utils, 'check_call')
         # Juju Status Object and data
