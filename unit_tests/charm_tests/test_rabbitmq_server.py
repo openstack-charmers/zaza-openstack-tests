@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import mock
 import unittest
+import sys
 
 import zaza.openstack.charm_tests.rabbitmq_server.utils as rabbit_utils
 
@@ -21,11 +23,17 @@ import zaza.openstack.charm_tests.rabbitmq_server.utils as rabbit_utils
 class TestRabbitUtils(unittest.TestCase):
     """Test class to encapsulate testing Mysql test utils."""
 
+    def setUp(self):
+        super(TestRabbitUtils, self).setUp()
+        if sys.version_info < (3, 6, 0):
+            raise unittest.SkipTest("Can't AsyncMock in py35")
+
     @mock.patch.object(rabbit_utils.zaza, 'model')
     def test_rabbit_complete_cluster_series_upgrade(self, mock_model):
-        run_action_on_leader = mock.MagicMock()
-        mock_model.run_action_on_leader = run_action_on_leader
-        rabbit_utils.complete_cluster_series_upgrade()
+        run_action_on_leader = mock.AsyncMock()
+        mock_model.async_run_action_on_leader = run_action_on_leader
+        asyncio.get_event_loop().run_until_complete(
+            rabbit_utils.complete_cluster_series_upgrade())
         run_action_on_leader.assert_called_once_with(
             'rabbitmq-server',
             'complete-cluster-series-upgrade',

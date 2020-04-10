@@ -93,7 +93,7 @@ def app_config(charm_name):
             'pause_non_leader_subordinate': True,
             'post_upgrade_functions': [
                 ('zaza.openstack.charm_tests.vault.setup.'
-                 'mojo_unseal_by_unit')]
+                 'async_mojo_unseal_by_unit')]
         },
         'mongodb': {
             'origin': None,
@@ -338,7 +338,8 @@ async def serial_series_upgrade(
             leader_machine,
             files=files, workaround_script=workaround_script,
             post_upgrade_functions=post_upgrade_functions)
-    run_post_application_upgrade_functions(post_application_upgrade_functions)
+    await run_post_application_upgrade_functions(
+        post_application_upgrade_functions)
 
 
 async def series_upgrade_machine(
@@ -372,10 +373,10 @@ async def series_upgrade_machine(
     await async_do_release_upgrade(machine)
     await reboot(machine)
     await series_upgrade_utils.async_complete_series_upgrade(machine)
-    series_upgrade_utils.run_post_upgrade_functions(post_upgrade_functions)
+    await run_post_upgrade_functions(post_upgrade_functions)
 
 
-def run_pre_upgrade_functions(machine, pre_upgrade_functions):
+async def run_pre_upgrade_functions(machine, pre_upgrade_functions):
     """Execute list supplied functions.
 
     Each of the supplied functions will be called with a single
@@ -389,10 +390,10 @@ def run_pre_upgrade_functions(machine, pre_upgrade_functions):
     if pre_upgrade_functions:
         for func in pre_upgrade_functions:
             logging.info("Running {}".format(func))
-            cl_utils.get_class(func)(machine)
+            await cl_utils.get_class(func)(machine)
 
 
-def run_post_application_upgrade_functions(post_upgrade_functions):
+async def run_post_upgrade_functions(post_upgrade_functions):
     """Execute list supplied functions.
 
     :param post_upgrade_functions: List of functions
@@ -401,7 +402,19 @@ def run_post_application_upgrade_functions(post_upgrade_functions):
     if post_upgrade_functions:
         for func in post_upgrade_functions:
             logging.info("Running {}".format(func))
-            cl_utils.get_class(func)()
+            await cl_utils.get_class(func)()
+
+
+async def run_post_application_upgrade_functions(post_upgrade_functions):
+    """Execute list supplied functions.
+
+    :param post_upgrade_functions: List of functions
+    :type post_upgrade_functions: [function, function, ...]
+    """
+    if post_upgrade_functions:
+        for func in post_upgrade_functions:
+            logging.info("Running {}".format(func))
+            await cl_utils.get_class(func)()
 
 
 async def maybe_pause_things(

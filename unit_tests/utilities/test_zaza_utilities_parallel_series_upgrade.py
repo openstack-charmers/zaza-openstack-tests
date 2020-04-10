@@ -62,22 +62,6 @@ class Test_ParallelSeriesUpgradeSync(ut_utils.BaseTestCase):
         # self.patch_object(upgrade_utils, "model")
         # self.model.get_status.return_value = self.juju_status
 
-    @mock.patch.object(upgrade_utils.cl_utils, 'get_class')
-    def test_run_post_application_upgrade_functions(self, mock_get_class):
-        called = mock.MagicMock()
-        mock_get_class.return_value = called
-        upgrade_utils.run_post_application_upgrade_functions(['my.thing'])
-        mock_get_class.assert_called_once_with('my.thing')
-        called.assert_called()
-
-    @mock.patch.object(upgrade_utils.cl_utils, 'get_class')
-    def test_run_pre_upgrade_functions(self, mock_get_class):
-        called = mock.MagicMock()
-        mock_get_class.return_value = called
-        upgrade_utils.run_pre_upgrade_functions('1', ['my.thing'])
-        mock_get_class.assert_called_once_with('my.thing')
-        called.assert_called_once_with('1')
-
     def test_get_leader_and_non_leaders(self):
         expected = ({
             'app/0': {
@@ -192,6 +176,26 @@ class TestParallelSeriesUpgrade(AioTestCase):
         self.model.async_get_status = self.juju_status
         self.async_run_action = mock.AsyncMock()
         self.model.async_run_action = self.async_run_action
+
+    @mock.patch.object(upgrade_utils.cl_utils, 'get_class')
+    async def test_run_post_application_upgrade_functions(
+        self,
+        mock_get_class
+    ):
+        called = mock.AsyncMock()
+        mock_get_class.return_value = called
+        await upgrade_utils.run_post_application_upgrade_functions(
+            ['my.thing'])
+        mock_get_class.assert_called_once_with('my.thing')
+        called.assert_called()
+
+    @mock.patch.object(upgrade_utils.cl_utils, 'get_class')
+    async def test_run_pre_upgrade_functions(self, mock_get_class):
+        called = mock.AsyncMock()
+        mock_get_class.return_value = called
+        await upgrade_utils.run_pre_upgrade_functions('1', ['my.thing'])
+        mock_get_class.assert_called_once_with('my.thing')
+        called.assert_called_once_with('1')
 
     @mock.patch.object(upgrade_utils.os_utils, 'async_set_origin')
     @mock.patch.object(upgrade_utils, 'run_post_application_upgrade_functions')
