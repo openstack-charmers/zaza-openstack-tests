@@ -205,7 +205,8 @@ async def parallel_series_upgrade(
         pause_non_leader_primary)
     await series_upgrade_utils.async_set_series(
         application, to_series=to_series)
-
+    if origin:
+        await os_utils.async_set_origin(application, origin)
     prepare_group = [
         series_upgrade_utils.async_prepare_series_upgrade(
             machine, to_series=to_series)
@@ -223,8 +224,6 @@ async def parallel_series_upgrade(
         for machine in machines
     ]
     await asyncio.gather(*upgrade_group)
-    if origin:
-        await os_utils.async_set_origin(application, origin)
     run_post_application_upgrade_functions(post_application_upgrade_functions)
 
 
@@ -308,7 +307,8 @@ async def serial_series_upgrade(
         pause_non_leader_primary)
     await series_upgrade_utils.async_set_series(
         application, to_series=to_series)
-
+    if origin:
+        await os_utils.async_set_origin(application, origin)
     if not follower_first and leader_machine not in completed_machines:
         await series_upgrade_utils.async_prepare_series_upgrade(
             leader_machine, to_series=to_series)
@@ -338,8 +338,6 @@ async def serial_series_upgrade(
             leader_machine,
             files=files, workaround_script=workaround_script,
             post_upgrade_functions=post_upgrade_functions)
-    if origin:
-        await os_utils.async_set_origin(application, origin)
     run_post_application_upgrade_functions(post_application_upgrade_functions)
 
 
