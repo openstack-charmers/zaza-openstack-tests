@@ -40,6 +40,18 @@ FAKE_STATUS = {
                             'app-hacluster/2': {
                                    'charm': 'local:trusty/hacluster-0'}}}}}
 
+FAKE_STATUS_MONGO = {
+    'can-upgrade-to': '',
+    'charm': 'local:trusty/mongodb-10',
+    'subordinate-to': [],
+    'units': {'mongo/0': {'leader': True,
+                          'machine': '0',
+                          'subordinates': {}},
+              'mongo/1': {'machine': '1',
+                          'subordinates': {}},
+              'mongo/2': {'machine': '2',
+                          'subordinates': {}}}}
+
 
 class Test_ParallelSeriesUpgradeSync(ut_utils.BaseTestCase):
     def setUp(self):
@@ -164,6 +176,114 @@ class TestParallelSeriesUpgrade(AioTestCase):
         self.model.async_get_status = self.juju_status
         self.async_run_action = mock.AsyncMock()
         self.model.async_run_action = self.async_run_action
+
+    @mock.patch.object(upgrade_utils.os_utils, 'async_set_origin')
+    @mock.patch.object(upgrade_utils, 'run_post_application_upgrade_functions')
+    @mock.patch.object(
+        upgrade_utils.series_upgrade_utils, 'async_prepare_series_upgrade')
+    @mock.patch.object(upgrade_utils.series_upgrade_utils, 'async_set_series')
+    @mock.patch.object(upgrade_utils, 'maybe_pause_things')
+    @mock.patch.object(upgrade_utils, 'series_upgrade_machine')
+    async def test_parallel_series_upgrade_mongo(
+        self,
+        mock_series_upgrade_machine,
+        mock_maybe_pause_things,
+        mock_async_set_series,
+        mock_async_prepare_series_upgrade,
+        mock_post_application_upgrade_functions,
+        mock_async_set_origin,
+    ):
+        self.juju_status.return_value.applications.__getitem__.return_value = \
+            FAKE_STATUS_MONGO
+        upgrade_config = upgrade_utils.app_config('mongodb')
+        await upgrade_utils.parallel_series_upgrade(
+            'mongodb',
+            from_series='trusty',
+            to_series='xenial',
+            **upgrade_config
+        )
+        mock_async_set_series.assert_called_once_with(
+            'mongodb', to_series='xenial')
+        self.juju_status.assert_called()
+        mock_async_prepare_series_upgrade.assert_has_calls([
+            mock.call('1', to_series='xenial'),
+            mock.call('2', to_series='xenial'),
+            mock.call('0', to_series='xenial'),
+        ])
+        mock_maybe_pause_things.assert_called()
+        mock_series_upgrade_machine.assert_has_calls([
+            mock.call(
+                '1',
+                files=None,
+                workaround_script=None,
+                post_upgrade_functions=[]),
+            mock.call(
+                '2',
+                files=None,
+                workaround_script=None,
+                post_upgrade_functions=[]),
+            mock.call(
+                '0',
+                files=None,
+                workaround_script=None,
+                post_upgrade_functions=[]),
+        ])
+        mock_async_set_origin.assert_not_called()
+        mock_post_application_upgrade_functions.assert_called_once_with([])
+
+    @mock.patch.object(upgrade_utils.os_utils, 'async_set_origin')
+    @mock.patch.object(upgrade_utils, 'run_post_application_upgrade_functions')
+    @mock.patch.object(
+        upgrade_utils.series_upgrade_utils, 'async_prepare_series_upgrade')
+    @mock.patch.object(upgrade_utils.series_upgrade_utils, 'async_set_series')
+    @mock.patch.object(upgrade_utils, 'maybe_pause_things')
+    @mock.patch.object(upgrade_utils, 'series_upgrade_machine')
+    async def test_serial_series_upgrade_mongo(
+        self,
+        mock_series_upgrade_machine,
+        mock_maybe_pause_things,
+        mock_async_set_series,
+        mock_async_prepare_series_upgrade,
+        mock_post_application_upgrade_functions,
+        mock_async_set_origin,
+    ):
+        self.juju_status.return_value.applications.__getitem__.return_value = \
+            FAKE_STATUS_MONGO
+        upgrade_config = upgrade_utils.app_config('mongodb')
+        await upgrade_utils.serial_series_upgrade(
+            'mongodb',
+            from_series='trusty',
+            to_series='xenial',
+            **upgrade_config
+        )
+        mock_async_set_series.assert_called_once_with(
+            'mongodb', to_series='xenial')
+        self.juju_status.assert_called()
+        mock_async_prepare_series_upgrade.assert_has_calls([
+            mock.call('1', to_series='xenial'),
+            mock.call('2', to_series='xenial'),
+            mock.call('0', to_series='xenial'),
+        ])
+        mock_maybe_pause_things.assert_called()
+        mock_series_upgrade_machine.assert_has_calls([
+            mock.call(
+                '1',
+                files=None,
+                workaround_script=None,
+                post_upgrade_functions=[]),
+            mock.call(
+                '2',
+                files=None,
+                workaround_script=None,
+                post_upgrade_functions=[]),
+            mock.call(
+                '0',
+                files=None,
+                workaround_script=None,
+                post_upgrade_functions=[]),
+        ])
+        mock_async_set_origin.assert_not_called()
+        mock_post_application_upgrade_functions.assert_called_once_with([])
 
     @mock.patch.object(upgrade_utils.os_utils, 'async_set_origin')
     @mock.patch.object(upgrade_utils, 'run_post_application_upgrade_functions')
