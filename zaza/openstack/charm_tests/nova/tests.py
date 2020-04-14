@@ -157,11 +157,11 @@ class NovaCompute(test_utils.OpenStackBaseTest):
 
 
 class SecurityTests(test_utils.OpenStackBaseTest):
-    """Nova Compute security tests tests."""
+    """nova-compute and nova-cloud-controller security tests."""
 
     @classmethod
     def setUpClass(cls):
-        """Run class setup for running Nova Compute SecurityTests."""
+        """Run class setup for running Nova SecurityTests."""
         super(SecurityTests, cls).setUpClass()
 
     def test_security_checklist(self):
@@ -181,7 +181,7 @@ class SecurityTests(test_utils.OpenStackBaseTest):
             'validate-uses-keystone',
         ]
 
-        for unit in zaza.model.get_units('nova-compute',
+        for unit in zaza.model.get_units(self.application_name,
                                          model_name=self.model_name):
             logging.info('Running `security-checklist` action'
                          ' on  unit {}'.format(unit.entity_id))
