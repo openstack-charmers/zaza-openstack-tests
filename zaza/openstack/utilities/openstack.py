@@ -2258,7 +2258,8 @@ def ping_response(ip):
     :raises: subprocess.CalledProcessError
     """
     cmd = ['ping', '-c', '1', '-W', '1', ip]
-    subprocess.check_call(cmd, stdout=subprocess.DEVNULL)
+    subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                   check=True)
 
 
 def ssh_test(username, ip, vm_name, password=None, privkey=None):
