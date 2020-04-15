@@ -200,7 +200,6 @@ class TestParallelSeriesUpgrade(AioTestCase):
         mock_get_class.assert_called_once_with('my.thing')
         called.assert_called_once_with('1')
 
-    @mock.patch.object(upgrade_utils.os_utils, 'async_set_origin')
     @mock.patch.object(upgrade_utils, 'run_post_application_upgrade_functions')
     @mock.patch.object(
         upgrade_utils.series_upgrade_utils, 'async_prepare_series_upgrade')
@@ -214,7 +213,6 @@ class TestParallelSeriesUpgrade(AioTestCase):
         mock_async_set_series,
         mock_async_prepare_series_upgrade,
         mock_post_application_upgrade_functions,
-        mock_async_set_origin,
     ):
         self.juju_status.return_value.applications.__getitem__.return_value = \
             FAKE_STATUS_MONGO
@@ -240,24 +238,28 @@ class TestParallelSeriesUpgrade(AioTestCase):
         mock_series_upgrade_machine.assert_has_calls([
             mock.call(
                 '1',
+                origin=None,
+                application='mongodb',
                 files=None,
                 workaround_script=None,
                 post_upgrade_functions=[]),
             mock.call(
                 '2',
+                origin=None,
+                application='mongodb',
                 files=None,
                 workaround_script=None,
                 post_upgrade_functions=[]),
             mock.call(
                 '0',
+                origin=None,
+                application='mongodb',
                 files=None,
                 workaround_script=None,
                 post_upgrade_functions=[]),
         ])
-        mock_async_set_origin.assert_not_called()
         mock_post_application_upgrade_functions.assert_called_once_with([])
 
-    @mock.patch.object(upgrade_utils.os_utils, 'async_set_origin')
     @mock.patch.object(upgrade_utils, 'run_post_application_upgrade_functions')
     @mock.patch.object(
         upgrade_utils.series_upgrade_utils, 'async_prepare_series_upgrade')
@@ -271,7 +273,6 @@ class TestParallelSeriesUpgrade(AioTestCase):
         mock_async_set_series,
         mock_async_prepare_series_upgrade,
         mock_post_application_upgrade_functions,
-        mock_async_set_origin,
     ):
         self.juju_status.return_value.applications.__getitem__.return_value = \
             FAKE_STATUS_MONGO
@@ -294,24 +295,28 @@ class TestParallelSeriesUpgrade(AioTestCase):
         mock_series_upgrade_machine.assert_has_calls([
             mock.call(
                 '1',
+                origin=None,
+                application='mongodb',
                 files=None,
                 workaround_script=None,
                 post_upgrade_functions=[]),
             mock.call(
                 '2',
+                origin=None,
+                application='mongodb',
                 files=None,
                 workaround_script=None,
                 post_upgrade_functions=[]),
             mock.call(
                 '0',
+                origin=None,
+                application='mongodb',
                 files=None,
                 workaround_script=None,
                 post_upgrade_functions=[]),
         ])
-        mock_async_set_origin.assert_not_called()
         mock_post_application_upgrade_functions.assert_called_once_with([])
 
-    @mock.patch.object(upgrade_utils.os_utils, 'async_set_origin')
     @mock.patch.object(upgrade_utils, 'run_post_application_upgrade_functions')
     @mock.patch.object(
         upgrade_utils.series_upgrade_utils, 'async_prepare_series_upgrade')
@@ -325,7 +330,6 @@ class TestParallelSeriesUpgrade(AioTestCase):
         mock_async_set_series,
         mock_async_prepare_series_upgrade,
         mock_post_application_upgrade_functions,
-        mock_async_set_origin,
     ):
         await upgrade_utils.parallel_series_upgrade(
             'app',
@@ -335,34 +339,39 @@ class TestParallelSeriesUpgrade(AioTestCase):
         mock_async_set_series.assert_called_once_with(
             'app', to_series='xenial')
         self.juju_status.assert_called()
+        # The below is using `any_order=True` because the ordering is
+        # undetermined and differs between python versions
         mock_async_prepare_series_upgrade.assert_has_calls([
             mock.call('1', to_series='xenial'),
             mock.call('2', to_series='xenial'),
             mock.call('0', to_series='xenial'),
-        ])
+        ], any_order=True)
         mock_maybe_pause_things.assert_called()
         mock_series_upgrade_machine.assert_has_calls([
             mock.call(
                 '1',
+                origin='openstack-origin',
+                application='app',
                 files=None,
                 workaround_script=None,
                 post_upgrade_functions=None),
             mock.call(
                 '2',
+                origin='openstack-origin',
+                application='app',
                 files=None,
                 workaround_script=None,
                 post_upgrade_functions=None),
             mock.call(
                 '0',
+                origin='openstack-origin',
+                application='app',
                 files=None,
                 workaround_script=None,
                 post_upgrade_functions=None),
         ])
-        mock_async_set_origin.assert_called_once_with(
-            'app', 'openstack-origin')
         mock_post_application_upgrade_functions.assert_called_once_with(None)
 
-    @mock.patch.object(upgrade_utils.os_utils, 'async_set_origin')
     @mock.patch.object(upgrade_utils, 'run_post_application_upgrade_functions')
     @mock.patch.object(
         upgrade_utils.series_upgrade_utils, 'async_prepare_series_upgrade')
@@ -376,7 +385,6 @@ class TestParallelSeriesUpgrade(AioTestCase):
         mock_async_set_series,
         mock_async_prepare_series_upgrade,
         mock_post_application_upgrade_functions,
-        mock_async_set_origin,
     ):
         await upgrade_utils.serial_series_upgrade(
             'app',
@@ -395,22 +403,26 @@ class TestParallelSeriesUpgrade(AioTestCase):
         mock_series_upgrade_machine.assert_has_calls([
             mock.call(
                 '0',
+                origin='openstack-origin',
+                application='app',
                 files=None,
                 workaround_script=None,
                 post_upgrade_functions=None),
             mock.call(
                 '1',
+                origin='openstack-origin',
+                application='app',
                 files=None,
                 workaround_script=None,
                 post_upgrade_functions=None),
             mock.call(
                 '2',
+                origin='openstack-origin',
+                application='app',
                 files=None,
                 workaround_script=None,
                 post_upgrade_functions=None),
         ])
-        mock_async_set_origin.assert_called_once_with(
-            'app', 'openstack-origin')
         mock_post_application_upgrade_functions.assert_called_once_with(None)
 
     @mock.patch.object(
@@ -435,6 +447,35 @@ class TestParallelSeriesUpgrade(AioTestCase):
         mock_async_do_release_upgrade.assert_called_once_with('1')
         mock_reboot.assert_called_once_with('1')
         mock_async_complete_series_upgrade.assert_called_once_with('1')
+
+    @mock.patch.object(upgrade_utils.os_utils, 'async_set_origin')
+    @mock.patch.object(
+        upgrade_utils.series_upgrade_utils, 'async_complete_series_upgrade')
+    @mock.patch.object(upgrade_utils, 'reboot')
+    @mock.patch.object(upgrade_utils, 'async_do_release_upgrade')
+    @mock.patch.object(upgrade_utils, 'async_dist_upgrade')
+    async def test_series_upgrade_machine_with_source(
+        self,
+        mock_async_dist_upgrade,
+        mock_async_do_release_upgrade,
+        mock_reboot,
+        mock_async_complete_series_upgrade,
+        mock_async_set_origin
+    ):
+        await upgrade_utils.series_upgrade_machine(
+            '1',
+            origin='openstack-origin',
+            application='app',
+            post_upgrade_functions=None,
+            pre_upgrade_functions=None,
+            files=None,
+            workaround_script=None)
+        mock_async_dist_upgrade.assert_called_once_with('1')
+        mock_async_do_release_upgrade.assert_called_once_with('1')
+        mock_reboot.assert_called_once_with('1')
+        mock_async_complete_series_upgrade.assert_called_once_with('1')
+        mock_async_set_origin.assert_called_once_with(
+            'app', 'openstack-origin')
 
     async def test_maybe_pause_things_primary(self):
         await upgrade_utils.maybe_pause_things(

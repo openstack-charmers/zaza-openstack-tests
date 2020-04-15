@@ -207,8 +207,6 @@ async def parallel_series_upgrade(
         pause_non_leader_primary)
     await series_upgrade_utils.async_set_series(
         application, to_series=to_series)
-    if origin:
-        await os_utils.async_set_origin(application, origin)
     app_idle = [
         wait_for_unit_idle(unit) for unit in status["units"]
     ]
@@ -223,6 +221,8 @@ async def parallel_series_upgrade(
     upgrade_group = [
         series_upgrade_machine(
             machine,
+            origin=origin,
+            application=application,
             files=files, workaround_script=workaround_script,
             post_upgrade_functions=post_upgrade_functions)
         for machine in machines
@@ -308,8 +308,6 @@ async def serial_series_upgrade(
         pause_non_leader_primary)
     await series_upgrade_utils.async_set_series(
         application, to_series=to_series)
-    if origin:
-        await os_utils.async_set_origin(application, origin)
     if not follower_first and leader_machine not in completed_machines:
         await wait_for_unit_idle(leader)
         await prepare_series_upgrade(leader_machine, to_series=to_series)
@@ -317,6 +315,8 @@ async def serial_series_upgrade(
                      .format(application, leader_machine))
         await series_upgrade_machine(
             leader_machine,
+            origin=origin,
+            application=application,
             files=files, workaround_script=workaround_script,
             post_upgrade_functions=post_upgrade_functions)
         completed_machines.append(leader_machine)
@@ -332,6 +332,8 @@ async def serial_series_upgrade(
                      .format(application, machine))
         await series_upgrade_machine(
             machine,
+            origin=origin,
+            application=application,
             files=files, workaround_script=workaround_script,
             post_upgrade_functions=post_upgrade_functions)
         completed_machines.append(machine)
@@ -343,6 +345,8 @@ async def serial_series_upgrade(
                      .format(application, leader_machine))
         await series_upgrade_machine(
             leader_machine,
+            origin=origin,
+            application=application,
             files=files, workaround_script=workaround_script,
             post_upgrade_functions=post_upgrade_functions)
         completed_machines.append(leader_machine)
@@ -352,6 +356,8 @@ async def serial_series_upgrade(
 
 async def series_upgrade_machine(
         machine,
+        origin=None,
+        application=None,
         post_upgrade_functions=None,
         pre_upgrade_functions=None,
         files=None,
@@ -379,6 +385,8 @@ async def series_upgrade_machine(
     await async_dist_upgrade(machine)
     await async_do_release_upgrade(machine)
     await reboot(machine)
+    if origin:
+        await os_utils.async_set_origin(application, origin)
     await series_upgrade_utils.async_complete_series_upgrade(machine)
     await run_post_upgrade_functions(post_upgrade_functions)
 
@@ -462,8 +470,8 @@ async def maybe_pause_things(
             logging.info("Pausing {}".format(unit))
             leader_pauses.append(
                 model.async_run_action(unit, "pause", action_params={}))
-    await asyncio.gather(*subordinate_pauses)
     await asyncio.gather(*leader_pauses)
+    await asyncio.gather(*subordinate_pauses)
 
 
 def get_leader_and_non_leaders(status):
