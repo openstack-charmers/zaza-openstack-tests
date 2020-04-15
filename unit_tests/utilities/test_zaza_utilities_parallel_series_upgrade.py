@@ -177,6 +177,9 @@ class TestParallelSeriesUpgrade(AioTestCase):
         self.async_run_action = mock.AsyncMock()
         self.model.async_run_action = self.async_run_action
 
+        self.async_block_until = mock.AsyncMock()
+        self.model.async_block_until = self.async_block_until
+
     @mock.patch.object(upgrade_utils.cl_utils, 'get_class')
     async def test_run_post_application_upgrade_functions(
         self,
@@ -225,11 +228,14 @@ class TestParallelSeriesUpgrade(AioTestCase):
         mock_async_set_series.assert_called_once_with(
             'mongodb', to_series='xenial')
         self.juju_status.assert_called()
+
+        # The below is using `any_order=True` because the ordering is
+        # undetermined and differs between python versions
         mock_async_prepare_series_upgrade.assert_has_calls([
             mock.call('1', to_series='xenial'),
             mock.call('2', to_series='xenial'),
             mock.call('0', to_series='xenial'),
-        ])
+        ], any_order=True)
         mock_maybe_pause_things.assert_called()
         mock_series_upgrade_machine.assert_has_calls([
             mock.call(
@@ -495,7 +501,7 @@ class TestParallelSeriesUpgrade(AioTestCase):
     async def test_reboot(self, mock_run_on_machine):
         await upgrade_utils.reboot('1')
         mock_run_on_machine.assert_called_once_with(
-            '1', 'shutdown --reboot now & exit'
+            '1', 'sudo init 6 & exit'
         )
 
     async def test_run_on_machine(self):
@@ -517,10 +523,11 @@ class TestParallelSeriesUpgrade(AioTestCase):
     async def test_async_dist_upgrade(self, mock_run_on_machine):
         await upgrade_utils.async_dist_upgrade('1')
         apt_update_command = (
-            """yes | sudo DEBIAN_FRONTEND=noninteractive apt --assume-yes """
+            """yes | sudo DEBIAN_FRONTEND=noninteractive """
+            """apt-get --assume-yes """
             """-o "Dpkg::Options::=--force-confdef" """
             """-o "Dpkg::Options::=--force-confold" dist-upgrade""")
         mock_run_on_machine.assert_has_calls([
-            mock.call('1', 'sudo apt update'),
+            mock.call('1', 'sudo apt-get update'),
             mock.call('1', apt_update_command),
         ])

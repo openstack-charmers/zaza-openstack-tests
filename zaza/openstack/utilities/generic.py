@@ -385,10 +385,17 @@ async def check_call(cmd):
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE)
     stdout, stderr = await proc.communicate()
+    stdout = stdout.decode('utf-8')
+    stderr = stderr.decode('utf-8')
     if proc.returncode != 0:
         logging.warn("STDOUT: {}".format(stdout))
         logging.warn("STDERR: {}".format(stderr))
         raise subprocess.CalledProcessError(proc.returncode, cmd)
+    else:
+        if stderr:
+            logging.info("STDERR: {} ({})".format(stderr, ' '.join(cmd)))
+        if stdout:
+            logging.info("STDOUT: {} ({})".format(stdout, ' '.join(cmd)))
 
 
 def set_dpkg_non_interactive_on_unit(

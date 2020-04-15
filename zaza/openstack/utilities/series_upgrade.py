@@ -687,6 +687,7 @@ async def async_complete_series_upgrade(machine_num):
     juju_model = await model.async_get_juju_model()
     cmd = ["juju", "upgrade-series", "-m", juju_model,
            machine_num, "complete"]
+    logging.info("About to call '{}'".format(cmd))
     await os_utils.check_call(cmd)
 
 
@@ -704,6 +705,7 @@ async def async_set_series(application, to_series):
     juju_model = await model.async_get_juju_model()
     cmd = ["juju", "set-series", "-m", juju_model,
            application, to_series]
+    logging.info("About to call '{}'".format(cmd))
     await os_utils.check_call(cmd)
 
 

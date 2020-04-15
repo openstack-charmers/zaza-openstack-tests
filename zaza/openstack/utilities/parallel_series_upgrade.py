@@ -214,12 +214,10 @@ async def parallel_series_upgrade(
     ]
     await asyncio.gather(*app_idle)
     prepare_group = [
-        series_upgrade_utils.async_prepare_series_upgrade(
-            machine, to_series=to_series)
+        prepare_series_upgrade(machine, to_series=to_series)
         for machine in machines]
     await asyncio.gather(*prepare_group)
-    await series_upgrade_utils.async_prepare_series_upgrade(
-        leader_machine, to_series=to_series)
+    await prepare_series_upgrade(leader_machine, to_series=to_series)
     if leader_machine not in completed_machines:
         machines.append(leader_machine)
     upgrade_group = [
@@ -231,7 +229,8 @@ async def parallel_series_upgrade(
     ]
     await asyncio.gather(*upgrade_group)
     completed_machines.extend(machines)
-    run_post_application_upgrade_functions(post_application_upgrade_functions)
+    await run_post_application_upgrade_functions(
+        post_application_upgrade_functions)
 
 
 async def serial_series_upgrade(
@@ -302,11 +301,6 @@ async def serial_series_upgrade(
         leader_machine = leader_unit["machine"]
         leader = leader_name
 
-    machines = [
-        unit["machine"] for name, unit
-        in non_leaders.items()
-        if unit['machine'] not in completed_machines]
-
     await maybe_pause_things(
         status,
         non_leaders,
@@ -318,8 +312,7 @@ async def serial_series_upgrade(
         await os_utils.async_set_origin(application, origin)
     if not follower_first and leader_machine not in completed_machines:
         await wait_for_unit_idle(leader)
-        await series_upgrade_utils.async_prepare_series_upgrade(
-            leader_machine, to_series=to_series)
+        await prepare_series_upgrade(leader_machine, to_series=to_series)
         logging.info("About to upgrade leader of {}: {}"
                      .format(application, leader_machine))
         await series_upgrade_machine(
@@ -334,8 +327,7 @@ async def serial_series_upgrade(
         if machine in completed_machines:
             continue
         await wait_for_unit_idle(unit_name)
-        await series_upgrade_utils.async_prepare_series_upgrade(
-            machine, to_series=to_series)
+        await prepare_series_upgrade(machine, to_series=to_series)
         logging.info("About to upgrade follower of {}: {}"
                      .format(application, machine))
         await series_upgrade_machine(
@@ -346,8 +338,7 @@ async def serial_series_upgrade(
 
     if follower_first and leader_machine not in completed_machines:
         await wait_for_unit_idle(leader)
-        await series_upgrade_utils.async_prepare_series_upgrade(
-            leader_machine, to_series=to_series)
+        await prepare_series_upgrade(leader_machine, to_series=to_series)
         logging.info("About to upgrade leader of {}: {}"
                      .format(application, leader_machine))
         await series_upgrade_machine(
@@ -383,9 +374,8 @@ async def series_upgrade_machine(
     :rtype: None
     """
     logging.info(
-        "About to dist-upgrade ({})".format(machine))
-
-    run_pre_upgrade_functions(machine, pre_upgrade_functions)
+        "About to series-upgrade ({})".format(machine))
+    await run_pre_upgrade_functions(machine, pre_upgrade_functions)
     await async_dist_upgrade(machine)
     await async_do_release_upgrade(machine)
     await reboot(machine)
@@ -401,37 +391,40 @@ async def run_pre_upgrade_functions(machine, pre_upgrade_functions):
 
     :param machine: Machine that is about to be upgraded
     :type machine: str
-    :param pre_upgrade_functions: List of functions
+    :param pre_upgrade_functions: List of awaitable functions
     :type pre_upgrade_functions: [function, function, ...]
     """
     if pre_upgrade_functions:
         for func in pre_upgrade_functions:
             logging.info("Running {}".format(func))
-            await cl_utils.get_class(func)(machine)
+            m = cl_utils.get_class(func)
+            await m(machine)
 
 
 async def run_post_upgrade_functions(post_upgrade_functions):
     """Execute list supplied functions.
 
-    :param post_upgrade_functions: List of functions
+    :param post_upgrade_functions: List of awaitable functions
     :type post_upgrade_functions: [function, function, ...]
     """
     if post_upgrade_functions:
         for func in post_upgrade_functions:
             logging.info("Running {}".format(func))
-            await cl_utils.get_class(func)()
+            m = cl_utils.get_class(func)
+            await m()
 
 
 async def run_post_application_upgrade_functions(post_upgrade_functions):
     """Execute list supplied functions.
 
-    :param post_upgrade_functions: List of functions
+    :param post_upgrade_functions: List of awaitable functions
     :type post_upgrade_functions: [function, function, ...]
     """
     if post_upgrade_functions:
         for func in post_upgrade_functions:
             logging.info("Running {}".format(func))
-            await cl_utils.get_class(func)()
+            m = cl_utils.get_class(func)
+            await m()
 
 
 async def maybe_pause_things(
@@ -515,7 +508,7 @@ async def prepare_series_upgrade(machine, to_series):
     :returns: None
     :rtype: None
     """
-    logging.debug("Preparing series upgrade for: {}".format(machine))
+    logging.info("Preparing series upgrade for: {}".format(machine))
     await series_upgrade_utils.async_prepare_series_upgrade(
         machine, to_series=to_series)
 
@@ -529,7 +522,7 @@ async def reboot(machine):
     :rtype: None
     """
     try:
-        await run_on_machine(machine, 'shutdown --reboot now & exit')
+        await run_on_machine(machine, 'sudo init 6 & exit')
         # await run_on_machine(unit, "sudo reboot && exit")
     except subprocess.CalledProcessError as e:
         logging.warn("Error doing reboot: {}".format(e))
@@ -556,7 +549,7 @@ async def run_on_machine(machine, command, model_name=None, timeout=None):
     if timeout:
         cmd.append('--timeout={}'.format(timeout))
     cmd.append(command)
-    logging.debug("About to call '{}'".format(cmd))
+    logging.info("About to call '{}'".format(cmd))
     await os_utils.check_call(cmd)
 
 
@@ -569,12 +562,12 @@ async def async_dist_upgrade(machine):
     :rtype: None
     """
     logging.info('Updating package db ' + machine)
-    update_cmd = 'sudo apt update'
+    update_cmd = 'sudo apt-get update'
     await run_on_machine(machine, update_cmd)
 
     logging.info('Updating existing packages ' + machine)
     dist_upgrade_cmd = (
-        """yes | sudo DEBIAN_FRONTEND=noninteractive apt --assume-yes """
+        """yes | sudo DEBIAN_FRONTEND=noninteractive apt-get --assume-yes """
         """-o "Dpkg::Options::=--force-confdef" """
         """-o "Dpkg::Options::=--force-confold" dist-upgrade""")
     await run_on_machine(machine, dist_upgrade_cmd)
