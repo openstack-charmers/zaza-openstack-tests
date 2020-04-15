@@ -34,7 +34,6 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
     XENIAL_NEWTON = openstack_utils.get_os_release('xenial_newton')
     XENIAL_MITAKA = openstack_utils.get_os_release('xenial_mitaka')
     TRUSTY_MITAKA = openstack_utils.get_os_release('trusty_mitaka')
-    TRUSTY_LIBERTY = openstack_utils.get_os_release('trusty_liberty')
 
     @classmethod
     def setUpClass(cls):
@@ -44,7 +43,7 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
 
     @property
     def services(self):
-        """Return a list of services for Openstack Release."""
+        """Return a list of services for the selected Openstack release."""
         services = []
 
         if self.application_name == 'ceilometer-agent':
@@ -81,21 +80,14 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
                 services.append('ceilometer-alarm-notifier')
                 services.append('ceilometer-alarm-evaluator')
 
-            # if self.current_release >= CeilometerTest.TRUSTY_LIBERTY:
-                # Liberty and later
-                # services.append('ceilometer-polling')
-            # else:
-                # Juno and earlier
-                # services.append('ceilometer-agent-central')
-
         return services
 
     @property
     def restartable_services(self):
         """Return a list of services that are known to be restartable.
 
-        For Openstack Release these services are known to be able to be stopped
-        and started with no issues.
+        For the selected Openstack release these services are known to be able
+        to be stopped and started with no issues.
         """
         # Due to Bug #1861321 ceilometer-collector does not reliably
         # restart.

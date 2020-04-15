@@ -44,7 +44,7 @@ class GlanceTest(test_utils.OpenStackBaseTest):
     def test_411_set_disk_format(self):
         """Change disk format and check.
 
-        Change disk format and assert then change propagates to the correct
+        Change disk format and assert that change propagates to the correct
         file and that services are restarted as a result
         """
         # Expected default and alternate values
