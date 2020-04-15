@@ -168,6 +168,59 @@ class BionicFocalSeriesUpgrade(OpenStackParallelSeriesUpgrade):
         cls.to_series = "focal"
 
 
+class UbuntuLiteParallelSeriesUpgrade(unittest.TestCase):
+    """ubuntu Lite Parallel Series Upgrade."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run setup for Series Upgrades."""
+        cli_utils.setup_logging()
+        cls.from_series = None
+        cls.to_series = None
+
+    def test_200_run_series_upgrade(self):
+        """Run series upgrade."""
+        # Set Feature Flag
+        os.environ["JUJU_DEV_FEATURE_FLAGS"] = "upgrade-series"
+        parallel_series_upgrade.upgrade_ubuntu_lite(
+            from_series=self.from_series,
+            to_series=self.to_series
+        )
+
+
+class TrustyXenialSeriesUpgradeUbuntu(UbuntuLiteParallelSeriesUpgrade):
+    """OpenStack Trusty to Xenial Series Upgrade."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run setup for Trusty to Xenial Series Upgrades."""
+        super(TrustyXenialSeriesUpgradeUbuntu, cls).setUpClass()
+        cls.from_series = "trusty"
+        cls.to_series = "xenial"
+
+
+class XenialBionicSeriesUpgradeUbuntu(UbuntuLiteParallelSeriesUpgrade):
+    """OpenStack Xenial to Bionic Series Upgrade."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run setup for Xenial to Bionic Series Upgrades."""
+        super(XenialBionicSeriesUpgradeUbuntu, cls).setUpClass()
+        cls.from_series = "xenial"
+        cls.to_series = "bionic"
+
+
+class BionicFocalSeriesUpgradeUbuntu(UbuntuLiteParallelSeriesUpgrade):
+    """OpenStack Bionic to FocalSeries Upgrade."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run setup for Xenial to Bionic Series Upgrades."""
+        super(BionicFocalSeriesUpgradeUbuntu, cls).setUpClass()
+        cls.from_series = "bionic"
+        cls.to_series = "focal"
+
+
 if __name__ == "__main__":
     from_series = os.environ.get("FROM_SERIES")
     if from_series == "trusty":
