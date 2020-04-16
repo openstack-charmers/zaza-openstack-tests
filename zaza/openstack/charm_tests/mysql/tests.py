@@ -78,7 +78,7 @@ class MySQLCommonTests(MySQLBaseTest):
     def test_910_restart_on_config_change(self):
         """Checking restart happens on config change.
 
-        Change disk format and assert then change propagates to the correct
+        Change max connections and assert that change propagates to the correct
         file and that services are restarted as a result
         """
         # Expected default and alternate values
@@ -86,7 +86,7 @@ class MySQLCommonTests(MySQLBaseTest):
         set_alternate = {"max-connections": "1000"}
 
         # Make config change, check for service restarts
-        logging.debug("Setting peer timeout ...")
+        logging.debug("Setting max connections ...")
         self.restart_on_changed(
             self.conf_file,
             set_default,

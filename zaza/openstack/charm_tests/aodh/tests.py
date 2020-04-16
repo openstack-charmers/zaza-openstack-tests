@@ -111,7 +111,7 @@ class AodhTest(test_utils.OpenStackBaseTest):
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change.
 
-        Change disk format and assert then change propagates to the correct
+        Change debug mode and assert that change propagates to the correct
         file and that services are restarted as a result
         """
         # Expected default and alternate values

@@ -259,7 +259,7 @@ class BaseCharmTest(unittest.TestCase):
                            pgrep_full=False):
         """Run restart on change tests.
 
-        Test that changing config results in config file being updates and
+        Test that changing config results in config file being updated and
         services restarted. Return config to default_config afterwards
 
         :param config_file: Config file to check for settings
