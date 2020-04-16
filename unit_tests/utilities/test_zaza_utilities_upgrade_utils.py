@@ -90,6 +90,7 @@ class TestUpgradeUtils(ut_utils.BaseTestCase):
 
     def test_get_upgrade_groups(self):
         expected = collections.OrderedDict([
+            ('Stateful Services', []),
             ('Core Identity', []),
             ('Control Plane', ['cinder']),
             ('Data Plane', ['nova-compute']),
@@ -103,10 +104,11 @@ class TestUpgradeUtils(ut_utils.BaseTestCase):
 
     def test_get_series_upgrade_groups(self):
         expected = collections.OrderedDict([
+            ('Stateful Services', ['mydb']),
             ('Core Identity', []),
             ('Control Plane', ['cinder']),
             ('Data Plane', ['nova-compute']),
-            ('sweep_up', ['mydb', 'ntp'])])
+            ('sweep_up', ['ntp'])])
         actual = openstack_upgrade.get_series_upgrade_groups()
         pprint.pprint(expected)
         pprint.pprint(actual)

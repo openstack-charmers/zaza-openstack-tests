@@ -66,6 +66,20 @@ def mojo_unseal_by_unit():
             zaza.model.run_on_unit(unit_name, './hooks/update-status')
 
 
+async def async_mojo_unseal_by_unit():
+    """Unseal any units reported as sealed using mojo cacert."""
+    cacert = zaza.openstack.utilities.generic.get_mojo_cacert_path()
+    vault_creds = vault_utils.get_credentails()
+    for client in vault_utils.get_clients(cacert=cacert):
+        if client.hvac_client.is_sealed():
+            client.hvac_client.unseal(vault_creds['keys'][0])
+            unit_name = await juju_utils.async_get_unit_name_from_ip_address(
+                client.addr,
+                'vault')
+            await zaza.model.async_run_on_unit(
+                unit_name, './hooks/update-status')
+
+
 def auto_initialize(cacert=None, validation_application='keystone'):
     """Auto initialize vault for testing.
 
