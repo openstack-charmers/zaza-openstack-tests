@@ -179,6 +179,9 @@ class TestParallelSeriesUpgrade(AioTestCase):
 
         self.async_block_until = mock.AsyncMock()
         self.model.async_block_until = self.async_block_until
+        self.model.async_wait_for_unit_idle = mock.AsyncMock()
+        self.async_run_on_machine = mock.AsyncMock()
+        self.model.async_run_on_machine = self.async_run_on_machine
 
     @mock.patch.object(upgrade_utils.cl_utils, 'get_class')
     async def test_run_post_application_upgrade_functions(
@@ -520,13 +523,12 @@ class TestParallelSeriesUpgrade(AioTestCase):
             pause_non_leader_primary=False)
         self.async_run_action.assert_not_called()
 
-    @mock.patch.object(upgrade_utils, 'run_on_machine')
-    async def test_async_do_release_upgrade(self, mock_run_on_machine):
+    async def test_async_do_release_upgrade(self):
         await upgrade_utils.async_do_release_upgrade('1')
         do_release_upgrade_cmd = (
             'yes | sudo DEBIAN_FRONTEND=noninteractive '
             'do-release-upgrade -f DistUpgradeViewNonInteractive')
-        mock_run_on_machine.assert_called_once_with(
+        self.async_run_on_machine.assert_called_once_with(
             '1', do_release_upgrade_cmd, timeout='120m'
         )
 
@@ -538,37 +540,20 @@ class TestParallelSeriesUpgrade(AioTestCase):
             '1', to_series='xenial'
         )
 
-    @mock.patch.object(upgrade_utils, 'run_on_machine')
-    async def test_reboot(self, mock_run_on_machine):
+    async def test_reboot(self):
         await upgrade_utils.reboot('1')
-        mock_run_on_machine.assert_called_once_with(
+        self.async_run_on_machine.assert_called_once_with(
             '1', 'sudo init 6 & exit'
         )
 
-    async def test_run_on_machine(self):
-        await upgrade_utils.run_on_machine('1', 'test')
-        self.check_call.assert_called_once_with(
-            ['juju', 'run', '--machine=1', 'test'])
-
-    async def test_run_on_machine_with_timeout(self):
-        await upgrade_utils.run_on_machine('1', 'test', timeout='20m')
-        self.check_call.assert_called_once_with(
-            ['juju', 'run', '--machine=1', '--timeout=20m', 'test'])
-
-    async def test_run_on_machine_with_model(self):
-        await upgrade_utils.run_on_machine('1', 'test', model_name='test')
-        self.check_call.assert_called_once_with(
-            ['juju', 'run', '--machine=1', '--model=test', 'test'])
-
-    @mock.patch.object(upgrade_utils, 'run_on_machine')
-    async def test_async_dist_upgrade(self, mock_run_on_machine):
+    async def test_async_dist_upgrade(self):
         await upgrade_utils.async_dist_upgrade('1')
         apt_update_command = (
             """yes | sudo DEBIAN_FRONTEND=noninteractive """
             """apt-get --assume-yes """
             """-o "Dpkg::Options::=--force-confdef" """
             """-o "Dpkg::Options::=--force-confold" dist-upgrade""")
-        mock_run_on_machine.assert_has_calls([
+        self.async_run_on_machine.assert_has_calls([
             mock.call('1', 'sudo apt-get update'),
             mock.call('1', apt_update_command),
         ])

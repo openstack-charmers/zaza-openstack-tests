@@ -18,7 +18,6 @@
 
 import asyncio
 
-import concurrent
 import collections
 import copy
 import logging
@@ -208,7 +207,7 @@ async def parallel_series_upgrade(
     await series_upgrade_utils.async_set_series(
         application, to_series=to_series)
     app_idle = [
-        wait_for_unit_idle(unit) for unit in status["units"]
+        model.async_wait_for_unit_idle(unit) for unit in status["units"]
     ]
     await asyncio.gather(*app_idle)
     prepare_group = [
@@ -309,7 +308,7 @@ async def serial_series_upgrade(
     await series_upgrade_utils.async_set_series(
         application, to_series=to_series)
     if not follower_first and leader_machine not in completed_machines:
-        await wait_for_unit_idle(leader)
+        await model.async_wait_for_unit_idle(leader)
         await prepare_series_upgrade(leader_machine, to_series=to_series)
         logging.info("About to upgrade leader of {}: {}"
                      .format(application, leader_machine))
@@ -326,7 +325,7 @@ async def serial_series_upgrade(
         machine = unit['machine']
         if machine in completed_machines:
             continue
-        await wait_for_unit_idle(unit_name)
+        await model.async_wait_for_unit_idle(unit_name)
         await prepare_series_upgrade(machine, to_series=to_series)
         logging.info("About to upgrade follower of {}: {}"
                      .format(application, machine))
@@ -339,7 +338,7 @@ async def serial_series_upgrade(
         completed_machines.append(machine)
 
     if follower_first and leader_machine not in completed_machines:
-        await wait_for_unit_idle(leader)
+        await model.async_wait_for_unit_idle(leader)
         await prepare_series_upgrade(leader_machine, to_series=to_series)
         logging.info("About to upgrade leader of {}: {}"
                      .format(application, leader_machine))
@@ -530,35 +529,11 @@ async def reboot(machine):
     :rtype: None
     """
     try:
-        await run_on_machine(machine, 'sudo init 6 & exit')
+        await model.async_run_on_machine(machine, 'sudo init 6 & exit')
         # await run_on_machine(unit, "sudo reboot && exit")
     except subprocess.CalledProcessError as e:
         logging.warn("Error doing reboot: {}".format(e))
         pass
-
-
-async def run_on_machine(machine, command, model_name=None, timeout=None):
-    """Juju run on unit.
-
-    :param model_name: Name of model unit is in
-    :type model_name: str
-    :param unit_name: Name of unit to match
-    :type unit: str
-    :param command: Command to execute
-    :type command: str
-    :param timeout: How long in seconds to wait for command to complete
-    :type timeout: int
-    :returns: action.data['results'] {'Code': '', 'Stderr': '', 'Stdout': ''}
-    :rtype: dict
-    """
-    cmd = ['juju', 'run', '--machine={}'.format(machine)]
-    if model_name:
-        cmd.append('--model={}'.format(model_name))
-    if timeout:
-        cmd.append('--timeout={}'.format(timeout))
-    cmd.append(command)
-    logging.info("About to call '{}'".format(cmd))
-    await os_utils.check_call(cmd)
 
 
 async def async_dist_upgrade(machine):
@@ -571,14 +546,14 @@ async def async_dist_upgrade(machine):
     """
     logging.info('Updating package db ' + machine)
     update_cmd = 'sudo apt-get update'
-    await run_on_machine(machine, update_cmd)
+    await model.async_run_on_machine(machine, update_cmd)
 
     logging.info('Updating existing packages ' + machine)
     dist_upgrade_cmd = (
         """yes | sudo DEBIAN_FRONTEND=noninteractive apt-get --assume-yes """
         """-o "Dpkg::Options::=--force-confdef" """
         """-o "Dpkg::Options::=--force-confold" dist-upgrade""")
-    await run_on_machine(machine, dist_upgrade_cmd)
+    await model.async_run_on_machine(machine, dist_upgrade_cmd)
 
 
 async def async_do_release_upgrade(machine):
@@ -594,46 +569,5 @@ async def async_do_release_upgrade(machine):
         'yes | sudo DEBIAN_FRONTEND=noninteractive '
         'do-release-upgrade -f DistUpgradeViewNonInteractive')
 
-    await run_on_machine(machine, do_release_upgrade_cmd, timeout="120m")
-
-
-# TODO: Move these functions into zaza.model
-async def wait_for_unit_idle(unit_name, timeout=600):
-    """Wait until the unit's agent is idle.
-
-    :param unit_name: The unit name of the application, ex: mysql/0
-    :type unit_name: str
-    :param timeout: How long to wait before timing out
-    :type timeout: int
-    :returns: None
-    :rtype: None
-    """
-    app = unit_name.split('/')[0]
-    try:
-        await model.async_block_until(
-            _unit_idle(app, unit_name),
-            timeout=timeout)
-    except concurrent.futures._base.TimeoutError:
-        raise model.ModelTimeout("Zaza has timed out waiting on {} to "
-                                 "reach idle state.".format(unit_name))
-
-
-def _unit_idle(app, unit_name):
-    async def f():
-        x = await get_agent_status(app, unit_name)
-        return x == "idle"
-    return f
-
-
-async def get_agent_status(app, unit_name):
-    """Get the current status of the specified unit.
-
-    :param app: The name of the Juju application, ex: mysql
-    :type app: str
-    :param unit_name: The unit name of the application, ex: mysql/0
-    :type unit_name: str
-    :returns: The agent status, either active / idle, returned by Juju
-    :rtype: str
-    """
-    return (await model.async_get_status()). \
-        applications[app]['units'][unit_name]['agent-status']['status']
+    await model.async_run_on_machine(
+        machine, do_release_upgrade_cmd, timeout="120m")
