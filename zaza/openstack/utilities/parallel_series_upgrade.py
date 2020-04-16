@@ -247,7 +247,7 @@ async def serial_series_upgrade(
     files=None,
     workaround_script=None
 ):
-    """Perform series upgrade on an application in parallel.
+    """Perform series upgrade on an application in serial.
 
     :param unit_name: Unit Name
     :type unit_name: str
