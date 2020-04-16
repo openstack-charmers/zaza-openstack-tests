@@ -14,7 +14,7 @@
 
 """Module for interacting with OpenStack.
 
-This module contains a number of functions for interacting with Openstack.
+This module contains a number of functions for interacting with OpenStack.
 """
 from .os_versions import (
     OPENSTACK_CODENAMES,
@@ -168,11 +168,11 @@ def get_cacert():
         return KEYSTONE_LOCAL_CACERT
 
 
-# Openstack Client helpers
+# OpenStack Client helpers
 def get_ks_creds(cloud_creds, scope='PROJECT'):
     """Return the credentials for authenticating against keystone.
 
-    :param cloud_creds: Openstack RC environment credentials
+    :param cloud_creds: OpenStack RC environment credentials
     :type cloud_creds: dict
     :param scope: Authentication scope: PROJECT or DOMAIN
     :type scope: string
@@ -375,7 +375,7 @@ def get_keystone_scope(model_name=None):
 def get_keystone_session(openrc_creds, scope='PROJECT', verify=None):
     """Return keystone session.
 
-    :param openrc_creds: Openstack RC credentials
+    :param openrc_creds: OpenStack RC credentials
     :type openrc_creds: dict
     :param verify: Control TLS certificate verification behaviour
     :type verify: any (True  - use system certs,
@@ -444,7 +444,7 @@ def get_keystone_session_client(session, client_api_version=3):
 def get_keystone_client(openrc_creds, verify=None):
     """Return authenticated keystoneclient and set auth_ref for service_catalog.
 
-    :param openrc_creds: Openstack RC credentials
+    :param openrc_creds: OpenStack RC credentials
     :type openrc_creds: dict
     :param verify: Control TLS certificate verification behaviour
     :type verify: any
@@ -1602,7 +1602,7 @@ def get_undercloud_auth():
     return auth_settings
 
 
-# Openstack Client helpers
+# OpenStack Client helpers
 def get_keystone_ip(model_name=None):
     """Return the IP address to use when communicating with keystone api.
 
@@ -2115,7 +2115,7 @@ def create_ssh_key(nova_client, keypair_name, replace=False):
 
     :param nova_client: Authenticated nova client
     :type nova_client: novaclient.v2.client.Client
-    :param keypair_name: Label to apply to keypair in Openstack.
+    :param keypair_name: Label to apply to keypair in OpenStack.
     :type keypair_name: str
     :param replace: Whether to replace the existing keypair if it already
                     exists.
@@ -2138,7 +2138,7 @@ def create_ssh_key(nova_client, keypair_name, replace=False):
 def get_private_key_file(keypair_name):
     """Location of the file containing the private key with the given label.
 
-    :param keypair_name: Label of keypair in Openstack.
+    :param keypair_name: Label of keypair in OpenStack.
     :type keypair_name: str
     :returns: Path to file containing key
     :rtype: str
@@ -2149,7 +2149,7 @@ def get_private_key_file(keypair_name):
 def write_private_key(keypair_name, key):
     """Store supplied private key in file.
 
-    :param keypair_name: Label of keypair in Openstack.
+    :param keypair_name: Label of keypair in OpenStack.
     :type keypair_name: str
     :param key: PEM Encoded Private Key
     :type key: str
@@ -2161,7 +2161,7 @@ def write_private_key(keypair_name, key):
 def get_private_key(keypair_name):
     """Return private key.
 
-    :param keypair_name: Label of keypair in Openstack.
+    :param keypair_name: Label of keypair in OpenStack.
     :type keypair_name: str
     :returns: PEM Encoded Private Key
     :rtype: str
@@ -2175,11 +2175,11 @@ def get_private_key(keypair_name):
 
 
 def get_public_key(nova_client, keypair_name):
-    """Return public key from Openstack.
+    """Return public key from OpenStack.
 
     :param nova_client: Authenticated nova client
     :type nova_client: novaclient.v2.client.Client
-    :param keypair_name: Label of keypair in Openstack.
+    :param keypair_name: Label of keypair in OpenStack.
     :type keypair_name: str
     :returns: OpenSSH Encoded Public Key
     :rtype: str or None
@@ -2196,7 +2196,7 @@ def valid_key_exists(nova_client, keypair_name):
 
     :param nova_client: Authenticated nova client
     :type nova_client: novaclient.v2.client.Client
-    :param keypair_name: Label of keypair in Openstack.
+    :param keypair_name: Label of keypair in OpenStack.
     :type keypair_name: str
     """
     pub_key = get_public_key(nova_client, keypair_name)

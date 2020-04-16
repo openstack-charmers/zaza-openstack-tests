@@ -81,7 +81,7 @@ def basic_overcloud_network(limit_gws=None):
     # Get keystone session
     keystone_session = openstack_utils.get_overcloud_keystone_session()
 
-    # Handle network for Openstack-on-Openstack scenarios
+    # Handle network for OpenStack-on-OpenStack scenarios
     if juju_utils.get_provider_type() == "openstack":
         undercloud_ks_sess = openstack_utils.get_undercloud_keystone_session()
         network.setup_gateway_ext_port(network_config,

@@ -28,7 +28,7 @@ class GnocchiTest(test_utils.OpenStackBaseTest):
 
     @property
     def services(self):
-        """Return a list of services for the selected Openstack release."""
+        """Return a list of services for the selected OpenStack release."""
         return ['haproxy', 'gnocchi-metricd', 'apache2']
 
     def test_200_api_connection(self):

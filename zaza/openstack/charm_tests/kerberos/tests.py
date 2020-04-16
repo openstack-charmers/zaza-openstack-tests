@@ -31,7 +31,7 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
         super(CharmKeystoneKerberosTest, cls).setUpClass()
 
     def test_keystone_kerberos_authentication(self):
-        """Validate auth to Openstack through the kerberos method."""
+        """Validate auth to OpenStack through the kerberos method."""
         logging.info('Retrieving a kerberos token with kinit for admin user')
 
         ubuntu_test_host = zaza.model.get_units('ubuntu-test-host')[0]
@@ -46,7 +46,7 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
         )
         assert result['Code'] == '0', result['Stderr']
 
-        logging.info('Fetching user/project info in Openstack')
+        logging.info('Fetching user/project info in OpenStack')
         domain_name = 'k8s'
         project_name = 'k8s'
         keystone_session = openstack_utils.get_overcloud_keystone_session()
@@ -56,7 +56,7 @@ class CharmKeystoneKerberosTest(BaseKeystoneTest):
         project_id = keystone_client.projects.find(name=project_name).id
         keystone_hostname = get_unit_full_hostname('keystone')
 
-        logging.info('Retrieving an Openstack token to validate auth')
+        logging.info('Retrieving an OpenStack token to validate auth')
         cmd = 'openstack token issue -f value -c id ' \
               '--os-auth-url http://{}:5000/krb/v3 ' \
               '--os-project-id {} ' \

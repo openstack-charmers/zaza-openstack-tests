@@ -40,7 +40,7 @@ class CinderBackupTest(test_utils.OpenStackBaseTest):
 
     @property
     def services(self):
-        """Return a list services for the selected Openstack release."""
+        """Return a list services for the selected OpenStack release."""
         current_release = openstack_utils.get_os_release()
         services = ['cinder-scheduler', 'cinder-volume']
         if (current_release >=

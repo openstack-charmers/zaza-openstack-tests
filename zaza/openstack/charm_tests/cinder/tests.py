@@ -153,7 +153,7 @@ class CinderTests(test_utils.OpenStackBaseTest):
 
     @property
     def services(self):
-        """Return a list services for the selected Openstack release."""
+        """Return a list services for the selected OpenStack release."""
         services = ['cinder-scheduler', 'cinder-volume']
         if (openstack_utils.get_os_release() >=
                 openstack_utils.get_os_release('xenial_ocata')):

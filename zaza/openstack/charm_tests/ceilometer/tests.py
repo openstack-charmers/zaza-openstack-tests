@@ -43,7 +43,7 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
 
     @property
     def services(self):
-        """Return a list of services for the selected Openstack release."""
+        """Return a list of services for the selected OpenStack release."""
         services = []
 
         if self.application_name == 'ceilometer-agent':
@@ -86,7 +86,7 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
     def restartable_services(self):
         """Return a list of services that are known to be restartable.
 
-        For the selected Openstack release these services are known to be able
+        For the selected OpenStack release these services are known to be able
         to be stopped and started with no issues.
         """
         # Due to Bug #1861321 ceilometer-collector does not reliably
