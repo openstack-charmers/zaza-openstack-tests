@@ -16,6 +16,7 @@
 
 """Encapsulate nova testing."""
 
+import json
 import logging
 import unittest
 
@@ -258,6 +259,71 @@ class NovaCloudController(test_utils.OpenStackBaseTest):
             'nova-cloud-controller', '/etc/nova/api-paste.ini', {
                 'filter:legacy_ratelimit': {
                     'limits': ["( POST, '*', .*, 9999, MINUTE );"]}})
+
+    def test_310_pci_alias_config(self):
+        """Verify that the pci alias data is rendered properly.
+
+        Change pci-alias and assert that change propagates to the correct
+        file and that services are restarted as a result
+        """
+        logging.info('Checking pci aliases in nova config...')
+
+        # Expected default and alternate values
+        current_value = zaza.model.get_application_config(
+            'nova-cloud-controller')['pci-alias']
+        try:
+            current_value = current_value['value']
+        except KeyError:
+            current_value = None
+        new_value = '[{}, {}]'.format(
+            json.dumps({
+                'name': 'IntelNIC',
+                'capability_type': 'pci',
+                'product_id': '1111',
+                'vendor_id': '8086',
+                'device_type': 'type-PF'
+            }, sort_keys=True),
+            json.dumps({
+                'name': ' Cirrus Logic ',
+                'capability_type': 'pci',
+                'product_id': '0ff2',
+                'vendor_id': '10de',
+                'device_type': 'type-PCI'
+            }, sort_keys=True))
+
+        set_default = {'pci-alias': current_value}
+        set_alternate = {'pci-alias': new_value}
+
+        expected_conf_section = 'DEFAULT'
+        expected_conf_key = 'pci_alias'
+        if self.current_release >= self.XENIAL_OCATA:
+            expected_conf_section = 'pci'
+            expected_conf_key = 'alias'
+
+        default_entry = {expected_conf_section: {}}
+        alternate_entry = {expected_conf_section: {
+            expected_conf_key: [
+                ('{"capability_type": "pci", "device_type": "type-PF", '
+                 '"name": "IntelNIC", "product_id": "1111", '
+                 '"vendor_id": "8086"}'),
+                ('{"capability_type": "pci", "device_type": "type-PCI", '
+                 '"name": " Cirrus Logic ", "product_id": "0ff2", '
+                 '"vendor_id": "10de"}')]}}
+
+        # Config file affected by juju set config change
+        conf_file = '/etc/nova/nova.conf'
+
+        # Make config change, check for service restarts
+        logging.info(
+            'Setting config on nova-cloud-controller to {}'.format(
+                set_alternate))
+        self.restart_on_changed(
+            conf_file,
+            set_default,
+            set_alternate,
+            default_entry,
+            alternate_entry,
+            self.services)
 
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change.
