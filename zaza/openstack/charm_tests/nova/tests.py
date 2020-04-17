@@ -203,6 +203,42 @@ class NovaCloudController(test_utils.OpenStackBaseTest):
         # Just checking it's not raising and returning an iterable:
         assert(len(nova.servers.list()) >= 0)
 
+    def test_220_nova_metadata_propagate(self):
+        """Verify that the vendor-data settings are propagated.
+
+        Change vendor-data-url and assert that change propagates to the correct
+        file and that services are restarted as a result
+        """
+        if self.current_release < self.XENIAL_NEWTON:
+            logging.info("Feature didn't exist before Newton. Nothing to test")
+            return
+
+        # Expected default and alternate values
+        current_value = zaza.model.get_application_config(
+            'nova-cloud-controller')['vendor-data-url']['value']
+        new_value = 'http://some-other.url/vdata'
+
+        set_default = {'vendor-data-url': current_value}
+        set_alternate = {'vendor-data-url': new_value}
+        default_entry = {'api': {
+            'vendordata_dynamic_targets': [current_value]}}
+        alternate_entry = {'api': {'vendordata_dynamic_targets': [new_value]}}
+
+        # Config file affected by juju set config change
+        conf_file = '/etc/nova/nova.conf'
+
+        # Make config change, check for service restarts
+        logging.info(
+            'Setting config on nova-cloud-controller to {}'.format(
+                set_alternate))
+        self.restart_on_changed(
+            conf_file,
+            set_default,
+            set_alternate,
+            default_entry,
+            alternate_entry,
+            self.services)
+
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change.
 
