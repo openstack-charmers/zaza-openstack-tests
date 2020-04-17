@@ -160,7 +160,7 @@ class BaseCharmTest(unittest.TestCase):
 
         Workaround:
         libjuju refuses to accept data with types other than strings
-        through the zuzu.model.set_application_config
+        through the zaza.model.set_application_config
 
         :param config: Config dictionary with any typed values
         :type  config: Dict[str,Any]
@@ -317,7 +317,7 @@ class BaseCharmTest(unittest.TestCase):
         # If this is not an OSLO config file set default_config={}
         if default_entry:
             logging.debug(
-                'Waiting for updates to propagate to '.format(config_file))
+                'Waiting for updates to propagate to {}'.format(config_file))
             model.block_until_oslo_config_entries_match(
                 self.application_name,
                 config_file,
