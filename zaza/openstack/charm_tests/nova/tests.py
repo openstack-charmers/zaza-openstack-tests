@@ -366,6 +366,49 @@ class NovaCloudController(test_utils.OpenStackBaseTest):
         with self.pause_resume(self.services):
             logging.info("Testing pause resume")
 
+    def test_902_quota_settings(self):
+        """Verify that the quota settings are propagated.
+
+        Change quota-instances and assert that change propagates to the correct
+        file and that services are restarted as a result
+        """
+        # Expected default and alternate values
+        current_value = zaza.model.get_application_config(
+            'nova-cloud-controller')['quota-instances']
+        try:
+            current_value = current_value['value']
+        except KeyError:
+            current_value = 0
+        new_value = '20'
+
+        set_default = {'quota-instances': current_value}
+        set_alternate = {'quota-instances': new_value}
+
+        expected_conf_section = 'DEFAULT'
+        expected_conf_key = 'quota_instances'
+        if self.current_release >= self.XENIAL_OCATA:
+            expected_conf_section = 'quota'
+            expected_conf_key = 'instances'
+
+        default_entry = {expected_conf_section: {}}
+        alternate_entry = {expected_conf_section: {
+            expected_conf_key: [new_value]}}
+
+        # Config file affected by juju set config change
+        conf_file = '/etc/nova/nova.conf'
+
+        # Make config change, check for service restarts
+        logging.info(
+            'Setting config on nova-cloud-controller to {}'.format(
+                set_alternate))
+        self.restart_on_changed(
+            conf_file,
+            set_default,
+            set_alternate,
+            default_entry,
+            alternate_entry,
+            self.services)
+
 
 class SecurityTests(test_utils.OpenStackBaseTest):
     """nova-compute and nova-cloud-controller security tests."""
