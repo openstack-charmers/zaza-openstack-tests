@@ -203,6 +203,18 @@ class NovaCloudController(test_utils.OpenStackBaseTest):
         # Just checking it's not raising and returning an iterable:
         assert(len(nova.servers.list()) >= 0)
 
+    def test_106_compute_catalog_endpoints(self):
+        """Verify that the compute endpoints are present in the catalog."""
+        overcloud_auth = openstack_utils.get_overcloud_auth()
+        keystone_client = openstack_utils.get_keystone_client(
+            overcloud_auth)
+        actual_endpoints = keystone_client.service_catalog.get_endpoints()
+        logging.info('Checking compute endpoints...')
+        actual_compute_interfaces = [endpoint['interface'] for endpoint in
+                                     actual_endpoints['compute']]
+        for expected_interface in ('internal', 'admin', 'public'):
+            assert(expected_interface in actual_compute_interfaces)
+
     def test_220_nova_metadata_propagate(self):
         """Verify that the vendor-data settings are propagated.
 
