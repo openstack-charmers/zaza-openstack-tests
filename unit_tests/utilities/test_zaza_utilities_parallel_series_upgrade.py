@@ -428,6 +428,8 @@ class TestParallelSeriesUpgrade(AioTestCase):
         ])
         mock_post_application_upgrade_functions.assert_called_once_with(None)
 
+    @mock.patch.object(upgrade_utils, 'add_confdef_file')
+    @mock.patch.object(upgrade_utils, 'remove_confdef_file')
     @mock.patch.object(
         upgrade_utils.series_upgrade_utils, 'async_complete_series_upgrade')
     @mock.patch.object(upgrade_utils, 'reboot')
@@ -438,7 +440,9 @@ class TestParallelSeriesUpgrade(AioTestCase):
         mock_async_dist_upgrade,
         mock_async_do_release_upgrade,
         mock_reboot,
-        mock_async_complete_series_upgrade
+        mock_async_complete_series_upgrade,
+        mock_remove_confdef_file,
+        mock_add_confdef_file
     ):
         await upgrade_utils.series_upgrade_machine(
             '1',
@@ -450,7 +454,11 @@ class TestParallelSeriesUpgrade(AioTestCase):
         mock_async_do_release_upgrade.assert_called_once_with('1')
         mock_reboot.assert_called_once_with('1')
         mock_async_complete_series_upgrade.assert_called_once_with('1')
+        mock_remove_confdef_file.assert_called_once_with('1')
+        mock_add_confdef_file.assert_called_once_with('1')
 
+    @mock.patch.object(upgrade_utils, 'add_confdef_file')
+    @mock.patch.object(upgrade_utils, 'remove_confdef_file')
     @mock.patch.object(upgrade_utils.os_utils, 'async_set_origin')
     @mock.patch.object(
         upgrade_utils.series_upgrade_utils, 'async_complete_series_upgrade')
@@ -463,7 +471,9 @@ class TestParallelSeriesUpgrade(AioTestCase):
         mock_async_do_release_upgrade,
         mock_reboot,
         mock_async_complete_series_upgrade,
-        mock_async_set_origin
+        mock_async_set_origin,
+        mock_remove_confdef_file,
+        mock_add_confdef_file
     ):
         await upgrade_utils.series_upgrade_machine(
             '1',
@@ -479,6 +489,8 @@ class TestParallelSeriesUpgrade(AioTestCase):
         mock_async_complete_series_upgrade.assert_called_once_with('1')
         mock_async_set_origin.assert_called_once_with(
             'app', 'openstack-origin')
+        mock_remove_confdef_file.assert_called_once_with('1')
+        mock_add_confdef_file.assert_called_once_with('1')
 
     async def test_maybe_pause_things_primary(self):
         await upgrade_utils.maybe_pause_things(
@@ -522,6 +534,23 @@ class TestParallelSeriesUpgrade(AioTestCase):
             pause_non_leader_subordinate=False,
             pause_non_leader_primary=False)
         self.async_run_action.assert_not_called()
+
+    async def test_add_confdef_file(self):
+        await upgrade_utils.add_confdef_file('1')
+        cmd = (
+            """echo """
+            """'DPkg::options { "--force-confdef"; "--force-confnew"; }' | """
+            """sudo tee /etc/apt/apt.conf.d/local"""
+        )
+        self.async_run_on_machine.assert_called_once_with(
+            '1', cmd
+        )
+
+    async def test_remove_confdef_file(self):
+        await upgrade_utils.remove_confdef_file('1')
+        self.async_run_on_machine.assert_called_once_with(
+            '1', 'sudo rm /etc/apt/apt.conf.d/local'
+        )
 
     async def test_async_do_release_upgrade(self):
         await upgrade_utils.async_do_release_upgrade('1')
