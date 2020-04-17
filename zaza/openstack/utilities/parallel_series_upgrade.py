@@ -381,13 +381,43 @@ async def series_upgrade_machine(
     logging.info(
         "About to series-upgrade ({})".format(machine))
     await run_pre_upgrade_functions(machine, pre_upgrade_functions)
+    await add_confdef_file(machine)
     await async_dist_upgrade(machine)
     await async_do_release_upgrade(machine)
+    await remove_confdef_file(machine)
     await reboot(machine)
     if origin:
         await os_utils.async_set_origin(application, origin)
     await series_upgrade_utils.async_complete_series_upgrade(machine)
     await run_post_upgrade_functions(post_upgrade_functions)
+
+
+async def add_confdef_file(machine):
+    """Add the file  /etc/apt/apt-conf.d/local setup to accept defaults.
+
+    :param machine: The machine to manage
+    :type machine: str
+    :returns: None
+    :rtype: None
+    """
+    create_file = (
+        """echo 'DPkg::options { "--force-confdef"; "--force-confnew"; }' | """
+        """sudo tee /etc/apt/apt.conf.d/local"""
+    )
+    await model.async_run_on_machine(machine, create_file)
+
+
+async def remove_confdef_file(machine):
+    """Remove the file  /etc/apt/apt-conf.d/local setup to accept defaults.
+
+    :param machine: The machine to manage
+    :type machine: str
+    :returns: None
+    :rtype: None
+    """
+    await model.async_run_on_machine(
+        machine,
+        "sudo rm /etc/apt/apt.conf.d/local")
 
 
 async def run_pre_upgrade_functions(machine, pre_upgrade_functions):
