@@ -133,6 +133,7 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
         zaza.model.block_until(check_device_present)
 
     def create_data_pool(self):
+        """Create data pool to back iscsi targets."""
         generic_utils.assertActionRanOK(zaza.model.run_action_on_leader(
             'ceph-mon',
             'create-pool',
