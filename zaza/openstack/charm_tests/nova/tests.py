@@ -239,6 +239,14 @@ class NovaCloudController(test_utils.OpenStackBaseTest):
             alternate_entry,
             self.services)
 
+    def test_302_api_rate_limiting_is_enabled(self):
+        """Check that API rate limiting is enabled."""
+        logging.info('Checking api-paste config file data...')
+        zaza.model.block_until_oslo_config_entries_match(
+            'nova-cloud-controller', '/etc/nova/api-paste.ini', {
+                'filter:legacy_ratelimit': {
+                    'limits': ["( POST, '*', .*, 9999, MINUTE );"]}})
+
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change.
 
