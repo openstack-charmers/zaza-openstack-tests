@@ -191,7 +191,7 @@ class NovaCloudController(test_utils.OpenStackBaseTest):
 
         logging.info('Checking api functionality...')
 
-        actual_service_names = [service['binary'] for service in
+        actual_service_names = [service.to_dict()['binary'] for service in
                                 nova.services.list()]
         for expected_service_name in ('nova-scheduler', 'nova-conductor',
                                       'nova-compute'):
