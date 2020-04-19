@@ -210,11 +210,18 @@ class NovaCloudController(test_utils.OpenStackBaseTest):
         keystone_client = openstack_utils.get_keystone_client(
             overcloud_auth)
         actual_endpoints = keystone_client.service_catalog.get_endpoints()
+
         logging.info('Checking compute endpoints...')
-        actual_compute_interfaces = [endpoint['interface'] for endpoint in
-                                     actual_endpoints['compute']]
-        for expected_interface in ('internal', 'admin', 'public'):
-            assert(expected_interface in actual_compute_interfaces)
+
+        if self.current_release < self.BIONIC_ROCKY:
+            actual_compute_endpoints = actual_endpoints['compute'][0]
+            for expected_url in ('internalURL', 'adminURL', 'publicURL'):
+                assert(expected_url in actual_compute_endpoints)
+        else:
+            actual_compute_interfaces = [endpoint['interface'] for endpoint in
+                                         actual_endpoints['compute']]
+            for expected_interface in ('internal', 'admin', 'public'):
+                assert(expected_interface in actual_compute_interfaces)
 
     def test_220_nova_metadata_propagate(self):
         """Verify that the vendor-data settings are propagated.
