@@ -442,10 +442,6 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
         """Run class setup for running Neutron Openvswitch tests."""
         super(NeutronOpenvSwitchTest, cls).setUpClass(cls)
 
-        cls.compute_unit = zaza.model.get_units('nova-compute')[0]
-        cls.neutron_api_unit = zaza.model.get_units('neutron-api')[0]
-        cls.n_ovs_unit = zaza.model.get_units('neutron-openvswitch')[0]
-
         # set up client
         cls.neutron_client = (
             openstack_utils.get_neutron_session_client(cls.keystone_session))
