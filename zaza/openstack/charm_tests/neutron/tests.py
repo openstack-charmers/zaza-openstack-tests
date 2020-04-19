@@ -458,6 +458,7 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
             self.application_name,
             {'enable-sriov': 'True'})
 
+        zaza.model.wait_for_agent_status()
         zaza.model.wait_for_application_states()
 
         self._check_settings_in_config(
@@ -481,6 +482,7 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
             {'enable-sriov': 'False'})
 
         logging.info('Waiting for config-changes to complete...')
+        zaza.model.wait_for_agent_status()
         zaza.model.wait_for_application_states()
 
         logging.debug('OK')
@@ -543,6 +545,7 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
             'neutron-openvswitch',
             {'disable-security-groups': 'True'})
 
+        zaza.model.wait_for_agent_status()
         zaza.model.wait_for_application_states()
 
         expected = {
@@ -565,6 +568,7 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
             'neutron-api',
             {'neutron-security-groups': 'False'})
 
+        zaza.model.wait_for_agent_status()
         zaza.model.wait_for_application_states()
 
     def test_401_restart_on_config_change(self):
