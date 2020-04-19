@@ -207,7 +207,8 @@ async def parallel_series_upgrade(
     await series_upgrade_utils.async_set_series(
         application, to_series=to_series)
     app_idle = [
-        model.async_wait_for_unit_idle(unit) for unit in status["units"]
+        model.async_wait_for_unit_idle(unit, include_subordinates=True)
+        for unit in status["units"]
     ]
     await asyncio.gather(*app_idle)
     prepare_group = [
@@ -308,7 +309,7 @@ async def serial_series_upgrade(
     await series_upgrade_utils.async_set_series(
         application, to_series=to_series)
     if not follower_first and leader_machine not in completed_machines:
-        await model.async_wait_for_unit_idle(leader)
+        await model.async_wait_for_unit_idle(leader, include_subordinates=True)
         await prepare_series_upgrade(leader_machine, to_series=to_series)
         logging.info("About to upgrade leader of {}: {}"
                      .format(application, leader_machine))
@@ -325,7 +326,8 @@ async def serial_series_upgrade(
         machine = unit['machine']
         if machine in completed_machines:
             continue
-        await model.async_wait_for_unit_idle(unit_name)
+        await model.async_wait_for_unit_idle(
+            unit_name, include_subordinates=True)
         await prepare_series_upgrade(machine, to_series=to_series)
         logging.info("About to upgrade follower of {}: {}"
                      .format(application, machine))
@@ -338,7 +340,7 @@ async def serial_series_upgrade(
         completed_machines.append(machine)
 
     if follower_first and leader_machine not in completed_machines:
-        await model.async_wait_for_unit_idle(leader)
+        await model.async_wait_for_unit_idle(leader, include_subordinates=True)
         await prepare_series_upgrade(leader_machine, to_series=to_series)
         logging.info("About to upgrade leader of {}: {}"
                      .format(application, leader_machine))
@@ -381,13 +383,43 @@ async def series_upgrade_machine(
     logging.info(
         "About to series-upgrade ({})".format(machine))
     await run_pre_upgrade_functions(machine, pre_upgrade_functions)
+    await add_confdef_file(machine)
     await async_dist_upgrade(machine)
     await async_do_release_upgrade(machine)
+    await remove_confdef_file(machine)
     await reboot(machine)
     if origin:
         await os_utils.async_set_origin(application, origin)
     await series_upgrade_utils.async_complete_series_upgrade(machine)
     await run_post_upgrade_functions(post_upgrade_functions)
+
+
+async def add_confdef_file(machine):
+    """Add the file  /etc/apt/apt-conf.d/local setup to accept defaults.
+
+    :param machine: The machine to manage
+    :type machine: str
+    :returns: None
+    :rtype: None
+    """
+    create_file = (
+        """echo 'DPkg::options { "--force-confdef"; "--force-confnew"; }' | """
+        """sudo tee /etc/apt/apt.conf.d/local"""
+    )
+    await model.async_run_on_machine(machine, create_file)
+
+
+async def remove_confdef_file(machine):
+    """Remove the file  /etc/apt/apt-conf.d/local setup to accept defaults.
+
+    :param machine: The machine to manage
+    :type machine: str
+    :returns: None
+    :rtype: None
+    """
+    await model.async_run_on_machine(
+        machine,
+        "sudo rm /etc/apt/apt.conf.d/local")
 
 
 async def run_pre_upgrade_functions(machine, pre_upgrade_functions):
