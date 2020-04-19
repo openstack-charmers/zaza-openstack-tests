@@ -161,9 +161,9 @@ class NovaCloudController(test_utils.OpenStackBaseTest):
     """Run nova-cloud-controller specific tests."""
 
     XENIAL_MITAKA = openstack_utils.get_os_release('xenial_mitaka')
-    XENIAL_NEWTON = openstack_utils.get_os_release('xenial_newton')
     XENIAL_OCATA = openstack_utils.get_os_release('xenial_ocata')
     BIONIC_QUEENS = openstack_utils.get_os_release('bionic_queens')
+    BIONIC_ROCKY = openstack_utils.get_os_release('bionic_rocky')
 
     @classmethod
     def setUpClass(cls):
@@ -221,8 +221,8 @@ class NovaCloudController(test_utils.OpenStackBaseTest):
         Change vendor-data-url and assert that change propagates to the correct
         file and that services are restarted as a result
         """
-        if self.current_release < self.XENIAL_NEWTON:
-            logging.info("Feature didn't exist before Newton. Nothing to test")
+        if self.current_release < self.BIONIC_ROCKY:
+            logging.info("Feature didn't exist before Rocky. Nothing to test")
             return
 
         # Expected default and alternate values
