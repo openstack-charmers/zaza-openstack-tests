@@ -120,6 +120,7 @@ def upgrade_ubuntu_lite(from_series='xenial', to_series='bionic'):
         parallel_series_upgrade(
             'ubuntu-lite', pause_non_leader_primary=False,
             pause_non_leader_subordinate=False,
+            from_series=from_series, to_series=to_series,
             completed_machines=completed_machines, origin=None)
     )
 
