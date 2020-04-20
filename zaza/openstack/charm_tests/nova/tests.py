@@ -163,6 +163,7 @@ class NovaCloudController(test_utils.OpenStackBaseTest):
 
     XENIAL_MITAKA = openstack_utils.get_os_release('xenial_mitaka')
     XENIAL_OCATA = openstack_utils.get_os_release('xenial_ocata')
+    XENIAL_QUEENS = openstack_utils.get_os_release('xenial_queens')
     BIONIC_QUEENS = openstack_utils.get_os_release('bionic_queens')
     BIONIC_ROCKY = openstack_utils.get_os_release('bionic_rocky')
 
@@ -213,7 +214,7 @@ class NovaCloudController(test_utils.OpenStackBaseTest):
 
         logging.info('Checking compute endpoints...')
 
-        if self.current_release < self.BIONIC_ROCKY:
+        if self.current_release < self.XENIAL_QUEENS:
             actual_compute_endpoints = actual_endpoints['compute'][0]
             for expected_url in ('internalURL', 'adminURL', 'publicURL'):
                 assert(expected_url in actual_compute_endpoints)
