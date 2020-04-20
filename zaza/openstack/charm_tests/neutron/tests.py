@@ -538,38 +538,17 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
         else:
             conf_file = "/etc/neutron/plugins/ml2/ml2_conf.ini"
 
-        zaza.model.set_application_config(
-            'neutron-api',
-            {'neutron-security-groups': True})
-        zaza.model.set_application_config(
-            'neutron-openvswitch',
-            {'disable-security-groups': True})
-
-        zaza.model.wait_for_agent_status()
-        zaza.model.wait_for_application_states()
-
-        expected = {
-            'securitygroup': {
-                'enable_security_group': ['False'],
-            },
-        }
-
-        zaza.model.block_until_oslo_config_entries_match(
-            self.application_name,
-            conf_file,
-            expected,
-        )
-
-        logging.info('Restoring to default configuration...')
-        zaza.model.set_application_config(
-            'neutron-openvswitch',
-            {'disable-security-groups': False})
-        zaza.model.set_application_config(
-            'neutron-api',
-            {'neutron-security-groups': False})
-
-        zaza.model.wait_for_agent_status()
-        zaza.model.wait_for_application_states()
+        with self.config_change(
+                {'neutron-security-groups': False},
+                {'neutron-security-groups': True},
+                application_name='neutron-api'):
+            with self.config_change(
+                    {'disable-security-groups': False},
+                    {'disable-security-groups': True}):
+                zaza.model.block_until_oslo_config_entries_match(
+                    self.application_name,
+                    conf_file,
+                    {'securitygroup': {'enable_security_group': ['False']}})
 
     def test_401_restart_on_config_change(self):
         """Verify that the specified services are restarted.
