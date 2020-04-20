@@ -49,6 +49,10 @@ class HaclusterTest(test_utils.OpenStackBaseTest):
 
         if primary_status["units"][leader].get("subordinates"):
             for subordinate in primary_status["units"][leader]["subordinates"]:
+                # mysql-router is a subordinate from focal onwards
+                _app = subordinate.split('/')[0]
+                if _app != 'hacluster':
+                    continue
                 logging.info("Cleaning {}".format(subordinate))
                 _action = "cleanup"
                 action_id = zaza.model.run_action(subordinate, "cleanup")
@@ -84,6 +88,10 @@ class HaclusterTest(test_utils.OpenStackBaseTest):
 
         if primary_status["units"][leader].get("subordinates"):
             for subordinate in primary_status["units"][leader]["subordinates"]:
+                # mysql-router is a subordinate from focal onwards
+                _app = subordinate.split('/')[0]
+                if _app != 'hacluster':
+                    continue
                 logging.info("Pausing {}".format(subordinate))
                 zaza.model.run_action(subordinate, "pause")
                 zaza.model.block_until_unit_wl_status(
