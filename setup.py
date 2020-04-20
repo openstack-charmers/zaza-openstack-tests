@@ -40,6 +40,7 @@ install_require = [
     'aodhclient<1.4.0',
     'gnocchiclient>=7.0.5,<8.0.0',
     'pika>=1.1.0,<2.0.0',
+    'python-barbicanclient>=4.0.1,<5.0.0',
     'python-designateclient>=1.5,<3.0.0',
     'python-heatclient<2.0.0',
     'python-glanceclient<3.0.0',
