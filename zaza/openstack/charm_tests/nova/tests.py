@@ -80,29 +80,13 @@ class NovaCompute(test_utils.OpenStackBaseTest):
         Change debug mode and assert that change propagates to the correct
         file and that services are restarted as a result
         """
-        # Expected default and alternate values
-        current_value = zaza.model.get_application_config(
-            'nova-compute')['debug']['value']
-        new_value = str(not bool(current_value)).title()
-        current_value = str(current_value).title()
-
-        set_default = {'debug': current_value}
-        set_alternate = {'debug': new_value}
-        default_entry = {'DEFAULT': {'debug': [current_value]}}
-        alternate_entry = {'DEFAULT': {'debug': [new_value]}}
-
         # Config file affected by juju set config change
         conf_file = '/etc/nova/nova.conf'
 
         # Make config change, check for service restarts
-        logging.info(
-            'Setting verbose on nova-compute {}'.format(set_alternate))
-        self.restart_on_changed(
+        logging.info('Changing the debug config on nova-compute')
+        self.restart_on_changed_debug_oslo_config_file(
             conf_file,
-            set_default,
-            set_alternate,
-            default_entry,
-            alternate_entry,
             ['nova-compute'])
 
     def test_920_change_aa_profile(self):
@@ -339,30 +323,13 @@ class NovaCloudController(test_utils.OpenStackBaseTest):
         Change debug mode and assert that change propagates to the correct
         file and that services are restarted as a result
         """
-        # Expected default and alternate values
-        current_value = zaza.model.get_application_config(
-            'nova-cloud-controller')['debug']['value']
-        new_value = str(not bool(current_value)).title()
-        current_value = str(current_value).title()
-
-        set_default = {'debug': current_value}
-        set_alternate = {'debug': new_value}
-        default_entry = {'DEFAULT': {'debug': [current_value]}}
-        alternate_entry = {'DEFAULT': {'debug': [new_value]}}
-
         # Config file affected by juju set config change
         conf_file = '/etc/nova/nova.conf'
 
         # Make config change, check for service restarts
-        logging.info(
-            'Setting verbose on nova-cloud-controller {}'.format(
-                set_alternate))
-        self.restart_on_changed(
+        logging.info('Changing debug config on nova-cloud-controller')
+        self.restart_on_changed_debug_oslo_config_file(
             conf_file,
-            set_default,
-            set_alternate,
-            default_entry,
-            alternate_entry,
             self.services)
 
     def test_901_pause_resume(self):

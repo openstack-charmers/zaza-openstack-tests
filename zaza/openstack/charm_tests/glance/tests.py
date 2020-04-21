@@ -69,22 +69,6 @@ class GlanceTest(test_utils.OpenStackBaseTest):
 
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change."""
-        # Expected default and alternate values
-        current_value = openstack_utils.get_application_config_option(
-            'glance', 'debug')
-        # this is bool, not str
-        assert type(current_value) == bool
-        new_value = not current_value
-
-        # convert bool to str
-        current_value = str(current_value)
-        new_value = str(new_value)
-
-        set_default = {'debug': current_value}
-        set_alternate = {'debug': new_value}
-        default_entry = {'DEFAULT': {'debug': [current_value]}}
-        alternate_entry = {'DEFAULT': {'debug': [new_value]}}
-
         # Config file affected by juju set config change
         conf_file = '/etc/glance/glance-api.conf'
 
@@ -96,14 +80,10 @@ class GlanceTest(test_utils.OpenStackBaseTest):
             services.update({'glance-registry': conf_file})
 
         # Make config change, check for service restarts
-        logging.info('changing config: {}'.format(set_alternate))
-        self.restart_on_changed(
+        logging.info('changing debug config')
+        self.restart_on_changed_debug_oslo_config_file(
             conf_file,
-            set_default,
-            set_alternate,
-            default_entry,
-            alternate_entry,
-            services)
+            self.services)
 
     def test_901_pause_resume(self):
         """Run pause and resume tests.
