@@ -254,6 +254,41 @@ class BaseCharmTest(unittest.TestCase):
         # TODO: Optimize with a block on a specific application until idle.
         model.block_until_all_units_idle()
 
+    def restart_on_changed_use_debug(self, config_file, services):
+        """Check restart happens on config change by flipping debug mode.
+
+        Change debug mode and assert that change propagates to the correct
+        file and that services are restarted as a result
+
+        :param config_file: Config file to check for settings
+        :type config_file: str
+        :param services: Services expected to be restarted when config_file is
+                         changed.
+        :type services: list
+        """
+        # Expected default and alternate values
+        current_value = model.get_application_config(
+            self.application_name)['debug']['value']
+        new_value = str(not bool(current_value)).title()
+        current_value = str(current_value).title()
+
+        set_default = {'debug': current_value}
+        set_alternate = {'debug': new_value}
+        default_entry = {'DEFAULT': {'debug': [current_value]}}
+        alternate_entry = {'DEFAULT': {'debug': [new_value]}}
+
+        # Make config change, check for service restarts
+        logging.info(
+            'Changing settings on {} to {}'.format(
+                self.application_name, set_alternate))
+        self.restart_on_changed(
+            config_file,
+            set_default,
+            set_alternate,
+            default_entry,
+            alternate_entry,
+            services)
+
     def restart_on_changed(self, config_file, default_config, alternate_config,
                            default_entry, alternate_entry, services,
                            pgrep_full=False):
