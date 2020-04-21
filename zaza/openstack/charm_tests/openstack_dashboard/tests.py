@@ -62,10 +62,11 @@ def _login(dashboard_ip, domain, username, password):
     :rtype: (requests.sessions.Session, requests.models.Response)
     :raises: FailedAuth if the authorisation doesn't work
     """
-    auth_url = 'http://{}/horizon/auth/login/'.format(dashboard_ip)
+    auth_url = 'https://{}/horizon/auth/login/'.format(dashboard_ip)
 
     # start session, get csrftoken
     client = requests.session()
+    client.verify = openstack_utils.KEYSTONE_LOCAL_CACERT
     client.get(auth_url)
 
     if 'csrftoken' in client.cookies:
@@ -156,7 +157,8 @@ def _do_request(request):
     :rtype: object
     :raises: URLError on protocol errors
     """
-    return urllib.request.urlopen(request)
+    return urllib.request.urlopen(
+        request, cafile=openstack_utils.KEYSTONE_LOCAL_CACERT)
 
 
 class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
@@ -303,7 +305,7 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
         logging.debug("... dashboard_ip is:{}".format(unit.public_address))
 
         request = urllib.request.Request(
-            'http://{}/horizon'.format(unit.public_address))
+            'https://{}/horizon'.format(unit.public_address))
         try:
             logging.info("... trying to fetch the page")
             html = _do_request(request)
@@ -432,8 +434,8 @@ class OpenStackDashboardPolicydTests(policyd.BasePolicydSpecialization):
         'identity:list_domains_for_user': '!',
     })}
 
-    # url associated with rule above that will return HTTP 403
-    url = "http://{}/horizon/identity/domains"
+    # url associated with rule above that will return http 403
+    url = "https://{}/horizon/identity/domains"
 
     @classmethod
     def setUpClass(cls, application_name=None):
