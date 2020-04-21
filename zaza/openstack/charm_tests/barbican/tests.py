@@ -17,7 +17,6 @@
 import logging
 
 import barbicanclient.client as barbican_client
-import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 
@@ -69,31 +68,8 @@ class BarbicanTest(test_utils.OpenStackBaseTest):
         Change debug mode and assert that change propagates to the correct
         file and that services are restarted as a result
         """
-        # Expected default and alternate values
-        current_value = zaza.model.get_application_config(
-            self.application_name)['debug']['value']
-        new_value = str(not bool(current_value)).title()
-        current_value = str(current_value).title()
-
-        set_default = {'debug': current_value}
-        set_alternate = {'debug': new_value}
-        default_entry = {'DEFAULT': {'debug': [current_value]}}
-        alternate_entry = {'DEFAULT': {'debug': [new_value]}}
-
-        # Config file affected by juju set config change
-        conf_file = '/etc/barbican/barbican.conf'
-
-        # Make config change, check for service restarts
-        logging.info(
-            'Changing settings on {} to {}'.format(
-                self.application_name, set_alternate))
-        self.restart_on_changed(
-            conf_file,
-            set_default,
-            set_alternate,
-            default_entry,
-            alternate_entry,
-            self._SERVICES)
+        self.restart_on_changed_debug_oslo_config_file(
+            '/etc/barbican/barbican.conf', self._SERVICES)
 
     def test_910_pause_resume(self):
         """Run pause and resume tests.
