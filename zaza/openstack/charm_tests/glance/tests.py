@@ -83,7 +83,7 @@ class GlanceTest(test_utils.OpenStackBaseTest):
         logging.info('changing debug config')
         self.restart_on_changed_debug_oslo_config_file(
             conf_file,
-            self.services)
+            services)
 
     def test_901_pause_resume(self):
         """Run pause and resume tests.
