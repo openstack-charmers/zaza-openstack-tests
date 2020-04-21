@@ -215,8 +215,8 @@ async def parallel_series_upgrade(
     prepare_group = [
         prepare_series_upgrade(machine, to_series=to_series)
         for machine in machines]
-    await asyncio.gather(*prepare_group)
     await prepare_series_upgrade(leader_machine, to_series=to_series)
+    await asyncio.gather(*prepare_group)
     if leader_machine not in completed_machines:
         machines.append(leader_machine)
     upgrade_group = [
