@@ -254,13 +254,16 @@ class BaseCharmTest(unittest.TestCase):
         # TODO: Optimize with a block on a specific application until idle.
         model.block_until_all_units_idle()
 
-    def restart_on_changed_use_debug(self, config_file, services):
+    def restart_on_changed_debug_oslo_config_file(self, config_file, services,
+                                                  config_section='DEFAULT'):
         """Check restart happens on config change by flipping debug mode.
 
         Change debug mode and assert that change propagates to the correct
-        file and that services are restarted as a result
+        file and that services are restarted as a result. config_file must be
+        an oslo config file and debug option must be set in the
+        `config_section` section.
 
-        :param config_file: Config file to check for settings
+        :param config_file: OSLO Config file to check for settings
         :type config_file: str
         :param services: Services expected to be restarted when config_file is
                          changed.
@@ -274,8 +277,8 @@ class BaseCharmTest(unittest.TestCase):
 
         set_default = {'debug': current_value}
         set_alternate = {'debug': new_value}
-        default_entry = {'DEFAULT': {'debug': [current_value]}}
-        alternate_entry = {'DEFAULT': {'debug': [new_value]}}
+        default_entry = {config_section: {'debug': [current_value]}}
+        alternate_entry = {config_section: {'debug': [new_value]}}
 
         # Make config change, check for service restarts
         logging.info(
