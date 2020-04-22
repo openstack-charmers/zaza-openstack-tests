@@ -24,13 +24,26 @@ import zaza.openstack.utilities.openstack as openstack_utils
 
 
 @tenacity.retry(
-    retry=tenacity.retry_if_result(lambda images: len(images) == 0),
+    retry=tenacity.retry_if_result(lambda images: len(images) < 3),
     wait=tenacity.wait_fixed(6),  # interval between retries
     stop=tenacity.stop_after_attempt(100))  # retry times
 def retry_image_sync(glance_client):
     """Wait for image sync with retry."""
     # convert generator to list
     return list(glance_client.images.list())
+
+
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(json.decoder.JSONDecodeError),
+    wait=tenacity.wait_fixed(10), reraise=True,
+    stop=tenacity.stop_after_attempt(10))
+def get_product_streams(url):
+    """Get product streams json data with retry."""
+    # There is a race between the images being available in glance and any
+    # metadata being written. Use tenacity to avoid this race.
+    client = requests.session()
+    json_data = client.get(url).text
+    return json.loads(json_data)
 
 
 class GlanceSimpleStreamsSyncTest(test_utils.OpenStackBaseTest):
@@ -48,7 +61,7 @@ class GlanceSimpleStreamsSyncTest(test_utils.OpenStackBaseTest):
             cls.keystone_session)
 
     def test_010_wait_for_image_sync(self):
-        """Wait for images to be synced. Expect at least one."""
+        """Wait for images to be synced. Expect at least three."""
         self.assertTrue(retry_image_sync(self.glance_client))
 
     def test_050_gss_permissions_regression_check_lp1611987(self):
@@ -91,12 +104,21 @@ class GlanceSimpleStreamsSyncTest(test_utils.OpenStackBaseTest):
         catalog = self.keystone_client.service_catalog.get_endpoints()
         ps_interface = catalog["product-streams"][0][key]
         url = "{}/{}".format(ps_interface, uri)
-        client = requests.session()
-        json_data = client.get(url).text
-        product_streams = json.loads(json_data)
-        images = product_streams["products"]
 
-        for image in expected_images:
-            self.assertIn(image, images)
+        # There is a race between the images being available in glance and the
+        # metadata being written for each image. Use tenacity to avoid this
+        # race and make the test idempotent.
+        @tenacity.retry(
+            retry=tenacity.retry_if_exception_type(AssertionError),
+            wait=tenacity.wait_fixed(10), reraise=True,
+            stop=tenacity.stop_after_attempt(10))
+        def _check_local_product_streams(url, expected_images):
+            product_streams = get_product_streams(url)
+            images = product_streams["products"]
+
+            for image in expected_images:
+                self.assertIn(image, images)
+
+        _check_local_product_streams(url, expected_images)
 
         logging.debug("Local product stream successful")
