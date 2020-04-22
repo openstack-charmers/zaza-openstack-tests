@@ -14,16 +14,17 @@ class TempestTest():
 
     def run(self):
         charm_config = zaza.charm_lifecycle.utils.get_charm_config()
-        config_dir = '.tempest'
-        config_workspace_yaml = os.path.join(config_dir, 'workspace.yaml')
-        workspace_name = 'workspace'
-        workspace_dir = os.path.join(config_dir, workspace_name)
-        workspace_etc_dir = os.path.join(workspace_dir, 'etc')
-        workspace_etc_tempest = os.path.join(workspace_etc_dir, 'tempest.conf')
-        tempest_options = ['run', '--config-file',
-                           workspace_etc_tempest,
-                           '--workspace-path', config_workspace_yaml,
-                           '--workspace', workspace_name]
+        tempest_options = ['run', '--config', 'tempest/etc/tempest.conf']
+        #config_dir = '.tempest'
+        #config_workspace_yaml = os.path.join(config_dir, 'workspace.yaml')
+        #workspace_name = 'workspace'
+        #workspace_dir = os.path.join(config_dir, workspace_name)
+        #workspace_etc_dir = os.path.join(workspace_dir, 'etc')
+        #workspace_etc_tempest = os.path.join(workspace_etc_dir, 'tempest.conf')
+        #tempest_options = ['run', '--config-file',
+        #                   workspace_etc_tempest,
+        #                   '--workspace-path', config_workspace_yaml,
+        #                   '--workspace', workspace_name]
         for model_alias in zaza.model.get_juju_model_aliases().keys():
             tempest_test_key = model_alias
             if model_alias == zaza.charm_lifecycle.utils.DEFAULT_MODEL_ALIAS:

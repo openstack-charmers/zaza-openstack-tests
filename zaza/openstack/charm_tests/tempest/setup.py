@@ -15,7 +15,7 @@
 """Code for configuring tempest."""
 import urllib.parse
 import os
-import shutil
+#import shutil
 import subprocess
 
 import zaza.model
@@ -25,7 +25,7 @@ import zaza.openstack.charm_tests.glance.setup as glance_setup
 import zaza.openstack.charm_tests.tempest.templates.tempest_v2 as tempest_v2
 import zaza.openstack.charm_tests.tempest.templates.tempest_v3 as tempest_v3
 import zaza.openstack.charm_tests.tempest.templates.accounts as accounts
-import tempest.cmd.main
+#import tempest.cmd.main
 
 import keystoneauth1
 import novaclient
@@ -154,36 +154,42 @@ def render_tempest_config(target_file, ctxt, tempest_template):
 
 
 def setup_tempest(tempest_template, accounts_template):
-    config_dir = '.tempest'
-    config_etc_dir = os.path.join(config_dir, 'etc')
-    config_etc_tempest = os.path.join(config_etc_dir, 'tempest.conf')
-    config_workspace_yaml = os.path.join(config_dir, 'workspace.yaml')
-    workspace_name = 'workspace'
-    workspace_dir = os.path.join(config_dir, workspace_name)
-    workspace_etc_dir = os.path.join(workspace_dir, 'etc')
-    workspace_etc_accounts = os.path.join(workspace_etc_dir, 'accounts.yaml')
-    workspace_etc_tempest = os.path.join(workspace_etc_dir, 'tempest.conf')
-    the_app = tempest.cmd.main.Main()
+    try:
+        os.makedirs('tempest/etc/')
+    except FileExistsError:
+        pass
+    #config_dir = '.tempest'
+    #config_etc_dir = os.path.join(config_dir, 'etc')
+    #config_etc_tempest = os.path.join(config_etc_dir, 'tempest.conf')
+    #config_workspace_yaml = os.path.join(config_dir, 'workspace.yaml')
+    #workspace_name = 'workspace'
+    #workspace_dir = os.path.join(config_dir, workspace_name)
+    #workspace_etc_dir = os.path.join(workspace_dir, 'etc')
+    #workspace_etc_accounts = os.path.join(workspace_etc_dir, 'accounts.yaml')
+    #workspace_etc_tempest = os.path.join(workspace_etc_dir, 'tempest.conf')
+    #the_app = tempest.cmd.main.Main()
 
     # note sure this is needed or not
-    if not os.path.isdir(config_dir):
-        os.mkdir(config_dir)
-        os.mkdir(config_etc_dir)
-    render_tempest_config(
-        config_etc_tempest,
-        get_tempest_context(),
-        tempest_template)
-    tempest_options = ['init', '--workspace-path', config_workspace_yaml,
-                       '--name', workspace_name, workspace_dir]
-    print(tempest_options)
-    _exec_tempest = the_app.run(tempest_options)
+    #if not os.path.isdir(config_dir):
+    #    os.mkdir(config_dir)
+    #    os.mkdir(config_etc_dir)
+    #render_tempest_config(
+    #    config_etc_tempest,
+    #    get_tempest_context(),
+    #    tempest_template)
+    #tempest_options = ['init', '--workspace-path', config_workspace_yaml,
+    #                   '--name', workspace_name, workspace_dir]
+    #print(tempest_options)
+    #_exec_tempest = the_app.run(tempest_options)
     # This was mising /etc/tempest/ and just going to /etc/
     render_tempest_config(
-        workspace_etc_tempest,
+        'tempest/etc/tempest.conf',
+        #workspace_etc_tempest,
         get_tempest_context(),
         tempest_template)
     render_tempest_config(
-        workspace_etc_accounts,
+        'tempest/etc/accounts.yaml',
+        #workspace_etc_accounts,
         get_tempest_context(),
         accounts_template)
 
