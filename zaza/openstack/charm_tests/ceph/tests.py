@@ -371,6 +371,13 @@ class CephTest(test_utils.OpenStackBaseTest):
         As the ephemeral device will have data on it we can use it to validate
         that these checks work as intended.
         """
+        current_release = zaza_openstack.get_os_release()
+        focal_ussuri = zaza_openstack.get_os_release('focal_ussuri')
+        if current_release >= focal_ussuri:
+            # NOTE(ajkavanagh) - focal (on ServerStack) is broken for /dev/vdb
+            # and so this test can't pass
+            logging.warn("Skipping pristine disk test for focal and higher")
+            return
         logging.info('Checking behaviour when non-pristine disks appear...')
         logging.info('Configuring ephemeral-unmount...')
         alternate_conf = {
