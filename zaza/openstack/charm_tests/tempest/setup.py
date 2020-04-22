@@ -15,7 +15,7 @@
 """Code for configuring tempest."""
 import urllib.parse
 import os
-#import shutil
+import shutil
 import subprocess
 
 import zaza.model
@@ -154,10 +154,17 @@ def render_tempest_config(target_file, ctxt, tempest_template):
 
 
 def setup_tempest(tempest_template, accounts_template):
-    try:
-        os.makedirs('tempest/etc/')
-    except FileExistsError:
-        pass
+    #try:
+    #    os.makedirs('tempest/etc/')
+    #except FileExistsError:
+    #    pass
+    if os.path.isdir('tempest-workspace'):
+        try:
+            subprocess.check_call(['tempest', 'workspace', 'remove', '--rmdir', '--name', 'tempest-workspace'])
+        except subprocess.CalledProcessError:
+            pass
+        #shutil.rmtree('tempest-workspace')
+    subprocess.check_call(['tempest', 'init', 'tempest-workspace'])
     #config_dir = '.tempest'
     #config_etc_dir = os.path.join(config_dir, 'etc')
     #config_etc_tempest = os.path.join(config_etc_dir, 'tempest.conf')
@@ -183,12 +190,12 @@ def setup_tempest(tempest_template, accounts_template):
     #_exec_tempest = the_app.run(tempest_options)
     # This was mising /etc/tempest/ and just going to /etc/
     render_tempest_config(
-        'tempest/etc/tempest.conf',
+        'tempest-workspace/etc/tempest.conf',
         #workspace_etc_tempest,
         get_tempest_context(),
         tempest_template)
     render_tempest_config(
-        'tempest/etc/accounts.yaml',
+        'tempest-workspace/etc/accounts.yaml',
         #workspace_etc_accounts,
         get_tempest_context(),
         accounts_template)

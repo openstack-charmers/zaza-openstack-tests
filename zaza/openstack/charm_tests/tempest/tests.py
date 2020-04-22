@@ -1,4 +1,5 @@
 import os
+import subprocess
 
 import zaza
 import zaza.charm_lifecycle.utils
@@ -14,7 +15,8 @@ class TempestTest():
 
     def run(self):
         charm_config = zaza.charm_lifecycle.utils.get_charm_config()
-        tempest_options = ['run', '--config', 'tempest/etc/tempest.conf']
+        tempest_options = ['run', '--workspace', 'tempest-workspace',
+                           '--config', 'tempest-workspace/etc/tempest.conf']
         #config_dir = '.tempest'
         #config_workspace_yaml = os.path.join(config_dir, 'workspace.yaml')
         #workspace_name = 'workspace'
@@ -54,10 +56,12 @@ class TempestTest():
                         f.write('\n')
                     tempest_options.extend(['--blacklist-file', black_file])
                 print(tempest_options)
-                the_app = tempest.cmd.main.Main()
-                project_root = os.getcwd()
-                _exec_tempest = the_app.run(tempest_options)
-                os.chdir(project_root)
-                if _exec_tempest != 0:
+                #the_app = tempest.cmd.main.Main()
+                #project_root = os.getcwd()
+                #_exec_tempest = the_app.run(tempest_options)
+                #os.chdir(project_root)
+                try:
+                    subprocess.check_call(tempest_options)
+                except subprocess.CalledProcessError:
                     return False
         return True
