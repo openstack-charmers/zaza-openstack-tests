@@ -15,7 +15,7 @@ class TempestTest():
 
     def run(self):
         charm_config = zaza.charm_lifecycle.utils.get_charm_config()
-        tempest_options = ['run', '--workspace', 'tempest-workspace',
+        tempest_options = ['tempest', 'run', '--workspace', 'tempest-workspace',
                            '--config', 'tempest-workspace/etc/tempest.conf']
         #config_dir = '.tempest'
         #config_workspace_yaml = os.path.join(config_dir, 'workspace.yaml')
