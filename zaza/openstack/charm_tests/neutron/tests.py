@@ -432,10 +432,6 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
         """Run class setup for running Neutron Openvswitch tests."""
         super(NeutronOpenvSwitchTest, cls).setUpClass(cls)
 
-        cls.compute_unit = zaza.model.get_units('nova-compute')[0]
-        cls.neutron_api_unit = zaza.model.get_units('neutron-api')[0]
-        cls.n_ovs_unit = zaza.model.get_units('neutron-openvswitch')[0]
-
         # set up client
         cls.neutron_client = (
             openstack_utils.get_neutron_session_client(cls.keystone_session))
@@ -452,6 +448,7 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
             self.application_name,
             {'enable-sriov': 'True'})
 
+        zaza.model.wait_for_agent_status()
         zaza.model.wait_for_application_states()
 
         self._check_settings_in_config(
@@ -475,6 +472,7 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
             {'enable-sriov': 'False'})
 
         logging.info('Waiting for config-changes to complete...')
+        zaza.model.wait_for_agent_status()
         zaza.model.wait_for_application_states()
 
         logging.debug('OK')
@@ -489,7 +487,7 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
 
         expected = {
             section: {
-                config_file_key: [vpair[1]],
+                config_file_key: [str(vpair[1])],
             },
         }
 
@@ -509,7 +507,7 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
             'neutron-api',
             'l2-population',
             'l2_population',
-            ['False', 'True'],
+            [False, True],
             'agent',
             '/etc/neutron/plugins/ml2/openvswitch_agent.ini')
 
@@ -530,36 +528,17 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
         else:
             conf_file = "/etc/neutron/plugins/ml2/ml2_conf.ini"
 
-        zaza.model.set_application_config(
-            'neutron-api',
-            {'neutron-security-groups': 'True'})
-        zaza.model.set_application_config(
-            'neutron-openvswitch',
-            {'disable-security-groups': 'True'})
-
-        zaza.model.wait_for_application_states()
-
-        expected = {
-            'securitygroup': {
-                'enable_security_group': ['False'],
-            },
-        }
-
-        zaza.model.block_until_oslo_config_entries_match(
-            self.application_name,
-            conf_file,
-            expected,
-        )
-
-        logging.info('Restoring to default configuration...')
-        zaza.model.set_application_config(
-            'neutron-openvswitch',
-            {'disable-security-groups': 'False'})
-        zaza.model.set_application_config(
-            'neutron-api',
-            {'neutron-security-groups': 'False'})
-
-        zaza.model.wait_for_application_states()
+        with self.config_change(
+                {'neutron-security-groups': False},
+                {'neutron-security-groups': True},
+                application_name='neutron-api'):
+            with self.config_change(
+                    {'disable-security-groups': False},
+                    {'disable-security-groups': True}):
+                zaza.model.block_until_oslo_config_entries_match(
+                    self.application_name,
+                    conf_file,
+                    {'securitygroup': {'enable_security_group': ['False']}})
 
     def test_401_restart_on_config_change(self):
         """Verify that the specified services are restarted.
@@ -569,8 +548,8 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
         """
         self.restart_on_changed(
             '/etc/neutron/neutron.conf',
-            {'debug': 'false'},
-            {'debug': 'true'},
+            {'debug': False},
+            {'debug': True},
             {'DEFAULT': {'debug': ['False']}},
             {'DEFAULT': {'debug': ['True']}},
             ['neutron-openvswitch-agent'],
@@ -582,8 +561,8 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
             logging.debug('Skipping test')
             return
 
-        set_default = {'enable-qos': 'false'}
-        set_alternate = {'enable-qos': 'true'}
+        set_default = {'enable-qos': False}
+        set_alternate = {'enable-qos': True}
         app_name = 'neutron-api'
 
         conf_file = '/etc/neutron/plugins/ml2/openvswitch_agent.ini'
