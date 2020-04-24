@@ -135,6 +135,10 @@ class MasakariTest(test_utils.OpenStackBaseTest):
 
     def test_instance_failover(self):
         """Test masakari managed guest migration."""
+        # Workaround for Bug #1874719
+        zaza.openstack.configure.hacluster.remove_node(
+            'masakari',
+            'node1')
         # Launch guest
         self.assertTrue(
             zaza.openstack.configure.hacluster.check_all_nodes_online(
