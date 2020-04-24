@@ -115,6 +115,35 @@ class NeutronGatewayTest(NeutronPluginApiSharedTests):
 
     _APP_NAME = 'neutron-gateway'
 
+    def test_401_enable_qos(self):
+        """Check qos settings set via neutron-api charm."""
+        if (self.current_os_release >=
+                openstack_utils.get_os_release('trusty_mitaka')):
+            logging.info('running qos check')
+
+            with self.config_change(
+                    {'enable-qos': 'False'},
+                    {'enable-qos': 'True'},
+                    application_name="neutron-api"):
+
+                self._validate_openvswitch_agent_qos()
+
+    @tenacity.retry(wait=tenacity.wait_exponential(min=5, max=60))
+    def _validate_openvswitch_agent_qos(self):
+        """Validate that the qos extension is enabled in the ovs agent."""
+        # obtain the dhcp agent to identify the neutron-gateway host
+        dhcp_agent = self.neutron_client.list_agents(
+            binary='neutron-dhcp-agent')['agents'][0]
+        neutron_gw_host = dhcp_agent['host']
+        logging.debug('neutron gw host: {}'.format(neutron_gw_host))
+
+        # check extensions on the ovs agent to validate qos
+        ovs_agent = self.neutron_client.list_agents(
+            binary='neutron-openvswitch-agent',
+            host=neutron_gw_host)['agents'][0]
+
+        self.assertIn('qos', ovs_agent['configurations']['extensions'])
+
     @unittest.expectedFailure
     def test_800_ovs_bridges_are_managed_by_us(self):
         """Checking OVS bridges' external-id.
@@ -291,29 +320,6 @@ class NeutronCreateNetworkTest(test_utils.OpenStackBaseTest):
 class NeutronApiTest(NeutronCreateNetworkTest):
     """Test basic Neutron API Charm functionality."""
 
-    def test_401_enable_qos(self):
-        """Check qos settings set via neutron-api charm."""
-        if (self.current_os_release >=
-                openstack_utils.get_os_release('trusty_mitaka')):
-            logging.info('running qos check')
-
-            dhcp_agents = self.neutron_client.list_agents(
-                binary='neutron-dhcp-agent')['agents']
-            if not dhcp_agents:
-                ovn_agents = self.neutron_client.list_agents(
-                    binary='ovn-controller')['agents']
-                if ovn_agents:
-                    raise unittest.SkipTest(
-                        "QoS tests are currently not supported on OVN "
-                        "deployments")
-
-            with self.config_change(
-                    {'enable-qos': 'False'},
-                    {'enable-qos': 'True'},
-                    application_name="neutron-api"):
-
-                self._validate_openvswitch_agent_qos()
-
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change.
 
@@ -366,22 +372,6 @@ class NeutronApiTest(NeutronCreateNetworkTest):
                 ["neutron-server", "apache2", "haproxy"],
                 pgrep_full=pgrep_full):
             logging.info("Testing pause resume")
-
-    @tenacity.retry(wait=tenacity.wait_exponential(min=5, max=60))
-    def _validate_openvswitch_agent_qos(self):
-        """Validate that the qos extension is enabled in the ovs agent."""
-        # obtain the dhcp agent to identify the neutron-gateway host
-        dhcp_agent = self.neutron_client.list_agents(
-            binary='neutron-dhcp-agent')['agents'][0]
-        neutron_gw_host = dhcp_agent['host']
-        logging.debug('neutron gw host: {}'.format(neutron_gw_host))
-
-        # check extensions on the ovs agent to validate qos
-        ovs_agent = self.neutron_client.list_agents(
-            binary='neutron-openvswitch-agent',
-            host=neutron_gw_host)['agents'][0]
-
-        self.assertIn('qos', ovs_agent['configurations']['extensions'])
 
 
 class SecurityTest(test_utils.OpenStackBaseTest):

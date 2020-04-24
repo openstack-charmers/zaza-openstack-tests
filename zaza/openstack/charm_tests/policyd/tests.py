@@ -514,7 +514,7 @@ class KeystoneTests(BasePolicydSpecialization):
 class NeutronApiTests(BasePolicydSpecialization):
     """Test the policyd override using the neutron client."""
 
-    _rule = {'rule.yaml': "{'get_network': '!'}"}
+    _rule = {'rule.yaml': "{'create_network': '!'}"}
 
     @classmethod
     def setUpClass(cls, application_name=None):
@@ -541,13 +541,16 @@ class NeutronApiTests(BasePolicydSpecialization):
         neutron_client = openstack_utils.get_neutron_session_client(
             self.get_keystone_session_demo_user(ip))
         try:
-            # If we are allowed to list networks, this will return something.
-            # if the policyd override is present, then no error is generated,
-            # but no networks are returned.
-            networks = neutron_client.list_networks()
-            logging.debug("networks: {}".format(networks))
-            if len(networks['networks']) == 0:
-                raise PolicydOperationFailedException()
+            # If we are allowed to create networks, this will return something.
+            # if the policyd override is present, an exception will be raised
+            created_network = neutron_client.create_network(
+                {
+                    'network': {
+                        'name': 'zaza-policyd-test',
+                    },
+                })
+            logging.debug("networks: {}".format(created_network))
+            neutron_client.delete_network(created_network['network']['id'])
         except Exception:
             raise PolicydOperationFailedException()
 
