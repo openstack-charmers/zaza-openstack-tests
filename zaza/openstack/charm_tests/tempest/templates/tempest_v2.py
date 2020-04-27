@@ -88,10 +88,7 @@ zaqar = false
 [volume]
 backend_names = cinder-ceph
 storage_protocol = ceph
-# NOTE(coreycb): Need to enalbe catalog_type, determined by:
-# volume_version=$(openstack endpoint list -c 'Service Type' -f value | grep -m 1 volumev3 ||
-#                  openstack endpoint list -c 'Service Type' -f value | grep -m 1 volumev2)
-# catalog_type = __VOLUME_VERSION__
+catalog_type = {catalog_type}
 
 [volume-feature-enabled]
 backup = false"""

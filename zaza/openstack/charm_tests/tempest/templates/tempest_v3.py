@@ -90,6 +90,7 @@ zaqar = false
 [volume]
 backend_names = cinder-ceph
 storage_protocol = ceph
+catalog_type = {catalog_type}
 
 [volume-feature-enabled]
 backup = false"""

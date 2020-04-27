@@ -98,6 +98,17 @@ def add_glance_config(ctxt, keystone_session):
         ctxt['image_alt_id'] = image_alt[0].id
 
 
+def add_cinder_config(ctxt, keystone_session):
+    volume_types = ['volumev2', 'volumev3']
+    keystone_client = openstack_utils.get_keystone_session_client(
+        keystone_session)
+    for volume_type in volume_types:
+        service = keystone_client.services.list(type=volume_type)
+        if service:
+            ctxt['catalog_type'] = volume_type
+            break
+
+
 def add_keystone_config(ctxt, keystone_session):
     keystone_client = openstack_utils.get_keystone_session_client(
         keystone_session)
@@ -141,6 +152,7 @@ def get_tempest_context():
     add_nova_config(ctxt, keystone_session)
     add_neutron_config(ctxt, keystone_session)
     add_glance_config(ctxt, keystone_session)
+    add_cinder_config(ctxt, keystone_session)
     add_keystone_config(ctxt, keystone_session)
     add_environment_var_config(ctxt)
     add_access_protocol(ctxt)
