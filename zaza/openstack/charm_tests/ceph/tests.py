@@ -375,7 +375,13 @@ class CephTest(test_utils.OpenStackBaseTest):
         focal_ussuri = zaza_openstack.get_os_release('focal_ussuri')
         if current_release >= focal_ussuri:
             # NOTE(ajkavanagh) - focal (on ServerStack) is broken for /dev/vdb
-            # and so this test can't pass
+            # and so this test can't pass: LP#1842751 discusses the issue, but
+            # basically the snapd daemon along with lxcfs results in /dev/vdb
+            # being mounted in the lxcfs process namespace.  If the charm
+            # 'tries' to umount it, it can (as root), but the mount is still
+            # 'held' by lxcfs and thus nothing else can be done with it.  This
+            # is only a problem in serverstack with images with a default
+            # /dev/vdb ephemeral
             logging.warn("Skipping pristine disk test for focal and higher")
             return
         logging.info('Checking behaviour when non-pristine disks appear...')
