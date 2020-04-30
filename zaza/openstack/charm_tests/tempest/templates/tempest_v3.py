@@ -38,6 +38,7 @@ admin_role = Admin
 region = RegionOne
 default_domain_id = {default_domain_id}
 admin_domain_scope = true
+disable_ssl_certificate_validation = true
 
 [identity-feature-enabled]
 api_v2 = false

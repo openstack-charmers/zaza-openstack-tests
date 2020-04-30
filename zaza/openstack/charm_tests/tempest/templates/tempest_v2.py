@@ -36,6 +36,7 @@ uri = {proto}://{keystone}:5000/v2.0
 auth_version = v2
 admin_role = Admin
 region = RegionOne
+disable_ssl_certificate_validation = true
 
 [identity-feature-enabled]
 api_v2 = true
