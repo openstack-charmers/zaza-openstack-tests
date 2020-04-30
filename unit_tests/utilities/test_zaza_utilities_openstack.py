@@ -16,6 +16,7 @@ import copy
 import datetime
 import io
 import mock
+import subprocess
 import tenacity
 
 import unit_tests.utils as ut_utils
@@ -664,17 +665,19 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             [])
 
     def test_ping_response(self):
-        self.patch_object(openstack_utils.subprocess, 'check_call')
+        self.patch_object(openstack_utils.subprocess, 'run')
         openstack_utils.ping_response('10.0.0.10')
-        self.check_call.assert_called_once_with(
-            ['ping', '-c', '1', '-W', '1', '10.0.0.10'], stdout=-3)
+        self.run.assert_called_once_with(
+            ['ping', '-c', '1', '-W', '1', '10.0.0.10'], check=True,
+            stdout=mock.ANY, stderr=mock.ANY)
 
     def test_ping_response_fail(self):
         openstack_utils.ping_response.retry.wait = \
             tenacity.wait_none()
-        self.patch_object(openstack_utils.subprocess, 'check_call')
-        self.check_call.side_effect = Exception()
-        with self.assertRaises(Exception):
+        self.patch_object(openstack_utils.subprocess, 'run')
+        self.run.side_effect = subprocess.CalledProcessError(returncode=42,
+                                                             cmd='mycmd')
+        with self.assertRaises(subprocess.CalledProcessError):
             openstack_utils.ping_response('10.0.0.10')
 
     def test_ssh_test(self):

@@ -14,7 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Encapsulating `neutron-openvswitch` testing."""
+"""Encapsulating testing of some `neutron-*` charms.
+
+`neutron-api`, `neutron-gateway` and `neutron-openvswitch`
+"""
 
 
 import copy
@@ -110,15 +113,73 @@ class NeutronGatewayTest(NeutronPluginApiSharedTests):
         super(NeutronGatewayTest, cls).setUpClass(cls)
         cls.services = cls._get_services()
 
+    _APP_NAME = 'neutron-gateway'
+
+    def test_401_enable_qos(self):
+        """Check qos settings set via neutron-api charm."""
+        if (self.current_os_release >=
+                openstack_utils.get_os_release('trusty_mitaka')):
+            logging.info('running qos check')
+
+            with self.config_change(
+                    {'enable-qos': 'False'},
+                    {'enable-qos': 'True'},
+                    application_name="neutron-api"):
+
+                self._validate_openvswitch_agent_qos()
+
+    @tenacity.retry(wait=tenacity.wait_exponential(min=5, max=60))
+    def _validate_openvswitch_agent_qos(self):
+        """Validate that the qos extension is enabled in the ovs agent."""
+        # obtain the dhcp agent to identify the neutron-gateway host
+        dhcp_agent = self.neutron_client.list_agents(
+            binary='neutron-dhcp-agent')['agents'][0]
+        neutron_gw_host = dhcp_agent['host']
+        logging.debug('neutron gw host: {}'.format(neutron_gw_host))
+
+        # check extensions on the ovs agent to validate qos
+        ovs_agent = self.neutron_client.list_agents(
+            binary='neutron-openvswitch-agent',
+            host=neutron_gw_host)['agents'][0]
+
+        self.assertIn('qos', ovs_agent['configurations']['extensions'])
+
+    @unittest.expectedFailure
+    def test_800_ovs_bridges_are_managed_by_us(self):
+        """Checking OVS bridges' external-id.
+
+        OVS bridges created by us should be marked as managed by us in their
+        external-id. See
+        http://docs.openvswitch.org/en/latest/topics/integration/
+
+        NOTE(lourot): this test is expected to fail as long as this feature
+        hasn't landed yet: https://review.opendev.org/717074
+        """
+        for unit in zaza.model.get_units(self._APP_NAME,
+                                         model_name=self.model_name):
+            for bridge_name in ('br-int', 'br-ex'):
+                logging.info(
+                    'Checking that the bridge {}:{}'.format(
+                        unit.name, bridge_name
+                    ) + ' is marked as managed by us'
+                )
+                expected_external_id = 'charm-neutron-gateway=managed'
+                actual_external_id = zaza.model.run_on_unit(
+                    unit.entity_id,
+                    'ovs-vsctl br-get-external-id {}'.format(bridge_name),
+                    model_name=self.model_name
+                )['Stdout'].strip()
+                self.assertEqual(actual_external_id, expected_external_id)
+
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change.
 
-        Change disk format and assert then change propagates to the correct
+        Change debug mode and assert that change propagates to the correct
         file and that services are restarted as a result
         """
         # Expected default and alternate values
         current_value = zaza.model.get_application_config(
-            'neutron-gateway')['debug']['value']
+            self._APP_NAME)['debug']['value']
         new_value = str(not bool(current_value)).title()
         current_value = str(current_value).title()
 
@@ -132,7 +193,7 @@ class NeutronGatewayTest(NeutronPluginApiSharedTests):
 
         # Make config change, check for service restarts
         logging.info(
-            'Setting verbose on neutron-api {}'.format(set_alternate))
+            'Setting verbose on {} {}'.format(self._APP_NAME, set_alternate))
         self.restart_on_changed(
             conf_file,
             set_default,
@@ -170,7 +231,7 @@ class NeutronGatewayTest(NeutronPluginApiSharedTests):
         logging.debug('Remote unit timestamp {}'.format(mtime))
 
         with self.config_change(set_default, set_alternate):
-            for unit in zaza.model.get_units('neutron-gateway',
+            for unit in zaza.model.get_units(self._APP_NAME,
                                              model_name=self.model_name):
                 logging.info('Checking number of profiles in complain '
                              'mode in {}'.format(unit.entity_id))
@@ -208,13 +269,17 @@ class NeutronGatewayTest(NeutronPluginApiSharedTests):
         return services
 
 
-class NeutronApiTest(test_utils.OpenStackBaseTest):
-    """Test basic Neutron API Charm functionality."""
+class NeutronCreateNetworkTest(test_utils.OpenStackBaseTest):
+    """Test creating a Neutron network through the API.
+
+    This is broken out into a separate class as it can be useful as standalone
+    tests for Neutron plugin subordinate charms.
+    """
 
     @classmethod
     def setUpClass(cls):
         """Run class setup for running Neutron Gateway tests."""
-        super(NeutronApiTest, cls).setUpClass()
+        super(NeutronCreateNetworkTest, cls).setUpClass()
         cls.current_os_release = openstack_utils.get_os_release()
 
         # set up clients
@@ -251,33 +316,14 @@ class NeutronApiTest(test_utils.OpenStackBaseTest):
         logging.debug('Deleting neutron network...')
         self.neutron_client.delete_network(network['id'])
 
-    def test_401_enable_qos(self):
-        """Check qos settings set via neutron-api charm."""
-        if (self.current_os_release >=
-                openstack_utils.get_os_release('trusty_mitaka')):
-            logging.info('running qos check')
 
-            dhcp_agents = self.neutron_client.list_agents(
-                binary='neutron-dhcp-agent')['agents']
-            if not dhcp_agents:
-                ovn_agents = self.neutron_client.list_agents(
-                    binary='ovn-controller')['agents']
-                if ovn_agents:
-                    raise unittest.SkipTest(
-                        "QoS tests are currently not supported on OVN "
-                        "deployments")
-
-            with self.config_change(
-                    {'enable-qos': 'False'},
-                    {'enable-qos': 'True'},
-                    application_name="neutron-api"):
-
-                self._validate_openvswitch_agent_qos()
+class NeutronApiTest(NeutronCreateNetworkTest):
+    """Test basic Neutron API Charm functionality."""
 
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change.
 
-        Change disk format and assert then change propagates to the correct
+        Change debug mode and assert that change propagates to the correct
         file and that services are restarted as a result
         """
         # Expected default and alternate values
@@ -326,22 +372,6 @@ class NeutronApiTest(test_utils.OpenStackBaseTest):
                 ["neutron-server", "apache2", "haproxy"],
                 pgrep_full=pgrep_full):
             logging.info("Testing pause resume")
-
-    @tenacity.retry(wait=tenacity.wait_exponential(min=5, max=60))
-    def _validate_openvswitch_agent_qos(self):
-        """Validate that the qos extension is enabled in the ovs agent."""
-        # obtain the dhcp agent to identify the neutron-gateway host
-        dhcp_agent = self.neutron_client.list_agents(
-            binary='neutron-dhcp-agent')['agents'][0]
-        neutron_gw_host = dhcp_agent['host']
-        logging.debug('neutron gw host: {}'.format(neutron_gw_host))
-
-        # check extensions on the ovs agent to validate qos
-        ovs_agent = self.neutron_client.list_agents(
-            binary='neutron-openvswitch-agent',
-            host=neutron_gw_host)['agents'][0]
-
-        self.assertIn('qos', ovs_agent['configurations']['extensions'])
 
 
 class SecurityTest(test_utils.OpenStackBaseTest):
@@ -402,10 +432,6 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
         """Run class setup for running Neutron Openvswitch tests."""
         super(NeutronOpenvSwitchTest, cls).setUpClass(cls)
 
-        cls.compute_unit = zaza.model.get_units('nova-compute')[0]
-        cls.neutron_api_unit = zaza.model.get_units('neutron-api')[0]
-        cls.n_ovs_unit = zaza.model.get_units('neutron-openvswitch')[0]
-
         # set up client
         cls.neutron_client = (
             openstack_utils.get_neutron_session_client(cls.keystone_session))
@@ -422,6 +448,7 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
             self.application_name,
             {'enable-sriov': 'True'})
 
+        zaza.model.wait_for_agent_status()
         zaza.model.wait_for_application_states()
 
         self._check_settings_in_config(
@@ -445,6 +472,7 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
             {'enable-sriov': 'False'})
 
         logging.info('Waiting for config-changes to complete...')
+        zaza.model.wait_for_agent_status()
         zaza.model.wait_for_application_states()
 
         logging.debug('OK')
@@ -459,7 +487,7 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
 
         expected = {
             section: {
-                config_file_key: [vpair[1]],
+                config_file_key: [str(vpair[1])],
             },
         }
 
@@ -479,7 +507,7 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
             'neutron-api',
             'l2-population',
             'l2_population',
-            ['False', 'True'],
+            [False, True],
             'agent',
             '/etc/neutron/plugins/ml2/openvswitch_agent.ini')
 
@@ -500,36 +528,17 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
         else:
             conf_file = "/etc/neutron/plugins/ml2/ml2_conf.ini"
 
-        zaza.model.set_application_config(
-            'neutron-api',
-            {'neutron-security-groups': 'True'})
-        zaza.model.set_application_config(
-            'neutron-openvswitch',
-            {'disable-security-groups': 'True'})
-
-        zaza.model.wait_for_application_states()
-
-        expected = {
-            'securitygroup': {
-                'enable_security_group': ['False'],
-            },
-        }
-
-        zaza.model.block_until_oslo_config_entries_match(
-            self.application_name,
-            conf_file,
-            expected,
-        )
-
-        logging.info('Restoring to default configuration...')
-        zaza.model.set_application_config(
-            'neutron-openvswitch',
-            {'disable-security-groups': 'False'})
-        zaza.model.set_application_config(
-            'neutron-api',
-            {'neutron-security-groups': 'False'})
-
-        zaza.model.wait_for_application_states()
+        with self.config_change(
+                {'neutron-security-groups': False},
+                {'neutron-security-groups': True},
+                application_name='neutron-api'):
+            with self.config_change(
+                    {'disable-security-groups': False},
+                    {'disable-security-groups': True}):
+                zaza.model.block_until_oslo_config_entries_match(
+                    self.application_name,
+                    conf_file,
+                    {'securitygroup': {'enable_security_group': ['False']}})
 
     def test_401_restart_on_config_change(self):
         """Verify that the specified services are restarted.
@@ -539,8 +548,8 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
         """
         self.restart_on_changed(
             '/etc/neutron/neutron.conf',
-            {'debug': 'false'},
-            {'debug': 'true'},
+            {'debug': False},
+            {'debug': True},
             {'DEFAULT': {'debug': ['False']}},
             {'DEFAULT': {'debug': ['True']}},
             ['neutron-openvswitch-agent'],
@@ -552,8 +561,8 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
             logging.debug('Skipping test')
             return
 
-        set_default = {'enable-qos': 'false'}
-        set_alternate = {'enable-qos': 'true'}
+        set_default = {'enable-qos': False}
+        set_alternate = {'enable-qos': True}
         app_name = 'neutron-api'
 
         conf_file = '/etc/neutron/plugins/ml2/openvswitch_agent.ini'

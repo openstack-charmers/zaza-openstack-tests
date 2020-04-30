@@ -50,7 +50,7 @@ def skipUntilVersion(service, package, release):
                                       stderr=subprocess.STDOUT,
                                       universal_newlines=True)
                 return f(*args, **kwargs)
-            except subprocess.CalledProcessError as cp:
+            except subprocess.CalledProcessError:
                 logging.warn("Skipping test for older ({})"
                              "service {}, requested {}".format(
                                  package_version, service, release))
@@ -89,8 +89,8 @@ def audit_assertions(action,
             assert value == "PASS", "Unexpected failure: {}".format(key)
 
 
-class OpenStackBaseTest(unittest.TestCase):
-    """Generic helpers for testing OpenStack API charms."""
+class BaseCharmTest(unittest.TestCase):
+    """Generic helpers for testing charms."""
 
     run_resource_cleanup = False
 
@@ -120,8 +120,6 @@ class OpenStackBaseTest(unittest.TestCase):
             cls.model_name = cls.model_aliases[model_alias]
         else:
             cls.model_name = model.get_juju_model()
-        cls.keystone_session = openstack_utils.get_overcloud_keystone_session(
-            model_name=cls.model_name)
         cls.test_config = lifecycle_utils.get_charm_config(fatal=False)
         if application_name:
             cls.application_name = application_name
@@ -162,7 +160,7 @@ class OpenStackBaseTest(unittest.TestCase):
 
         Workaround:
         libjuju refuses to accept data with types other than strings
-        through the zuzu.model.set_application_config
+        through the zaza.model.set_application_config
 
         :param config: Config dictionary with any typed values
         :type  config: Dict[str,Any]
@@ -256,12 +254,50 @@ class OpenStackBaseTest(unittest.TestCase):
         # TODO: Optimize with a block on a specific application until idle.
         model.block_until_all_units_idle()
 
+    def restart_on_changed_debug_oslo_config_file(self, config_file, services,
+                                                  config_section='DEFAULT'):
+        """Check restart happens on config change by flipping debug mode.
+
+        Change debug mode and assert that change propagates to the correct
+        file and that services are restarted as a result. config_file must be
+        an oslo config file and debug option must be set in the
+        `config_section` section.
+
+        :param config_file: OSLO Config file to check for settings
+        :type config_file: str
+        :param services: Services expected to be restarted when config_file is
+                         changed.
+        :type services: list
+        """
+        # Expected default and alternate values
+        current_value = model.get_application_config(
+            self.application_name)['debug']['value']
+        new_value = str(not bool(current_value)).title()
+        current_value = str(current_value).title()
+
+        set_default = {'debug': current_value}
+        set_alternate = {'debug': new_value}
+        default_entry = {config_section: {'debug': [current_value]}}
+        alternate_entry = {config_section: {'debug': [new_value]}}
+
+        # Make config change, check for service restarts
+        logging.info(
+            'Changing settings on {} to {}'.format(
+                self.application_name, set_alternate))
+        self.restart_on_changed(
+            config_file,
+            set_default,
+            set_alternate,
+            default_entry,
+            alternate_entry,
+            services)
+
     def restart_on_changed(self, config_file, default_config, alternate_config,
                            default_entry, alternate_entry, services,
                            pgrep_full=False):
         """Run restart on change tests.
 
-        Test that changing config results in config file being updates and
+        Test that changing config results in config file being updated and
         services restarted. Return config to default_config afterwards
 
         :param config_file: Config file to check for settings
@@ -319,7 +355,7 @@ class OpenStackBaseTest(unittest.TestCase):
         # If this is not an OSLO config file set default_config={}
         if default_entry:
             logging.debug(
-                'Waiting for updates to propagate to '.format(config_file))
+                'Waiting for updates to propagate to {}'.format(config_file))
             model.block_until_oslo_config_entries_match(
                 self.application_name,
                 config_file,
@@ -335,8 +371,8 @@ class OpenStackBaseTest(unittest.TestCase):
         Pause and then resume a unit checking that services are in the
         required state after each action
 
-        :param services: Services expected to be restarted when config_file is
-                         changed.
+        :param services: Services expected to be restarted when the unit is
+                         paused/resumed.
         :type services: list
         :param pgrep_full: Should pgrep be used rather than pidof to identify
                            a service.
@@ -352,10 +388,10 @@ class OpenStackBaseTest(unittest.TestCase):
             self.lead_unit,
             'active',
             model_name=self.model_name)
-        model.run_action(
+        generic_utils.assertActionRanOK(model.run_action(
             self.lead_unit,
             'pause',
-            model_name=self.model_name)
+            model_name=self.model_name))
         model.block_until_unit_wl_status(
             self.lead_unit,
             'maintenance',
@@ -368,10 +404,10 @@ class OpenStackBaseTest(unittest.TestCase):
             model_name=self.model_name,
             pgrep_full=pgrep_full)
         yield
-        model.run_action(
+        generic_utils.assertActionRanOK(model.run_action(
             self.lead_unit,
             'resume',
-            model_name=self.model_name)
+            model_name=self.model_name))
         model.block_until_unit_wl_status(
             self.lead_unit,
             'active',
@@ -383,3 +419,15 @@ class OpenStackBaseTest(unittest.TestCase):
             'running',
             model_name=self.model_name,
             pgrep_full=pgrep_full)
+
+
+class OpenStackBaseTest(BaseCharmTest):
+    """Generic helpers for testing OpenStack API charms."""
+
+    @classmethod
+    def setUpClass(cls, application_name=None, model_alias=None):
+        """Run setup for test class to create common resources."""
+        super(OpenStackBaseTest, cls).setUpClass()
+        cls.keystone_session = openstack_utils.get_overcloud_keystone_session(
+            model_name=cls.model_name)
+        cls.cacert = openstack_utils.get_cacert()

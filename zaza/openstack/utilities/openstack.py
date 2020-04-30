@@ -14,7 +14,7 @@
 
 """Module for interacting with OpenStack.
 
-This module contains a number of functions for interacting with Openstack.
+This module contains a number of functions for interacting with OpenStack.
 """
 from .os_versions import (
     OPENSTACK_CODENAMES,
@@ -158,11 +158,21 @@ KEYSTONE_REMOTE_CACERT = (
 KEYSTONE_LOCAL_CACERT = ("/tmp/{}".format(KEYSTONE_CACERT))
 
 
-# Openstack Client helpers
+def get_cacert():
+    """Return path to CA Certificate bundle for verification during test.
+
+    :returns: Path to CA Certificate bundle or None.
+    :rtype: Optional[str]
+    """
+    if os.path.exists(KEYSTONE_LOCAL_CACERT):
+        return KEYSTONE_LOCAL_CACERT
+
+
+# OpenStack Client helpers
 def get_ks_creds(cloud_creds, scope='PROJECT'):
     """Return the credentials for authenticating against keystone.
 
-    :param cloud_creds: Openstack RC environment credentials
+    :param cloud_creds: OpenStack RC environment credentials
     :type cloud_creds: dict
     :param scope: Authentication scope: PROJECT or DOMAIN
     :type scope: string
@@ -244,18 +254,22 @@ def get_neutron_session_client(session):
 
 
 def get_swift_session_client(session,
-                             region_name='RegionOne'):
+                             region_name='RegionOne',
+                             cacert=None):
     """Return swiftclient authenticated by keystone session.
 
     :param session: Keystone session object
     :type session: keystoneauth1.session.Session object
     :param region_name: Optional region name to use
     :type region_name: str
+    :param cacert: Path to CA Certificate
+    :type cacert: Optional[str]
     :returns: Authenticated swiftclient
     :rtype: swiftclient.Client object
     """
     return swiftclient.Connection(session=session,
-                                  os_options={'region_name': region_name})
+                                  os_options={'region_name': region_name},
+                                  cacert=cacert)
 
 
 def get_octavia_session_client(session, service_type='load-balancer',
@@ -361,7 +375,7 @@ def get_keystone_scope(model_name=None):
 def get_keystone_session(openrc_creds, scope='PROJECT', verify=None):
     """Return keystone session.
 
-    :param openrc_creds: Openstack RC credentials
+    :param openrc_creds: OpenStack RC credentials
     :type openrc_creds: dict
     :param verify: Control TLS certificate verification behaviour
     :type verify: any (True  - use system certs,
@@ -430,7 +444,7 @@ def get_keystone_session_client(session, client_api_version=3):
 def get_keystone_client(openrc_creds, verify=None):
     """Return authenticated keystoneclient and set auth_ref for service_catalog.
 
-    :param openrc_creds: Openstack RC credentials
+    :param openrc_creds: OpenStack RC credentials
     :type openrc_creds: dict
     :param verify: Control TLS certificate verification behaviour
     :type verify: any
@@ -1397,11 +1411,11 @@ def get_os_code_info(package, pkg_version):
         pkg_version = pkg_version.split(':')[1:][0]
     if 'swift' in package:
         # Fully x.y.z match for swift versions
-        match = re.match('^(\d+)\.(\d+)\.(\d+)', pkg_version)
+        match = re.match(r'^(\d+)\.(\d+)\.(\d+)', pkg_version)
     else:
         # x.y match only for 20XX.X
         # and ignore patch level for other packages
-        match = re.match('^(\d+)\.(\d+)', pkg_version)
+        match = re.match(r'^(\d+)\.(\d+)', pkg_version)
 
     if match:
         vers = match.group(0)
@@ -1534,7 +1548,7 @@ def get_undercloud_auth():
     else:
         logging.error('Missing OS authentication setting: OS_AUTH_URL')
         raise exceptions.MissingOSAthenticationException(
-            'One or more OpenStack authetication variables could '
+            'One or more OpenStack authentication variables could '
             'be found in the environment. Please export the OS_* '
             'settings into the environment.')
 
@@ -1581,14 +1595,14 @@ def get_undercloud_auth():
             logging.error('Missing OS authentication setting: {}'
                           ''.format(key))
             raise exceptions.MissingOSAthenticationException(
-                'One or more OpenStack authetication variables could '
+                'One or more OpenStack authentication variables could '
                 'be found in the environment. Please export the OS_* '
                 'settings into the environment.')
 
     return auth_settings
 
 
-# Openstack Client helpers
+# OpenStack Client helpers
 def get_keystone_ip(model_name=None):
     """Return the IP address to use when communicating with keystone api.
 
@@ -2101,7 +2115,7 @@ def create_ssh_key(nova_client, keypair_name, replace=False):
 
     :param nova_client: Authenticated nova client
     :type nova_client: novaclient.v2.client.Client
-    :param keypair_name: Label to apply to keypair in Openstack.
+    :param keypair_name: Label to apply to keypair in OpenStack.
     :type keypair_name: str
     :param replace: Whether to replace the existing keypair if it already
                     exists.
@@ -2124,7 +2138,7 @@ def create_ssh_key(nova_client, keypair_name, replace=False):
 def get_private_key_file(keypair_name):
     """Location of the file containing the private key with the given label.
 
-    :param keypair_name: Label of keypair in Openstack.
+    :param keypair_name: Label of keypair in OpenStack.
     :type keypair_name: str
     :returns: Path to file containing key
     :rtype: str
@@ -2135,7 +2149,7 @@ def get_private_key_file(keypair_name):
 def write_private_key(keypair_name, key):
     """Store supplied private key in file.
 
-    :param keypair_name: Label of keypair in Openstack.
+    :param keypair_name: Label of keypair in OpenStack.
     :type keypair_name: str
     :param key: PEM Encoded Private Key
     :type key: str
@@ -2147,7 +2161,7 @@ def write_private_key(keypair_name, key):
 def get_private_key(keypair_name):
     """Return private key.
 
-    :param keypair_name: Label of keypair in Openstack.
+    :param keypair_name: Label of keypair in OpenStack.
     :type keypair_name: str
     :returns: PEM Encoded Private Key
     :rtype: str
@@ -2161,11 +2175,11 @@ def get_private_key(keypair_name):
 
 
 def get_public_key(nova_client, keypair_name):
-    """Return public key from Openstack.
+    """Return public key from OpenStack.
 
     :param nova_client: Authenticated nova client
     :type nova_client: novaclient.v2.client.Client
-    :param keypair_name: Label of keypair in Openstack.
+    :param keypair_name: Label of keypair in OpenStack.
     :type keypair_name: str
     :returns: OpenSSH Encoded Public Key
     :rtype: str or None
@@ -2182,7 +2196,7 @@ def valid_key_exists(nova_client, keypair_name):
 
     :param nova_client: Authenticated nova client
     :type nova_client: novaclient.v2.client.Client
-    :param keypair_name: Label of keypair in Openstack.
+    :param keypair_name: Label of keypair in OpenStack.
     :type keypair_name: str
     """
     pub_key = get_public_key(nova_client, keypair_name)
@@ -2244,7 +2258,8 @@ def ping_response(ip):
     :raises: subprocess.CalledProcessError
     """
     cmd = ['ping', '-c', '1', '-W', '1', ip]
-    subprocess.check_call(cmd, stdout=subprocess.DEVNULL)
+    subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                   check=True)
 
 
 def ssh_test(username, ip, vm_name, password=None, privkey=None):

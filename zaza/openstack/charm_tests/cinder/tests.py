@@ -63,6 +63,8 @@ class CinderTests(test_utils.OpenStackBaseTest):
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_new.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
         self.cinder_client.volumes.extend(
@@ -71,6 +73,8 @@ class CinderTests(test_utils.OpenStackBaseTest):
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_new.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
 
@@ -85,6 +89,8 @@ class CinderTests(test_utils.OpenStackBaseTest):
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_img.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
 
@@ -97,6 +103,8 @@ class CinderTests(test_utils.OpenStackBaseTest):
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_new.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
 
@@ -107,6 +115,8 @@ class CinderTests(test_utils.OpenStackBaseTest):
         openstack_utils.resource_reaches_status(
             self.cinder_client.volume_snapshots,
             snap_new.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
 
@@ -118,6 +128,8 @@ class CinderTests(test_utils.OpenStackBaseTest):
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_from_snap.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
 
@@ -129,6 +141,8 @@ class CinderTests(test_utils.OpenStackBaseTest):
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_new.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
         vol_new.force_delete()
@@ -139,7 +153,7 @@ class CinderTests(test_utils.OpenStackBaseTest):
 
     @property
     def services(self):
-        """Return a list services for OpenStack release."""
+        """Return a list services for the selected OpenStack release."""
         services = ['cinder-scheduler', 'cinder-volume']
         if (openstack_utils.get_os_release() >=
                 openstack_utils.get_os_release('xenial_ocata')):
@@ -151,24 +165,16 @@ class CinderTests(test_utils.OpenStackBaseTest):
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change.
 
-        Change disk format and assert then change propagates to the correct
+        Change debug mode and assert that change propagates to the correct
         file and that services are restarted as a result
         """
-        # Expected default and alternate values
-        set_default = {'debug': 'False'}
-        set_alternate = {'debug': 'True'}
-
         # Config file affected by juju set config change
         conf_file = '/etc/cinder/cinder.conf'
 
         # Make config change, check for service restarts
-        logging.debug('Setting disk format glance...')
-        self.restart_on_changed(
+        logging.debug('Setting debug mode...')
+        self.restart_on_changed_debug_oslo_config_file(
             conf_file,
-            set_default,
-            set_alternate,
-            {'DEFAULT': {'debug': ['False']}},
-            {'DEFAULT': {'debug': ['True']}},
             self.services)
 
     def test_901_pause_resume(self):

@@ -1,0 +1,2 @@
+ignore:
+  - "zaza/openstack/charm_tests/**/*tests.py"

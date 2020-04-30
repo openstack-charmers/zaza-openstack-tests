@@ -95,25 +95,18 @@ class DesignateTests(BaseDesignateTest):
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change.
 
-        Change disk format and assert then change propagates to the correct
+        Change debug mode and assert that change propagates to the correct
         file and that services are restarted as a result
         """
-        # Expected default and alternate values
-        set_default = {'debug': 'False'}
-        set_alternate = {'debug': 'True'}
-
         # Services which are expected to restart upon config change,
         # and corresponding config files affected by the change
         conf_file = '/etc/designate/designate.conf'
 
         # Make config change, check for service restarts
-        self.restart_on_changed(
+        self.restart_on_changed_debug_oslo_config_file(
             conf_file,
-            set_default,
-            set_alternate,
-            {'DEFAULT': {'debug': ['False']}},
-            {'DEFAULT': {'debug': ['True']}},
-            self.designate_svcs)
+            self.designate_svcs,
+        )
 
     def test_910_pause_and_resume(self):
         """Run pause and resume tests.

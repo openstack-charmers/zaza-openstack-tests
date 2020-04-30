@@ -38,26 +38,26 @@ class QuaggaTest(unittest.TestCase):
                                         'tor2', 'peer0', 'peer1']
                         if app in status.applications.keys())
         for application in applications:
-                for unit in zaza.model.get_units(application):
-                    bgp_sum = zaza.model.run_on_unit(
-                        unit.entity_id,
-                        'echo "sh bgp ipv4 unicast summary" | vtysh')['Stdout']
-                    r = re.compile('^(\d+\.\d+\.\d+\.\d+)')
-                    ip_list = []
-                    for line in bgp_sum.splitlines():
-                        m = r.match(line)
-                        if m:
-                            ip_list.append(m.group(1))
-                    logging.info('unit {} neighbours {}'
-                                 .format(unit.entity_id, ip_list))
+            for unit in zaza.model.get_units(application):
+                bgp_sum = zaza.model.run_on_unit(
+                    unit.entity_id,
+                    'echo "sh bgp ipv4 unicast summary" | vtysh')['Stdout']
+                r = re.compile(r'^(\d+\.\d+\.\d+\.\d+)')
+                ip_list = []
+                for line in bgp_sum.splitlines():
+                    m = r.match(line)
+                    if m:
+                        ip_list.append(m.group(1))
+                logging.info('unit {} neighbours {}'
+                             .format(unit.entity_id, ip_list))
 
-                    if not ip_list:
-                        raise Exception('FAILED: Unit {} has no BGP peers.'
-                                        .format(unit.entity_id))
-                    for ip in ip_list:
-                        result = zaza.model.run_on_unit(
-                            unit.entity_id,
-                            'ping -c 3 {}'.format(ip))
-                        logging.info(result['Stdout'])
-                        if result['Code'] == '1':
-                            raise Exception('FAILED')
+                if not ip_list:
+                    raise Exception('FAILED: Unit {} has no BGP peers.'
+                                    .format(unit.entity_id))
+                for ip in ip_list:
+                    result = zaza.model.run_on_unit(
+                        unit.entity_id,
+                        'ping -c 3 {}'.format(ip))
+                    logging.info(result['Stdout'])
+                    if result['Code'] == '1':
+                        raise Exception('FAILED')

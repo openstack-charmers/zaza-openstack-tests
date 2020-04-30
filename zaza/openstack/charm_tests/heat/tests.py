@@ -54,7 +54,7 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
 
     @property
     def services(self):
-        """Return a list services for OpenStack release.
+        """Return a list services for the selected OpenStack release.
 
         :returns: List of services
         :rtype: [str]

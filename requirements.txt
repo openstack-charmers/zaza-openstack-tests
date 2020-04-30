@@ -1,9 +1,10 @@
 aiounittest
 async_generator
+boto3
 juju
 juju_wait
 PyYAML<=4.2,>=3.0
-flake8>=2.2.4,<=3.5.0
+flake8>=2.2.4
 flake8-docstrings
 flake8-per-file-ignores
 pydocstyle<4.0.0
@@ -20,6 +21,9 @@ dnspython>=1.12.0
 psutil>=1.1.1,<2.0.0
 python-openstackclient>=3.14.0
 aodhclient
+gnocchiclient>=7.0.5,<8.0.0
+pika>=1.1.0,<2.0.0
+python-barbicanclient
 python-designateclient
 python-ceilometerclient
 python-cinderclient
