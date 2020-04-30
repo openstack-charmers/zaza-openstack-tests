@@ -150,6 +150,7 @@ class NovaCloudController(test_utils.OpenStackBaseTest):
     XENIAL_QUEENS = openstack_utils.get_os_release('xenial_queens')
     BIONIC_QUEENS = openstack_utils.get_os_release('bionic_queens')
     BIONIC_ROCKY = openstack_utils.get_os_release('bionic_rocky')
+    BIONIC_TRAIN = openstack_utils.get_os_release('bionic_train')
 
     @classmethod
     def setUpClass(cls):
@@ -383,6 +384,66 @@ class NovaCloudController(test_utils.OpenStackBaseTest):
             default_entry,
             alternate_entry,
             self.services)
+
+    def test_903_enable_quota_count_usage_from_placement(self):
+        """Verify that quota-count-usage-from-placement is propagated.
+
+        Change quota-count-usage-from-placement and assert that nova
+        configuration file is updated and the services are restarted.
+        This parameter is not supported for releases<Train. In those
+        cases assert that nova configuration file is not updated.
+        """
+        # Expected default and alternate values
+        current_value = zaza.model.get_application_config(
+            'nova-cloud-controller')['quota-count-usage-from-placement']
+        try:
+            current_value = current_value['value']
+        except KeyError:
+            current_value = False
+
+        new_value = not current_value
+        new_value_str = str(new_value).title()
+        current_value_str = str(current_value).title()
+
+        set_default = {'quota-count-usage-from-placement': current_value}
+        set_alternate = {'quota-count-usage-from-placement': new_value}
+
+        expected_conf_section = 'quota'
+        expected_conf_key = 'count_usage_from_placement'
+
+        # In case quota-count-usage-from-placement is False, the quota
+        # section  in nova conf file is empty
+        if current_value:
+            default_entry = {expected_conf_section: {
+                expected_conf_key: [current_value_str]}}
+            alternate_entry = {expected_conf_section: {}}
+        else:
+            default_entry = {expected_conf_section: {}}
+            alternate_entry = {expected_conf_section: {
+                expected_conf_key: [new_value_str]}}
+
+        # Config file affected by juju set config change
+        conf_file = '/etc/nova/nova.conf'
+
+        if self.current_release < self.BIONIC_TRAIN:
+            # Configuration is not supported in releases<Train
+            default_entry = {expected_conf_section: {}}
+            alternate_entry = {expected_conf_section: {}}
+            services = {}
+        else:
+            services = self.services
+
+        # Make config change, check for service restarts
+        logging.info(
+            'Setting config on nova-cloud-controller to {}'.format(
+                set_alternate))
+        self.restart_on_changed(
+            conf_file,
+            set_default,
+            set_alternate,
+            default_entry,
+            alternate_entry,
+            services)
 
 
 class SecurityTests(test_utils.OpenStackBaseTest):
