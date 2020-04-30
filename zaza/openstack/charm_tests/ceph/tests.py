@@ -774,7 +774,7 @@ class CephProxyTest(unittest.TestCase):
                    ' Found: {}'.format(output))
             raise zaza_exceptions.CephPoolNotConfigured(msg)
 
-            
+
 class CephMonReweightActionsTest(unittest.TestCase):
     """Test ceph mon reweight actions."""
 
@@ -889,7 +889,7 @@ class CephMonReweightActionsTest(unittest.TestCase):
         )
         logging.debug('OK')
 
-        
+
 class CephPrometheusTest(unittest.TestCase):
     """Test the Ceph <-> Prometheus relation."""
 
