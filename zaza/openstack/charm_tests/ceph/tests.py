@@ -823,7 +823,7 @@ class CephMonReweightActionsTest(unittest.TestCase):
         output = json.loads(ret['Stdout'])
         for line in output['nodes']:
             if line['name'] == 'osd.1':
-                self.assertEqual('0.5', str(line['reweight']))
+                self.assertEqual(0.5, float(line['reweight']))
                 break
 
         zaza_model.block_until_unit_wl_status(
@@ -855,7 +855,7 @@ class CephMonReweightActionsTest(unittest.TestCase):
         output = json.loads(ret['Stdout'])
         for line in output['nodes']:
             if line['name'] == 'osd.1':
-                self.assertEqual('1.0', str(line['crush_weight']))
+                self.assertEqual(1.0, float(line['crush_weight']))
                 break
 
         zaza_model.block_until_unit_wl_status(
