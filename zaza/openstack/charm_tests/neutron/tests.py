@@ -144,16 +144,12 @@ class NeutronGatewayTest(NeutronPluginApiSharedTests):
 
         self.assertIn('qos', ovs_agent['configurations']['extensions'])
 
-    @unittest.expectedFailure
     def test_800_ovs_bridges_are_managed_by_us(self):
         """Checking OVS bridges' external-id.
 
         OVS bridges created by us should be marked as managed by us in their
         external-id. See
         http://docs.openvswitch.org/en/latest/topics/integration/
-
-        NOTE(lourot): this test is expected to fail as long as this feature
-        hasn't landed yet: https://review.opendev.org/717074
         """
         for unit in zaza.model.get_units(self._APP_NAME,
                                          model_name=self.model_name):
