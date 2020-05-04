@@ -32,7 +32,10 @@ class CinderTests(test_utils.OpenStackBaseTest):
     @classmethod
     def setUpClass(cls):
         """Run class setup for running tests."""
-        super(CinderTests, cls).setUpClass()
+        super(CinderTests, cls).setUpClass(application_name='cinder')
+        cls.application_name = 'cinder'
+        cls.lead_unit = zaza.model.get_lead_unit_name(
+            "cinder", model_name=cls.model_name)
         cls.cinder_client = openstack_utils.get_cinder_session_client(
             cls.keystone_session)
         cls.nova_client = openstack_utils.get_nova_session_client(
@@ -42,18 +45,61 @@ class CinderTests(test_utils.OpenStackBaseTest):
     def tearDown(cls):
         """Remove test resources."""
         logging.info('Running teardown')
-        for snapshot in cls.cinder_client.volume_snapshots.list():
+        volumes = list(cls.cinder_client.volumes.list())
+        snapped_volumes = [v for v in volumes if v.name.endswith("-from-snap")]
+        if snapped_volumes:
+            logging.info("Removing volumes from snapshot")
+            cls._remove_volumes(snapped_volumes)
+            volumes = list(cls.cinder_client.volumes.list())
+
+        snapshots = list(cls.cinder_client.volume_snapshots.list())
+        if snapshots:
+            logging.info("tearDown - snapshots: {}".format(
+                ", ".join(s.name for s in snapshots)))
+            cls._remove_snapshots(snapshots)
+
+        if volumes:
+            logging.info("tearDown - volumes: {}".format(
+                ", ".join(v.name for v in volumes)))
+            cls._remove_volumes(volumes)
+
+    @classmethod
+    def _remove_snapshots(cls, snapshots):
+        """Remove snapshots passed as param.
+
+        :param volumes: the snapshots to delete
+        :type volumes: List[snapshot objects]
+        """
+        for snapshot in snapshots:
             if snapshot.name.startswith(cls.RESOURCE_PREFIX):
-                openstack_utils.delete_resource(
-                    cls.cinder_client.volume_snapshots,
-                    snapshot.id,
-                    msg="snapshot")
-        for volume in cls.cinder_client.volumes.list():
+                logging.info("removing snapshot: {}".format(snapshot.name))
+                try:
+                    openstack_utils.delete_resource(
+                        cls.cinder_client.volume_snapshots,
+                        snapshot.id,
+                        msg="snapshot")
+                except Exception as e:
+                    logging.error("error removing snapshot: {}".format(str(e)))
+                    raise
+
+    @classmethod
+    def _remove_volumes(cls, volumes):
+        """Remove volumes passed as param.
+
+        :param volumes: the volumes to delete
+        :type volumes: List[volume objects]
+        """
+        for volume in volumes:
             if volume.name.startswith(cls.RESOURCE_PREFIX):
-                openstack_utils.delete_resource(
-                    cls.cinder_client.volumes,
-                    volume.id,
-                    msg="volume")
+                logging.info("removing volume: {}".format(volume.name))
+                try:
+                    openstack_utils.delete_resource(
+                        cls.cinder_client.volumes,
+                        volume.id,
+                        msg="volume")
+                except Exception as e:
+                    logging.error("error removing volume: {}".format(str(e)))
+                    raise
 
     def test_100_volume_create_extend_delete(self):
         """Test creating, extending a volume."""
