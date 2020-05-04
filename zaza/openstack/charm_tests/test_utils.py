@@ -427,7 +427,7 @@ class OpenStackBaseTest(BaseCharmTest):
     @classmethod
     def setUpClass(cls, application_name=None, model_alias=None):
         """Run setup for test class to create common resources."""
-        super(OpenStackBaseTest, cls).setUpClass()
+        super(OpenStackBaseTest, cls).setUpClass(application_name, model_alias)
         cls.keystone_session = openstack_utils.get_overcloud_keystone_session(
             model_name=cls.model_name)
         cls.cacert = openstack_utils.get_cacert()
