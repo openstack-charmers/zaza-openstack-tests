@@ -23,14 +23,15 @@ from zaza.openstack.utilities import (
     generic as generic_utils,
     openstack as openstack_utils,
 )
+import zaza.openstack.charm_tests.test_utils as test_utils
 
 
-class CinderCephMonTest(unittest.TestCase):
+class CinderCephMonTest(test_utils.OpenStackBaseTest):
     """Verify that the ceph mon units are healthy."""
 
     @classmethod
     def setUpClass(cls):
-        """Run class setup for running ceph security tests."""
+        """Run class setup for running ceph mon tests with cinder."""
         super().setUpClass()
 
     # ported from the cinder-ceph Amulet test
@@ -57,7 +58,7 @@ class CinderCephMonTest(unittest.TestCase):
             run_commands(unit.name, commands)
 
 
-def run_commands(self, unit_name, commands):
+def run_commands(unit_name, commands):
     """Run commands on unit.
 
     Apply context to commands until all variables have been replaced, then
