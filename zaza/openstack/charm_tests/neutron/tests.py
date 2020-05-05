@@ -438,10 +438,10 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
 
     def test_101_neutron_sriov_config(self):
         """Verify data in the sriov agent config file."""
-        trusty_kilo = openstack_utils.get_os_release('trusty_kilo')
-        if self.current_os_release < trusty_kilo:
+        xenial_mitaka = openstack_utils.get_os_release('xenial_mitaka')
+        if self.current_os_release < xenial_mitaka:
             logging.debug('Skipping test, sriov agent not supported on < '
-                          'trusty/kilo')
+                          'xenial/mitaka')
             return
 
         zaza.model.set_application_config(
