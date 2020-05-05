@@ -487,6 +487,24 @@ def get_project_id(ks_client, project_name, api_version=2, domain_name=None):
     return None
 
 
+def get_domain_id(ks_client, domain_name, api_version=2):
+    """Return domain ID.
+
+    :param ks_client: Authenticated keystoneclient
+    :type ks_client: keystoneclient.v3.Client object
+    :param domain_name: Name of the domain
+    :type domain_name: string
+    :param api_version: API version number
+    :type api_version: int
+    :returns: Domain ID
+    :rtype: string or None
+    """
+    all_domains = ks_client.domains.list(name=domain_name)
+    if all_domains:
+        return all_domains[0].id
+    return None
+
+
 # Neutron Helpers
 def get_gateway_uuids():
     """Return machine uuids for neutron-gateway(s).
@@ -2067,6 +2085,28 @@ def create_volume(cinder, size, name=None, image=None):
         expected_status='available',
         msg='Volume status wait')
     return volume
+
+
+def attach_volume(nova, volume_id, instance_id):
+    """Attach a cinder volume to a nova instance.
+
+    :param nova: Authenticated nova client
+    :type nova: novaclient.v2.client.Client
+    :param volume_id: the id of the volume to attach
+    :type volume_id: str
+    :param instance_id: the id of the instance to attach the volume to
+    :type instance_id: str
+    :returns: nova volume pointer
+    :rtype: novaclient.v2.volumes.Volume
+    """
+    logging.info(
+        'Attaching volume {} to instance {}'.format(
+            volume_id, instance_id
+        )
+    )
+    return nova.volumes.create_server_volume(server_id=instance_id,
+                                             volume_id=volume_id,
+                                             device='/dev/vdx')
 
 
 def create_volume_backup(cinder, volume_id, name=None):
