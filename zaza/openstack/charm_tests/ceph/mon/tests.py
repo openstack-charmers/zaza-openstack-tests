@@ -22,6 +22,7 @@ import zaza.model
 from zaza.openstack.utilities import (
     generic as generic_utils,
     openstack as openstack_utils,
+    exceptions as zaza_exceptions
 )
 import zaza.openstack.charm_tests.test_utils as test_utils
 
@@ -43,7 +44,7 @@ class CinderCephMonTest(test_utils.OpenStackBaseTest):
         current_release = openstack_utils.get_os_release()
         bionic_train = openstack_utils.get_os_release('bionic_train')
         if current_release < bionic_train:
-            units.extend(zaza.model.get_utils("cinder-ceph",
+            units.extend(zaza.model.get_units("cinder-ceph",
                                               model_name=self.model_name))
 
         commands = [
@@ -64,7 +65,14 @@ def run_commands(unit_name, commands):
     Apply context to commands until all variables have been replaced, then
     run the command on the given unit.
     """
+    errors = []
     for cmd in commands:
-        generic_utils.assertRemoteRunOK(zaza.model.run_on_unit(
-            unit_name,
-            cmd))
+        try:
+            generic_utils.assertRemoteRunOK(zaza.model.run_on_unit(
+                unit_name,
+                cmd))
+        except Exception as e:
+            errors.append("unit: {}, command: {}, error: {}"
+                          .format(unit_name, cmd, str(e)))
+    if errors:
+        raise zaza_exceptions.CephGenericError("\n".join(errors))
