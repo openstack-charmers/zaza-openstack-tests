@@ -487,15 +487,13 @@ def get_project_id(ks_client, project_name, api_version=2, domain_name=None):
     return None
 
 
-def get_domain_id(ks_client, domain_name, api_version=2):
+def get_domain_id(ks_client, domain_name):
     """Return domain ID.
 
     :param ks_client: Authenticated keystoneclient
     :type ks_client: keystoneclient.v3.Client object
     :param domain_name: Name of the domain
     :type domain_name: string
-    :param api_version: API version number
-    :type api_version: int
     :returns: Domain ID
     :rtype: string or None
     """

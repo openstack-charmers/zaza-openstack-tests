@@ -102,13 +102,26 @@ class WorkloadmgrCLIHelper(object):
         "{snapshot_id} "
     )
 
+    RESTORE_LIST_CMD = (
+        "openstack {auth_args} workloadmgr restore list "
+        "--snapshot_id {snapshot_id} "
+        "-f value -c ID"
+    )
+
+    RESTORE_STATUS_CMD = (
+        "openstack {auth_args} workloadmgr restore show "
+        "-f value -c status {resource_id}"
+    )
+
     def __init__(self, keystone_client):
         """Initialise helper.
 
         :param keystone_client: keystone client
         :type keystone_client: keystoneclient.v3
         """
-        self.trilio_wlm_unit = zaza_model.get_first_unit_name("trilio-wlm")
+        self.trilio_wlm_unit = zaza_model.get_first_unit_name(
+            "trilio-wlm"
+        )
         self.auth_args = self._auth_arguments(keystone_client)
 
     @classmethod
@@ -147,7 +160,8 @@ class WorkloadmgrCLIHelper(object):
         for os_key in _required_keys:
             params.append(
                 "--{}={}".format(
-                    os_key.lower().replace("_", "-"), overcloud_auth[os_key]
+                    os_key.lower().replace("_", "-"),
+                    overcloud_auth[os_key],
                 )
             )
         return " ".join(params)
@@ -170,7 +184,7 @@ class WorkloadmgrCLIHelper(object):
         ).strip()
 
         retryer = tenacity.Retrying(
-            wait=tenacity.wait_exponential(multiplier=1, max=60),
+            wait=tenacity.wait_exponential(multiplier=1, max=30),
             stop=tenacity.stop_after_delay(180),
             reraise=True,
         )
@@ -211,7 +225,7 @@ class WorkloadmgrCLIHelper(object):
         ).strip()
 
         retryer = tenacity.Retrying(
-            wait=tenacity.wait_exponential(multiplier=1, max=60),
+            wait=tenacity.wait_exponential(multiplier=1, max=30),
             stop=tenacity.stop_after_delay(720),
             reraise=True,
         )
@@ -241,9 +255,31 @@ class WorkloadmgrCLIHelper(object):
             timeout=180,
             fatal=True,
         )
+        restore_id = juju_utils.remote_run(
+            self.trilio_wlm_unit,
+            remote_cmd=self.RESTORE_LIST_CMD.format(
+                auth_args=self.auth_args, snapshot_id=snapshot_id
+            ),
+            timeout=180,
+            fatal=True,
+        ).strip()
 
-        # TODO validate restore but currently failing with 4.0
-        # pre-release
+        retryer = tenacity.Retrying(
+            wait=tenacity.wait_exponential(multiplier=1, max=30),
+            stop=tenacity.stop_after_delay(720),
+            reraise=True,
+        )
+
+        retryer(
+            _resource_reaches_status,
+            self.trilio_wlm_unit,
+            self.auth_args,
+            self.RESTORE_STATUS_CMD,
+            restore_id,
+            "available",
+        )
+
+        return restore_id
 
 
 class TrilioBaseTest(test_utils.OpenStackBaseTest):
@@ -310,7 +346,9 @@ class TrilioBaseTest(test_utils.OpenStackBaseTest):
         )
 
         # Trilio need direct access to ceph - OMG
-        openstack_utils.attach_volume(self.nova_client, volume.id, instance.id)
+        openstack_utils.attach_volume(
+            self.nova_client, volume.id, instance.id
+        )
 
         workloadmgrcli = WorkloadmgrCLIHelper(self.keystone_client)
 
@@ -333,7 +371,9 @@ class TrilioBaseTest(test_utils.OpenStackBaseTest):
         )
         # NOTE: Trilio leaves a snapshot in place -
         #       drop before volume deletion.
-        for volume_snapshot in self.cinder_client.volume_snapshots.list():
+        for (
+            volume_snapshot
+        ) in self.cinder_client.volume_snapshots.list():
             openstack_utils.delete_resource(
                 self.cinder_client.volume_snapshots,
                 volume_snapshot.id,
