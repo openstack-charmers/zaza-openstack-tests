@@ -85,7 +85,7 @@ class CinderCephMonTest(test_utils.OpenStackBaseTest):
         # remove the relation so that /etc/ceph/ceph.conf is removed
         logging.info("Removing ceph-mon:client <-> cinder-ceph:ceph relation")
         zaza.model.remove_relation(
-            "ceph-mon", "ceph-mon:client" "cinder-ceph:ceph")
+            "ceph-mon", "ceph-mon:client", "cinder-ceph:ceph")
         logging.info("Wait till model is idle ...")
         zaza.model.block_until_all_units_idle()
 
@@ -103,7 +103,7 @@ class CinderCephMonTest(test_utils.OpenStackBaseTest):
         # Restore cinder-ceph and ceph-mon relation to keep tests idempotent
         logging.info("Restoring ceph-mon:client <-> cinder-ceph:ceph relation")
         zaza.model.add_relation(
-            "ceph-mon", "ceph-mon:client" "cinder-ceph:ceph")
+            "ceph-mon", "ceph-mon:client", "cinder-ceph:ceph")
         logging.info("Wait till model is idle ...")
         zaza.model.block_until_all_units_idle()
         logging.info("... Done.")
