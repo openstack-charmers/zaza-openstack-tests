@@ -15,7 +15,6 @@
 """Ceph-mon Testing for cinder-ceph."""
 
 import logging
-import unittest
 
 import zaza.model
 
@@ -58,6 +57,57 @@ class CinderCephMonTest(test_utils.OpenStackBaseTest):
         for unit in units:
             run_commands(unit.name, commands)
 
+    # ported from the cinder-ceph Amulet test
+    def test_500_ceph_alternatives_cleanup(self):
+        """Check ceph alternatives removed when ceph-mon relation is broken."""
+        # Skip this test if release is less than xenial_ocata as in that case
+        # cinder HAS a relation with ceph directly and this test would fail
+        current_release = openstack_utils.get_os_release()
+        xenial_ocata = openstack_utils.get_os_release('xenial_ocata')
+        if current_release < xenial_ocata:
+            logging.info("Skipping test as release < xenial-ocata")
+            return
+
+        units = zaza.model.get_units("cinder-ceph",
+                                     model_name=self.model_name)
+
+        # check each unit prior to breaking relation
+        for unit in units:
+            dir_list = directory_listing(unit.name, "/etc/ceph")
+            if 'ceph.conf' in dir_list:
+                logging.debug(
+                    "/etc/ceph/ceph.conf exists BEFORE relation-broken")
+            else:
+                raise zaza_exceptions.CephGenericError(
+                    "unit: {} - /etc/ceph/ceph.conf does not exist "
+                    "BEFORE relation-broken".format(unit.name))
+
+        # remove the relation so that /etc/ceph/ceph.conf is removed
+        logging.info("Removing ceph-mon:client <-> cinder-ceph:ceph relation")
+        zaza.model.remove_relation(
+            "ceph-mon", "ceph-mon:client" "cinder-ceph:ceph")
+        logging.info("Wait till model is idle ...")
+        zaza.model.block_until_all_units_idle()
+
+        # check each unit after to breaking relation
+        for unit in units:
+            dir_list = directory_listing(unit.name, "/etc/ceph")
+            if 'ceph.conf' not in dir_list:
+                logging.debug(
+                    "/etc/ceph/ceph.conf removed AFTER relation-broken")
+            else:
+                raise zaza_exceptions.CephGenericError(
+                    "unit: {} - /etc/ceph/ceph.conf still exists "
+                    "AFTER relation-broken".format(unit.name))
+
+        # Restore cinder-ceph and ceph-mon relation to keep tests idempotent
+        logging.info("Restoring ceph-mon:client <-> cinder-ceph:ceph relation")
+        zaza.model.add_relation(
+            "ceph-mon", "ceph-mon:client" "cinder-ceph:ceph")
+        logging.info("Wait till model is idle ...")
+        zaza.model.block_until_all_units_idle()
+        logging.info("... Done.")
+
 
 def run_commands(unit_name, commands):
     """Run commands on unit.
@@ -76,3 +126,17 @@ def run_commands(unit_name, commands):
                           .format(unit_name, cmd, str(e)))
     if errors:
         raise zaza_exceptions.CephGenericError("\n".join(errors))
+
+
+def directory_listing(unit_name, directory):
+    """Return a list of files/directories from a directory on a unit.
+
+    :param unit_name: the unit to fetch the directory listing from
+    :type unit_name: str
+    :param directory: the directory to fetch the listing from
+    :type directory: str
+    :returns: A listing using "ls -1" on the unit
+    :rtype: List[str]
+    """
+    result = zaza.model.run_on_unit(unit_name, "ls -1 {}".format(directory))
+    return result['Stdout'].splitlines()
