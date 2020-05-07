@@ -430,6 +430,8 @@ class BasePolicydSpecialization(PolicydTest,
         # now do the policyd override.
         logging.info("Doing policyd override with: {}".format(self._rule))
         self._set_policy_with(self._rule)
+        zaza_model.block_until_wl_status_info_starts_with(
+            self.application_name, "PO:")
         zaza_model.block_until_all_units_idle()
 
         # now make sure the operation fails
