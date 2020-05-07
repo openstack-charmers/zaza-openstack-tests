@@ -22,7 +22,7 @@ import zaza.openstack.utilities.openstack as openstack_utils
 
 
 class BarbicanTest(test_utils.OpenStackBaseTest):
-    """Run nova-compute specific tests."""
+    """Run barbican specific tests."""
 
     _SERVICES = ['apache2', 'barbican-worker']
 
