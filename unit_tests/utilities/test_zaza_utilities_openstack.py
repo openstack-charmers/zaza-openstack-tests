@@ -738,7 +738,8 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 'bob',
                 '10.0.0.10',
                 'myvm',
-                password='reallyhardpassord')
+                password='reallyhardpassord',
+                retry=False)
         paramiko_mock.connect.assert_called_once_with(
             '10.0.0.10',
             password='reallyhardpassord',

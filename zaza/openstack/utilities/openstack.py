@@ -2300,7 +2300,7 @@ def ping_response(ip):
                    check=True)
 
 
-def ssh_test(username, ip, vm_name, password=None, privkey=None):
+def ssh_test(username, ip, vm_name, password=None, privkey=None, retry=True):
     """SSH to given ip using supplied credentials.
 
     :param username: Username to connect with
@@ -2315,6 +2315,9 @@ def ssh_test(username, ip, vm_name, password=None, privkey=None):
     :param privkey: Private key to authenticate with. If a password is
                     supplied it is used rather than the private key.
     :type privkey: str
+    :param retry: If True, retry a few times if an exception is raised in the
+                  process, e.g. on connection failure.
+    :type retry: boolean
     :raises: exceptions.SSHFailed
     """
     def verify(stdin, stdout, stderr):
@@ -2328,8 +2331,18 @@ def ssh_test(username, ip, vm_name, password=None, privkey=None):
                                                               vm_name))
             raise exceptions.SSHFailed()
 
-    ssh_command(username, ip, vm_name, 'uname -n',
-                password=password, privkey=privkey, verify=verify)
+    # NOTE(lourot): paramiko.SSHClient().connect() calls read_all() which can
+    # raise an EOFError, see
+    # * https://docs.paramiko.org/en/stable/api/packet.html
+    # * https://github.com/paramiko/paramiko/issues/925
+    # So retrying a few times makes sense.
+    for attempt in tenacity.Retrying(
+            stop=tenacity.stop_after_attempt(3 if retry else 1),
+            wait=tenacity.wait_exponential(multiplier=1, min=2, max=10),
+            reraise=True):
+        with attempt:
+            ssh_command(username, ip, vm_name, 'uname -n',
+                        password=password, privkey=privkey, verify=verify)
 
 
 def ssh_command(username,

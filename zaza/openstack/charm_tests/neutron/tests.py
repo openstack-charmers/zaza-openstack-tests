@@ -712,7 +712,6 @@ class NeutronNetworkingTest(unittest.TestCase):
         openstack_utils.ssh_command(
             username, address, 'instance', 'ping -c 1 192.168.0.1',
             password=password, privkey=privkey, verify=verify)
-        pass
 
 
 def floating_ips_from_instance(instance):
