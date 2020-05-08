@@ -230,4 +230,8 @@ PACKAGE_CODENAMES = {
         ('9', 'train'),
         ('10', 'ussuri'),
     ]),
+    'ovn-common': OrderedDict([
+        ('2', 'train'),
+        ('20', 'ussuri'),
+    ]),
 }
