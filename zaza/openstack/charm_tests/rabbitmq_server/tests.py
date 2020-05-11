@@ -87,6 +87,9 @@ class RmqTests(test_utils.OpenStackBaseTest):
 
             for check_unit in units:
                 check_unit_name = check_unit.entity_id
+                if dest_unit_name == check_unit_name:
+                    logging.info("Skipping check for this unit to itself.")
+                    continue
                 check_unit_host = check_unit.public_address
                 check_unit_host_name = host_names[check_unit_name]
 
@@ -95,20 +98,20 @@ class RmqTests(test_utils.OpenStackBaseTest):
                                                       dest_unit_host,
                                                       amqp_msg_stamp)).upper()
                 # Publish amqp message
-                logging.debug('Publish message to: {} '
-                              '({} {})'.format(dest_unit_host,
-                                               dest_unit_name,
-                                               dest_unit_host_name))
+                logging.info('Publish message to: {} '
+                             '({} {})'.format(dest_unit_host,
+                                              dest_unit_name,
+                                              dest_unit_host_name))
 
                 rmq_utils.publish_amqp_message_by_unit(dest_unit,
                                                        amqp_msg, ssl=ssl,
                                                        port=port)
 
                 # Get amqp message
-                logging.debug('Get message from:   {} '
-                              '({} {})'.format(check_unit_host,
-                                               check_unit_name,
-                                               check_unit_host_name))
+                logging.info('Get message from:   {} '
+                             '({} {})'.format(check_unit_host,
+                                              check_unit_name,
+                                              check_unit_host_name))
 
                 amqp_msg_rcvd = self._retry_get_amqp_message(check_unit,
                                                              ssl=ssl,
@@ -116,8 +119,8 @@ class RmqTests(test_utils.OpenStackBaseTest):
 
                 # Validate amqp message content
                 if amqp_msg == amqp_msg_rcvd:
-                    logging.debug('Message {} received '
-                                  'OK.'.format(amqp_msg_counter))
+                    logging.info('Message {} received '
+                                 'OK.'.format(amqp_msg_counter))
                 else:
                     logging.error('Expected: {}'.format(amqp_msg))
                     logging.error('Actual:   {}'.format(amqp_msg_rcvd))
@@ -131,8 +134,8 @@ class RmqTests(test_utils.OpenStackBaseTest):
 
     def test_400_rmq_cluster_running_nodes(self):
         """Verify cluster status shows every cluster node as running member."""
-        logging.debug('Checking that all units are in cluster_status '
-                      'running nodes...')
+        logging.info('Checking that all units are in cluster_status '
+                     'running nodes...')
 
         units = zaza.model.get_units(self.application_name)
 
@@ -148,8 +151,8 @@ class RmqTests(test_utils.OpenStackBaseTest):
         unit for messages. Uses Standard amqp tcp port, no ssl.
 
         """
-        logging.debug('Checking amqp message publish/get on all units '
-                      '(ssl off)...')
+        logging.info('Checking amqp message publish/get on all units '
+                     '(ssl off)...')
 
         units = zaza.model.get_units(self.application_name)
         self._test_rmq_amqp_messages_all_units(units, ssl=False)
@@ -170,34 +173,11 @@ class RmqTests(test_utils.OpenStackBaseTest):
             logging.info('Skipping SSL tests due to client'
                          ' compatibility issues')
             return
-        logging.debug('Checking amqp message publish/get on all units '
-                      '(ssl on)...')
+        logging.info('Checking amqp message publish/get on all units '
+                     '(ssl on)...')
 
         self._test_rmq_amqp_messages_all_units(units,
                                                ssl=True, port=5671)
-        logging.info('OK')
-
-    def test_410_rmq_amqp_messages_all_units_ssl_alt_port(self):
-        """Send (and check) amqp messages to every rmq unit (alt ssl port).
-
-        Send amqp messages with ssl on, to every rmq unit and check
-        every rmq unit for messages.  Custom ssl tcp port.
-
-        """
-        units = zaza.model.get_units(self.application_name)
-
-        # http://pad.lv/1625044
-        if CompareHostReleases(get_series(units[0])) <= 'trusty':
-            logging.info('SKIP')
-            logging.info('Skipping SSL tests due to client'
-                         ' compatibility issues')
-            return
-        logging.debug('Checking amqp message publish/get on all units '
-                      '(ssl on)...')
-
-        units = zaza.model.get_units(self.application_name)
-        self._test_rmq_amqp_messages_all_units(units,
-                                               ssl=True, port=5999)
         logging.info('OK')
 
     @tenacity.retry(
@@ -211,14 +191,14 @@ class RmqTests(test_utils.OpenStackBaseTest):
 
     def test_412_rmq_management_plugin(self):
         """Enable and check management plugin."""
-        logging.debug('Checking tcp socket connect to management plugin '
-                      'port on all rmq units...')
+        logging.info('Checking tcp socket connect to management plugin '
+                     'port on all rmq units...')
 
         units = zaza.model.get_units(self.application_name)
         mgmt_port = 15672
 
         # Enable management plugin
-        logging.debug('Enabling management_plugin charm config option...')
+        logging.info('Enabling management_plugin charm config option...')
         config = {'management_plugin': 'True'}
         zaza.model.set_application_config('rabbitmq-server', config)
         rmq_utils.wait_for_cluster()
@@ -227,10 +207,10 @@ class RmqTests(test_utils.OpenStackBaseTest):
         ret = self._retry_port_knock_units(units, mgmt_port)
 
         self.assertIsNone(ret, msg=ret)
-        logging.debug('Connect to all units (OK)')
+        logging.info('Connect to all units (OK)')
 
         # Disable management plugin
-        logging.debug('Disabling management_plugin charm config option...')
+        logging.info('Disabling management_plugin charm config option...')
         config = {'management_plugin': 'False'}
         zaza.model.set_application_config('rabbitmq-server', config)
         rmq_utils.wait_for_cluster()
@@ -259,21 +239,21 @@ class RmqTests(test_utils.OpenStackBaseTest):
         host_names = generic_utils.get_unit_hostnames(units)
 
         # check_rabbitmq monitor
-        logging.debug('Checking nrpe check_rabbitmq on units...')
+        logging.info('Checking nrpe check_rabbitmq on units...')
         cmds = ['egrep -oh /usr/local.* /etc/nagios/nrpe.d/'
                 'check_rabbitmq.cfg']
         ret = self._retry_check_commands_on_units(cmds, units)
         self.assertIsNone(ret, msg=ret)
 
         # check_rabbitmq_queue monitor
-        logging.debug('Checking nrpe check_rabbitmq_queue on units...')
+        logging.info('Checking nrpe check_rabbitmq_queue on units...')
         cmds = ['egrep -oh /usr/local.* /etc/nagios/nrpe.d/'
                 'check_rabbitmq_queue.cfg']
         ret = self._retry_check_commands_on_units(cmds, units)
         self.assertIsNone(ret, msg=ret)
 
         # check dat file existence
-        logging.debug('Checking nrpe dat file existence on units...')
+        logging.info('Checking nrpe dat file existence on units...')
         for u in units:
             unit_host_name = host_names[u.entity_id]
 
@@ -291,7 +271,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
 
     def test_910_pause_and_resume(self):
         """The services can be paused and resumed."""
-        logging.debug('Checking pause and resume actions...')
+        logging.info('Checking pause and resume actions...')
 
         unit = zaza.model.get_units(self.application_name)[0]
         assert unit.workload_status == "active"
@@ -307,21 +287,21 @@ class RmqTests(test_utils.OpenStackBaseTest):
         assert unit.workload_status == "active"
 
         rmq_utils.wait_for_cluster()
-        logging.debug('OK')
+        logging.info('OK')
 
     def test_911_cluster_status(self):
         """Test rabbitmqctl cluster_status action can be returned."""
-        logging.debug('Checking cluster status action...')
+        logging.info('Checking cluster status action...')
 
         unit = zaza.model.get_units(self.application_name)[0]
         action = zaza.model.run_action(unit.entity_id, "cluster-status")
         self.assertIsInstance(action, juju.action.Action)
 
-        logging.debug('OK')
+        logging.info('OK')
 
     def test_912_check_queues(self):
         """Test rabbitmqctl check_queues action can be returned."""
-        logging.debug('Checking cluster status action...')
+        logging.info('Checking cluster status action...')
 
         unit = zaza.model.get_units(self.application_name)[0]
         action = zaza.model.run_action(unit.entity_id, "check-queues")
@@ -329,7 +309,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
 
     def test_913_list_unconsumed_queues(self):
         """Test rabbitmqctl list-unconsumed-queues action can be returned."""
-        logging.debug('Checking list-unconsumed-queues action...')
+        logging.info('Checking list-unconsumed-queues action...')
 
         unit = zaza.model.get_units(self.application_name)[0]
         self._test_rmq_amqp_messages_all_units([unit])
@@ -354,7 +334,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
         # should have already been consumed.
         assert queue_data['messages'] == 0, 'Found unexpected message count.'
 
-        logging.debug('OK')
+        logging.info('OK')
 
     @tenacity.retry(
         retry=tenacity.retry_if_result(lambda errors: bool(errors)),
@@ -370,8 +350,8 @@ class RmqTests(test_utils.OpenStackBaseTest):
         RabbitMQ cluster on removal
 
         """
-        logging.debug('Checking that units correctly clean up after '
-                      'themselves on unit removal...')
+        logging.info('Checking that units correctly clean up after '
+                     'themselves on unit removal...')
         config = {'min-cluster-size': '2'}
         zaza.model.set_application_config('rabbitmq-server', config)
         rmq_utils.wait_for_cluster()
@@ -397,4 +377,4 @@ class RmqTests(test_utils.OpenStackBaseTest):
                 errors.append(e)
 
         self.assertFalse(errors, msg=errors)
-        logging.debug('OK')
+        logging.info('OK')
