@@ -212,11 +212,11 @@ async def parallel_series_upgrade(
         for unit in status["units"]
     ]
     await asyncio.gather(*app_idle)
+    await prepare_series_upgrade(leader_machine, to_series=to_series)
     prepare_group = [
         prepare_series_upgrade(machine, to_series=to_series)
         for machine in machines]
     await asyncio.gather(*prepare_group)
-    await prepare_series_upgrade(leader_machine, to_series=to_series)
     if leader_machine not in completed_machines:
         machines.append(leader_machine)
     upgrade_group = [
