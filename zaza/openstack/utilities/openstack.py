@@ -108,6 +108,10 @@ CHARM_TYPES = {
         'pkg': 'designate-common',
         'origin_setting': 'openstack-origin'
     },
+    'ovn-central': {
+        'pkg': 'ovn-common',
+        'origin_setting': 'source'
+    },
 }
 
 # Older tests use the order the services appear in the list to imply
@@ -126,6 +130,7 @@ UPGRADE_SERVICES = [
     {'name': 'nova-compute', 'type': CHARM_TYPES['nova']},
     {'name': 'openstack-dashboard',
      'type': CHARM_TYPES['openstack-dashboard']},
+    {'name': 'ovn-central', 'type': CHARM_TYPES['ovn-central']},
 ]
 
 
