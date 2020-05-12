@@ -190,7 +190,7 @@ def series_upgrade_non_leaders_first(
             completed_machines.append(machine)
         else:
             logging.info("Skipping unit: {}. Machine: {} already upgraded. "
-                         .format(unit, machine, application))
+                         .format(unit, machine))
             model.block_until_all_units_idle()
 
     # Series upgrade the leader
@@ -206,7 +206,7 @@ def series_upgrade_non_leaders_first(
         completed_machines.append(machine)
     else:
         logging.info("Skipping unit: {}. Machine: {} already upgraded."
-                     .format(unit, machine, application))
+                     .format(unit, machine))
         model.block_until_all_units_idle()
 
 
@@ -295,7 +295,7 @@ async def async_series_upgrade_non_leaders_first(
             completed_machines.append(machine)
         else:
             logging.info("Skipping unit: {}. Machine: {} already upgraded. "
-                         .format(unit, machine, application))
+                         .format(unit, machine))
             await model.async_block_until_all_units_idle()
 
     # Series upgrade the leader
@@ -312,7 +312,7 @@ async def async_series_upgrade_non_leaders_first(
         completed_machines.append(machine)
     else:
         logging.info("Skipping unit: {}. Machine: {} already upgraded."
-                     .format(unit, machine, application))
+                     .format(unit, machine))
         await model.async_block_until_all_units_idle()
 
 

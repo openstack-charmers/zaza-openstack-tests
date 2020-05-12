@@ -125,6 +125,5 @@ packages:
 
         openstack_utils.ssh_command(
             username, fip_2, 'instance-2',
-            'sudo cat /mnt/ceph/test'.format(
-                mount_path),
+            'sudo cat /mnt/ceph/test',
             password=password, privkey=privkey, verify=verify)
