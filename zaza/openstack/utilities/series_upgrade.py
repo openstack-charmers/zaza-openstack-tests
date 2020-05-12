@@ -112,9 +112,11 @@ def series_upgrade_non_leaders_first(
     to_series="xenial",
     origin='openstack-origin',
     completed_machines=[],
-    post_upgrade_functions=None,
     pause_non_leader_primary=False,
-    pause_non_leader_subordinate=False
+    pause_non_leader_subordinate=False,
+    files=None,
+    workaround_script=None,
+    post_upgrade_functions=None
 ):
     """Series upgrade non leaders first.
 
@@ -141,6 +143,10 @@ def series_upgrade_non_leaders_first(
                                          paused
     :type pause_non_leader_subordinate: bool
     :param from_series: The series from which to upgrade
+    :param files: Workaround files to scp to unit under upgrade
+    :type files: list
+    :param workaround_script: Workaround script to run during series upgrade
+    :type workaround_script: str
     :returns: None
     :rtype: None
     """
@@ -184,7 +190,7 @@ def series_upgrade_non_leaders_first(
             completed_machines.append(machine)
         else:
             logging.info("Skipping unit: {}. Machine: {} already upgraded. "
-                         .format(unit, machine, application))
+                         .format(unit, machine))
             model.block_until_all_units_idle()
 
     # Series upgrade the leader
@@ -194,11 +200,13 @@ def series_upgrade_non_leaders_first(
         series_upgrade(leader, machine,
                        from_series=from_series, to_series=to_series,
                        origin=origin,
+                       workaround_script=workaround_script,
+                       files=files,
                        post_upgrade_functions=post_upgrade_functions)
         completed_machines.append(machine)
     else:
         logging.info("Skipping unit: {}. Machine: {} already upgraded."
-                     .format(unit, machine, application))
+                     .format(unit, machine))
         model.block_until_all_units_idle()
 
 
@@ -208,9 +216,11 @@ async def async_series_upgrade_non_leaders_first(
     to_series="xenial",
     origin='openstack-origin',
     completed_machines=[],
-    post_upgrade_functions=None,
     pause_non_leader_primary=False,
-    pause_non_leader_subordinate=False
+    pause_non_leader_subordinate=False,
+    files=None,
+    workaround_script=None,
+    post_upgrade_functions=None
 ):
     """Series upgrade non leaders first.
 
@@ -237,6 +247,10 @@ async def async_series_upgrade_non_leaders_first(
                                          paused
     :type pause_non_leader_subordinate: bool
     :param from_series: The series from which to upgrade
+    :param files: Workaround files to scp to unit under upgrade
+    :type files: list
+    :param workaround_script: Workaround script to run during series upgrade
+    :type workaround_script: str
     :returns: None
     :rtype: None
     """
@@ -281,7 +295,7 @@ async def async_series_upgrade_non_leaders_first(
             completed_machines.append(machine)
         else:
             logging.info("Skipping unit: {}. Machine: {} already upgraded. "
-                         .format(unit, machine, application))
+                         .format(unit, machine))
             await model.async_block_until_all_units_idle()
 
     # Series upgrade the leader
@@ -292,11 +306,13 @@ async def async_series_upgrade_non_leaders_first(
             leader, machine,
             from_series=from_series, to_series=to_series,
             origin=origin,
+            workaround_script=workaround_script,
+            files=files,
             post_upgrade_functions=post_upgrade_functions)
         completed_machines.append(machine)
     else:
         logging.info("Skipping unit: {}. Machine: {} already upgraded."
-                     .format(unit, machine, application))
+                     .format(unit, machine))
         await model.async_block_until_all_units_idle()
 
 
