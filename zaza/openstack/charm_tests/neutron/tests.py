@@ -113,6 +113,10 @@ class NeutronGatewayTest(NeutronPluginApiSharedTests):
         super(NeutronGatewayTest, cls).setUpClass(cls)
         cls.services = cls._get_services()
 
+        # set up clients
+        cls.neutron_client = (
+            openstack_utils.get_neutron_session_client(cls.keystone_session))
+
     _APP_NAME = 'neutron-gateway'
 
     def test_401_enable_qos(self):
@@ -128,7 +132,8 @@ class NeutronGatewayTest(NeutronPluginApiSharedTests):
 
                 self._validate_openvswitch_agent_qos()
 
-    @tenacity.retry(wait=tenacity.wait_exponential(min=5, max=60))
+    @tenacity.retry(wait=tenacity.wait_exponential(min=5, max=60),
+                    reraise=True, stop=tenacity.stop_after_attempt(8))
     def _validate_openvswitch_agent_qos(self):
         """Validate that the qos extension is enabled in the ovs agent."""
         # obtain the dhcp agent to identify the neutron-gateway host
