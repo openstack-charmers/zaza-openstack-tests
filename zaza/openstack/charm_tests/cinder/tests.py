@@ -126,12 +126,18 @@ class CinderTests(test_utils.OpenStackBaseTest):
 
     def test_105_volume_create_from_img(self):
         """Test creating a volume from an image."""
+        logging.debug("finding image {} ..."
+                      .format(glance_setup.LTS_IMAGE_NAME)
         image = self.nova_client.glance.find_image(
             glance_setup.LTS_IMAGE_NAME)
+        logging.debug("using cinder_client to create volume from image {}"
+                      .format(image.id))
         vol_img = self.cinder_client.volumes.create(
             name='{}-105-vol-from-img'.format(self.RESOURCE_PREFIX),
             size=3,
             imageRef=image.id)
+        logging.debug("now waiting for volume {} to reach available"
+                      .format(vol_img.id))
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_img.id,
