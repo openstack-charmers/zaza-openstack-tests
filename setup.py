@@ -31,7 +31,7 @@ install_require = [
     'cryptography',
     'hvac<0.7.0',
     'jinja2',
-    'juju',
+    'juju<2.8.0',
     'juju-wait',
     'lxml',
     'PyYAML',
