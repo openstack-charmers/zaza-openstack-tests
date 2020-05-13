@@ -127,7 +127,7 @@ class CinderTests(test_utils.OpenStackBaseTest):
     def test_105_volume_create_from_img(self):
         """Test creating a volume from an image."""
         logging.debug("finding image {} ..."
-                      .format(glance_setup.LTS_IMAGE_NAME)
+                      .format(glance_setup.LTS_IMAGE_NAME))
         image = self.nova_client.glance.find_image(
             glance_setup.LTS_IMAGE_NAME)
         logging.debug("using cinder_client to create volume from image {}"
