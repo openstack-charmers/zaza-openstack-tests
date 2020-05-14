@@ -86,6 +86,7 @@ class CinderCephMonTest(test_utils.OpenStackBaseTest):
         logging.info("Removing ceph-mon:client <-> cinder-ceph:ceph relation")
         zaza.model.remove_relation(
             "ceph-mon", "ceph-mon:client", "cinder-ceph:ceph")
+        zaza.model.wait_for_agent_status()
         logging.info("Wait till model is idle ...")
         zaza.model.block_until_all_units_idle()
 
@@ -104,6 +105,7 @@ class CinderCephMonTest(test_utils.OpenStackBaseTest):
         logging.info("Restoring ceph-mon:client <-> cinder-ceph:ceph relation")
         zaza.model.add_relation(
             "ceph-mon", "ceph-mon:client", "cinder-ceph:ceph")
+        zaza.model.wait_for_agent_status()
         logging.info("Wait till model is idle ...")
         zaza.model.block_until_all_units_idle()
         logging.info("... Done.")
