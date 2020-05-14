@@ -75,6 +75,23 @@ class MySQLBaseTest(test_utils.OpenStackBaseTest):
 class MySQLCommonTests(MySQLBaseTest):
     """Common mysql charm tests."""
 
+    def test_110_mysqldump(self):
+        """Backup mysql.
+
+        Run the mysqldump action.
+        """
+        _db = "keystone"
+        _file_key = "mysqldump-file"
+        logging.info("Execute mysqldump action")
+        action = zaza.model.run_action_on_leader(
+            self.application,
+            "mysqldump",
+            action_params={"databases": _db})
+        _results = action.data["results"]
+        assert _db in _results[_file_key], (
+            "Mysqldump action failed: {}".format(action.data))
+        logging.info("Passed mysqldump action test.")
+
     def test_910_restart_on_config_change(self):
         """Checking restart happens on config change.
 
