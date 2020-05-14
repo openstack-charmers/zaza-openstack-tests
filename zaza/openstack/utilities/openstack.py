@@ -72,7 +72,9 @@ CIRROS_RELEASE_URL = 'http://download.cirros-cloud.net/version/released'
 CIRROS_IMAGE_URL = 'http://download.cirros-cloud.net'
 UBUNTU_IMAGE_URLS = {
     'bionic': ('http://cloud-images.ubuntu.com/{release}/current/'
-               '{release}-server-cloudimg-{arch}.img')
+               '{release}-server-cloudimg-{arch}.img'),
+    'focal': ('http://cloud-images.ubuntu.com/{release}/current/'
+              '{release}-server-cloudimg-{arch}.img'),
 }
 
 CHARM_TYPES = {
