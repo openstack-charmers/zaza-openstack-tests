@@ -76,7 +76,9 @@ class RmqTests(test_utils.OpenStackBaseTest):
             rmq_utils.configure_ssl_off(units)
 
         # Publish and get amqp messages in all possible unit combinations.
-        # Qty of checks == (qty of units) ^ 2
+        # Qty of checks == qty_of_units * (qty_of_units - 1)
+        assert len(units) >= 2, 'Test is useful only with 2 units or more.'
+
         amqp_msg_counter = 1
         host_names = generic_utils.get_unit_hostnames(units)
 
@@ -311,8 +313,9 @@ class RmqTests(test_utils.OpenStackBaseTest):
         """Test rabbitmqctl list-unconsumed-queues action can be returned."""
         logging.info('Checking list-unconsumed-queues action...')
 
-        unit = zaza.model.get_units(self.application_name)[0]
-        self._test_rmq_amqp_messages_all_units([unit])
+        units = zaza.model.get_units(self.application_name)
+        self._test_rmq_amqp_messages_all_units(units)
+        unit = units[0]
         action = zaza.model.run_action(unit.entity_id,
                                        'list-unconsumed-queues')
         self.assertIsInstance(action, juju.action.Action)
@@ -332,7 +335,15 @@ class RmqTests(test_utils.OpenStackBaseTest):
         # Since we just reused _test_rmq_amqp_messages_all_units, we should
         # have created the queue if it didn't already exist, but all messages
         # should have already been consumed.
-        assert queue_data['messages'] == 0, 'Found unexpected message count.'
+        if queue_data['messages'] != 0:
+            logging.error(
+                '{} has {} remaining messages in {} instead of 0.'.format(
+                    unit.entity_id, queue_data['messages'],
+                    queue_data['name']))
+            if queue_data['messages'] >= 1:
+                logging.error('One message is: {}'.format(
+                    self._retry_get_amqp_message(unit)))
+            assert False, 'Found unexpected message count.'
 
         logging.info('OK')
 
