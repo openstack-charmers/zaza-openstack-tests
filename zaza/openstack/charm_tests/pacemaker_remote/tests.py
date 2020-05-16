@@ -26,5 +26,8 @@ class PacemakerRemoteTest(unittest.TestCase):
 
     def test_check_nodes_online(self):
         """Test that all nodes are online."""
+        zaza.openstack.configure.hacluster.remove_node(
+            'api',
+            'node1')
         self.assertTrue(
             zaza.openstack.configure.hacluster.check_all_nodes_online('api'))
