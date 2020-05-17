@@ -180,6 +180,12 @@ class NovaGuestRestartFailed(Exception):
     pass
 
 
+class NovaGuestNoPingResponse(Exception):
+    """Nova guest failed to respond to pings."""
+
+    pass
+
+
 class PolicydError(Exception):
     """Policyd override failed."""
 
