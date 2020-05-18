@@ -13,6 +13,7 @@
 # limitations under the License.
 
 """Code for configuring tempest."""
+
 import urllib.parse
 import os
 import shutil
@@ -43,6 +44,13 @@ TEMPEST_CIRROS_ALT_IMAGE_NAME = 'cirros_alt'
 
 
 def get_app_access_ip(application_name):
+    """Get the application's access IP
+
+    :param application_name: Name of application
+    :type application_name: str
+    :returns: Application's access IP
+    :rtype: str
+    """
     try:
         app_config = zaza.model.get_application_config(application_name)
     except KeyError:
@@ -57,12 +65,28 @@ def get_app_access_ip(application_name):
 
 
 def add_application_ips(ctxt):
+    """Add application access IPs to context
+
+    :param ctxt: Context dictionary
+    :type ctxt: dict
+    :returns: None
+    :rtype: None
+    """
     ctxt['keystone'] = get_app_access_ip('keystone')
     ctxt['dashboard'] = get_app_access_ip('openstack-dashboard')
     ctxt['ncc'] = get_app_access_ip('nova-cloud-controller')
 
 
 def add_nova_config(ctxt, keystone_session):
+    """Add nova config to context
+
+    :param ctxt: Context dictionary
+    :type ctxt: dict
+    :returns keystone_session: keystoneauth1.session.Session object
+    :type: keystoneauth1.session.Session
+    :returns: None
+    :rtype: None
+    """
     nova_client = openstack_utils.get_nova_session_client(
         keystone_session)
     for flavor in nova_client.flavors.list():
@@ -73,6 +97,15 @@ def add_nova_config(ctxt, keystone_session):
 
 
 def add_neutron_config(ctxt, keystone_session):
+    """Add neutron config to context
+
+    :param ctxt: Context dictionary
+    :type ctxt: dict
+    :returns keystone_session: keystoneauth1.session.Session object
+    :type: keystoneauth1.session.Session
+    :returns: None
+    :rtype: None
+    """
     neutron_client = openstack_utils.get_neutron_session_client(
         keystone_session)
     for net in neutron_client.list_networks()['networks']:
@@ -86,6 +119,15 @@ def add_neutron_config(ctxt, keystone_session):
 
 
 def add_glance_config(ctxt, keystone_session):
+    """Add glance config to context
+
+    :param ctxt: Context dictionary
+    :type ctxt: dict
+    :returns keystone_session: keystoneauth1.session.Session object
+    :type: keystoneauth1.session.Session
+    :returns: None
+    :rtype: None
+    """
     glance_client = openstack_utils.get_glance_session_client(
         keystone_session)
     image = openstack_utils.get_images_by_name(
@@ -99,6 +141,15 @@ def add_glance_config(ctxt, keystone_session):
 
 
 def add_cinder_config(ctxt, keystone_session):
+    """Add cinder config to context
+
+    :param ctxt: Context dictionary
+    :type ctxt: dict
+    :returns keystone_session: keystoneauth1.session.Session object
+    :type: keystoneauth1.session.Session
+    :returns: None
+    :rtype: None
+    """
     volume_types = ['volumev2', 'volumev3']
     keystone_client = openstack_utils.get_keystone_session_client(
         keystone_session)
@@ -110,6 +161,15 @@ def add_cinder_config(ctxt, keystone_session):
 
 
 def add_keystone_config(ctxt, keystone_session):
+    """Add keystone config to context
+
+    :param ctxt: Context dictionary
+    :type ctxt: dict
+    :returns keystone_session: keystoneauth1.session.Session object
+    :type: keystoneauth1.session.Session
+    :returns: None
+    :rtype: None
+    """
     keystone_client = openstack_utils.get_keystone_session_client(
         keystone_session)
     for domain in keystone_client.domains.list():
@@ -119,6 +179,13 @@ def add_keystone_config(ctxt, keystone_session):
 
 
 def add_environment_var_config(ctxt):
+    """Add environment variable config to context
+
+    :param ctxt: Context dictionary
+    :type ctxt: dict
+    :returns: None
+    :rtype: None
+    """
     deploy_env = deployment_env.get_deployment_context()
     for var in SETUP_ENV_VARS:
         value = deploy_env.get(var)
@@ -130,7 +197,14 @@ def add_environment_var_config(ctxt):
                  " test").format(', '.join(SETUP_ENV_VARS)))
 
 
-def add_access_protocol(ctxt):
+def add_auth_config(ctxt):
+    """Add authorization config to context
+
+    :param ctxt: Context dictionary
+    :type ctxt: dict
+    :returns: None
+    :rtype: None
+    """
     overcloud_auth = openstack_utils.get_overcloud_auth()
     ctxt['proto'] = urllib.parse.urlparse(overcloud_auth['OS_AUTH_URL']).scheme
     ctxt['admin_username'] = overcloud_auth['OS_USERNAME']
@@ -140,12 +214,14 @@ def add_access_protocol(ctxt):
         ctxt['admin_domain_name'] = overcloud_auth['OS_DOMAIN_NAME']
         ctxt['default_credentials_domain_name'] = overcloud_auth[
              'OS_PROJECT_DOMAIN_NAME']
-    elif overcloud_auth['API_VERSION'] == 2:
-        #ctxt['admin_tenant_name'] = overcloud_auth['OS_TENANT_NAME']
-        pass
 
 
 def get_tempest_context():
+    """Generate the tempest config context
+
+    :returns: Context dictionary
+    :rtype: dict
+    """
     keystone_session = openstack_utils.get_overcloud_keystone_session()
     ctxt = {}
     add_application_ips(ctxt)
@@ -155,16 +231,37 @@ def get_tempest_context():
     add_cinder_config(ctxt, keystone_session)
     add_keystone_config(ctxt, keystone_session)
     add_environment_var_config(ctxt)
-    add_access_protocol(ctxt)
+    add_auth_config(ctxt)
     return ctxt
 
 
-def render_tempest_config(target_file, ctxt, tempest_template):
+def render_tempest_config(target_file, ctxt, template):
+    """Render tempest config for specified config file and template
+
+    :param target_file: Name of file to render config to
+    :type target_file: str
+    :param ctxt: Context dictionary
+    :type ctxt: dict
+    :param template: Template module
+    :type template: module
+    :returns: None
+    :rtype: None
+    """
+    # TODO: switch to jinja2 and generate config based on available services
     with open(target_file, 'w') as f:
         f.write(tempest_template.file_contents.format(**ctxt))
 
 
 def setup_tempest(tempest_template, accounts_template):
+    """Initialize tempest and render tempest config
+
+    :param tempest_template: tempest.conf template
+    :type tempest_template: module
+    :param accounts_template: accounts.yaml template
+    :type accounts_template: module
+    :returns: None
+    :rtype: None
+    """
     if os.path.isdir('tempest-workspace'):
         try:
             subprocess.check_call(['tempest', 'workspace', 'remove', '--rmdir', '--name', 'tempest-workspace'])
@@ -185,20 +282,28 @@ def setup_tempest(tempest_template, accounts_template):
 
 
 def render_tempest_config_keystone_v2():
+    """Render tempest config for Keystone V2 API
+
+    :returns: None
+    :rtype: None
+    """
     setup_tempest(tempest_v2, accounts)
 
 
 def render_tempest_config_keystone_v3():
+    """Render tempest config for Keystone V3 API
+
+    :returns: None
+    :rtype: None
+    """
     setup_tempest(tempest_v3, accounts)
 
 
 def add_cirros_alt_image():
-    """Add a cirros image to the current deployment.
+    """Add cirros alternate image to overcloud
 
-    :param glance: Authenticated glanceclient
-    :type glance: glanceclient.Client
-    :param image_name: Label for the image in glance
-    :type image_name: str
+    :returns: None
+    :rtype: None
     """
     image_url = openstack_utils.find_cirros_image(arch='x86_64')
     glance_setup.add_image(
@@ -208,6 +313,11 @@ def add_cirros_alt_image():
 
 
 def add_tempest_flavors():
+    """Add tempest flavors to overcloud
+
+    :returns: None
+    :rtype: None
+    """
     keystone_session = openstack_utils.get_overcloud_keystone_session()
     nova_client = openstack_utils.get_nova_session_client(
         keystone_session)
@@ -230,6 +340,11 @@ def add_tempest_flavors():
 
 
 def add_tempest_roles():
+    """Add tempest roles overcloud
+
+    :returns: None
+    :rtype: None
+    """
     keystone_session = openstack_utils.get_overcloud_keystone_session()
     keystone_client = openstack_utils.get_keystone_session_client(
         keystone_session)
@@ -238,4 +353,3 @@ def add_tempest_roles():
             keystone_client.roles.create(role_name)
         except keystoneauth1.exceptions.http.Conflict:
             pass
-
