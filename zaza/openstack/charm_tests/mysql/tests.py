@@ -104,7 +104,7 @@ class MySQLBaseTest(test_utils.OpenStackBaseTest):
         _status = self.get_cluster_status()
         _primary_ip = _status['groupInformationSourceMember']
         if ":" in _primary_ip:
-            _primary_ip = _primary_ip[:-5]
+            _primary_ip = _primary_ip.split(':')[0]
         units = zaza.model.get_units(self.application_name)
         for unit in units:
             if _primary_ip in unit.public_address:
@@ -573,10 +573,15 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
 
         logging.info("Execute reboot-cluster-from-complete-outage "
                      "action after cold boot ...")
-        action = zaza.model.run_action_on_leader(
-            self.application,
-            "reboot-cluster-from-complete-outage",
-            action_params={})
+        # We do not know which unit has the most up to date data
+        # run reboot-cluster-from-complete-outage until we get a success.
+        for unit in zaza.model.get_units(self.application):
+            action = zaza.model.run_action(
+                unit.entity_id,
+                "reboot-cluster-from-complete-outage",
+                action_params={})
+            if action.data["results"].get("outcome"):
+                break
         assert "Success" in action.data["results"]["outcome"], (
             "Reboot cluster from complete outage action failed: {}"
             .format(action.data))
@@ -729,11 +734,8 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
         leader_unit = zaza.model.get_unit_from_name(leader)
         zaza.model.destroy_unit(self.application_name, leader)
 
-        # XXX time.sleep roundup
-        # https://github.com/openstack-charmers/zaza-openstack-tests/issues/46
-        # Without this the idle time check returns too fast, and when the next
-        # test runs we end up with a new node becoming leader.
-        time.sleep(60)
+        logging.info("Wait units are waiting ...")
+        zaza.model.block_until_unit_wl_status(nons[0], "waiting")
 
         logging.info("Wait till model is idle ...")
         zaza.model.block_until_all_units_idle()
@@ -793,11 +795,6 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
         leader, nons = self.get_leaders_and_non_leaders()
         non_leader_unit = zaza.model.get_unit_from_name(nons[0])
         zaza.model.destroy_unit(self.application_name, nons[0])
-
-        # XXX time.sleep roundup
-        # https://github.com/openstack-charmers/zaza-openstack-tests/issues/46
-        # Without this the idle time check returns too fast
-        time.sleep(60)
 
         logging.info("Wait till model is idle ...")
         zaza.model.block_until_all_units_idle()
