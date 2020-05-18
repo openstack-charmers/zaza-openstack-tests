@@ -25,6 +25,7 @@ import tempfile
 
 class TempestTest():
     """Tempest test class."""
+    test_runner = zaza.charm_lifecycle.test.DIRECT
 
     def run(self):
         """Run tempest tests as specified in tests/tests.yaml
