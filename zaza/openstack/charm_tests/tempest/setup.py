@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Code for configuring tempest."""
+"""Code for configuring and initializing tempest."""
 
 import urllib.parse
 import os
