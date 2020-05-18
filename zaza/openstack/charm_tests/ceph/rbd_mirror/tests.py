@@ -199,12 +199,14 @@ class CephRBDMirrorTest(CephRBDMirrorBase):
         glance = openstack.get_glance_session_client(session)
         cinder = openstack.get_cinder_session_client(session)
 
-        image = openstack.get_images_by_name(glance, CIRROS_IMAGE_NAME)
-        if not image:
+        images = openstack.get_images_by_name(glance, CIRROS_IMAGE_NAME)
+        if images:
+            image = images[0]
+        else:
             logging.info("Failed to find {} image, falling back to {}".format(
                 CIRROS_IMAGE_NAME,
                 LTS_IMAGE_NAME))
-            image = openstack.get_images_by_name(glance, LTS_IMAGE_NAME)
+            image = openstack.get_images_by_name(glance, LTS_IMAGE_NAME)[0]
 
         # NOTE(fnordahl): for some reason create volume from image often fails
         # when run just after deployment is finished.  We should figure out
