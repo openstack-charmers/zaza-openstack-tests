@@ -23,7 +23,9 @@ import zaza.model
 import zaza.openstack.utilities.ceph
 import zaza.openstack.utilities.openstack as openstack
 
-from zaza.openstack.charm_tests.glance.setup import LTS_IMAGE_NAME
+from zaza.openstack.charm_tests.glance.setup import (
+    LTS_IMAGE_NAME,
+    CIRROS_IMAGE_NAME)
 
 
 class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
@@ -197,7 +199,12 @@ class CephRBDMirrorTest(CephRBDMirrorBase):
         glance = openstack.get_glance_session_client(session)
         cinder = openstack.get_cinder_session_client(session)
 
-        image = next(glance.images.list(name=LTS_IMAGE_NAME))
+        image = openstack.get_images_by_name(glance, CIRROS_IMAGE_NAME)
+        if not image:
+            logging.info("Failed to find {} image, falling back to {}".format(
+                CIRROS_IMAGE_NAME,
+                LTS_IMAGE_NAME))
+            image = openstack.get_images_by_name(glance, LTS_IMAGE_NAME)
 
         # NOTE(fnordahl): for some reason create volume from image often fails
         # when run just after deployment is finished.  We should figure out
