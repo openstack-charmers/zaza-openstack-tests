@@ -23,6 +23,13 @@ import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.glance.setup as glance_setup
 
+from tenacity import (
+    RetryError,
+    Retrying,
+    stop_after_attempt,
+    wait_exponential,
+)
+
 
 class CinderTests(test_utils.OpenStackBaseTest):
     """Encapsulate Cinder tests."""
@@ -45,23 +52,27 @@ class CinderTests(test_utils.OpenStackBaseTest):
     def tearDown(cls):
         """Remove test resources."""
         logging.info('Running teardown')
-        volumes = list(cls.cinder_client.volumes.list())
-        snapped_volumes = [v for v in volumes if v.name.endswith("-from-snap")]
-        if snapped_volumes:
-            logging.info("Removing volumes from snapshot")
-            cls._remove_volumes(snapped_volumes)
-            volumes = list(cls.cinder_client.volumes.list())
+        for attempt in Retrying(
+                stop=stop_after_attempt(8),
+                wait=wait_exponential(multiplier=1, min=2, max=60)):
+            with attempt:
+                volumes = list(cls.cinder_client.volumes.list())
+                snapped_volumes = [v for v in volumes if v.name.endswith("-from-snap")]
+                if snapped_volumes:
+                    logging.info("Removing volumes from snapshot")
+                    cls._remove_volumes(snapped_volumes)
+                    volumes = list(cls.cinder_client.volumes.list())
 
-        snapshots = list(cls.cinder_client.volume_snapshots.list())
-        if snapshots:
-            logging.info("tearDown - snapshots: {}".format(
-                ", ".join(s.name for s in snapshots)))
-            cls._remove_snapshots(snapshots)
+                snapshots = list(cls.cinder_client.volume_snapshots.list())
+                if snapshots:
+                    logging.info("tearDown - snapshots: {}".format(
+                        ", ".join(s.name for s in snapshots)))
+                    cls._remove_snapshots(snapshots)
 
-        if volumes:
-            logging.info("tearDown - volumes: {}".format(
-                ", ".join(v.name for v in volumes)))
-            cls._remove_volumes(volumes)
+                if volumes:
+                    logging.info("tearDown - volumes: {}".format(
+                        ", ".join(v.name for v in volumes)))
+                    cls._remove_volumes(volumes)
 
     @classmethod
     def _remove_snapshots(cls, snapshots):
