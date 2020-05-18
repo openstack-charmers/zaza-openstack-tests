@@ -386,6 +386,7 @@ async def series_upgrade_machine(
     await run_pre_upgrade_functions(machine, pre_upgrade_functions)
     await add_confdef_file(machine)
     await async_dist_upgrade(machine)
+    await reboot(machine)
     await async_do_release_upgrade(machine)
     await remove_confdef_file(machine)
     await reboot(machine)
