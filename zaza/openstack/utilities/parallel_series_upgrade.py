@@ -600,7 +600,7 @@ async def async_do_release_upgrade(machine):
     logging.info('Upgrading ' + machine)
     do_release_upgrade_cmd = (
         'yes | sudo DEBIAN_FRONTEND=noninteractive '
-        'do-release-upgrade -f DistUpgradeViewNonInteractive')
+        'do-release-upgrade -d -f DistUpgradeViewNonInteractive')
 
     await model.async_run_on_machine(
         machine, do_release_upgrade_cmd, timeout="120m")
