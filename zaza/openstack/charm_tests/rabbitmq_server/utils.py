@@ -525,7 +525,8 @@ def check_unit_cluster_nodes(unit, unit_node_names):
     :type unit: :class:`juju.model.ModelEntity`
     :param unit_node_names: The unit node names to check against
     :type unit_node_names: List[str]
-    :returns: List containing node names of running nodes
+    :returns: A list of error messages about extra nodes observed
+        in the cluster as seen by the specified unit vs the expected list.
     :rtype: List[str]
     """
     if is_rabbitmq_version_ge_382(unit):
@@ -541,7 +542,8 @@ def _check_unit_cluster_nodes_38(unit, unit_node_names):
     :type unit: :class:`juju.model.ModelEntity`
     :param unit_node_names: The unit node names to check against
     :type unit_node_names: List[str]
-    :returns: List containing node names of running nodes
+    :returns: A list of error messages about extra nodes observed
+        in the cluster as seen by the specified unit vs the expected list.
     :rtype: List[str]
     """
     cmd = 'rabbitmqctl cluster_status --formatter=json'
@@ -558,7 +560,8 @@ def _check_unit_cluster_nodes_pre_38(unit, unit_node_names):
     :type unit: :class:`juju.model.ModelEntity`
     :param unit_node_names: The unit node names to check against
     :type unit_node_names: List[str]
-    :returns: List containing node names of running nodes
+    :returns: A list of error messages about extra nodes observed
+        in the cluster as seen by the specified unit vs the expected list.
     :rtype: List[str]
     """
     nodes = []
@@ -579,10 +582,10 @@ def _post_check_unit_cluster_nodes(unit, nodes, unit_node_names):
     errors = []
     for node in nodes:
         if node not in unit_node_names:
-            errors.append('Cluster registration check failed on {}: '
-                          '{} should not be registered with RabbitMQ '
-                          'after unit removal.\n'
-                          ''.format(unit_name, node))
+            errors.append('Cluster registration check failed: '
+                          '{} is registered in the cluster seen by {}, '
+                          'while the expected nodes are: {}'
+                          ''.format(node, unit_name, unit_node_names))
     return errors
 
 
