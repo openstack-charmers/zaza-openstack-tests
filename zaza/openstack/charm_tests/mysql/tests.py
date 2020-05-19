@@ -71,6 +71,45 @@ class MySQLBaseTest(test_utils.OpenStackBaseTest):
                 self.non_leaders.append(unit)
         return self.leader, self.non_leaders
 
+    def get_cluster_status(self):
+        """Get cluster status.
+
+        Return cluster status dict from the cluster-status action or raise
+        assertion error.
+
+        :returns: Dictionary of cluster status
+        :rtype: dict
+        """
+        logging.info("Running cluster-status action")
+        action = zaza.model.run_action_on_leader(
+            self.application,
+            "cluster-status",
+            action_params={})
+        assert action.data.get("results") is not None, (
+            "Cluster status action failed: No results: {}"
+            .format(action.data))
+        assert action.data["results"].get("cluster-status") is not None, (
+            "Cluster status action failed: No cluster-status: {}"
+            .format(action.data))
+        return json.loads(action.data["results"]["cluster-status"])
+
+    def get_rw_primary_node(self):
+        """Get RW primary node.
+
+        Return RW primary node unit.
+
+        :returns: Unit object of primary node
+        :rtype: Union[Unit, None]
+        """
+        _status = self.get_cluster_status()
+        _primary_ip = _status['groupInformationSourceMember']
+        if ":" in _primary_ip:
+            _primary_ip = _primary_ip.split(':')[0]
+        units = zaza.model.get_units(self.application_name)
+        for unit in units:
+            if _primary_ip in unit.public_address:
+                return unit
+
 
 class MySQLCommonTests(MySQLBaseTest):
     """Common mysql charm tests."""
@@ -412,14 +451,10 @@ class MySQLInnoDBClusterTests(MySQLCommonTests):
         Run the cluster-status action.
         """
         logging.info("Execute cluster-status action")
-        action = zaza.model.run_action_on_leader(
-            self.application,
-            "cluster-status",
-            action_params={})
-        cluster_status = json.loads(action.data["results"]["cluster-status"])
+        cluster_status = self.get_cluster_status()
         assert "OK" in cluster_status["defaultReplicaSet"]["status"], (
-            "Cluster status action failed: {}"
-            .format(action.data))
+            "Cluster status is not OK: {}"
+            .format(cluster_status))
         logging.info("Passed cluster-status action test.")
 
     def test_110_mysqldump(self):
@@ -538,10 +573,15 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
 
         logging.info("Execute reboot-cluster-from-complete-outage "
                      "action after cold boot ...")
-        action = zaza.model.run_action_on_leader(
-            self.application,
-            "reboot-cluster-from-complete-outage",
-            action_params={})
+        # We do not know which unit has the most up to date data
+        # run reboot-cluster-from-complete-outage until we get a success.
+        for unit in zaza.model.get_units(self.application):
+            action = zaza.model.run_action(
+                unit.entity_id,
+                "reboot-cluster-from-complete-outage",
+                action_params={})
+            if action.data["results"].get("outcome"):
+                break
         assert "Success" in action.data["results"]["outcome"], (
             "Reboot cluster from complete outage action failed: {}"
             .format(action.data))
@@ -670,3 +710,107 @@ class MySQL8MigrationTests(MySQLBaseTest):
         test_config = lifecycle_utils.get_charm_config(fatal=False)
         zaza.model.wait_for_application_states(
             states=test_config.get("target_deploy_status", {}))
+
+
+class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
+    """Percona Cluster cold start tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running mysql-innodb-cluster scale tests."""
+        super().setUpClass()
+        cls.application = "mysql-innodb-cluster"
+        cls.test_config = lifecycle_utils.get_charm_config(fatal=False)
+        cls.states = cls.test_config.get("target_deploy_status", {})
+
+    def test_800_remove_leader(self):
+        """Remove leader node.
+
+        We start with a three node cluster, remove one, down to two.
+        The cluster will be in waiting state.
+        """
+        logging.info("Scale in test: remove leader")
+        leader, nons = self.get_leaders_and_non_leaders()
+        leader_unit = zaza.model.get_unit_from_name(leader)
+        zaza.model.destroy_unit(self.application_name, leader)
+
+        logging.info("Wait units are waiting ...")
+        zaza.model.block_until_unit_wl_status(nons[0], "waiting")
+
+        logging.info("Wait till model is idle ...")
+        zaza.model.block_until_all_units_idle()
+
+        logging.info(
+            "Removing old unit from cluster: {} "
+            .format(leader_unit.public_address))
+        action = zaza.model.run_action(
+            nons[0],
+            "remove-instance",
+            action_params={
+                "address": leader_unit.public_address,
+                "force": True})
+        assert action.data.get("results") is not None, (
+            "Remove instance action failed: No results: {}"
+            .format(action.data))
+
+    def test_801_add_unit(self):
+        """Add mysql-innodb-cluster node.
+
+        We start with two node cluster in waiting, add one, back to a full
+        cluster of three.
+        """
+        logging.info("Wait till model is idle ...")
+        zaza.model.block_until_all_units_idle()
+
+        logging.info("Adding unit after removed unit ...")
+        zaza.model.add_unit(self.application_name)
+
+        logging.info("Wait for application states ...")
+        zaza.model.wait_for_application_states(states=self.states)
+
+    def test_802_add_unit(self):
+        """Add another mysql-innodb-cluster node.
+
+        We start with a three node full cluster, add another, up to a four node
+        cluster.
+        """
+        logging.info("Wait till model is idle ...")
+        zaza.model.block_until_all_units_idle()
+
+        logging.info("Adding unit after full cluster ...")
+        zaza.model.add_unit(self.application_name)
+
+        logging.info("Wait for application states ...")
+        zaza.model.wait_for_application_states(states=self.states)
+
+    def test_803_remove_fourth(self):
+        """Remove mysql-innodb-cluster node.
+
+        We start with a four node full cluster, remove one, down to a three
+        node full cluster.
+        """
+        logging.info("Wait till model is idle ...")
+        zaza.model.block_until_all_units_idle()
+
+        leader, nons = self.get_leaders_and_non_leaders()
+        non_leader_unit = zaza.model.get_unit_from_name(nons[0])
+        zaza.model.destroy_unit(self.application_name, nons[0])
+
+        logging.info("Wait till model is idle ...")
+        zaza.model.block_until_all_units_idle()
+
+        logging.info("Scale in test: back down to three")
+        zaza.model.wait_for_application_states(states=self.states)
+
+        logging.info(
+            "Removing old unit from cluster: {} "
+            .format(non_leader_unit.public_address))
+        action = zaza.model.run_action(
+            leader,
+            "remove-instance",
+            action_params={
+                "address": non_leader_unit.public_address,
+                "force": True})
+        assert action.data.get("results") is not None, (
+            "Remove instance action failed: No results: {}"
+            .format(action.data))
