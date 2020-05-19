@@ -786,7 +786,7 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
     def test_803_remove_fourth(self):
         """Remove mysql-innodb-cluster node.
 
-        We start with a four node full cluster, remove own, down to a three
+        We start with a four node full cluster, remove one, down to a three
         node full cluster.
         """
         logging.info("Wait till model is idle ...")
