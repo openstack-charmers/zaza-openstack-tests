@@ -86,11 +86,19 @@ class CinderCephMonTest(test_utils.OpenStackBaseTest):
         logging.info("Removing ceph-mon:client <-> cinder-ceph:ceph relation")
         zaza.model.remove_relation(
             "ceph-mon", "ceph-mon:client", "cinder-ceph:ceph")
-        zaza.model.wait_for_agent_status()
-        logging.info("Wait till model is idle ...")
-        zaza.model.block_until_all_units_idle()
+        # zaza.model.wait_for_agent_status()
+        logging.info("Wait till relation is removed...")
+        ceph_mon_units = zaza.model.get_units("ceph-mon",
+                                              model_name=self.model_name)
+        conditions = [
+            invert_condition(
+                does_relation_exist(
+                    u.name, "ceph-mon", "cinder-ceph", "ceph",
+                    self.model_name))
+            for u in ceph_mon_units]
+        zaza.model.block_until(*conditions)
 
-        # check each unit after to breaking relation
+        logging.info("Checking each unit after breaking relation...")
         for unit in units:
             dir_list = directory_listing(unit.name, "/etc/ceph")
             if 'ceph.conf' not in dir_list:
@@ -105,10 +113,58 @@ class CinderCephMonTest(test_utils.OpenStackBaseTest):
         logging.info("Restoring ceph-mon:client <-> cinder-ceph:ceph relation")
         zaza.model.add_relation(
             "ceph-mon", "ceph-mon:client", "cinder-ceph:ceph")
-        zaza.model.wait_for_agent_status()
+        conditions = [
+            does_relation_exist(
+                u.name, "ceph-mon", "cinder-ceph", "ceph", self.model_name)
+            for u in ceph_mon_units]
         logging.info("Wait till model is idle ...")
+        zaza.model.block_until(*conditions)
         zaza.model.block_until_all_units_idle()
         logging.info("... Done.")
+
+
+def does_relation_exist(unit_name,
+                        application_name,
+                        remote_application_name,
+                        remote_interface_name,
+                        model_name):
+    """For use in async blocking function, return True if it exists.
+
+    :param unit_name: the unit (by name) that to check on.
+    :type unit_name: str
+    :param application_name: Name of application on this side of relation
+    :type application_name: str
+    :param remote_application_name: the relation name at that unit to check for
+    :type relation_application_name: str
+    :param remote_interface_name: the interface name at that unit to check for
+    :type relation_interface_name: str
+    :param model_name: the model to check on
+    :type model_name: str
+    :returns: Corouting that returns True if the relation was found
+    :rtype: Coroutine[[], boolean]
+    """
+    async def _async_does_relation_exist_closure():
+        async with zaza.model.run_in_model(model_name) as model:
+            spec = "{}:{}".format(
+                remote_application_name, remote_interface_name)
+            for rel in model.applications[application_name].relations:
+                if rel.matches(spec):
+                    return True
+            return False
+    return _async_does_relation_exist_closure
+
+
+def invert_condition(async_condition):
+    """Invert the condition provided so it can be provided to the blocking fn.
+
+    :param async_condition: the async callable that is the test
+    :type async_condition: Callable[]
+    :returns: Corouting that returns not of the result of a the callable
+    :rtype: Coroutine[[], bool]
+    """
+    async def _async_invert_condition_closure():
+        return not(await async_condition())
+    return _async_invert_condition_closure
 
 
 def run_commands(unit_name, commands):

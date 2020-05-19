@@ -24,7 +24,6 @@ import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.glance.setup as glance_setup
 
 from tenacity import (
-    RetryError,
     Retrying,
     stop_after_attempt,
     wait_exponential,
@@ -57,7 +56,8 @@ class CinderTests(test_utils.OpenStackBaseTest):
                 wait=wait_exponential(multiplier=1, min=2, max=60)):
             with attempt:
                 volumes = list(cls.cinder_client.volumes.list())
-                snapped_volumes = [v for v in volumes if v.name.endswith("-from-snap")]
+                snapped_volumes = [v for v in volumes
+                                   if v.name.endswith("-from-snap")]
                 if snapped_volumes:
                     logging.info("Removing volumes from snapshot")
                     cls._remove_volumes(snapped_volumes)
