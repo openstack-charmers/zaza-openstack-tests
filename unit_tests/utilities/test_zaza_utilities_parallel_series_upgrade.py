@@ -451,8 +451,9 @@ class TestParallelSeriesUpgrade(AioTestCase):
             files=None,
             workaround_script=None)
         mock_async_dist_upgrade.assert_called_once_with('1')
+        mock_reboot.assert_called_with('1')
         mock_async_do_release_upgrade.assert_called_once_with('1')
-        mock_reboot.assert_called_once_with('1')
+        mock_reboot.assert_called_with('1')
         mock_async_complete_series_upgrade.assert_called_once_with('1')
         mock_remove_confdef_file.assert_called_once_with('1')
         mock_add_confdef_file.assert_called_once_with('1')
@@ -484,8 +485,9 @@ class TestParallelSeriesUpgrade(AioTestCase):
             files=None,
             workaround_script=None)
         mock_async_dist_upgrade.assert_called_once_with('1')
+        mock_reboot.assert_called_with('1')
         mock_async_do_release_upgrade.assert_called_once_with('1')
-        mock_reboot.assert_called_once_with('1')
+        mock_reboot.assert_called_with('1')
         mock_async_complete_series_upgrade.assert_called_once_with('1')
         mock_async_set_origin.assert_called_once_with(
             'app', 'openstack-origin')
@@ -556,7 +558,7 @@ class TestParallelSeriesUpgrade(AioTestCase):
         await upgrade_utils.async_do_release_upgrade('1')
         do_release_upgrade_cmd = (
             'yes | sudo DEBIAN_FRONTEND=noninteractive '
-            'do-release-upgrade -f DistUpgradeViewNonInteractive')
+            'do-release-upgrade -d -f DistUpgradeViewNonInteractive')
         self.async_run_on_machine.assert_called_once_with(
             '1', do_release_upgrade_cmd, timeout='120m'
         )

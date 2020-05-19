@@ -216,7 +216,7 @@ class TestSeriesUpgrade(ut_utils.BaseTestCase):
         self.run_via_ssh.assert_called_once_with(
             _unit,
             'DEBIAN_FRONTEND=noninteractive do-release-upgrade '
-            '-f DistUpgradeViewNonInteractive')
+            '-d -f DistUpgradeViewNonInteractive')
 
     def test_wrap_do_release_upgrade(self):
         self.patch_object(series_upgrade_utils, "do_release_upgrade")
