@@ -76,7 +76,9 @@ class RmqTests(test_utils.OpenStackBaseTest):
             rmq_utils.configure_ssl_off(units)
 
         # Publish and get amqp messages in all possible unit combinations.
-        # Qty of checks == (qty of units) ^ 2
+        # Qty of checks == qty_of_units * (qty_of_units - 1)
+        assert len(units) >= 2, 'Test is useful only with 2 units or more.'
+
         amqp_msg_counter = 1
         host_names = generic_utils.get_unit_hostnames(units)
 
@@ -311,8 +313,9 @@ class RmqTests(test_utils.OpenStackBaseTest):
         """Test rabbitmqctl list-unconsumed-queues action can be returned."""
         logging.info('Checking list-unconsumed-queues action...')
 
-        unit = zaza.model.get_units(self.application_name)[0]
-        self._test_rmq_amqp_messages_all_units([unit])
+        units = zaza.model.get_units(self.application_name)
+        self._test_rmq_amqp_messages_all_units(units)
+        unit = units[0]
         action = zaza.model.run_action(unit.entity_id,
                                        'list-unconsumed-queues')
         self.assertIsInstance(action, juju.action.Action)
@@ -332,7 +335,15 @@ class RmqTests(test_utils.OpenStackBaseTest):
         # Since we just reused _test_rmq_amqp_messages_all_units, we should
         # have created the queue if it didn't already exist, but all messages
         # should have already been consumed.
-        assert queue_data['messages'] == 0, 'Found unexpected message count.'
+        if queue_data['messages'] != 0:
+            logging.error(
+                '{} has {} remaining messages in {} instead of 0.'.format(
+                    unit.entity_id, queue_data['messages'],
+                    queue_data['name']))
+            if queue_data['messages'] >= 1:
+                logging.error('One message is: {}'.format(
+                    self._retry_get_amqp_message(unit)))
+            assert False, 'Found unexpected message count.'
 
         logging.info('OK')
 
@@ -343,11 +354,14 @@ class RmqTests(test_utils.OpenStackBaseTest):
     def _retry_check_unit_cluster_nodes(self, u, unit_node_names):
         return rmq_utils.check_unit_cluster_nodes(u, unit_node_names)
 
-    def test_921_remove_unit(self):
+    def test_921_remove_and_add_unit(self):
         """Test if unit cleans up when removed from Rmq cluster.
 
         Test if a unit correctly cleans up by removing itself from the
-        RabbitMQ cluster on removal
+        RabbitMQ cluster on removal.
+
+        Add the unit back to the cluster at the end of the test case to
+        avoid side-effects.
 
         """
         logging.info('Checking that units correctly clean up after '
@@ -356,25 +370,48 @@ class RmqTests(test_utils.OpenStackBaseTest):
         zaza.model.set_application_config('rabbitmq-server', config)
         rmq_utils.wait_for_cluster()
 
-        units = zaza.model.get_units(self.application_name)
-        removed_unit = units[-1]
-        left_units = units[:-1]
+        all_units = zaza.model.get_units(self.application_name)
+        removed_unit = all_units[-1]
+        left_units = all_units[:-1]
 
+        logging.info('Simulating unit {} removal'.format(removed_unit))
         zaza.model.run_on_unit(removed_unit.entity_id, 'hooks/stop')
+        logging.info('Waiting until unit {} reaches "waiting" state'
+                     ''.format(removed_unit))
         zaza.model.block_until_unit_wl_status(removed_unit.entity_id,
                                               "waiting")
 
-        unit_host_names = generic_utils.get_unit_hostnames(left_units)
-        unit_node_names = []
-        for unit in unit_host_names:
-            unit_node_names.append('rabbit@{}'.format(unit_host_names[unit]))
-        errors = []
+        def check_units(units):
+            unit_host_names = generic_utils.get_unit_hostnames(units)
+            unit_node_names = []
+            for unit in unit_host_names:
+                unit_node_names.append('rabbit@{}'.format(
+                    unit_host_names[unit]))
+            errors = []
 
-        for u in left_units:
-            e = self._retry_check_unit_cluster_nodes(u,
-                                                     unit_node_names)
-            if e:
-                errors.append(e)
+            for u in units:
+                e = self._retry_check_unit_cluster_nodes(u,
+                                                         unit_node_names)
+                if e:
+                    errors.append(e)
 
-        self.assertFalse(errors, msg=errors)
+            self.assertFalse(errors, msg=errors)
+
+        logging.info('Checking that all units except for {} are present'
+                     'in the cluster'.format(removed_unit))
+        check_units(left_units)
+
+        logging.info('Re-adding the removed unit {} back to the cluster'
+                     'by simulating the upgrade-charm event'
+                     ''.format(removed_unit))
+        # TODO(dmitriis): Fix the rabbitmq charm to add a proper way to add a
+        # unit back to the cluster and replace this.
+        zaza.model.run_on_unit(removed_unit.entity_id, 'hooks/upgrade-charm')
+        logging.info('Waiting until unit {} reaches "active" state'
+                     ''.format(removed_unit))
+        zaza.model.block_until_unit_wl_status(removed_unit.entity_id,
+                                              "active")
+        logging.info('Checking that all units are present in the cluster')
+        check_units(all_units)
+
         logging.info('OK')
