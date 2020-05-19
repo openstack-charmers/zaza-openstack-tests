@@ -562,6 +562,7 @@ async def reboot(machine):
     :returns: Nothing
     :rtype: None
     """
+    logging.info('Rebooting machine using init 6: {}'.format(machine))
     try:
         await model.async_run_on_machine(machine, 'sudo init 6 & exit')
         # await run_on_machine(unit, "sudo reboot && exit")

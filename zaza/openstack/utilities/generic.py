@@ -352,6 +352,7 @@ def reboot(unit_name):
     # NOTE: When used with series upgrade the agent will be down.
     # Even juju run will not work
     cmd = ['juju', 'ssh', unit_name, 'sudo', 'reboot', '&&', 'exit']
+    logging.info('Rebooting unit: {}'.format(unit_name))
     try:
         subprocess.check_call(cmd)
     except subprocess.CalledProcessError as e:
@@ -369,6 +370,7 @@ async def async_reboot(unit_name):
     """
     # NOTE: When used with series upgrade the agent will be down.
     # Even juju run will not work
+    logging.info('Rebooting unit: {}'.format(unit_name))
     await async_run_via_ssh(unit_name, "sudo reboot && exit")
 
 
