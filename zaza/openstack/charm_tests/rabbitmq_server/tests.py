@@ -18,6 +18,7 @@ import json
 import logging
 import time
 import uuid
+import unittest
 
 import juju
 import tenacity
@@ -354,6 +355,10 @@ class RmqTests(test_utils.OpenStackBaseTest):
     def _retry_check_unit_cluster_nodes(self, u, unit_node_names):
         return rmq_utils.check_unit_cluster_nodes(u, unit_node_names)
 
+    @unittest.skip(
+        "Skipping as a significant rework is required, see"
+        "https://github.com/openstack-charmers/zaza-openstack-tests/issues/290"
+    )
     def test_921_remove_and_add_unit(self):
         """Test if unit cleans up when removed from Rmq cluster.
 
