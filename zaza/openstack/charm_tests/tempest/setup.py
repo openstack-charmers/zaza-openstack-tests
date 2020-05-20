@@ -348,7 +348,7 @@ def add_tempest_roles():
     keystone_session = openstack_utils.get_overcloud_keystone_session()
     keystone_client = openstack_utils.get_keystone_session_client(
         keystone_session)
-    for role_name in ['Member', 'ResellerAdmin']:
+    for role_name in ['member', 'ResellerAdmin']:
         try:
             keystone_client.roles.create(role_name)
         except keystoneauth1.exceptions.http.Conflict:
