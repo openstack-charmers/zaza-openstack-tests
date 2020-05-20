@@ -249,7 +249,7 @@ def render_tempest_config(target_file, ctxt, template):
     """
     # TODO: switch to jinja2 and generate config based on available services
     with open(target_file, 'w') as f:
-        f.write(tempest_template.file_contents.format(**ctxt))
+        f.write(template.file_contents.format(**ctxt))
 
 
 def setup_tempest(tempest_template, accounts_template):
