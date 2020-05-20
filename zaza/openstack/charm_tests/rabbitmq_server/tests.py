@@ -354,15 +354,37 @@ class RmqTests(test_utils.OpenStackBaseTest):
     def _retry_check_unit_cluster_nodes(self, u, unit_node_names):
         return rmq_utils.check_unit_cluster_nodes(u, unit_node_names)
 
+    def _check_units_in_cluster(self, units):
+        """Check if the specified units belong to the rabbitmq cluster or not.
+
+        The check is performed from the point of view of every unit so every
+        cluster member must see every other member.
+
+        :param units: The units expected to be present in the cluster.
+        :type unit_node_names: List[:class:`juju.model.ModelEntity`]
+        :returns: A list of error messages about extra nodes observed
+            in the cluster as seen by every unit.
+        :rtype: List[str]
+        """
+        unit_host_names = generic_utils.get_unit_hostnames(units)
+        unit_node_names = []
+        for unit in unit_host_names:
+            unit_node_names.append('rabbit@{}'.format(
+                unit_host_names[unit]))
+        errors = []
+
+        for u in units:
+            e = self._retry_check_unit_cluster_nodes(u,
+                                                     unit_node_names)
+            if e:
+                errors.append(e)
+        return errors
+
     def test_921_remove_and_add_unit(self):
-        """Test if unit cleans up when removed from Rmq cluster.
+        """Test if a unit is correctly removed from the cluster.
 
-        Test if a unit correctly cleans up by removing itself from the
-        RabbitMQ cluster on removal.
-
-        Add the unit back to the cluster at the end of the test case to
-        avoid side-effects.
-
+        Adds a new unit to the cluster at the end of the test case to restore
+        the initial cluster unit count.
         """
         logging.info('Checking that units correctly clean up after '
                      'themselves on unit removal...')
@@ -374,44 +396,27 @@ class RmqTests(test_utils.OpenStackBaseTest):
         removed_unit = all_units[-1]
         left_units = all_units[:-1]
 
-        logging.info('Simulating unit {} removal'.format(removed_unit))
-        zaza.model.run_on_unit(removed_unit.entity_id, 'hooks/stop')
-        logging.info('Waiting until unit {} reaches "waiting" state'
-                     ''.format(removed_unit))
-        zaza.model.block_until_unit_wl_status(removed_unit.entity_id,
-                                              "waiting")
+        logging.info('Removing unit {}'.format(removed_unit.entity_id))
+        zaza.model.destroy_unit('rabbitmq-server', removed_unit.entity_id)
 
-        def check_units(units):
-            unit_host_names = generic_utils.get_unit_hostnames(units)
-            unit_node_names = []
-            for unit in unit_host_names:
-                unit_node_names.append('rabbit@{}'.format(
-                    unit_host_names[unit]))
-            errors = []
-
-            for u in units:
-                e = self._retry_check_unit_cluster_nodes(u,
-                                                         unit_node_names)
-                if e:
-                    errors.append(e)
-
-            self.assertFalse(errors, msg=errors)
+        logging.info("Wait until the model is idle after unit removal")
+        zaza.model.block_until_all_units_idle()
 
         logging.info('Checking that all units except for {} are present'
-                     'in the cluster'.format(removed_unit))
-        check_units(left_units)
+                     'in the cluster'.format(removed_unit.entity_id))
+        errors = self._check_units_in_cluster(left_units)
+        self.assertFalse(errors, msg=errors)
 
-        logging.info('Re-adding the removed unit {} back to the cluster'
-                     'by simulating the upgrade-charm event'
-                     ''.format(removed_unit))
-        # TODO(dmitriis): Fix the rabbitmq charm to add a proper way to add a
-        # unit back to the cluster and replace this.
-        zaza.model.run_on_unit(removed_unit.entity_id, 'hooks/upgrade-charm')
-        logging.info('Waiting until unit {} reaches "active" state'
-                     ''.format(removed_unit))
-        zaza.model.block_until_unit_wl_status(removed_unit.entity_id,
-                                              "active")
+        logging.info('Adding a new unit to the cluster to restore the previous'
+                     ' cluster unit count')
+        zaza.model.add_unit('rabbitmq-server')
+
+        logging.info("Wait until the model is idle after unit addition")
+        zaza.model.block_until_all_units_idle()
+
         logging.info('Checking that all units are present in the cluster')
-        check_units(all_units)
+        new_all_units = zaza.model.get_units(self.application_name)
+        errors = self._check_units_in_cluster(new_all_units)
+        self.assertFalse(errors, msg=errors)
 
         logging.info('OK')
