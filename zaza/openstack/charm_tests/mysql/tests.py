@@ -590,7 +590,7 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
             if "Success" in action.data["results"].get("outcome"):
                 break
             else:
-                loggging.info(action.data["results"].get("output"))
+                logging.info(action.data["results"].get("output"))
 
         assert "Success" in action.data["results"]["outcome"], (
             "Reboot cluster from complete outage action failed: {}"
