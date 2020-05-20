@@ -168,6 +168,12 @@ class CephPoolNotConfigured(Exception):
     pass
 
 
+class CephGenericError(Exception):
+    """A generic/other Ceph error occurred."""
+
+    pass
+
+
 class NovaGuestMigrationFailed(Exception):
     """Nova guest migration failed."""
 
