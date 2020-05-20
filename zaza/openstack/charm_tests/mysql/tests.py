@@ -83,6 +83,13 @@ class MySQLCommonTests(MySQLBaseTest):
         _db = "keystone"
         _file_key = "mysqldump-file"
         logging.info("Execute mysqldump action")
+        # Need to change strict mode to be able to dump database
+        if self.application_name == "percona-cluster":
+            action = zaza.model.run_action_on_leader(
+                self.application_name,
+                "set-pxc-strict-mode",
+                action_params={"mode": "MASTER"})
+
         action = zaza.model.run_action_on_leader(
             self.application,
             "mysqldump",
@@ -283,10 +290,9 @@ class PerconaClusterColdStartTest(PerconaClusterBaseTest):
         After bootstrapping a non-leader node, notify bootstrapped on the
         leader node.
         """
-        _machines = list(
+        _machines = sorted(
             juju_utils.get_machine_uuids_for_application(self.application))
         # Stop Nodes
-        _machines.sort()
         # Avoid hitting an update-status hook
         logging.debug("Wait till model is idle ...")
         zaza.model.block_until_all_units_idle()
@@ -439,23 +445,6 @@ class MySQLInnoDBClusterTests(MySQLCommonTests):
             .format(action.data))
         logging.info("Passed cluster-status action test.")
 
-    def test_110_mysqldump(self):
-        """Backup mysql.
-
-        Run the mysqldump action.
-        """
-        _db = "keystone"
-        _file_key = "mysqldump-file"
-        logging.info("Execute mysqldump action")
-        action = zaza.model.run_action_on_leader(
-            self.application,
-            "mysqldump",
-            action_params={"databases": _db})
-        _results = action.data["results"]
-        assert _db in _results[_file_key], (
-            "Mysqldump action failed: {}".format(action.data))
-        logging.info("Passed mysqldump action test.")
-
     def test_120_set_cluster_option(self):
         """Set cluster option.
 
@@ -504,10 +493,9 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
 
         After a cold start, reboot cluster from complete outage.
         """
-        _machines = list(
+        _machines = sorted(
             juju_utils.get_machine_uuids_for_application(self.application))
         # Stop Nodes
-        _machines.sort()
         # Avoid hitting an update-status hook
         logging.debug("Wait till model is idle ...")
         zaza.model.block_until_all_units_idle()
