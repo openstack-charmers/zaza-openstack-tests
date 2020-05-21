@@ -563,17 +563,24 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
             self.resolve_update_status_errors()
             zaza.model.block_until_all_units_idle()
 
-        logging.debug("Wait for application states ...")
+        logging.debug("Clear error hooks after reboot ...")
         for unit in zaza.model.get_units(self.application):
             try:
                 zaza.model.run_on_unit(unit.entity_id, "hooks/update-status")
             except zaza.model.UnitError:
                 self.resolve_update_status_errors()
                 zaza.model.run_on_unit(unit.entity_id, "hooks/update-status")
-        states = {self.application: {
-            "workload-status": "blocked",
-            "workload-status-message":
-                "MySQL InnoDB Cluster not healthy: None"}}
+        logging.debug("Wait for application states blocked ...")
+        states = {
+            self.application: {
+                "workload-status": "blocked",
+                "workload-status-message":
+                    "MySQL InnoDB Cluster not healthy: None"},
+            "mysql-router": {
+                "workload-status": "blocked",
+                "workload-status-message":
+                    "Failed to connect to MySQL"}}
+
         zaza.model.wait_for_application_states(states=states)
 
         logging.info("Execute reboot-cluster-from-complete-outage "
@@ -585,8 +592,11 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
                 unit.entity_id,
                 "reboot-cluster-from-complete-outage",
                 action_params={})
-            if action.data["results"].get("outcome"):
+            if "Success" in action.data["results"].get("outcome"):
                 break
+            else:
+                logging.info(action.data["results"].get("output"))
+
         assert "Success" in action.data["results"]["outcome"], (
             "Reboot cluster from complete outage action failed: {}"
             .format(action.data))
@@ -739,7 +749,7 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
         leader_unit = zaza.model.get_unit_from_name(leader)
         zaza.model.destroy_unit(self.application_name, leader)
 
-        logging.info("Wait units are waiting ...")
+        logging.info("Wait until unit is in waiting state ...")
         zaza.model.block_until_unit_wl_status(nons[0], "waiting")
 
         logging.info("Wait till model is idle ...")
