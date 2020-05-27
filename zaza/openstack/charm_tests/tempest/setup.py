@@ -106,8 +106,6 @@ def add_neutron_config(ctxt, keystone_session):
     :returns: None
     :rtype: None
     """
-    current_release = openstack_utils.get_os_release()
-    focal_ussuri = openstack_utils.get_os_release('focal_ussuri')
     neutron_client = openstack_utils.get_neutron_session_client(
         keystone_session)
     for net in neutron_client.list_networks()['networks']:
@@ -118,27 +116,6 @@ def add_neutron_config(ctxt, keystone_session):
         if router['name'] == 'provider-router':
             ctxt['provider_router_id'] = router['id']
             break
-    # For focal+ with OVN, we use the same settings as upstream gate.
-    # This is because the l3_agent_scheduler extension is only
-    # applicable for OVN when conventional layer-3 agent enabled:
-    # https://docs.openstack.org/networking-ovn/2.0.1/features.html
-    # This enables test_list_show_extensions to run successfully.
-    if current_release >= focal_ussuri:
-        extensions = ('address-scope,agent,allowed-address-pairs,'
-                      'auto-allocated-topology,availability_zone,'
-                      'binding,default-subnetpools,external-net,'
-                      'extra_dhcp_opt,multi-provider,net-mtu,'
-                      'network_availability_zone,network-ip-availability,'
-                      'port-security,provider,quotas,rbac-address-scope,'
-                      'rbac-policies,standard-attr-revisions,security-group,'
-                      'standard-attr-description,subnet_allocation,'
-                      'standard-attr-tag,standard-attr-timestamp,trunk,'
-                      'quota_details,router,extraroute,ext-gw-mode,'
-                      'fip-port-details,pagination,sorting,project-id,'
-                      'dns-integration,qos')
-        ctxt['neutron_api_extensions'] = extensions
-    else:
-        ctxt['neutron_api_extensions'] = 'all'
 
 
 def add_glance_config(ctxt, keystone_session):
