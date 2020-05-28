@@ -29,9 +29,9 @@ import zaza.utilities.juju as juju_utils
 
 
 def get_cacert_file():
-    """Retrieve CA cert used for vault EP and write to file.
+    """Retrieve CA cert used for vault endpoints and write to file.
 
-    :returns: Path to file with CA cert used for Vault EPs
+    :returns: Path to file with CA cert.
     :rtype: str
     """
     cacert_file = None
