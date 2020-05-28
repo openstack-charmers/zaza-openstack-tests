@@ -1,3 +1,4 @@
+# flake8: noqa
 file_contents = """
 [DEFAULT]
 debug = false

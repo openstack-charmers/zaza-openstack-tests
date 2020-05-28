@@ -16,7 +16,6 @@
 
 import urllib.parse
 import os
-import shutil
 import subprocess
 
 import zaza.model
@@ -44,7 +43,7 @@ TEMPEST_CIRROS_ALT_IMAGE_NAME = 'cirros_alt'
 
 
 def get_app_access_ip(application_name):
-    """Get the application's access IP
+    """Get the application's access IP.
 
     :param application_name: Name of application
     :type application_name: str
@@ -65,7 +64,7 @@ def get_app_access_ip(application_name):
 
 
 def add_application_ips(ctxt):
-    """Add application access IPs to context
+    """Add application access IPs to context.
 
     :param ctxt: Context dictionary
     :type ctxt: dict
@@ -78,7 +77,7 @@ def add_application_ips(ctxt):
 
 
 def add_nova_config(ctxt, keystone_session):
-    """Add nova config to context
+    """Add nova config to context.
 
     :param ctxt: Context dictionary
     :type ctxt: dict
@@ -97,7 +96,7 @@ def add_nova_config(ctxt, keystone_session):
 
 
 def add_neutron_config(ctxt, keystone_session):
-    """Add neutron config to context
+    """Add neutron config to context.
 
     :param ctxt: Context dictionary
     :type ctxt: dict
@@ -142,7 +141,7 @@ def add_neutron_config(ctxt, keystone_session):
 
 
 def add_glance_config(ctxt, keystone_session):
-    """Add glance config to context
+    """Add glance config to context.
 
     :param ctxt: Context dictionary
     :type ctxt: dict
@@ -164,7 +163,7 @@ def add_glance_config(ctxt, keystone_session):
 
 
 def add_cinder_config(ctxt, keystone_session):
-    """Add cinder config to context
+    """Add cinder config to context.
 
     :param ctxt: Context dictionary
     :type ctxt: dict
@@ -184,7 +183,7 @@ def add_cinder_config(ctxt, keystone_session):
 
 
 def add_keystone_config(ctxt, keystone_session):
-    """Add keystone config to context
+    """Add keystone config to context.
 
     :param ctxt: Context dictionary
     :type ctxt: dict
@@ -202,7 +201,7 @@ def add_keystone_config(ctxt, keystone_session):
 
 
 def add_environment_var_config(ctxt):
-    """Add environment variable config to context
+    """Add environment variable config to context.
 
     :param ctxt: Context dictionary
     :type ctxt: dict
@@ -221,7 +220,7 @@ def add_environment_var_config(ctxt):
 
 
 def add_auth_config(ctxt):
-    """Add authorization config to context
+    """Add authorization config to context.
 
     :param ctxt: Context dictionary
     :type ctxt: dict
@@ -235,12 +234,12 @@ def add_auth_config(ctxt):
     if overcloud_auth['API_VERSION'] == 3:
         ctxt['admin_project_name'] = overcloud_auth['OS_PROJECT_NAME']
         ctxt['admin_domain_name'] = overcloud_auth['OS_DOMAIN_NAME']
-        ctxt['default_credentials_domain_name'] = overcloud_auth[
-             'OS_PROJECT_DOMAIN_NAME']
+        ctxt['default_credentials_domain_name'] = (
+            overcloud_auth['OS_PROJECT_DOMAIN_NAME'])
 
 
 def get_tempest_context():
-    """Generate the tempest config context
+    """Generate the tempest config context.
 
     :returns: Context dictionary
     :rtype: dict
@@ -259,7 +258,7 @@ def get_tempest_context():
 
 
 def render_tempest_config(target_file, ctxt, template):
-    """Render tempest config for specified config file and template
+    """Render tempest config for specified config file and template.
 
     :param target_file: Name of file to render config to
     :type target_file: str
@@ -276,7 +275,7 @@ def render_tempest_config(target_file, ctxt, template):
 
 
 def setup_tempest(tempest_template, accounts_template):
-    """Initialize tempest and render tempest config
+    """Initialize tempest and render tempest config.
 
     :param tempest_template: tempest.conf template
     :type tempest_template: module
@@ -287,7 +286,8 @@ def setup_tempest(tempest_template, accounts_template):
     """
     if os.path.isdir('tempest-workspace'):
         try:
-            subprocess.check_call(['tempest', 'workspace', 'remove', '--rmdir', '--name', 'tempest-workspace'])
+            subprocess.check_call(['tempest', 'workspace', 'remove', '--rmdir',
+                                   '--name', 'tempest-workspace'])
         except subprocess.CalledProcessError:
             pass
     try:
@@ -305,7 +305,7 @@ def setup_tempest(tempest_template, accounts_template):
 
 
 def render_tempest_config_keystone_v2():
-    """Render tempest config for Keystone V2 API
+    """Render tempest config for Keystone V2 API.
 
     :returns: None
     :rtype: None
@@ -314,7 +314,7 @@ def render_tempest_config_keystone_v2():
 
 
 def render_tempest_config_keystone_v3():
-    """Render tempest config for Keystone V3 API
+    """Render tempest config for Keystone V3 API.
 
     :returns: None
     :rtype: None
@@ -323,7 +323,7 @@ def render_tempest_config_keystone_v3():
 
 
 def add_cirros_alt_image():
-    """Add cirros alternate image to overcloud
+    """Add cirros alternate image to overcloud.
 
     :returns: None
     :rtype: None
@@ -336,7 +336,7 @@ def add_cirros_alt_image():
 
 
 def add_tempest_flavors():
-    """Add tempest flavors to overcloud
+    """Add tempest flavors to overcloud.
 
     :returns: None
     :rtype: None
@@ -363,7 +363,7 @@ def add_tempest_flavors():
 
 
 def add_tempest_roles():
-    """Add tempest roles overcloud
+    """Add tempest roles overcloud.
 
     :returns: None
     :rtype: None

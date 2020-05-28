@@ -1,3 +1,4 @@
+# flake8: noqa
 file_contents = """
 - username: 'demo'
   tenant_name: 'demo'

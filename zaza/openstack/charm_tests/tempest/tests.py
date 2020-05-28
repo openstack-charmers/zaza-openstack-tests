@@ -20,15 +20,16 @@ import subprocess
 import zaza
 import zaza.charm_lifecycle.utils
 import zaza.charm_lifecycle.test
-import tempest.cmd.main
 import tempfile
+
 
 class TempestTest():
     """Tempest test class."""
+
     test_runner = zaza.charm_lifecycle.test.DIRECT
 
     def run(self):
-        """Run tempest tests as specified in tests/tests.yaml
+        """Run tempest tests as specified in tests/tests.yaml.
 
         Test keys are parsed from ['tests_options']['tempest']['model'], where
         valid test keys are: smoke (bool), whitelist (list of tests), blacklist
@@ -38,8 +39,9 @@ class TempestTest():
         :rtype: bool
         """
         charm_config = zaza.charm_lifecycle.utils.get_charm_config()
-        tempest_options = ['tempest', 'run', '--workspace', 'tempest-workspace',
-                           '--config', 'tempest-workspace/etc/tempest.conf']
+        tempest_options = ['tempest', 'run', '--workspace',
+                           'tempest-workspace', '--config',
+                           'tempest-workspace/etc/tempest.conf']
         for model_alias in zaza.model.get_juju_model_aliases().keys():
             tempest_test_key = model_alias
             if model_alias == zaza.charm_lifecycle.utils.DEFAULT_MODEL_ALIAS:
