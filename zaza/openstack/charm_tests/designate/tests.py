@@ -83,41 +83,14 @@ class BaseDesignateTest(test_utils.OpenStackBaseTest):
             cls.server_delete = cls.designate.servers.delete
 
 
-class DesignateTests(BaseDesignateTest):
-    """Designate charm restart and pause tests."""
+class DesignateAPITests(BaseDesignateTest):
+    """Tests interact with designate api."""
 
     TEST_DOMAIN = 'amuletexample.com.'
     TEST_NS1_RECORD = 'ns1.{}'.format(TEST_DOMAIN)
     TEST_NS2_RECORD = 'ns2.{}'.format(TEST_DOMAIN)
     TEST_WWW_RECORD = "www.{}".format(TEST_DOMAIN)
     TEST_RECORD = {TEST_WWW_RECORD: '10.0.0.23'}
-
-    def test_900_restart_on_config_change(self):
-        """Checking restart happens on config change.
-
-        Change debug mode and assert that change propagates to the correct
-        file and that services are restarted as a result
-        """
-        # Services which are expected to restart upon config change,
-        # and corresponding config files affected by the change
-        conf_file = '/etc/designate/designate.conf'
-
-        # Make config change, check for service restarts
-        self.restart_on_changed_debug_oslo_config_file(
-            conf_file,
-            self.designate_svcs,
-        )
-
-    def test_910_pause_and_resume(self):
-        """Run pause and resume tests.
-
-        Pause service and check services are stopped then resume and check
-        they are started
-        """
-        with self.pause_resume(
-                self.designate_svcs,
-                pgrep_full=False):
-            logging.info("Testing pause resume")
 
     def _get_server_id(self, server_name=None, server_id=None):
         for srv in self.server_list():
@@ -245,3 +218,40 @@ class DesignateTests(BaseDesignateTest):
         logging.debug('Tidy up delete test record')
         self._wait_on_domain_gone(domain_id)
         logging.debug('OK')
+
+
+class DesignateCharmTests(BaseDesignateTest):
+    """Designate charm restart and pause tests."""
+
+    def test_900_restart_on_config_change(self):
+        """Checking restart happens on config change.
+
+        Change debug mode and assert that change propagates to the correct
+        file and that services are restarted as a result
+        """
+        # Services which are expected to restart upon config change,
+        # and corresponding config files affected by the change
+        conf_file = '/etc/designate/designate.conf'
+
+        # Make config change, check for service restarts
+        self.restart_on_changed_debug_oslo_config_file(
+            conf_file,
+            self.designate_svcs,
+        )
+
+    def test_910_pause_and_resume(self):
+        """Run pause and resume tests.
+
+        Pause service and check services are stopped then resume and check
+        they are started
+        """
+        with self.pause_resume(
+                self.designate_svcs,
+                pgrep_full=False):
+            logging.info("Testing pause resume")
+
+
+class DesignateTests(DesignateAPITests, DesignateCharmTests):
+    """Collection of all Designate test classes."""
+
+    pass
