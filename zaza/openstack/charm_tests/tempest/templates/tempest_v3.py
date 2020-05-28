@@ -52,9 +52,11 @@ project_network_cidr = {os_test_cidr_priv}
 public_network_id = {ext_net}
 dns_servers = {os_test_nameserver}
 project_networks_reachable = false
+floating_network_name = {ext_net}
 
 [network-feature-enabled]
 ipv6 = false
+api_extensions = {neutron_api_extensions}
 
 [orchestration]
 stack_owner_role = Admin
