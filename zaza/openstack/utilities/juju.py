@@ -96,7 +96,7 @@ def get_machines_for_application(application, model_name=None):
 
     # libjuju juju status no longer has units for subordinate charms
     # Use the application it is subordinate-to to find machines
-    if status.get("units") is None and status.get("subordinate-to"):
+    if not status.get("units") and status.get("subordinate-to"):
         status = get_application_status(status.get("subordinate-to")[0],
                                         model_name=model_name)
 
