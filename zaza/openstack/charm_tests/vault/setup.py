@@ -14,6 +14,7 @@
 
 """Run configuration phase."""
 
+import base64
 import functools
 import requests
 import tempfile
@@ -27,6 +28,22 @@ import zaza.openstack.utilities.generic
 import zaza.utilities.juju as juju_utils
 
 
+def get_cacert_file():
+    """Retrieve CA cert used for vault EP and write to file.
+
+    :returns: Path to file with CA cert used for Vault EPs
+    :rtype: str
+    """
+    cacert_file = None
+    vault_config = zaza.model.get_application_config('vault')
+    cacert_b64 = vault_config['ssl-ca']['value']
+    if cacert_b64:
+        with tempfile.NamedTemporaryFile(mode='wb', delete=False) as fp:
+            fp.write(base64.b64decode(cacert_b64))
+            cacert_file = fp.name
+    return cacert_file
+
+
 def basic_setup(cacert=None, unseal_and_authorize=False):
     """Run basic setup for vault tests.
 
@@ -35,6 +52,7 @@ def basic_setup(cacert=None, unseal_and_authorize=False):
     :param unseal_and_authorize: Whether to unseal and authorize vault.
     :type unseal_and_authorize: bool
     """
+    cacert = cacert or get_cacert_file()
     vault_svc = vault_utils.VaultFacade(cacert=cacert)
     if unseal_and_authorize:
         vault_svc.unseal()
@@ -47,6 +65,7 @@ def basic_setup_and_unseal(cacert=None):
     :param cacert: Path to CA cert used for vaults api cert.
     :type cacert: str
     """
+    cacert = cacert or get_cacert_file()
     vault_svc = vault_utils.VaultFacade(cacert=cacert)
     vault_svc.unseal()
     for unit in zaza.model.get_units('vault'):
