@@ -732,6 +732,7 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
     if not net_id:
         net_id = get_admin_net(neutronclient)['id']
 
+    ports_created = 0
     for uuid in uuids:
         server = novaclient.servers.get(uuid)
         ext_port_name = "{}_ext-port".format(server.name)
@@ -752,12 +753,19 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
                 }
             }
             port = neutronclient.create_port(body=body_value)
+            ports_created += 1
             server.interface_attach(port_id=port['port']['id'],
                                     net_id=None, fixed_ip=None)
             if add_dataport_to_netplan:
                 mac_address = get_mac_from_port(port, neutronclient)
                 add_interface_to_netplan(server.name,
                                          mac_address=mac_address)
+    if not ports_created:
+        # NOTE: uuids is an iterator so testing it for contents or length prior
+        # to iterating over it is futile.
+        raise RuntimeError('Unable to determine UUIDs for machines to attach '
+                           'external networking to.')
+
     ext_br_macs = []
     for port in neutronclient.list_ports(network_id=net_id)['ports']:
         if 'ext-port' in port['name']:

@@ -1216,3 +1216,33 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.assertTrue(openstack_utils.ovn_present())
         self.get_application.side_effect = [KeyError, KeyError]
         self.assertFalse(openstack_utils.ovn_present())
+
+    def test_configure_gateway_ext_port(self):
+        # FIXME: this is not a complete unit test for the function as one did
+        # not exist at all I'm adding this to test one bit and we'll add more
+        # as we go.
+        self.patch_object(openstack_utils, 'deprecated_external_networking')
+        self.patch_object(openstack_utils, 'dvr_enabled')
+        self.patch_object(openstack_utils, 'ovn_present')
+        self.patch_object(openstack_utils, 'get_gateway_uuids')
+        self.patch_object(openstack_utils, 'get_admin_net')
+        self.dvr_enabled = False
+        self.ovn_present = False
+        self.get_admin_net.return_value = {'id': 'fakeid'}
+
+        novaclient = mock.MagicMock()
+        neutronclient = mock.MagicMock()
+
+        def _fake_empty_generator(empty=True):
+            if empty:
+                return
+            yield
+
+        self.get_gateway_uuids.side_effect = _fake_empty_generator
+        with self.assertRaises(RuntimeError):
+            openstack_utils.configure_gateway_ext_port(
+                novaclient, neutronclient)
+        # provide a uuid and check that we don't raise RuntimeError
+        self.get_gateway_uuids.side_effect = ['fake-uuid']
+        openstack_utils.configure_gateway_ext_port(
+            novaclient, neutronclient)
