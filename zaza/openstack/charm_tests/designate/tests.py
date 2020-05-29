@@ -14,14 +14,19 @@
 
 """Encapsulate designate testing."""
 import logging
+import unittest
 import tenacity
 import subprocess
+
 import designateclient.v1.domains as domains
 import designateclient.v1.records as records
 import designateclient.v1.servers as servers
+
+import zaza.model
 import zaza.openstack.utilities.juju as zaza_juju
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
+import zaza.openstack.charm_tests.designate.utils as designate_utils
 
 
 class BaseDesignateTest(test_utils.OpenStackBaseTest):
@@ -255,3 +260,60 @@ class DesignateTests(DesignateAPITests, DesignateCharmTests):
     """Collection of all Designate test classes."""
 
     pass
+
+
+class DesignateBindExpand(BaseDesignateTest):
+    """Test expanding and shrinking bind."""
+
+    TEST_DOMAIN = 'zazabindtesting.com.'
+    TEST_NS1_RECORD = 'ns1.{}'.format(TEST_DOMAIN)
+    TEST_NS2_RECORD = 'ns2.{}'.format(TEST_DOMAIN)
+    TEST_WWW_RECORD = "www.{}".format(TEST_DOMAIN)
+    TEST_RECORD = {TEST_WWW_RECORD: '10.0.0.24'}
+
+    def test_expand_and_contract(self):
+        """Test expanding and shrinking bind."""
+        if not self.post_xenial_queens:
+            raise unittest.SkipTest("Test not supported before Queens")
+
+        domain = designate_utils.create_or_return_zone(
+            self.designate,
+            name=self.TEST_DOMAIN,
+            email="test@zaza.com")
+
+        designate_utils.create_or_return_recordset(
+            self.designate,
+            domain['id'],
+            'www',
+            'A',
+            [self.TEST_RECORD[self.TEST_WWW_RECORD]])
+
+        # Test record is in bind and designate
+        designate_utils.check_dns_entry(
+            self.designate,
+            self.TEST_RECORD[self.TEST_WWW_RECORD],
+            self.TEST_DOMAIN,
+            record_name=self.TEST_WWW_RECORD)
+
+        logging.debug('Adding a designate-bind unit')
+        zaza.model.add_unit('designate-bind')
+        zaza.model.block_until_all_units_idle()
+
+        logging.debug('Performing DNS lookup on all units')
+        designate_utils.check_dns_entry(
+            self.designate,
+            self.TEST_RECORD[self.TEST_WWW_RECORD],
+            self.TEST_DOMAIN,
+            record_name=self.TEST_WWW_RECORD)
+
+        units = zaza.model.get_status().applications['designate-bind']['units']
+        doomed_unit = sorted(units.keys())[0]
+        logging.debug('Removing {}'.format(doomed_unit))
+        zaza.model.destroy_unit('designate-bind', doomed_unit)
+
+        logging.debug('Performing DNS lookup on all units')
+        designate_utils.check_dns_entry(
+            self.designate,
+            self.TEST_RECORD[self.TEST_WWW_RECORD],
+            self.TEST_DOMAIN,
+            record_name=self.TEST_WWW_RECORD)
