@@ -40,7 +40,3 @@ paramiko
 sphinx
 sphinxcontrib-asyncio
 git+https://github.com/openstack-charmers/zaza#egg=zaza
-
-# Tempest tests
-git+https://opendev.org/openstack/tempest.git#egg=tempest
-git+https://opendev.org/openstack/cinder-tempest-plugin.git#egg=cinder-tempest-plugin
