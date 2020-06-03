@@ -27,6 +27,7 @@ import zaza.openstack.utilities.juju as zaza_juju
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.designate.utils as designate_utils
+import zaza.charm_lifecycle.utils as lifecycle_utils
 
 
 class BaseDesignateTest(test_utils.OpenStackBaseTest):
@@ -273,6 +274,8 @@ class DesignateBindExpand(BaseDesignateTest):
 
     def test_expand_and_contract(self):
         """Test expanding and shrinking bind."""
+        test_config = lifecycle_utils.get_charm_config(fatal=False)
+        states = test_config.get("target_deploy_status", {})
         if not self.post_xenial_queens:
             raise unittest.SkipTest("Test not supported before Queens")
 
@@ -295,11 +298,12 @@ class DesignateBindExpand(BaseDesignateTest):
             self.TEST_DOMAIN,
             record_name=self.TEST_WWW_RECORD)
 
-        logging.debug('Adding a designate-bind unit')
-        zaza.model.add_unit('designate-bind')
+        logging.info('Adding a designate-bind unit')
+        zaza.model.add_unit('designate-bind', wait_appear=True)
         zaza.model.block_until_all_units_idle()
+        zaza.model.wait_for_application_states(states=states)
 
-        logging.debug('Performing DNS lookup on all units')
+        logging.info('Performing DNS lookup on all units')
         designate_utils.check_dns_entry(
             self.designate,
             self.TEST_RECORD[self.TEST_WWW_RECORD],
@@ -308,10 +312,15 @@ class DesignateBindExpand(BaseDesignateTest):
 
         units = zaza.model.get_status().applications['designate-bind']['units']
         doomed_unit = sorted(units.keys())[0]
-        logging.debug('Removing {}'.format(doomed_unit))
-        zaza.model.destroy_unit('designate-bind', doomed_unit)
+        logging.info('Removing {}'.format(doomed_unit))
+        zaza.model.destroy_unit(
+            'designate-bind',
+            doomed_unit,
+            wait_disappear=True)
+        zaza.model.block_until_all_units_idle()
+        zaza.model.wait_for_application_states(states=states)
 
-        logging.debug('Performing DNS lookup on all units')
+        logging.info('Performing DNS lookup on all units')
         designate_utils.check_dns_entry(
             self.designate,
             self.TEST_RECORD[self.TEST_WWW_RECORD],

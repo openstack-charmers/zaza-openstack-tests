@@ -29,6 +29,7 @@ install_require = [
     'async_generator',
     'boto3',
     'cryptography',
+    'dnspython',
     'hvac<0.7.0',
     'jinja2',
     'juju',
