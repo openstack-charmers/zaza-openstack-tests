@@ -19,7 +19,11 @@
 import logging
 import tenacity
 
+import novaclient.exceptions
+
 import zaza.model
+import zaza.openstack.configure.guest
+import zaza.openstack.charm_tests.glance.setup as glance_setup
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.configure.telemetry as telemetry_utils
@@ -33,7 +37,7 @@ class AodhTest(test_utils.OpenStackBaseTest):
     @classmethod
     def setUpClass(cls):
         """Run class setup for running tests."""
-        super(AodhTest, cls).setUpClass()
+        super(AodhTest, cls).setUpClass(application_name='aodh')
         cls.xenial_ocata = openstack_utils.get_os_release('xenial_ocata')
         cls.xenial_newton = openstack_utils.get_os_release('xenial_newton')
         cls.bionic_stein = openstack_utils.get_os_release('bionic_stein')
@@ -134,3 +138,76 @@ class AodhTest(test_utils.OpenStackBaseTest):
                 pgrep_full=False):
             logging.info("Testing pause resume")
         self.query_aodh_api()
+
+
+class AodhServerAlarmTest(test_utils.OpenStackBaseTest):
+    """Test server events trigger Aodh alarms."""
+
+    RESOURCE_PREFIX = 'zaza-aodhtests'
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running tests."""
+        super(AodhServerAlarmTest, cls).setUpClass(application_name='aodh')
+        cls.aodh_client = openstack_utils.get_aodh_session_client(
+            cls.keystone_session)
+        cls.nova_client = openstack_utils.get_nova_session_client(
+            cls.keystone_session)
+        cls.run_resource_cleanup = True
+
+    @classmethod
+    def resource_cleanup(cls):
+        """Remove test resources."""
+        logging.info('Running teardown')
+        for alarm in cls.aodh_client.alarm.list():
+            if alarm['name'].startswith(cls.RESOURCE_PREFIX):
+                logging.info('Removing Alarm {}'.format(alarm['name']))
+                telemetry_utils.delete_alarm(
+                    cls.aodh_client,
+                    alarm['name'],
+                    cache_wait=False)
+        for server in cls.nova_client.servers.list():
+            if server.name.startswith(cls.RESOURCE_PREFIX):
+                logging.info('Removing server {}'.format(server.name))
+                openstack_utils.delete_resource(
+                    cls.nova_client.servers,
+                    server.id,
+                    msg="server")
+
+    def test_alarm_on_power_off(self):
+        """Test server alarm is triggered when server is powered off."""
+        server_name = '{}-server'.format(self.RESOURCE_PREFIX)
+        alarm_name = '{}_instance_off'.format(self.RESOURCE_PREFIX)
+        try:
+            server = self.nova_client.servers.find(name=server_name)
+            logging.info("Found existing server {}".format(server_name))
+        except novaclient.exceptions.NotFound:
+            logging.info("Launching new server {}".format(server_name))
+            server = zaza.openstack.configure.guest.launch_instance(
+                glance_setup.LTS_IMAGE_NAME,
+                vm_name=server_name)
+        assert server.status == 'ACTIVE', "Server {} not active".format(
+            server.name)
+
+        logging.info('Deleting alarm {} if it exists'.format(alarm_name))
+        telemetry_utils.delete_alarm(
+            self.aodh_client,
+            alarm_name,
+            cache_wait=True)
+        logging.info('Creating alarm {}'.format(alarm_name))
+        alarm_info = telemetry_utils.create_server_power_off_alarm(
+            self.aodh_client,
+            alarm_name,
+            server.id)
+        alarm_state = telemetry_utils.get_alarm_state(
+            self.aodh_client,
+            alarm_info['alarm_id'])
+        logging.info('Alarm in state {}'.format(alarm_state))
+        # Until data is collected alarm come up in an 'insufficient data'
+        # state.
+        self.assertEqual(alarm_state, 'insufficient data')
+        logging.info('Stopping server {}'.format(server.name))
+        server.stop()
+        telemetry_utils.block_until_alarm_state(
+            self.aodh_client,
+            alarm_info['alarm_id'])
