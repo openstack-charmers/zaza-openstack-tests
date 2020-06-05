@@ -27,9 +27,6 @@ import zaza.openstack.charm_tests.tempest.templates.tempest_v2 as tempest_v2
 import zaza.openstack.charm_tests.tempest.templates.tempest_v3 as tempest_v3
 import zaza.openstack.charm_tests.tempest.templates.accounts as accounts
 
-import keystoneauth1
-import novaclient
-
 SETUP_ENV_VARS = [
     'OS_TEST_GATEWAY',
     'OS_TEST_CIDR_EXT',
@@ -60,7 +57,7 @@ def add_nova_config(ctxt, keystone_session):
 
     :param ctxt: Context dictionary
     :type ctxt: dict
-    :returns keystone_session: keystoneauth1.session.Session object
+    :param keystone_session: keystoneauth1.session.Session object
     :type: keystoneauth1.session.Session
     :returns: None
     :rtype: None
@@ -79,7 +76,7 @@ def add_neutron_config(ctxt, keystone_session):
 
     :param ctxt: Context dictionary
     :type ctxt: dict
-    :returns keystone_session: keystoneauth1.session.Session object
+    :param keystone_session: keystoneauth1.session.Session object
     :type: keystoneauth1.session.Session
     :returns: None
     :rtype: None
@@ -120,7 +117,7 @@ def add_glance_config(ctxt, keystone_session):
 
     :param ctxt: Context dictionary
     :type ctxt: dict
-    :returns keystone_session: keystoneauth1.session.Session object
+    :param keystone_session: keystoneauth1.session.Session object
     :type: keystoneauth1.session.Session
     :returns: None
     :rtype: None
@@ -142,7 +139,7 @@ def add_cinder_config(ctxt, keystone_session):
 
     :param ctxt: Context dictionary
     :type ctxt: dict
-    :returns keystone_session: keystoneauth1.session.Session object
+    :param keystone_session: keystoneauth1.session.Session object
     :type: keystoneauth1.session.Session
     :returns: None
     :rtype: None
@@ -162,7 +159,7 @@ def add_keystone_config(ctxt, keystone_session):
 
     :param ctxt: Context dictionary
     :type ctxt: dict
-    :returns keystone_session: keystoneauth1.session.Session object
+    :param keystone_session: keystoneauth1.session.Session object
     :type: keystoneauth1.session.Session
     :returns: None
     :rtype: None
@@ -293,19 +290,3 @@ def render_tempest_config_keystone_v3():
     :rtype: None
     """
     setup_tempest(tempest_v3, accounts)
-
-
-def add_tempest_roles():
-    """Add tempest roles overcloud.
-
-    :returns: None
-    :rtype: None
-    """
-    keystone_session = openstack_utils.get_overcloud_keystone_session()
-    keystone_client = openstack_utils.get_keystone_session_client(
-        keystone_session)
-    for role_name in ['member', 'ResellerAdmin']:
-        try:
-            keystone_client.roles.create(role_name)
-        except keystoneauth1.exceptions.http.Conflict:
-            pass
