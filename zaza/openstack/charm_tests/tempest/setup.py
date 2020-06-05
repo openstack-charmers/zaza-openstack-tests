@@ -295,33 +295,6 @@ def render_tempest_config_keystone_v3():
     setup_tempest(tempest_v3, accounts)
 
 
-def add_tempest_flavors():
-    """Add tempest flavors to overcloud.
-
-    :returns: None
-    :rtype: None
-    """
-    keystone_session = openstack_utils.get_overcloud_keystone_session()
-    nova_client = openstack_utils.get_nova_session_client(
-        keystone_session)
-    try:
-        nova_client.flavors.create(
-            name=TEMPEST_FLAVOR_NAME,
-            ram=256,
-            vcpus=1,
-            disk=1)
-    except novaclient.exceptions.Conflict:
-        pass
-    try:
-        nova_client.flavors.create(
-            name=TEMPEST_ALT_FLAVOR_NAME,
-            ram=512,
-            vcpus=1,
-            disk=1)
-    except novaclient.exceptions.Conflict:
-        pass
-
-
 def add_tempest_roles():
     """Add tempest roles overcloud.
 
