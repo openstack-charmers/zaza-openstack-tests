@@ -36,12 +36,12 @@ FLAVORS = {
         'disk': 40,
         'vcpus': 4},
     'm1.tempest': {
-        'flavorid': 5,
+        'flavorid': 6,
         'ram': 256,
         'disk': 1,
         'vcpus': 1},
     'm2.tempest': {
-        'flavorid': 6,
+        'flavorid': 7,
         'ram': 512,
         'disk': 1,
         'vcpus': 1},
