@@ -40,7 +40,6 @@ SETUP_ENV_VARS = [
 ]
 TEMPEST_FLAVOR_NAME = 'm1.tempest'
 TEMPEST_ALT_FLAVOR_NAME = 'm2.tempest'
-TEMPEST_CIRROS_ALT_IMAGE_NAME = 'cirros_alt'
 
 
 def add_application_ips(ctxt):
@@ -89,14 +88,10 @@ def add_neutron_config(ctxt, keystone_session):
     focal_ussuri = openstack_utils.get_os_release('focal_ussuri')
     neutron_client = openstack_utils.get_neutron_session_client(
         keystone_session)
-    for net in neutron_client.list_networks()['networks']:
-        if net['name'] == 'ext_net':
-            ctxt['ext_net'] = net['id']
-            break
-    for router in neutron_client.list_routers()['routers']:
-        if router['name'] == 'provider-router':
-            ctxt['provider_router_id'] = router['id']
-            break
+    net = neutron_client.find_resource("network", "ext_net")
+    ctxt['ext_net'] = net['id']
+    router = neutron_client.find_resource("router", "provider-router")
+    ctxt['provider_router_id'] = router['id']
     # For focal+ with OVN, we use the same settings as upstream gate.
     # This is because the l3_agent_scheduler extension is only
     # applicable for OVN when conventional layer-3 agent enabled:
@@ -135,7 +130,7 @@ def add_glance_config(ctxt, keystone_session):
     image = openstack_utils.get_images_by_name(
         glance_client, glance_setup.CIRROS_IMAGE_NAME)
     image_alt = openstack_utils.get_images_by_name(
-        glance_client, TEMPEST_CIRROS_ALT_IMAGE_NAME)
+        glance_client, glance_setup.CIRROS_ALT_IMAGE_NAME)
     if image:
         ctxt['image_id'] = image[0].id
     if image_alt:
@@ -174,10 +169,8 @@ def add_keystone_config(ctxt, keystone_session):
     """
     keystone_client = openstack_utils.get_keystone_session_client(
         keystone_session)
-    for domain in keystone_client.domains.list():
-        if domain.name == 'admin_domain':
-            ctxt['default_domain_id'] = domain.id
-            break
+    domain = keystone_client.domains.find(name="admin_domain")
+    ctxt['default_domain_id'] = domain.id
 
 
 def add_environment_var_config(ctxt):
@@ -300,19 +293,6 @@ def render_tempest_config_keystone_v3():
     :rtype: None
     """
     setup_tempest(tempest_v3, accounts)
-
-
-def add_cirros_alt_image():
-    """Add cirros alternate image to overcloud.
-
-    :returns: None
-    :rtype: None
-    """
-    image_url = openstack_utils.find_cirros_image(arch='x86_64')
-    glance_setup.add_image(
-        image_url,
-        glance_client=None,
-        image_name=TEMPEST_CIRROS_ALT_IMAGE_NAME)
 
 
 def add_tempest_flavors():
