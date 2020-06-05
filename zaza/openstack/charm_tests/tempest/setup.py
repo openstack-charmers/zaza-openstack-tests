@@ -20,6 +20,7 @@ import subprocess
 
 import zaza.model
 import zaza.utilities.deployment_env as deployment_env
+import zaza.openstack.utilities.juju as juju_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.glance.setup as glance_setup
 import zaza.openstack.charm_tests.tempest.templates.tempest_v2 as tempest_v2
@@ -42,27 +43,6 @@ TEMPEST_ALT_FLAVOR_NAME = 'm2.tempest'
 TEMPEST_CIRROS_ALT_IMAGE_NAME = 'cirros_alt'
 
 
-def get_app_access_ip(application_name):
-    """Get the application's access IP.
-
-    :param application_name: Name of application
-    :type application_name: str
-    :returns: Application's access IP
-    :rtype: str
-    """
-    try:
-        app_config = zaza.model.get_application_config(application_name)
-    except KeyError:
-        return ''
-    vip = app_config.get("vip").get("value")
-    if vip:
-        ip = vip
-    else:
-        unit = zaza.model.get_units(application_name)[0]
-        ip = unit.public_address
-    return ip
-
-
 def add_application_ips(ctxt):
     """Add application access IPs to context.
 
@@ -71,9 +51,9 @@ def add_application_ips(ctxt):
     :returns: None
     :rtype: None
     """
-    ctxt['keystone'] = get_app_access_ip('keystone')
-    ctxt['dashboard'] = get_app_access_ip('openstack-dashboard')
-    ctxt['ncc'] = get_app_access_ip('nova-cloud-controller')
+    ctxt['keystone'] = juju_utils.get_application_ip('keystone')
+    ctxt['dashboard'] = juju_utils.get_application_ip('openstack-dashboard')
+    ctxt['ncc'] = juju_utils.get_application_ip('nova-cloud-controller')
 
 
 def add_nova_config(ctxt, keystone_session):

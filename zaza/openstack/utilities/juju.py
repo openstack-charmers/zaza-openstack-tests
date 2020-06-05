@@ -49,6 +49,27 @@ def get_application_status(application=None, unit=None, model_name=None):
     return status
 
 
+def get_application_ip(application):
+    """Get the application's IP address.
+
+    :param application: Application name
+    :type application: str
+    :returns: Application's IP address
+    :rtype: str
+    """
+    try:
+        app_config = model.get_application_config(application)
+    except KeyError:
+        return ''
+    vip = app_config.get("vip").get("value")
+    if vip:
+        ip = vip
+    else:
+        unit = zaza.model.get_units(application_name)[0]
+        ip = unit.public_address
+    return ip
+
+
 def get_cloud_configs(cloud=None):
     """Get cloud configuration from local clouds.yaml.
 
