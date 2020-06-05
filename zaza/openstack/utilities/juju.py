@@ -65,7 +65,7 @@ def get_application_ip(application):
     if vip:
         ip = vip
     else:
-        unit = model.get_units(application_name)[0]
+        unit = model.get_units(application)[0]
         ip = unit.public_address
     return ip
 
