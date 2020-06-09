@@ -44,12 +44,12 @@ api_v2 = true
 api_v3 = false
 
 [image]
-http_image = http://{os_test_swift_ip}:80/swift/v1/images/cirros-0.3.4-x86_64-uec.tar.gz
+http_image = http://{test_swift_ip}:80/swift/v1/images/cirros-0.3.4-x86_64-uec.tar.gz
 
 [network]
-project_network_cidr = {os_test_cidr_priv}
+project_network_cidr = {test_cidr_priv}
 public_network_id = {ext_net}
-dns_servers = {os_test_nameserver}
+dns_servers = {test_nameserver}
 project_networks_reachable = false
 
 [network-feature-enabled]

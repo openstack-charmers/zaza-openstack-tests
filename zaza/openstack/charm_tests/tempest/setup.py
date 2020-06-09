@@ -27,12 +27,12 @@ import zaza.openstack.charm_tests.tempest.templates.tempest_v3 as tempest_v3
 import zaza.openstack.charm_tests.tempest.templates.accounts as accounts
 
 SETUP_ENV_VARS = [
-    'OS_TEST_GATEWAY',
-    'OS_TEST_CIDR_EXT',
-    'OS_TEST_FIP_RANGE',
-    'OS_TEST_NAMESERVER',
-    'OS_TEST_CIDR_PRIV',
-    'OS_TEST_SWIFT_IP',
+    'TEST_GATEWAY',
+    'TEST_CIDR_EXT',
+    'TEST_FIP_RANGE',
+    'TEST_NAMESERVER',
+    'TEST_CIDR_PRIV',
+    'TEST_SWIFT_IP',
 ]
 TEMPEST_FLAVOR_NAME = 'm1.tempest'
 TEMPEST_ALT_FLAVOR_NAME = 'm2.tempest'
