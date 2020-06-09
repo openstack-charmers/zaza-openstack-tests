@@ -18,7 +18,6 @@ import urllib.parse
 import os
 import subprocess
 
-import zaza.model
 import zaza.utilities.deployment_env as deployment_env
 import zaza.openstack.utilities.juju as juju_utils
 import zaza.openstack.utilities.openstack as openstack_utils
