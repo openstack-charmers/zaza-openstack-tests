@@ -25,6 +25,8 @@ import logging
 import tenacity
 import unittest
 
+import novaclient
+
 import zaza
 import zaza.openstack.charm_tests.glance.setup as glance_setup
 import zaza.openstack.charm_tests.nova.utils as nova_utils
@@ -598,8 +600,8 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
             logging.info('Testing pause resume')
 
 
-class NeutronNetworkingTest(unittest.TestCase):
-    """Ensure that openstack instances have valid networking."""
+class NeutronNetworkingBase(unittest.TestCase):
+    """Base for checking openstack instances have valid networking."""
 
     RESOURCE_PREFIX = 'zaza-neutrontests'
 
@@ -610,6 +612,8 @@ class NeutronNetworkingTest(unittest.TestCase):
             openstack_utils.get_overcloud_keystone_session())
         cls.nova_client = (
             openstack_utils.get_nova_session_client(cls.keystone_session))
+        cls.neutron_client = (
+            openstack_utils.get_neutron_session_client(cls.keystone_session))
         # NOTE(fnordahl): in the event of a test failure we do not want to run
         # tear down code as it will make debugging a problem virtually
         # impossible.  To alleviate each test method will set the
@@ -628,38 +632,6 @@ class NeutronNetworkingTest(unittest.TestCase):
                         cls.nova_client.servers,
                         server.id,
                         msg="server")
-
-    def test_instances_have_networking(self):
-        """Validate North/South and East/West networking."""
-        guest.launch_instance(
-            glance_setup.LTS_IMAGE_NAME,
-            vm_name='{}-ins-1'.format(self.RESOURCE_PREFIX))
-        guest.launch_instance(
-            glance_setup.LTS_IMAGE_NAME,
-            vm_name='{}-ins-2'.format(self.RESOURCE_PREFIX))
-
-        instance_1 = self.nova_client.servers.find(
-            name='{}-ins-1'.format(self.RESOURCE_PREFIX))
-
-        instance_2 = self.nova_client.servers.find(
-            name='{}-ins-2'.format(self.RESOURCE_PREFIX))
-
-        def verify(stdin, stdout, stderr):
-            """Validate that the SSH command exited 0."""
-            self.assertEqual(stdout.channel.recv_exit_status(), 0)
-
-        # Verify network from 1 to 2
-        self.validate_instance_can_reach_other(instance_1, instance_2, verify)
-
-        # Verify network from 2 to 1
-        self.validate_instance_can_reach_other(instance_2, instance_1, verify)
-
-        # Validate tenant to external network routing
-        self.validate_instance_can_reach_router(instance_1, verify)
-        self.validate_instance_can_reach_router(instance_2, verify)
-
-        # If we get here, it means the tests passed
-        self.run_tearDown = True
 
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
                     reraise=True, stop=tenacity.stop_after_attempt(8))
@@ -718,6 +690,99 @@ class NeutronNetworkingTest(unittest.TestCase):
             username, address, 'instance', 'ping -c 1 192.168.0.1',
             password=password, privkey=privkey, verify=verify)
 
+    @tenacity.retry(wait=tenacity.wait_exponential(min=5, max=60),
+                    reraise=True, stop=tenacity.stop_after_attempt(8),
+                    retry=tenacity.retry_if_exception_type(AssertionError))
+    def check_server_state(self, nova_client, state, server_id=None,
+                           server_name=None):
+        """Wait for server to reach desired state.
+
+        :param nova_client: Nova client to use when checking status
+        :type nova_client: nova client
+        :param state: Target state for server
+        :type state: str
+        :param server_id: UUID of server to check
+        :type server_id: str
+        :param server_name: Name of server to check
+        :type server_name: str
+        :raises: AssertionError
+        """
+        if server_name:
+            server_id = nova_client.servers.find(name=server_name).id
+        server = nova_client.servers.find(id=server_id)
+        assert server.status == state
+
+    @tenacity.retry(wait=tenacity.wait_exponential(min=5, max=60),
+                    reraise=True, stop=tenacity.stop_after_attempt(8),
+                    retry=tenacity.retry_if_exception_type(AssertionError))
+    def check_neutron_agent_up(self, neutron_client, host_name):
+        """Wait for agents to come up.
+
+        :param neutron_client: Neutron client to use when checking status
+        :type neutron_client: neutron client
+        :param host_name: The name of the host whose agents need checking
+        :type host_name: str
+        :raises: AssertionError
+        """
+        for agent in neutron_client.list_agents()['agents']:
+            if agent['host'] == host_name:
+                assert agent['admin_state_up']
+                assert agent['alive']
+
+    def launch_guests(self):
+        """Launch two guests to use in tests."""
+        guest.launch_instance(
+            glance_setup.LTS_IMAGE_NAME,
+            vm_name='{}-ins-1'.format(self.RESOURCE_PREFIX))
+        guest.launch_instance(
+            glance_setup.LTS_IMAGE_NAME,
+            vm_name='{}-ins-2'.format(self.RESOURCE_PREFIX))
+
+    def retrieve_guest(self, nova_client, guest_name):
+        """Return guest matching name.
+
+        :param nova_client: Nova client to use when checking status
+        :type nova_client: Nova client
+        :returns: the matching guest
+        :rtype: Union[novaclient.Server, None]
+        """
+        try:
+            return nova_client.servers.find(name=guest_name)
+        except novaclient.exceptions.NotFound:
+            return None
+
+    def retrieve_guests(self, nova_client):
+        """Return test guests.
+
+        :param nova_client: Nova client to use when checking status
+        :type nova_client: Nova client
+        :returns: the matching guest
+        :rtype: Union[novaclient.Server, None]
+        """
+        instance_1 = self.retrieve_guest(
+            nova_client,
+            '{}-ins-1'.format(self.RESOURCE_PREFIX))
+        instance_2 = self.retrieve_guest(
+            nova_client,
+            '{}-ins-1'.format(self.RESOURCE_PREFIX))
+        return instance_1, instance_2
+
+    def check_connectivity(self, instance_1, instance_2):
+        """Run North/South and East/West connectivity tests."""
+        def verify(stdin, stdout, stderr):
+            """Validate that the SSH command exited 0."""
+            self.assertEqual(stdout.channel.recv_exit_status(), 0)
+
+        # Verify network from 1 to 2
+        self.validate_instance_can_reach_other(instance_1, instance_2, verify)
+
+        # Verify network from 2 to 1
+        self.validate_instance_can_reach_other(instance_2, instance_1, verify)
+
+        # Validate tenant to external network routing
+        self.validate_instance_can_reach_router(instance_1, verify)
+        self.validate_instance_can_reach_router(instance_2, verify)
+
 
 def floating_ips_from_instance(instance):
     """
@@ -764,3 +829,61 @@ def ips_from_instance(instance, ip_type):
     return list([
         ip['addr'] for ip in instance.addresses['private']
         if ip['OS-EXT-IPS:type'] == ip_type])
+
+
+class NeutronNetworkingTest(NeutronNetworkingBase):
+    """Ensure that openstack instances have valid networking."""
+
+    def test_instances_have_networking(self):
+        """Validate North/South and East/West networking."""
+        self.launch_guests()
+        instance_1, instance_2 = self.retrieve_guests(self.nova_client)
+        self.check_connectivity(instance_1, instance_2)
+        self.run_tearDown = True
+
+
+class NeutronNetworkingVRRPTests(NeutronNetworkingBase):
+    """Check networking when gateways are restarted."""
+
+    def test_gateway_failure(self):
+        """Validate networking in the case of a gateway failure."""
+        instance_1, instance_2 = self.retrieve_guests(self.nova_client)
+        if not all([instance_1, instance_2]):
+            self.launch_guests()
+            instance_1, instance_2 = self.retrieve_guests(self.nova_client)
+        self.check_connectivity(instance_1, instance_2)
+
+        routers = self.neutron_client.list_routers(
+            name='provider-router')['routers']
+        assert len(routers) == 1, "Unexpected router count {}".format(
+            len(routers))
+        provider_router = routers[0]
+        l3_agents = self.neutron_client.list_l3_agent_hosting_routers(
+            router=provider_router['id'])['agents']
+        logging.info(
+            'Checking there are multiple L3 agents running tenant router')
+        assert len(l3_agents) == 2, "Unexpected l3 agent count {}".format(
+            len(l3_agents))
+        uc_ks_session = openstack_utils.get_undercloud_keystone_session()
+        uc_nova_client = openstack_utils.get_nova_session_client(uc_ks_session)
+        uc_neutron_client = openstack_utils.get_neutron_session_client(
+            uc_ks_session)
+        for agent in l3_agents:
+            gateway_hostname = agent['host']
+            gateway_server = uc_nova_client.servers.find(name=gateway_hostname)
+            logging.info("Shutting down {}".format(gateway_hostname))
+            gateway_server.stop()
+            self.check_server_state(
+                uc_nova_client,
+                'SHUTOFF',
+                server_name=gateway_hostname)
+            self.check_connectivity(instance_1, instance_2)
+            gateway_server.start()
+            self.check_server_state(
+                uc_nova_client,
+                'ACTIVE',
+                server_name=gateway_hostname)
+            self.check_neutron_agent_up(
+                uc_neutron_client,
+                gateway_hostname)
+            self.check_connectivity(instance_1, instance_2)
