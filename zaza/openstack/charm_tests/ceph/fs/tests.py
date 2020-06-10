@@ -14,6 +14,7 @@
 
 """Encapsulate CephFS testing."""
 
+import logging
 from tenacity import Retrying, stop_after_attempt, wait_exponential
 
 import zaza.model as model
@@ -124,3 +125,18 @@ write_files:
 def _indent(text, amount, ch=' '):
     padding = amount * ch
     return ''.join(padding+line for line in text.splitlines(True))
+
+
+class CharmOperationTest(test_utils.BaseCharmTest):
+    """CephFS Charm operation tests."""
+
+    def test_pause_resume(self):
+        """Run pause and resume tests.
+
+        Pause service and check services are stopped, then resume and check
+        they are started.
+        """
+        services = ['ceph-mds']
+        with self.pause_resume(services):
+            logging.info('Testing pause resume (services="{}")'
+                         .format(services))
