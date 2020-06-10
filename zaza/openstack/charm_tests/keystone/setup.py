@@ -14,6 +14,8 @@
 
 """Code for setting up keystone."""
 
+import keystoneauth1
+
 import zaza.openstack.utilities.openstack as openstack_utils
 from zaza.openstack.charm_tests.keystone import (
     BaseKeystoneTest,
@@ -24,6 +26,7 @@ from zaza.openstack.charm_tests.keystone import (
     DEMO_ADMIN_USER_PASSWORD,
     DEMO_USER,
     DEMO_PASSWORD,
+    TEMPEST_ROLES,
 )
 
 
@@ -115,3 +118,30 @@ def add_demo_user():
     else:
         # create only V3 user
         _v3()
+
+
+def _add_additional_roles(roles):
+    """Add additional roles to this deployment.
+
+    :param ctxt: roles
+    :type ctxt: list
+    :returns: None
+    :rtype: None
+    """
+    keystone_session = openstack_utils.get_overcloud_keystone_session()
+    keystone_client = openstack_utils.get_keystone_session_client(
+        keystone_session)
+    for role_name in roles:
+        try:
+            keystone_client.roles.create(role_name)
+        except keystoneauth1.exceptions.http.Conflict:
+            pass
+
+
+def add_tempest_roles():
+    """Add tempest roles to this deployment.
+
+    :returns: None
+    :rtype: None
+    """
+    _add_additional_roles(TEMPEST_ROLES)
