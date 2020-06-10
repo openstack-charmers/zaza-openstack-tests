@@ -22,7 +22,6 @@ import logging
 from manilaclient import client as manilaclient
 
 import zaza.openstack.charm_tests.test_utils as test_utils
-import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.utilities.juju as zaza_juju
 import zaza.model
 
@@ -48,8 +47,8 @@ class ManilaGenericTests(test_utils.OpenStackBaseTest):
         return self.manila_client.shares.list()
 
     def test_manila_manila_generic_relation_address(self):
-        """Verify the manila to manila-generic relation address match"""
-        logging.debug('Checking the manila:manila-generic relation address...')
+        """Verify the manila to manila-generic relation address match."""
+        logging.debug('Checking the manila:manila-generic relation address.')
         unit_name = 'manila-generic/0'
         remote_unit_name = 'manila/0'
         relation_name = 'manila-plugin'
