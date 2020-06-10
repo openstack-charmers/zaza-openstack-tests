@@ -78,8 +78,8 @@ packages:
         openstack_utils.resource_reaches_status(
             self.manila_client.shares,
             share.id,
-            wait_iteration_max_time=1200,
-            stop_after_attempt=20,
+            wait_iteration_max_time=120,
+            stop_after_attempt=2,
             expected_status="available",
             msg="Waiting for a share to become available")
 
