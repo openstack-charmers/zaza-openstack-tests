@@ -74,6 +74,15 @@ packages:
         fip_1 = neutron_tests.floating_ips_from_instance(instance_1)[0]
         fip_2 = neutron_tests.floating_ips_from_instance(instance_2)[0]
 
+        # Wait for the created share to become available before it gets used.
+        openstack_utils.resource_reaches_status(
+            self.manila_client.shares,
+            share.id,
+            wait_iteration_max_time=120,
+            stop_after_attempt=2,
+            expected_status="available",
+            msg="Waiting for a share to become available")
+
         share.allow(access_type='ip', access=fip_1, access_level='rw')
         share.allow(access_type='ip', access=fip_2, access_level='rw')
 
