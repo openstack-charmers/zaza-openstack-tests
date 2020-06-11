@@ -15,7 +15,6 @@
 """Code for configuring and initializing tempest."""
 
 import urllib.parse
-import os
 import subprocess
 
 import zaza.utilities.deployment_env as deployment_env
@@ -253,12 +252,11 @@ def setup_tempest(tempest_template, accounts_template):
     :returns: None
     :rtype: None
     """
-    if os.path.isdir('tempest-workspace'):
-        try:
-            subprocess.check_call(['tempest', 'workspace', 'remove', '--rmdir',
-                                   '--name', 'tempest-workspace'])
-        except subprocess.CalledProcessError:
-            pass
+    try:
+        subprocess.check_call(['tempest', 'workspace', 'remove', '--rmdir',
+                               '--name', 'tempest-workspace'])
+    except subprocess.CalledProcessError:
+        pass
     try:
         subprocess.check_call(['tempest', 'init', 'tempest-workspace'])
     except subprocess.CalledProcessError:
