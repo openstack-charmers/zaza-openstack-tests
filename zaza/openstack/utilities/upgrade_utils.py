@@ -20,7 +20,8 @@ import zaza.model
 
 
 SERVICE_GROUPS = collections.OrderedDict([
-    ('Stateful Services', ['percona-cluster', 'rabbitmq-server', 'ceph-mon']),
+    ('Stateful Services', ['percona-cluster', 'rabbitmq-server', 'ceph-mon',
+                           'mysql-innodb-cluster']),
     ('Core Identity', ['keystone']),
     ('Control Plane', [
         'aodh', 'barbican', 'ceilometer', 'ceph-fs',
@@ -92,6 +93,19 @@ def _filter_non_openstack_services(app, app_config, model_name=None):
     return False
 
 
+def _apply_extra_filters(filters, extra_filters):
+    if extra_filters:
+        if isinstance(extra_filters, list):
+            filters.extend(extra_filters)
+        elif callable(extra_filters):
+            filters.append(extra_filters)
+        else:
+            raise RuntimeError(
+                "extra_filters should be a list of "
+                "callables")
+    return filters
+
+
 def get_upgrade_groups(model_name=None, extra_filters=None):
     """Place apps in the model into their upgrade groups.
 
@@ -108,18 +122,10 @@ def get_upgrade_groups(model_name=None, extra_filters=None):
         _filter_openstack_upgrade_list,
         _filter_non_openstack_services,
     ]
-    if extra_filters:
-        if isinstance(extra_filters, list):
-            filters.extend(extra_filters)
-        elif callable(extra_filters):
-            filters.append(extra_filters)
-        else:
-            raise RuntimeError(
-                "extra_filters should be a list of "
-                "callables")
+    filters = _apply_extra_filters(filters, extra_filters)
     apps_in_model = get_upgrade_candidates(
         model_name=model_name,
-        filters=filters,)
+        filters=filters)
 
     return _build_service_groups(apps_in_model)
 
@@ -136,15 +142,26 @@ def get_series_upgrade_groups(model_name=None, extra_filters=None):
     :rtype: collections.OrderedDict
     """
     filters = [_filter_subordinates]
-    if extra_filters:
-        if isinstance(extra_filters, list):
-            filters.extend(extra_filters)
-        elif callable(extra_filters):
-            filters.append(extra_filters)
-        else:
-            raise RuntimeError(
-                "extra_filters should be a list of "
-                "callables")
+    filters = _apply_extra_filters(filters, extra_filters)
+    apps_in_model = get_upgrade_candidates(
+        model_name=model_name,
+        filters=filters)
+
+    return _build_service_groups(apps_in_model)
+
+
+def get_charm_upgrade_groups(model_name=None, extra_filters=None):
+    """Place apps in the model into their upgrade groups for a charm upgrade.
+
+    Place apps in the model into their upgrade groups. If an app is deployed
+    but is not in SERVICE_GROUPS then it is placed in a sweep_up group.
+
+    :param model_name: Name of model to query.
+    :type model_name: str
+    :returns: Dict of group lists keyed on group name.
+    :rtype: collections.OrderedDict
+    """
+    filters = _apply_extra_filters([], extra_filters)
     apps_in_model = get_upgrade_candidates(
         model_name=model_name,
         filters=filters)
