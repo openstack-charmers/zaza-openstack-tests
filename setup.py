@@ -108,6 +108,7 @@ setup(
     license='Apache-2.0: http://www.apache.org/licenses/LICENSE-2.0',
     packages=find_packages(exclude=["unit_tests"]),
     zip_safe=False,
+    include_package_data=True,
     cmdclass={'test': Tox},
     install_requires=install_require,
     extras_require={
