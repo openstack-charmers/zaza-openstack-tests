@@ -14,6 +14,7 @@
 
 """Code for configuring and initializing tempest."""
 
+import jinja2
 import urllib.parse
 import os
 import subprocess
@@ -22,20 +23,18 @@ import zaza.utilities.deployment_env as deployment_env
 import zaza.openstack.utilities.juju as juju_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.glance.setup as glance_setup
-import zaza.openstack.charm_tests.tempest.templates.tempest_v2 as tempest_v2
-import zaza.openstack.charm_tests.tempest.templates.tempest_v3 as tempest_v3
-import zaza.openstack.charm_tests.tempest.templates.accounts as accounts
 
-SETUP_ENV_VARS = [
-    'TEST_GATEWAY',
-    'TEST_CIDR_EXT',
-    'TEST_FIP_RANGE',
-    'TEST_NAMESERVER',
-    'TEST_CIDR_PRIV',
-    'TEST_SWIFT_IP',
-]
+SETUP_ENV_VARS = {
+    'neutron': ['TEST_GATEWAY', 'TEST_CIDR_EXT', 'TEST_FIP_RANGE',
+                'TEST_NAMESERVER', 'TEST_CIDR_PRIV'],
+    'swift': ['TEST_SWIFT_IP'],
+}
+
 TEMPEST_FLAVOR_NAME = 'm1.tempest'
 TEMPEST_ALT_FLAVOR_NAME = 'm2.tempest'
+TEMPEST_SVC_LIST = ['ceilometer', 'cinder', 'glance', 'heat', 'horizon',
+                    'ironic', 'neutron', 'nova', 'sahara', 'swift', 'trove',
+                    'zaqar']
 
 
 def add_application_ips(ctxt):
@@ -169,7 +168,20 @@ def add_keystone_config(ctxt, keystone_session):
     ctxt['default_domain_id'] = domain.id
 
 
-def add_environment_var_config(ctxt):
+def get_service_list(keystone_session):
+    """Add keystone config to context.
+
+    :param keystone_session: keystoneauth1.session.Session object
+    :type: keystoneauth1.session.Session
+    :returns: None
+    :rtype: None
+    """
+    keystone_client = openstack_utils.get_keystone_session_client(
+        keystone_session)
+    return [s.name for s in keystone_client.services.list() if s.enabled]
+
+
+def add_environment_var_config(ctxt, services):
     """Add environment variable config to context.
 
     :param ctxt: Context dictionary
@@ -178,14 +190,16 @@ def add_environment_var_config(ctxt):
     :rtype: None
     """
     deploy_env = deployment_env.get_deployment_context()
-    for var in SETUP_ENV_VARS:
-        value = deploy_env.get(var)
-        if value:
-            ctxt[var.lower()] = value
-        else:
-            raise ValueError(
-                ("Environment variables {} must all be set to run this"
-                 " test").format(', '.join(SETUP_ENV_VARS)))
+    for svc, env_vars in SETUP_ENV_VARS.items():
+        if svc in services:
+            for var in env_vars:
+                value = deploy_env.get(var)
+                if value:
+                    ctxt[var.lower()] = value
+                else:
+                    raise ValueError(
+                        ("Environment variables {} must all be set to run this"
+                         " test").format(', '.join(env_vars)))
 
 
 def add_auth_config(ctxt):
@@ -215,32 +229,42 @@ def get_tempest_context():
     """
     keystone_session = openstack_utils.get_overcloud_keystone_session()
     ctxt = {}
+    ctxt_funcs = {
+        'nova': add_nova_config,
+        'neutron': add_nova_config,
+        'glance': add_keystone_config,
+        'cinder': add_cinder_config,
+        'keystone': add_keystone_config}
+    ctxt['enabled_services'] = get_service_list(keystone_session)
+    ctxt['disabled_services'] = list(
+        set(TEMPEST_SVC_LIST) - set(ctxt['enabled_services']))
     add_application_ips(ctxt)
-    add_nova_config(ctxt, keystone_session)
-    add_neutron_config(ctxt, keystone_session)
-    add_glance_config(ctxt, keystone_session)
-    add_cinder_config(ctxt, keystone_session)
-    add_keystone_config(ctxt, keystone_session)
-    add_environment_var_config(ctxt)
+    for svc_name, ctxt_func in ctxt_funcs.items():
+        if svc_name in ctxt['enabled_services']:
+            ctxt_func(ctxt, keystone_session)
+    add_environment_var_config(ctxt, ctxt['enabled_services'])
     add_auth_config(ctxt)
     return ctxt
 
 
-def render_tempest_config(target_file, ctxt, template):
+def render_tempest_config(target_file, ctxt, template_name):
     """Render tempest config for specified config file and template.
 
     :param target_file: Name of file to render config to
     :type target_file: str
     :param ctxt: Context dictionary
     :type ctxt: dict
-    :param template: Template module
-    :type template: module
+    :param template_name: Name of template file
+    :type template_name: str
     :returns: None
     :rtype: None
     """
-    # TODO: switch to jinja2 and generate config based on available services
+    jenv = jinja2.Environment(loader=jinja2.PackageLoader(
+        'zaza.openstack',
+        'charm_tests/tempest/templates'))
+    template = jenv.get_template(template_name)
     with open(target_file, 'w') as f:
-        f.write(template.file_contents.format(**ctxt))
+        f.write(template.render(ctxt))
 
 
 def setup_tempest(tempest_template, accounts_template):
@@ -279,7 +303,7 @@ def render_tempest_config_keystone_v2():
     :returns: None
     :rtype: None
     """
-    setup_tempest(tempest_v2, accounts)
+    setup_tempest('tempest_v2.j2', 'accounts.j2')
 
 
 def render_tempest_config_keystone_v3():
@@ -288,4 +312,4 @@ def render_tempest_config_keystone_v3():
     :returns: None
     :rtype: None
     """
-    setup_tempest(tempest_v3, accounts)
+    setup_tempest('tempest_v3.j2', 'accounts.j2')
