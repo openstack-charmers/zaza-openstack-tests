@@ -16,12 +16,8 @@
 
 """Encapsulate Manila Generic testing."""
 
-import tenacity
 import logging
 
-from manilaclient import client as manilaclient
-
-import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.charm_tests.manila.tests as manila_tests
 import zaza.openstack.utilities.juju as zaza_juju
 import zaza.model
