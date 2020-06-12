@@ -293,8 +293,9 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.patch_object(openstack_utils.urllib.request, "ProxyHandler")
         self.patch_object(openstack_utils.urllib.request, "HTTPHandler")
         self.patch_object(openstack_utils.urllib.request, "build_opener")
-        self.patch_object(openstack_utils.os, "getenv")
-        self.getenv.return_value = None
+        self.patch_object(openstack_utils.deployment_env,
+                          "get_deployment_context",
+                          return_value=dict(TEST_HTTP_PROXY=None))
         HTTPHandler_mock = mock.MagicMock()
         self.HTTPHandler.return_value = HTTPHandler_mock
         openstack_utils.get_urllib_opener()
@@ -305,8 +306,9 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.patch_object(openstack_utils.urllib.request, "ProxyHandler")
         self.patch_object(openstack_utils.urllib.request, "HTTPHandler")
         self.patch_object(openstack_utils.urllib.request, "build_opener")
-        self.patch_object(openstack_utils.os, "getenv")
-        self.getenv.return_value = 'http://squidy'
+        self.patch_object(openstack_utils.deployment_env,
+                          "get_deployment_context",
+                          return_value=dict(TEST_HTTP_PROXY='http://squidy'))
         ProxyHandler_mock = mock.MagicMock()
         self.ProxyHandler.return_value = ProxyHandler_mock
         openstack_utils.get_urllib_opener()
