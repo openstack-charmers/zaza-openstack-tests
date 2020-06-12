@@ -231,8 +231,8 @@ def get_tempest_context():
     ctxt = {}
     ctxt_funcs = {
         'nova': add_nova_config,
-        'neutron': add_nova_config,
-        'glance': add_keystone_config,
+        'neutron': add_neutron_config,
+        'glance': add_glance_config,
         'cinder': add_cinder_config,
         'keystone': add_keystone_config}
     ctxt['enabled_services'] = get_service_list(keystone_session)
