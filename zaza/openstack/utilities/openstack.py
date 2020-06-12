@@ -39,6 +39,7 @@ from keystoneauth1.identity import (
     v2,
 )
 import zaza.openstack.utilities.cert as cert
+import zaza.utilities.deployment_env as deployment_env
 from novaclient import client as novaclient_client
 from neutronclient.v2_0 import client as neutronclient
 from neutronclient.common import exceptions as neutronexceptions
@@ -1749,14 +1750,15 @@ def get_urllib_opener():
 
     Using urllib.request.urlopen will automatically handle proxies so none
     of this function is needed except we are currently specifying proxies
-    via OS_TEST_HTTP_PROXY rather than http_proxy so a ProxyHandler is needed
+    via TEST_HTTP_PROXY rather than http_proxy so a ProxyHandler is needed
     explicitly stating the proxies.
 
     :returns: An opener which opens URLs via BaseHandlers chained together
     :rtype: urllib.request.OpenerDirector
     """
-    http_proxy = os.getenv('OS_TEST_HTTP_PROXY')
-    logging.debug('OS_TEST_HTTP_PROXY: {}'.format(http_proxy))
+    deploy_env = deployment_env.get_deployment_context()
+    http_proxy = deploy_env.get('TEST_HTTP_PROXY')
+    logging.debug('TEST_HTTP_PROXY: {}'.format(http_proxy))
 
     if http_proxy:
         handler = urllib.request.ProxyHandler({'http': http_proxy})
