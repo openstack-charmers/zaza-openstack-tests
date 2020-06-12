@@ -169,7 +169,7 @@ def add_keystone_config(ctxt, keystone_session):
 
 
 def get_service_list(keystone_session):
-    """Add keystone config to context.
+    """Retrieve list of services from keystone.
 
     :param keystone_session: keystoneauth1.session.Session object
     :type: keystoneauth1.session.Session

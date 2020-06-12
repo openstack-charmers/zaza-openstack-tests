@@ -47,8 +47,10 @@ api_v2 = false
 api_v3 = true
 {% endif %}
 
+{% if 'glance' in enabled_services %}
 [image]
 http_image = http://{{ test_swift_ip }}:80/swift/v1/images/cirros-0.3.4-x86_64-uec.tar.gz
+{% endif %}
 
 {% if 'neutron' in enabled_services %}
 [network]
@@ -98,4 +100,5 @@ storage_protocol = ceph
 catalog_type = {{ catalog_type }}
 
 [volume-feature-enabled]
+backup = false
 {% endif %}
