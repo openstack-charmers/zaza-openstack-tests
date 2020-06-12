@@ -22,29 +22,22 @@ import logging
 from manilaclient import client as manilaclient
 
 import zaza.openstack.charm_tests.test_utils as test_utils
+import zaza.openstack.charm_tests.manila.tests as manila_tests
 import zaza.openstack.utilities.juju as zaza_juju
 import zaza.model
 
 
-class ManilaGenericTests(test_utils.OpenStackBaseTest):
+class ManilaGenericTests(manila_tests.ManilaTests):
     """Encapsulate Manila Generic tests."""
 
     @classmethod
     def setUpClass(cls):
         """Run class setup for running tests."""
         super(ManilaGenericTests, cls).setUpClass()
-        cls.manila_client = manilaclient.Client(
-            session=cls.keystone_session, client_version='2')
 
     def test_manila_api(self):
         """Test that the Manila API is working."""
-        self.assertEqual([], self._list_shares())
-
-    @tenacity.retry(
-        stop=tenacity.stop_after_attempt(5),
-        wait=tenacity.wait_exponential(multiplier=3, min=2, max=10))
-    def _list_shares(self):
-        return self.manila_client.shares.list()
+        super(ManilaGenericTests, self).test_manila_api()
 
     def test_manila_manila_generic_relation_address(self):
         """Verify the manila to manila-generic relation address match."""
