@@ -66,24 +66,48 @@ class GnocchiTest(test_utils.OpenStackBaseTest):
 class GnocchiS3Test(test_utils.OpenStackBaseTest):
     """Tests for S3 storage backend"""
 
-    swift = S3APITest
-    kwargs = {
-            'region_name': swift.s3_region,
-            'aws_access_key_id': swift.ec2_creds.access,
-            'aws_secret_access_key': swift.ec2_creds.secret,
-            'endpoint_url': swift.s3_endpoint,
-            'verify': swift.cacert,
-        }
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running tests."""
+        super(GnocchiS3Test, cls).setUpClass()
+
+        session = openstack_utils.get_overcloud_keystone_session()
+        ks_client = openstack_utils.get_keystone_session_client(session)
+
+        # Get token data so we can clean our user_id and project_id
+        token_data = ks_client.tokens.get_token_data(session.get_token())
+        project_id = token_data['token']['project']['id']
+        user_id = token_data['token']['user']['id']
+
+        # Store URL to service providing S3 compatible API
+        for entry in token_data['token']['catalog']:
+            if entry['type'] == 's3':
+                for endpoint in entry['endpoints']:
+                    if endpoint['interface'] == 'public':
+                        cls.s3_region = endpoint['region']
+                        cls.s3_endpoint = endpoint['url']
+
+        # Create AWS compatible application credentials in Keystone
+        cls.ec2_creds = ks_client.ec2.create(user_id, project_id)
+
+    # kwargs = {
+    #         'region_name': swift.s3_region,
+    #         'aws_access_key_id': swift.ec2_creds.access,
+    #         'aws_secret_access_key': swift.ec2_creds.secret,
+    #         'endpoint_url': swift.s3_endpoint,
+    #         'verify': swift.cacert,
+    #     }
     
     def update_gnocchi_config_for_s3(self):
         """Update Gnocchi with the correct values for the S3 backend"""
+        
         logging.debug('Changing charm setting to connect to S3')
         model.set_application_config(
             'gnocchi',
-            {'s3-endpoint-url': self.swift.s3_endpoint,
-            's3-region-name': self.swift.s3_region,
-            's3-access-key-id': self.swift.ec2_creds.access,
-            's3-secret-access-key': self.swift.ec2_creds.secret},
+            {'s3-endpoint-url': self.s3_endpoint,
+            's3-region-name': self.s3_region,
+            's3-access-key-id': self.ec2_creds.access,
+            's3-secret-access-key': self.ec2_creds.secret},
             model_name=self.model_name
         )
         logging.debug(
