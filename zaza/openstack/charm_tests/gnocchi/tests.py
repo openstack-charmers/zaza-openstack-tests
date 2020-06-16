@@ -16,11 +16,14 @@
 
 """Encapsulate Gnocchi testing."""
 
+import boto3
 import logging
-
 from gnocchiclient.v1 import client as gnocchi_client
+
+import zaza.model as model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
+from zaza.openstack.charm_tests.swift.tests import S3APITest
 
 
 class GnocchiTest(test_utils.OpenStackBaseTest):
@@ -58,3 +61,40 @@ class GnocchiTest(test_utils.OpenStackBaseTest):
         """
         with self.pause_resume(self.services):
             logging.info("Testing pause and resume")
+
+
+class GnocchiS3Test(test_utils.OpenStackBaseTest):
+    """Tests for S3 storage backend"""
+
+    swift = S3APITest
+    kwargs = {
+            'region_name': swift.s3_region,
+            'aws_access_key_id': swift.ec2_creds.access,
+            'aws_secret_access_key': swift.ec2_creds.secret,
+            'endpoint_url': swift.s3_endpoint,
+            'verify': swift.cacert,
+        }
+    
+    def update_gnocchi_config_for_s3(self):
+        """Update Gnocchi with the correct values for the S3 backend"""
+        logging.debug('Changing charm setting to connect to S3')
+        model.set_application_config(
+            'gnocchi',
+            {'s3-endpoint-url': self.swift.s3_endpoint,
+            's3-region-name': self.swift.s3_region,
+            's3-access-key-id': self.swift.ec2_creds.access,
+            's3-secret-access-key': self.swift.ec2_creds.secret},
+            model_name=self.model_name
+        )
+        logging.debug(
+                'Waiting for units to execute config-changed hook')
+        model.wait_for_agent_status(model_name=self.model_name)
+        logging.debug(
+                'Waiting for units to reach target states')
+        model.wait_for_application_states(
+            model_name=self.model_name,
+            states={'gnocchi': {
+                            'workload-status-': 'active',
+                            'workload-status-message': 'Unit is ready'}}
+        )
+        model.block_until_all_units_idle()
