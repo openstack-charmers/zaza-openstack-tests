@@ -64,7 +64,7 @@ class GnocchiTest(test_utils.OpenStackBaseTest):
 
 
 class GnocchiS3Test(test_utils.OpenStackBaseTest):
-    """Tests for S3 storage backend"""
+    """Test object storage S3 API."""
 
     @classmethod
     def setUpClass(cls):
@@ -74,7 +74,7 @@ class GnocchiS3Test(test_utils.OpenStackBaseTest):
         session = openstack_utils.get_overcloud_keystone_session()
         ks_client = openstack_utils.get_keystone_session_client(session)
 
-        # Get token data so we can clean our user_id and project_id
+        # Get token data so we can glean our user_id and project_id
         token_data = ks_client.tokens.get_token_data(session.get_token())
         project_id = token_data['token']['project']['id']
         user_id = token_data['token']['user']['id']
@@ -90,18 +90,10 @@ class GnocchiS3Test(test_utils.OpenStackBaseTest):
         # Create AWS compatible application credentials in Keystone
         cls.ec2_creds = ks_client.ec2.create(user_id, project_id)
 
-    # kwargs = {
-    #         'region_name': swift.s3_region,
-    #         'aws_access_key_id': swift.ec2_creds.access,
-    #         'aws_secret_access_key': swift.ec2_creds.secret,
-    #         'endpoint_url': swift.s3_endpoint,
-    #         'verify': swift.cacert,
-    #     }
-    
-    def update_gnocchi_config_for_s3(self):
-        """Update Gnocchi with the correct values for the S3 backend"""
+    def test_s3_connection_for_gnocchi(self):
+        """Use S3 API to list buckets."""
         
-        logging.debug('Changing charm setting to connect to S3')
+        logging.info('Changing charm config to connect to swift S3 backend')
         model.set_application_config(
             'gnocchi',
             {'s3-endpoint-url': self.s3_endpoint,
@@ -110,15 +102,47 @@ class GnocchiS3Test(test_utils.OpenStackBaseTest):
             's3-secret-access-key': self.ec2_creds.secret},
             model_name=self.model_name
         )
-        logging.debug(
+        logging.info(
                 'Waiting for units to execute config-changed hook')
         model.wait_for_agent_status(model_name=self.model_name)
-        logging.debug(
+        logging.info(
                 'Waiting for units to reach target states')
         model.wait_for_application_states(
             model_name=self.model_name,
             states={'gnocchi': {
-                            'workload-status-': 'active',
-                            'workload-status-message': 'Unit is ready'}}
+                        'workload-status-': 'active',
+                        'workload-status-message': 'Unit is ready'
+                        },
+                    'ceilometer': {
+                        'workload-status' : 'blocked',
+                        'workload-status-message': 'Run the ceilometer-upgrade action on the leader to initialize ceilometer and gnocchi'
+                        }
+                    }
         )
         model.block_until_all_units_idle()
+
+    def test_s3_list_gnocchi_buckets(self):
+        """Verify that the gnocchi buckets were created in the S3 backend """
+
+        kwargs = {
+            'region_name': self.s3_region,
+            'aws_access_key_id': self.ec2_creds.access,
+            'aws_secret_access_key': self.ec2_creds.secret,
+            'endpoint_url': self.s3_endpoint,
+            'verify': self.cacert,
+        }
+        s3_client = boto3.client('s3', **kwargs)
+        s3 = boto3.resource('s3', **kwargs)
+
+        bucket_names = ['gnocchi-measure', 'gnocchi-aggregates']
+        # Validate their presence
+        bucket_list = s3_client.list_buckets()
+        logging.info(pprint.pformat(bucket_list))
+        for bkt in bucket_list['Buckets']:
+            for gnocchi_bkt in bucket_names:
+                print(gnocchi_bkt)
+                if bkt['Name'] == gnocchi_bkt:
+                    print('break out of 1st loop')
+                    break
+                else:
+                    AssertionError('Bucket "{}" not found'.format(gnocchi_bkt))
