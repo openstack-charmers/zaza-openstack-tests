@@ -24,7 +24,7 @@ import zaza.openstack.utilities.openstack as openstack_utils
 
 
 @tenacity.retry(
-    retry=tenacity.retry_if_result(lambda images: len(images) < 3),
+    retry=tenacity.retry_if_result(lambda images: len(images) < 4),
     wait=tenacity.wait_fixed(6),  # interval between retries
     stop=tenacity.stop_after_attempt(100))  # retry times
 def retry_image_sync(glance_client):
@@ -61,7 +61,7 @@ class GlanceSimpleStreamsSyncTest(test_utils.OpenStackBaseTest):
             cls.keystone_session)
 
     def test_010_wait_for_image_sync(self):
-        """Wait for images to be synced. Expect at least three."""
+        """Wait for images to be synced. Expect at least four."""
         self.assertTrue(retry_image_sync(self.glance_client))
 
     def test_050_gss_permissions_regression_check_lp1611987(self):
@@ -94,6 +94,7 @@ class GlanceSimpleStreamsSyncTest(test_utils.OpenStackBaseTest):
             'com.ubuntu.cloud:server:14.04:amd64',
             'com.ubuntu.cloud:server:16.04:amd64',
             'com.ubuntu.cloud:server:18.04:amd64',
+            'com.ubuntu.cloud:server:20.04:amd64',
         ]
         uri = "streams/v1/auto.sync.json"
         key = "url"
