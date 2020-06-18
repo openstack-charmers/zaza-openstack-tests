@@ -293,8 +293,23 @@ class NeutronCreateNetworkTest(test_utils.OpenStackBaseTest):
         cls.neutron_client = (
             openstack_utils.get_neutron_session_client(cls.keystone_session))
 
+    def _test_400_additional_validation(self, expected_network_names):
+        """Additional assertions for test_400_create_network.
+
+        Can be overridden in derived classes.
+
+        :type expected_network_names: List[str]
+        """
+        pass
+
     def test_400_create_network(self):
-        """Create a network, verify that it exists, and then delete it."""
+        """Create a network, verify that it exists, and then delete it.
+
+        Additional verifications on the created network can be performed by
+        deriving this class and overriding _test_400_additional_validation().
+        """
+        self._test_400_additional_validation([])
+
         logging.debug('Creating neutron network...')
         self.neutron_client.format = 'json'
         net_name = 'test_net'
@@ -319,9 +334,13 @@ class NeutronCreateNetworkTest(test_utils.OpenStackBaseTest):
         network = networks['networks'][0]
         assert network['name'] == net_name, "network ext_net not found"
 
+        self._test_400_additional_validation([net_name])
+
         # Cleanup
         logging.debug('Deleting neutron network...')
         self.neutron_client.delete_network(network['id'])
+
+        self._test_400_additional_validation([])
 
 
 class NeutronApiTest(NeutronCreateNetworkTest):
