@@ -72,6 +72,10 @@ class SwiftImageCreateTest(test_utils.OpenStackBaseTest):
 class SwiftProxyTests(test_utils.OpenStackBaseTest):
     """Tests specific to swift proxy."""
 
+    TEST_SEARCH_TARGET = 'd0'
+    TEST_WEIGHT_TARGET = 999
+    TEST_WEIGHT_INITIAL = 100
+
     def test_901_pause_resume(self):
         """Run pause and resume tests.
 
@@ -90,6 +94,56 @@ class SwiftProxyTests(test_utils.OpenStackBaseTest):
             'diskusage',
             action_params={})
         self.assertEqual(action.status, "completed")
+
+    def test_904_set_weight_action_and_validate_rebalance(self):
+        """Set weight of device in object ring, rebalance, and
+        validate rings have rebalance and replicated"""
+        logging.info('Running set-weight action on leader')
+        action = zaza.model.run_action_on_leader(
+            'swift-proxy',
+            'set-weight',
+            action_params={'ring': 'object',
+                           'search-value': self.TEST_SEARCH_TARGET,
+                           'weight': self.TEST_WEIGHT_TARGET})
+        self.assertEqual(action.status, "completed")
+
+        logging.info('Validating builder updated as expected')
+        cmd = ('swift-ring-builder /etc/swift/object.builder search {}'
+               ''.format(self.TEST_SEARCH_TARGET))
+        result = zaza.model.run_on_leader('swift-proxy', cmd)
+        self.assertTrue('Stdout' in result,
+                        'failed to retrieve swift-ring-builder weight')
+        # disk weight is the 9th field of the second line and is a float
+        disk_weight = result['Stdout'].split('\n')[1].split()[8]
+        disk_weight = int(disk_weight.split('.')[0])
+        self.assertEqual(disk_weight, self.TEST_WEIGHT_TARGET)
+
+        logging.info('Checking ring has rebalanced')
+        cmd = ('swift-ring-builder /etc/swift/object.builder | '
+               'grep "Ring file .* is"')
+        result = zaza.model.run_on_leader('swift-proxy', cmd)
+        self.assertTrue('Stdout' in result,
+                        'failed to retrieve object ring status')
+        expected = 'Ring file /etc/swift/object.ring.gz is up-to-date'
+        self.assertEqual(result['Stdout'].strip('\n'), expected)
+
+        logging.info('Running set-weight on leader to reset weight back')
+        action = zaza.model.run_action_on_leader(
+            'swift-proxy',
+            'set-weight',
+            action_params={'ring': 'object',
+                           'search-value': self.TEST_SEARCH_TARGET,
+                           'weight': self.TEST_WEIGHT_INITIAL})
+        self.assertEqual(action.status, "completed")
+
+        logging.info('Checking ring md5sums on storage units against proxy')
+        zaza.model.block_until_all_units_idle()
+        cmd = 'swift-recon --md5 | grep -A1 "ring md5" | tail -1'
+        result = zaza.model.run_on_leader('swift-proxy', cmd)
+        self.assertTrue('Stdout' in result,
+                        'failed to retrieve swift-recon results')
+        expected = '1/1 hosts matched, 0 error[s] while checking hosts.'
+        self.assertEqual(result['Stdout'].strip('\n'), expected)
 
 
 class SwiftStorageTests(test_utils.OpenStackBaseTest):
