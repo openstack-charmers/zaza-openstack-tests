@@ -64,7 +64,7 @@ class GnocchiTest(test_utils.OpenStackBaseTest):
 
 
 class GnocchiS3Test(test_utils.OpenStackBaseTest):
-    """Test object storage S3 API."""
+    """Test Gnocchi with S3 storage backend."""
 
     @classmethod
     def setUpClass(cls):
@@ -91,7 +91,7 @@ class GnocchiS3Test(test_utils.OpenStackBaseTest):
         cls.ec2_creds = ks_client.ec2.create(user_id, project_id)
 
     def test_s3_connection_for_gnocchi(self):
-        """Use S3 API to list buckets."""
+        """Set S3 config for gnocchi-upgrade."""
         logging.info('Changing charm config to connect to swift S3 backend')
         model.set_application_config(
             'gnocchi',
