@@ -64,7 +64,7 @@ class GnocchiTest(test_utils.OpenStackBaseTest):
 
 
 class GnocchiS3Test(test_utils.OpenStackBaseTest):
-    """Test Gnocchi with S3 storage backend."""
+    """Test Gnocchi for S3 storage backend."""
 
     @classmethod
     def setUpClass(cls):
@@ -90,38 +90,6 @@ class GnocchiS3Test(test_utils.OpenStackBaseTest):
         # Create AWS compatible application credentials in Keystone
         cls.ec2_creds = ks_client.ec2.create(user_id, project_id)
 
-    def test_s3_connection_for_gnocchi(self):
-        """Set S3 config for gnocchi-upgrade."""
-        logging.info('Changing charm config to connect to swift S3 backend')
-        model.set_application_config(
-            'gnocchi',
-            {'s3-endpoint-url': self.s3_endpoint,
-             's3-region-name': self.s3_region,
-             's3-access-key-id': self.ec2_creds.access,
-             's3-secret-access-key': self.ec2_creds.secret},
-            model_name=self.model_name
-        )
-        logging.info(
-            'Waiting for units to execute config-changed hook')
-        model.wait_for_agent_status(model_name=self.model_name)
-        logging.info(
-            'Waiting for units to reach target states')
-        model.wait_for_application_states(
-            model_name=self.model_name,
-            states={
-                'gnocchi': {
-                    'workload-status-': 'active',
-                    'workload-status-message': 'Unit is ready'
-                },
-                'ceilometer': {
-                    'workload-status': 'blocked',
-                    'workload-status-message': 'Run the ' +
-                    'ceilometer-upgrade action on the leader ' +
-                    'to initialize ceilometer and gnocchi'
-                }
-            }
-        )
-        model.block_until_all_units_idle()
 
     def test_s3_list_gnocchi_buckets(self):
         """Verify that the gnocchi buckets were created in the S3 backend."""
