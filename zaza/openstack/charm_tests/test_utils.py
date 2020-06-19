@@ -14,6 +14,7 @@
 """Module containing base class for implementing charm tests."""
 import contextlib
 import logging
+import ipaddress
 import subprocess
 import unittest
 
@@ -431,3 +432,20 @@ class OpenStackBaseTest(BaseCharmTest):
         cls.keystone_session = openstack_utils.get_overcloud_keystone_session(
             model_name=cls.model_name)
         cls.cacert = openstack_utils.get_cacert()
+
+
+def format_addr(addr):
+    """Validate and format IP address.
+
+    :param addr: IPv6 or IPv4 address
+    :type addr: str
+    :returns: Address string, optionally encapsulated in brackets([])
+    :rtype: str
+    :raises: ValueError
+    """
+    ipaddr = ipaddress.ip_address(addr)
+    if isinstance(ipaddr, ipaddress.IPv6Address):
+        fmt = '[{}]'
+    else:
+        fmt = '{}'
+    return fmt.format(ipaddr)
