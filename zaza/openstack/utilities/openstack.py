@@ -1621,6 +1621,10 @@ def get_undercloud_auth():
             if os_project_id is not None:
                 auth_settings['OS_PROJECT_ID'] = os_project_id
 
+    _os_cacert = os.environ.get('OS_CACERT')
+    if _os_cacert:
+        auth_settings.update({'OS_CACERT': _os_cacert})
+
     # Validate settings
     for key, settings in list(auth_settings.items()):
         if settings is None:
