@@ -551,6 +551,22 @@ def dvr_enabled():
     return get_application_config_option('neutron-api', 'enable-dvr')
 
 
+def is_neutron_ext_enabled(neutron_client, ext_alias):
+    """Check for presence of Neutron extension.
+
+    :param neutron_client: Neutron client object
+    :type neutron_client: Neutron client object
+    :param ext_alias: Name of extension as portrayed by Neutron API
+    :type ext_alias: str
+    :returns: True if Neutron lists extension, False otherwise
+    :rtype: bool
+    """
+    for extension in neutron_client.list_extensions().get('extensions', []):
+        if extension.get('alias') == ext_alias:
+            return True
+    return False
+
+
 def ovn_present():
     """Check whether OVN is present in deployment.
 
@@ -750,9 +766,12 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
                     "admin_state_up": True,
                     "name": ext_port_name,
                     "network_id": net_id,
-                    "port_security_enabled": False,
                 }
             }
+            # If the Neutron server has the port_security extension enabled
+            # disable port_security for the port.
+            if is_neutron_ext_enabled(neutronclient, 'port-security'):
+                body_value['port'].update({'port_security_enabled': False})
             port = neutronclient.create_port(body=body_value)
             ports_created += 1
             server.interface_attach(port_id=port['port']['id'],
