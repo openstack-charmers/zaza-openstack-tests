@@ -21,7 +21,6 @@ import logging
 import pprint
 from gnocchiclient.v1 import client as gnocchi_client
 
-import zaza.model as model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 
@@ -89,7 +88,6 @@ class GnocchiS3Test(test_utils.OpenStackBaseTest):
 
         # Create AWS compatible application credentials in Keystone
         cls.ec2_creds = ks_client.ec2.create(user_id, project_id)
-
 
     def test_s3_list_gnocchi_buckets(self):
         """Verify that the gnocchi buckets were created in the S3 backend."""
