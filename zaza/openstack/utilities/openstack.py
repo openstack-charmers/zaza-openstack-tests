@@ -163,7 +163,7 @@ WORKLOAD_STATUS_EXCEPTIONS = {
 KEYSTONE_CACERT = "keystone_juju_ca_cert.crt"
 KEYSTONE_REMOTE_CACERT = (
     "/usr/local/share/ca-certificates/{}".format(KEYSTONE_CACERT))
-KEYSTONE_LOCAL_CACERT = ("/tmp/{}".format(KEYSTONE_CACERT))
+KEYSTONE_LOCAL_CACERT = ("tests/{}".format(KEYSTONE_CACERT))
 
 
 def get_cacert():
