@@ -42,7 +42,7 @@ def get_product_streams(url):
     # There is a race between the images being available in glance and any
     # metadata being written. Use tenacity to avoid this race.
     client = requests.session()
-    json_data = client.get(url).text
+    json_data = client.get(url, verify=openstack_utils.get_cacert()).text
     return json.loads(json_data)
 
 
@@ -102,24 +102,31 @@ class GlanceSimpleStreamsSyncTest(test_utils.OpenStackBaseTest):
         if openstack_utils.get_os_release() <= xenial_pike:
             key = "publicURL"
 
-        catalog = self.keystone_client.service_catalog.get_endpoints()
-        ps_interface = catalog["product-streams"][0][key]
-        url = "{}/{}".format(ps_interface, uri)
-
         # There is a race between the images being available in glance and the
         # metadata being written for each image. Use tenacity to avoid this
         # race and make the test idempotent.
         @tenacity.retry(
-            retry=tenacity.retry_if_exception_type(AssertionError),
+            retry=tenacity.retry_if_exception_type(
+                (AssertionError, KeyError)
+            ),
             wait=tenacity.wait_fixed(10), reraise=True,
-            stop=tenacity.stop_after_attempt(10))
-        def _check_local_product_streams(url, expected_images):
+            stop=tenacity.stop_after_attempt(25))
+        def _check_local_product_streams(expected_images):
+            # Refresh from catalog as URL may change if swift in use.
+            catalog = self.keystone_client.service_catalog.get_endpoints()
+            ps_interface = self.keystone_client.service_catalog.url_for(
+                service_type='product-streams', interface='publicURL'
+            )
+            url = "{}/{}".format(ps_interface, uri)
+            logging.info('Retrieving product stream information'
+                         ' from {}'.format(url))
             product_streams = get_product_streams(url)
+            logging.debug(product_streams)
             images = product_streams["products"]
 
             for image in expected_images:
                 self.assertIn(image, images)
 
-        _check_local_product_streams(url, expected_images)
+        _check_local_product_streams(expected_images)
 
         logging.debug("Local product stream successful")
