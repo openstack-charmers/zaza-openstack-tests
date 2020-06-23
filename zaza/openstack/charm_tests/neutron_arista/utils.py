@@ -42,7 +42,7 @@ def query_fixture_networks(ip_addr):
     session.auth = (_FIXTURE_LOGIN, _FIXTURE_PASSWORD)
 
     data = {
-        'id': 'Zaza neutron-arista tests',
+        'id': 'Zaza neutron-api-plugin-arista tests',
         'method': 'runCmds',
         'jsonrpc': '2.0',
         'params': {

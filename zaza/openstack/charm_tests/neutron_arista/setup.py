@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Code for setting up neutron-arista."""
+"""Code for setting up neutron-api-plugin-arista."""
 
 import logging
 import tenacity
@@ -21,12 +21,12 @@ import zaza.openstack.charm_tests.neutron_arista.utils as arista_utils
 
 
 def test_fixture():
-    """Pass arista-virt-test-fixture's IP address to neutron-arista."""
+    """Pass arista-virt-test-fixture's IP address to Neutron."""
     fixture_ip_addr = arista_utils.fixture_ip_addr()
     logging.info(
-        "{}'s IP address is '{}'. Passing it to neutron-arista..."
+        "{}'s IP address is '{}'. Passing it to neutron-api-plugin-arista..."
         .format(arista_utils.FIXTURE_APP_NAME, fixture_ip_addr))
-    zaza.model.set_application_config('neutron-arista',
+    zaza.model.set_application_config('neutron-api-plugin-arista',
                                       {'eapi-host': fixture_ip_addr})
 
     logging.info('Waiting for {} to become ready...'.format(
