@@ -60,8 +60,8 @@ def query_fixture_networks(ip_addr):
     )
 
     result = []
-    for _, region in response.json()['result'][0]['regions'].items():
-        for _, tenant in region['tenants'].items():
-            for _, network in tenant['tenantNetworks'].items():
+    for region in response.json()['result'][0]['regions'].values():
+        for tenant in region['tenants'].values():
+            for network in tenant['tenantNetworks'].values():
                 result.append(network['networkName'])
     return result

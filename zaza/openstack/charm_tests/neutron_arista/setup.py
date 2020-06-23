@@ -24,8 +24,8 @@ def test_fixture():
     """Pass arista-virt-test-fixture's IP address to neutron-arista."""
     fixture_ip_addr = arista_utils.fixture_ip_addr()
     logging.info(
-        "{}'s IP address is '{}'. Passing it to neutron-arista...".format(
-            arista_utils.FIXTURE_APP_NAME, fixture_ip_addr))
+        "{}'s IP address is '{}'. Passing it to neutron-arista..."
+        .format(arista_utils.FIXTURE_APP_NAME, fixture_ip_addr))
     zaza.model.set_application_config('neutron-arista',
                                       {'eapi-host': fixture_ip_addr})
 
