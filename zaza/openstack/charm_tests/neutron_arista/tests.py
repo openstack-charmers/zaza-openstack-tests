@@ -38,16 +38,16 @@ class NeutronCreateAristaNetworkTest(neutron_tests.NeutronCreateNetworkTest):
             with attempt:
                 cls.neutron_client.list_networks()
 
-    def _test_400_additional_validation(self, expected_network_names):
-        """Arista-specific assertions for test_400_create_network.
-
-        :type expected_network_names: List[str]
-        """
-        logging.info("Querying Arista CVX's networks...")
+    def _assert_test_network_exists_and_return_id(self):
         actual_network_names = arista_utils.query_fixture_networks(
             arista_utils.fixture_ip_addr())
+        self.assertEqual(actual_network_names, [self._TEST_NET_NAME])
+        return super(NeutronCreateAristaNetworkTest,
+                     self)._assert_test_network_exists_and_return_id()
 
-        # NOTE(lourot): the assertion name is misleading as it's not only
-        # checking the item count but also that all items are present in
-        # both lists, without checking the order.
-        self.assertCountEqual(actual_network_names, expected_network_names)
+    def _assert_test_network_doesnt_exist(self):
+        actual_network_names = arista_utils.query_fixture_networks(
+            arista_utils.fixture_ip_addr())
+        self.assertEqual(actual_network_names, [])
+        super(NeutronCreateAristaNetworkTest,
+              self)._assert_test_network_doesnt_exist()

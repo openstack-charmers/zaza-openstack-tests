@@ -292,55 +292,44 @@ class NeutronCreateNetworkTest(test_utils.OpenStackBaseTest):
         # set up clients
         cls.neutron_client = (
             openstack_utils.get_neutron_session_client(cls.keystone_session))
+        cls.neutron_client.format = 'json'
 
-    def _test_400_additional_validation(self, expected_network_names):
-        """Additional assertions for test_400_create_network.
-
-        Can be overridden in derived classes.
-
-        :type expected_network_names: List[str]
-        """
-        pass
+    _TEST_NET_NAME = 'test_net'
 
     def test_400_create_network(self):
-        """Create a network, verify that it exists, and then delete it.
+        """Create a network, verify that it exists, and then delete it."""
+        self._assert_test_network_doesnt_exist()
+        self._create_test_network()
+        net_id = self._assert_test_network_exists_and_return_id()
+        self._delete_test_network(net_id)
+        self._assert_test_network_doesnt_exist()
 
-        Additional verifications on the created network can be performed by
-        deriving this class and overriding _test_400_additional_validation().
-        """
-        self._test_400_additional_validation([])
-
+    def _create_test_network(self):
         logging.debug('Creating neutron network...')
-        self.neutron_client.format = 'json'
-        net_name = 'test_net'
-
-        # Verify that the network doesn't exist
-        networks = self.neutron_client.list_networks(name=net_name)
-        net_count = len(networks['networks'])
-        assert net_count == 0, (
-            "Expected zero networks, found {}".format(net_count))
-
-        # Create a network and verify that it exists
-        network = {'name': net_name}
+        network = {'name': self._TEST_NET_NAME}
         self.neutron_client.create_network({'network': network})
 
-        networks = self.neutron_client.list_networks(name=net_name)
+    def _delete_test_network(self, net_id):
+        logging.debug('Deleting neutron network...')
+        self.neutron_client.delete_network(net_id)
+
+    def _assert_test_network_exists_and_return_id(self):
+        logging.debug('Confirming new neutron network...')
+        networks = self.neutron_client.list_networks(name=self._TEST_NET_NAME)
         logging.debug('Networks: {}'.format(networks))
         net_len = len(networks['networks'])
         assert net_len == 1, (
             "Expected 1 network, found {}".format(net_len))
-
-        logging.debug('Confirming new neutron network...')
         network = networks['networks'][0]
-        assert network['name'] == net_name, "network ext_net not found"
+        assert network['name'] == self._TEST_NET_NAME, \
+            "network {} not found".format(self._TEST_NET_NAME)
+        return network['id']
 
-        self._test_400_additional_validation([net_name])
-
-        # Cleanup
-        logging.debug('Deleting neutron network...')
-        self.neutron_client.delete_network(network['id'])
-
-        self._test_400_additional_validation([])
+    def _assert_test_network_doesnt_exist(self):
+        networks = self.neutron_client.list_networks(name=self._TEST_NET_NAME)
+        net_count = len(networks['networks'])
+        assert net_count == 0, (
+            "Expected zero networks, found {}".format(net_count))
 
 
 class NeutronApiTest(NeutronCreateNetworkTest):
