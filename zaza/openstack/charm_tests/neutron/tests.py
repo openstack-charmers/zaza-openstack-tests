@@ -794,11 +794,22 @@ class NeutronNetworkingTest(NeutronNetworkingBase):
     """Ensure that openstack instances have valid networking."""
 
     def test_instances_have_networking(self):
-        """Validate North/South and East/West networking."""
-        self.launch_guests()
+        """Validate North/South and East/West networking.
+
+        Tear down can optionally be disabled by setting the module path +
+        class name + run_tearDown key under the `tests_options` key in
+        tests.yaml.
+
+        Abbreviated example:
+        ...charm_tests.neutron.tests.NeutronNetworkingTest.run_tearDown: false
+        """
         instance_1, instance_2 = self.retrieve_guests()
+        if not all([instance_1, instance_2]):
+            self.launch_guests()
+            instance_1, instance_2 = self.retrieve_guests()
         self.check_connectivity(instance_1, instance_2)
-        self.run_resource_cleanup = True
+        self.run_resource_cleanup = self.get_my_tests_options(
+            'run_resource_cleanup', True)
 
 
 class NeutronNetworkingVRRPTests(NeutronNetworkingBase):
