@@ -15,9 +15,41 @@
 """Code for setting up neutron-api-plugin-arista."""
 
 import logging
+import os
 import tenacity
 import zaza
 import zaza.openstack.charm_tests.neutron_arista.utils as arista_utils
+import zaza.openstack.utilities.openstack as openstack_utils
+
+
+def download_arista_image():
+    """Download arista-cvx-virt-test.qcow2 from a web server.
+
+    If TEST_ARISTA_IMAGE_LOCAL isn't set, set it to
+    `/tmp/arista-cvx-virt-test.qcow2`. If TEST_ARISTA_IMAGE_REMOTE is set (e.g.
+    to `http://example.com/swift/v1/images/arista-cvx-virt-test.qcow2`),
+    download it to TEST_ARISTA_IMAGE_LOCAL.
+    """
+    try:
+        os.environ['TEST_ARISTA_IMAGE_LOCAL']
+    except KeyError:
+        os.environ['TEST_ARISTA_IMAGE_LOCAL'] = ''
+    if not os.environ['TEST_ARISTA_IMAGE_LOCAL']:
+        os.environ['TEST_ARISTA_IMAGE_LOCAL'] \
+            = '/tmp/arista-cvx-virt-test.qcow2'
+
+    try:
+        if os.environ['TEST_ARISTA_IMAGE_REMOTE']:
+            logging.info('Downloading Arista image from {}'
+                         .format(os.environ['TEST_ARISTA_IMAGE_REMOTE']))
+            openstack_utils.download_image(
+                os.environ['TEST_ARISTA_IMAGE_REMOTE'],
+                os.environ['TEST_ARISTA_IMAGE_LOCAL'])
+    except KeyError:
+        pass
+
+    logging.info('Arista image can be found at {}'
+                 .format(os.environ['TEST_ARISTA_IMAGE_LOCAL']))
 
 
 def test_fixture():
