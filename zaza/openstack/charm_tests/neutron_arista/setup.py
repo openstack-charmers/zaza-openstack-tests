@@ -25,10 +25,13 @@ import zaza.openstack.utilities.openstack as openstack_utils
 def download_arista_image():
     """Download arista-cvx-virt-test.qcow2 from a web server.
 
-    If TEST_ARISTA_IMAGE_LOCAL isn't set, set it to
-    `/tmp/arista-cvx-virt-test.qcow2`. If TEST_ARISTA_IMAGE_REMOTE is set (e.g.
-    to `http://example.com/swift/v1/images/arista-cvx-virt-test.qcow2`),
-    download it to TEST_ARISTA_IMAGE_LOCAL.
+    The download will happen only if the env var TEST_ARISTA_IMAGE_REMOTE has
+    been set, so you don't have to set it if you already have the image
+    locally.
+
+    If the env var TEST_ARISTA_IMAGE_LOCAL isn't set, it will be set to
+    `/tmp/arista-cvx-virt-test.qcow2`. This is where the image will be
+    downloaded to if TEST_ARISTA_IMAGE_REMOTE has been set.
     """
     try:
         os.environ['TEST_ARISTA_IMAGE_LOCAL']
@@ -46,6 +49,8 @@ def download_arista_image():
                 os.environ['TEST_ARISTA_IMAGE_REMOTE'],
                 os.environ['TEST_ARISTA_IMAGE_LOCAL'])
     except KeyError:
+        # TEST_ARISTA_IMAGE_REMOTE isn't set, which means the image is already
+        # available at TEST_ARISTA_IMAGE_LOCAL
         pass
 
     logging.info('Arista image can be found at {}'
