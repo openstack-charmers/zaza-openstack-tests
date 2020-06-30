@@ -68,6 +68,8 @@ def test_fixture():
 
     logging.info('Waiting for {} to become ready...'.format(
         arista_utils.FIXTURE_APP_NAME))
+    zaza.model.wait_for_agent_status()
+    zaza.model.wait_for_application_states()
     for attempt in tenacity.Retrying(
             wait=tenacity.wait_fixed(10),  # seconds
             stop=tenacity.stop_after_attempt(30),
