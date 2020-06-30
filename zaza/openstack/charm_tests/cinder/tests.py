@@ -217,12 +217,22 @@ class CinderTests(test_utils.OpenStackBaseTest):
     @property
     def services(self):
         """Return a list services for the selected OpenStack release."""
-        services = ['cinder-scheduler', 'cinder-volume']
-        if (openstack_utils.get_os_release() >=
-                openstack_utils.get_os_release('xenial_ocata')):
-            services.append('apache2')
+        current_value = zaza.model.get_application_config(
+            self.application_name)['enabled-services']['value']
+
+        if current_value == "all":
+            services = ['cinder-scheduler', 'cinder-volume', 'cinder-api']
         else:
-            services.append('cinder-api')
+            services = ['cinder-{}'.format(svc)
+                        for svc in ('api', 'scheduler', 'volume')
+                        if svc in current_value]
+
+        if ('cinder-api' in services and
+            (openstack_utils.get_os_release() >=
+                openstack_utils.get_os_release('xenial_ocata'))):
+            services.remove('cinder-api')
+            services.append('apache2')
+
         return services
 
     def test_900_restart_on_config_change(self):
@@ -246,13 +256,7 @@ class CinderTests(test_utils.OpenStackBaseTest):
         Pause service and check services are stopped then resume and check
         they are started
         """
-        services = ['cinder-scheduler', 'cinder-volume']
-        if (openstack_utils.get_os_release() >=
-                openstack_utils.get_os_release('xenial_ocata')):
-            services.append('apache2')
-        else:
-            services.append('cinder-api')
-        with self.pause_resume(services):
+        with self.pause_resume(self.services):
             logging.info("Testing pause resume")
 
 
