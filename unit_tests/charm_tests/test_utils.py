@@ -18,6 +18,26 @@ import zaza.openstack.charm_tests.test_utils as test_utils
 from unittest.mock import patch
 
 
+class TestBaseCharmTest(unittest.TestCase):
+
+    def test_get_my_tests_options(self):
+
+        class FakeTest(test_utils.BaseCharmTest):
+
+            def method(self, test_config):
+                self.test_config = test_config
+                return self.get_my_tests_options('aKey', 'aDefault')
+
+        f = FakeTest()
+        self.assertEquals(f.method({}), 'aDefault')
+        self.assertEquals(f.method({
+            'tests_options': {
+                'unit_tests.charm_tests.test_utils.'
+                'FakeTest.method.aKey': 'aValue',
+            },
+        }), 'aValue')
+
+
 class TestOpenStackBaseTest(unittest.TestCase):
 
     @patch.object(test_utils.openstack_utils, 'get_cacert')
