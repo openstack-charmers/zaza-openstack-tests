@@ -61,13 +61,14 @@ def test_fixture():
     """Pass arista-virt-test-fixture's IP address to Neutron."""
     fixture_ip_addr = arista_utils.fixture_ip_addr()
     logging.info(
-        "{}'s IP address is '{}'. Passing it to neutron-api-plugin-arista..."
-        .format(arista_utils.FIXTURE_APP_NAME, fixture_ip_addr))
-    zaza.model.set_application_config('neutron-api-plugin-arista',
+        "{}'s IP address is '{}'. Passing it to {}..."
+        .format(arista_utils.FIXTURE_APP_NAME, fixture_ip_addr,
+                arista_utils.PLUGIN_APP_NAME))
+    zaza.model.set_application_config(arista_utils.PLUGIN_APP_NAME,
                                       {'eapi-host': fixture_ip_addr})
 
     logging.info('Waiting for {} to become ready...'.format(
-        arista_utils.FIXTURE_APP_NAME))
+        arista_utils.PLUGIN_APP_NAME))
     zaza.model.wait_for_agent_status()
     zaza.model.wait_for_application_states()
     for attempt in tenacity.Retrying(
