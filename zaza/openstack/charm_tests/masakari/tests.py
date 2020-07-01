@@ -38,7 +38,7 @@ class MasakariTest(test_utils.OpenStackBaseTest):
     @classmethod
     def setUpClass(cls):
         """Run class setup for running tests."""
-        super(MasakariTest, cls).setUpClass()
+        super(MasakariTest, cls).setUpClass(application_name="masakari")
         cls.current_release = openstack_utils.get_os_release()
         cls.keystone_session = openstack_utils.get_overcloud_keystone_session()
         cls.model_name = zaza.model.get_juju_model()
