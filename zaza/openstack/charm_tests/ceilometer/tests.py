@@ -101,7 +101,7 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
 
     def test_400_api_connection(self):
         """Simple api calls to check service is up and responding."""
-        if self.current_release >= CeilometerTest.XENIAL_PIKE:
+        if self.current_release >= CeilometerTest.XENIAL_OCATA:
             logging.info('Skipping API checks as ceilometer api has been '
                          'removed')
             return
