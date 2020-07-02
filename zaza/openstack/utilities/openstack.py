@@ -2283,7 +2283,7 @@ def get_ports_from_device_id(neutron_client, device_id):
 
 
 @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=120),
-                reraise=True, stop=tenacity.stop_after_attempt(12))
+                reraise=True, stop=tenacity.stop_after_delay(1800))
 def cloud_init_complete(nova_client, vm_id, bootstring):
     """Wait for cloud init to complete on the given vm.
 
