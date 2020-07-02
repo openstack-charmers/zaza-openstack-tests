@@ -25,10 +25,7 @@ import logging
 import tenacity
 import unittest
 
-import novaclient
-
 import zaza
-import zaza.openstack.charm_tests.glance.setup as glance_setup
 import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.configure.guest as guest
@@ -608,7 +605,7 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
             logging.info('Testing pause resume')
 
 
-class NeutronNetworkingBase(unittest.TestCase):
+class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
     """Base for checking openstack instances have valid networking."""
 
     RESOURCE_PREFIX = 'zaza-neutrontests'
@@ -616,10 +613,7 @@ class NeutronNetworkingBase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Run class setup for running Neutron API Networking tests."""
-        cls.keystone_session = (
-            openstack_utils.get_overcloud_keystone_session())
-        cls.nova_client = (
-            openstack_utils.get_nova_session_client(cls.keystone_session))
+        super(NeutronNetworkingBase, cls).setUpClass()
         cls.neutron_client = (
             openstack_utils.get_neutron_session_client(cls.keystone_session))
         # NOTE(fnordahl): in the event of a test failure we do not want to run
@@ -737,44 +731,6 @@ class NeutronNetworkingBase(unittest.TestCase):
                 assert agent['admin_state_up']
                 assert agent['alive']
 
-    def launch_guests(self):
-        """Launch two guests to use in tests."""
-        guest.launch_instance(
-            glance_setup.LTS_IMAGE_NAME,
-            vm_name='{}-ins-1'.format(self.RESOURCE_PREFIX))
-        guest.launch_instance(
-            glance_setup.LTS_IMAGE_NAME,
-            vm_name='{}-ins-2'.format(self.RESOURCE_PREFIX))
-
-    def retrieve_guest(self, nova_client, guest_name):
-        """Return guest matching name.
-
-        :param nova_client: Nova client to use when checking status
-        :type nova_client: Nova client
-        :returns: the matching guest
-        :rtype: Union[novaclient.Server, None]
-        """
-        try:
-            return nova_client.servers.find(name=guest_name)
-        except novaclient.exceptions.NotFound:
-            return None
-
-    def retrieve_guests(self, nova_client):
-        """Return test guests.
-
-        :param nova_client: Nova client to use when checking status
-        :type nova_client: Nova client
-        :returns: the matching guest
-        :rtype: Union[novaclient.Server, None]
-        """
-        instance_1 = self.retrieve_guest(
-            nova_client,
-            '{}-ins-1'.format(self.RESOURCE_PREFIX))
-        instance_2 = self.retrieve_guest(
-            nova_client,
-            '{}-ins-1'.format(self.RESOURCE_PREFIX))
-        return instance_1, instance_2
-
     def check_connectivity(self, instance_1, instance_2):
         """Run North/South and East/West connectivity tests."""
         def verify(stdin, stdout, stderr):
@@ -845,7 +801,7 @@ class NeutronNetworkingTest(NeutronNetworkingBase):
     def test_instances_have_networking(self):
         """Validate North/South and East/West networking."""
         self.launch_guests()
-        instance_1, instance_2 = self.retrieve_guests(self.nova_client)
+        instance_1, instance_2 = self.retrieve_guests()
         self.check_connectivity(instance_1, instance_2)
         self.run_tearDown = True
 
@@ -855,10 +811,10 @@ class NeutronNetworkingVRRPTests(NeutronNetworkingBase):
 
     def test_gateway_failure(self):
         """Validate networking in the case of a gateway failure."""
-        instance_1, instance_2 = self.retrieve_guests(self.nova_client)
+        instance_1, instance_2 = self.retrieve_guests()
         if not all([instance_1, instance_2]):
             self.launch_guests()
-            instance_1, instance_2 = self.retrieve_guests(self.nova_client)
+            instance_1, instance_2 = self.retrieve_guests()
         self.check_connectivity(instance_1, instance_2)
 
         routers = self.neutron_client.list_routers(
