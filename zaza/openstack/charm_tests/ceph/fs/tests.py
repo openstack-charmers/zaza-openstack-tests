@@ -18,7 +18,6 @@ import logging
 from tenacity import Retrying, stop_after_attempt, wait_exponential
 
 import zaza.model as model
-import zaza.openstack.charm_tests.glance.setup as glance_setup
 import zaza.openstack.charm_tests.neutron.tests as neutron_tests
 import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
@@ -64,27 +63,10 @@ write_files:
         conf = model.run_on_leader(
             'ceph-mon', 'cat /etc/ceph/ceph.conf')['Stdout']
         # Spawn Servers
-        for attempt in Retrying(
-                stop=stop_after_attempt(3),
-                wait=wait_exponential(multiplier=1, min=2, max=10)):
-            with attempt:
-                instance_1 = guest.launch_instance(
-                    glance_setup.LTS_IMAGE_NAME,
-                    vm_name='{}-ins-1'.format(self.RESOURCE_PREFIX),
-                    userdata=self.INSTANCE_USERDATA.format(
-                        _indent(conf, 8),
-                        _indent(keyring, 8)))
-
-        for attempt in Retrying(
-                stop=stop_after_attempt(3),
-                wait=wait_exponential(multiplier=1, min=2, max=10)):
-            with attempt:
-                instance_2 = guest.launch_instance(
-                    glance_setup.LTS_IMAGE_NAME,
-                    vm_name='{}-ins-2'.format(self.RESOURCE_PREFIX),
-                    userdata=self.INSTANCE_USERDATA.format(
-                        _indent(conf, 8),
-                        _indent(keyring, 8)))
+        instance_1, instance_2 = self.launch_guests(
+            userdata=self.INSTANCE_USERDATA.format(
+                _indent(conf, 8),
+                _indent(keyring, 8)))
 
         # Write a file on instance_1
         def verify_setup(stdin, stdout, stderr):
