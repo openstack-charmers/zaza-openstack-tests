@@ -20,6 +20,7 @@ import urllib3
 import zaza
 
 FIXTURE_APP_NAME = 'arista-virt-test-fixture'
+PLUGIN_APP_NAME = 'neutron-api-plugin-arista'
 
 
 def fixture_ip_addr():
@@ -42,7 +43,7 @@ def query_fixture_networks(ip_addr):
     session.auth = (_FIXTURE_LOGIN, _FIXTURE_PASSWORD)
 
     data = {
-        'id': 'Zaza neutron-api-plugin-arista tests',
+        'id': 'Zaza {} tests'.format(PLUGIN_APP_NAME),
         'method': 'runCmds',
         'jsonrpc': '2.0',
         'params': {
