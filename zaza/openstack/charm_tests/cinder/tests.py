@@ -268,6 +268,21 @@ class SecurityTests(test_utils.OpenStackBaseTest):
         """Run class setup for running Keystone aa-tests."""
         super(SecurityTests, cls).setUpClass()
 
+    def _security_checklist(self, expected_failures, expected_passes):
+        """Verify expected state with security-checklist."""
+        for unit in zaza.model.get_units('cinder', model_name=self.model_name):
+            logging.info('Running `security-checklist` action'
+                         ' on  unit {}'.format(unit.entity_id))
+            test_utils.audit_assertions(
+                zaza.model.run_action(
+                    unit.entity_id,
+                    'security-checklist',
+                    model_name=self.model_name,
+                    action_params={}),
+                expected_passes,
+                expected_failures,
+                expected_to_pass=False)
+
     def test_security_checklist(self):
         """Verify expected state with security-checklist."""
         # Changes fixing the below expected failures will be made following
@@ -287,16 +302,34 @@ class SecurityTests(test_utils.OpenStackBaseTest):
             'validate-nas-uses-secure-environment',
             'validate-uses-keystone',
         ]
+        self._security_checklist(expected_failures, expected_passes)
 
-        for unit in zaza.model.get_units('cinder', model_name=self.model_name):
-            logging.info('Running `security-checklist` action'
-                         ' on  unit {}'.format(unit.entity_id))
-            test_utils.audit_assertions(
-                zaza.model.run_action(
-                    unit.entity_id,
-                    'security-checklist',
-                    model_name=self.model_name,
-                    action_params={}),
-                expected_passes,
-                expected_failures,
-                expected_to_pass=False)
+
+class TLSSecurityTests(SecurityTests):
+    """Keystone over TLS security tests tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running Keystone aa-tests."""
+        super(TLSSecurityTests, cls).setUpClass()
+
+    def test_security_checklist(self):
+        """Verify expected state with security-checklist."""
+        # Changes fixing the below expected failures will be made following
+        # this initial work to get validation in. There will be bugs targeted
+        # to each one and resolved independently where possible.
+
+        expected_failures = [
+            'check-max-request-body-size',
+            'is-volume-encryption-enabled',
+            'uses-tls-for-glance',
+            'uses-tls-for-nova',
+        ]
+        expected_passes = [
+            'validate-file-ownership',
+            'validate-file-permissions',
+            'validate-nas-uses-secure-environment',
+            'validate-uses-keystone',
+            'validate-uses-tls-for-keystone',
+        ]
+        self._security_checklist(expected_failures, expected_passes)
