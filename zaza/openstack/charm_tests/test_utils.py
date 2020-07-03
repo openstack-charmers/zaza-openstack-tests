@@ -440,6 +440,20 @@ class OpenStackBaseTest(BaseCharmTest):
         cls.nova_client = (
             openstack_utils.get_nova_session_client(cls.keystone_session))
 
+    def resource_cleanup(self):
+        """Remove test resources."""
+        try:
+            logging.info('Removing instances launched by test ({}*)'
+                         .format(self.RESOURCE_PREFIX))
+            for server in self.nova_client.servers.list():
+                if server.name.startswith(self.RESOURCE_PREFIX):
+                    openstack_utils.delete_resource(
+                        self.nova_client.servers,
+                        server.id,
+                        msg="server")
+        except AttributeError:
+            # Test did not define self.RESOURCE_PREFIX, ignore.
+            pass
 
     def launch_guest(self, guest_name, userdata=None):
         """Launch two guests to use in tests.

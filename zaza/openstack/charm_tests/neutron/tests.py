@@ -616,24 +616,6 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
         super(NeutronNetworkingBase, cls).setUpClass()
         cls.neutron_client = (
             openstack_utils.get_neutron_session_client(cls.keystone_session))
-        # NOTE(fnordahl): in the event of a test failure we do not want to run
-        # tear down code as it will make debugging a problem virtually
-        # impossible.  To alleviate each test method will set the
-        # `run_tearDown` instance variable at the end which will let us run
-        # tear down only when there were no failure.
-        cls.run_tearDown = False
-
-    @classmethod
-    def tearDown(cls):
-        """Remove test resources."""
-        if cls.run_tearDown:
-            logging.info('Running teardown')
-            for server in cls.nova_client.servers.list():
-                if server.name.startswith(cls.RESOURCE_PREFIX):
-                    openstack_utils.delete_resource(
-                        cls.nova_client.servers,
-                        server.id,
-                        msg="server")
 
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
                     reraise=True, stop=tenacity.stop_after_attempt(8))
@@ -803,7 +785,7 @@ class NeutronNetworkingTest(NeutronNetworkingBase):
         self.launch_guests()
         instance_1, instance_2 = self.retrieve_guests()
         self.check_connectivity(instance_1, instance_2)
-        self.run_tearDown = True
+        self.run_resource_cleanup = True
 
 
 class NeutronNetworkingVRRPTests(NeutronNetworkingBase):
