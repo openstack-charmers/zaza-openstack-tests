@@ -97,10 +97,6 @@ class GlanceSimpleStreamsSyncTest(test_utils.OpenStackBaseTest):
             'com.ubuntu.cloud:server:20.04:amd64',
         ]
         uri = "streams/v1/auto.sync.json"
-        key = "url"
-        xenial_pike = openstack_utils.get_os_release('xenial_pike')
-        if openstack_utils.get_os_release() <= xenial_pike:
-            key = "publicURL"
 
         # There is a race between the images being available in glance and the
         # metadata being written for each image. Use tenacity to avoid this
@@ -113,7 +109,6 @@ class GlanceSimpleStreamsSyncTest(test_utils.OpenStackBaseTest):
             stop=tenacity.stop_after_attempt(25))
         def _check_local_product_streams(expected_images):
             # Refresh from catalog as URL may change if swift in use.
-            catalog = self.keystone_client.service_catalog.get_endpoints()
             ps_interface = self.keystone_client.service_catalog.url_for(
                 service_type='product-streams', interface='publicURL'
             )
