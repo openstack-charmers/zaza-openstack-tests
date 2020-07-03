@@ -235,6 +235,9 @@ def get_tempest_context():
         'cinder': add_cinder_config,
         'keystone': add_keystone_config}
     ctxt['enabled_services'] = get_service_list(keystone_session)
+    if set(['cinderv2', 'cinderv3']) \
+            .intersection(set(ctxt['enabled_services'])):
+        ctxt['enabled_services'].append('cinder')
     ctxt['disabled_services'] = list(
         set(TEMPEST_SVC_LIST) - set(ctxt['enabled_services']))
     add_application_ips(ctxt)
