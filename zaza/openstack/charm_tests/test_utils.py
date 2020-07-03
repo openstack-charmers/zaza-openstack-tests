@@ -14,13 +14,19 @@
 """Module containing base class for implementing charm tests."""
 import contextlib
 import logging
+import ipaddress
 import subprocess
+import tenacity
 import unittest
+
+import novaclient
 
 import zaza.model as model
 import zaza.charm_lifecycle.utils as lifecycle_utils
+import zaza.openstack.configure.guest as configure_guest
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.utilities.generic as generic_utils
+import zaza.openstack.charm_tests.glance.setup as glance_setup
 
 
 def skipIfNotHA(service_name):
@@ -427,7 +433,113 @@ class OpenStackBaseTest(BaseCharmTest):
     @classmethod
     def setUpClass(cls, application_name=None, model_alias=None):
         """Run setup for test class to create common resources."""
-        super(OpenStackBaseTest, cls).setUpClass()
+        super(OpenStackBaseTest, cls).setUpClass(application_name, model_alias)
         cls.keystone_session = openstack_utils.get_overcloud_keystone_session(
             model_name=cls.model_name)
         cls.cacert = openstack_utils.get_cacert()
+        cls.nova_client = (
+            openstack_utils.get_nova_session_client(cls.keystone_session))
+
+    def launch_guest(self, guest_name, userdata=None):
+        """Launch two guests to use in tests.
+
+        Note that it is up to the caller to have set the RESOURCE_PREFIX class
+        variable prior to calling this method.
+
+        Also note that this method will remove any already existing instance
+        with same name as what is requested.
+
+        :param guest_name: Name of instance
+        :type guest_name: str
+        :param userdata: Userdata to attach to instance
+        :type userdata: Optional[str]
+        :returns: Nova instance objects
+        :rtype: Server
+        """
+        instance_name = '{}-{}'.format(self.RESOURCE_PREFIX, guest_name)
+
+        instance = self.retrieve_guest(instance_name)
+        if instance:
+            logging.info('Removing already existing instance ({}) with '
+                         'requested name ({})'
+                         .format(instance.id, instance_name))
+            openstack_utils.delete_resource(
+                self.nova_client.servers,
+                instance.id,
+                msg="server")
+
+        return configure_guest.launch_instance(
+            glance_setup.LTS_IMAGE_NAME,
+            vm_name=instance_name,
+            userdata=userdata)
+
+    def launch_guests(self, userdata=None):
+        """Launch two guests to use in tests.
+
+        Note that it is up to the caller to have set the RESOURCE_PREFIX class
+        variable prior to calling this method.
+
+        :param userdata: Userdata to attach to instance
+        :type userdata: Optional[str]
+        :returns: List of launched Nova instance objects
+        :rtype: List[Server]
+        """
+        launched_instances = []
+        for guest_number in range(1, 2+1):
+            for attempt in tenacity.Retrying(
+                    stop=tenacity.stop_after_attempt(3),
+                    wait=tenacity.wait_exponential(
+                        multiplier=1, min=2, max=10)):
+                with attempt:
+                    launched_instances.append(
+                        self.launch_guest(
+                            guest_name='ins-{}'.format(guest_number),
+                            userdata=userdata))
+        return launched_instances
+
+    def retrieve_guest(self, guest_name):
+        """Return guest matching name.
+
+        :param nova_client: Nova client to use when checking status
+        :type nova_client: Nova client
+        :returns: the matching guest
+        :rtype: Union[novaclient.Server, None]
+        """
+        try:
+            return self.nova_client.servers.find(name=guest_name)
+        except novaclient.exceptions.NotFound:
+            return None
+
+    def retrieve_guests(self):
+        """Return test guests.
+
+        Note that it is up to the caller to have set the RESOURCE_PREFIX class
+        variable prior to calling this method.
+
+        :param nova_client: Nova client to use when checking status
+        :type nova_client: Nova client
+        :returns: the matching guest
+        :rtype: Union[novaclient.Server, None]
+        """
+        instance_1 = self.retrieve_guest(
+            '{}-ins-1'.format(self.RESOURCE_PREFIX))
+        instance_2 = self.retrieve_guest(
+            '{}-ins-1'.format(self.RESOURCE_PREFIX))
+        return instance_1, instance_2
+
+
+def format_addr(addr):
+    """Validate and format IP address.
+
+    :param addr: IPv6 or IPv4 address
+    :type addr: str
+    :returns: Address string, optionally encapsulated in brackets([])
+    :rtype: str
+    :raises: ValueError
+    """
+    ipaddr = ipaddress.ip_address(addr)
+    if isinstance(ipaddr, ipaddress.IPv6Address):
+        fmt = '[{}]'
+    else:
+        fmt = '{}'
+    return fmt.format(ipaddr)

@@ -28,11 +28,11 @@ def basic_setup():
     tests.
     """
     current_release = openstack_utils.get_os_release()
-    xenial_pike = openstack_utils.get_os_release('xenial_pike')
+    xenial_ocata = openstack_utils.get_os_release('xenial_ocata')
 
-    if current_release < xenial_pike:
+    if current_release < xenial_ocata:
         logging.info(
-            'Skipping ceilometer-upgrade as it is not supported before Pike')
+            'Skipping ceilometer-upgrade as it is not supported before ocata')
         return
 
     logging.debug('Checking ceilometer-upgrade')

@@ -14,14 +14,20 @@
 
 """Encapsulate designate testing."""
 import logging
+import unittest
 import tenacity
 import subprocess
+
 import designateclient.v1.domains as domains
 import designateclient.v1.records as records
 import designateclient.v1.servers as servers
+
+import zaza.model
 import zaza.openstack.utilities.juju as zaza_juju
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
+import zaza.openstack.charm_tests.designate.utils as designate_utils
+import zaza.charm_lifecycle.utils as lifecycle_utils
 
 
 class BaseDesignateTest(test_utils.OpenStackBaseTest):
@@ -83,41 +89,14 @@ class BaseDesignateTest(test_utils.OpenStackBaseTest):
             cls.server_delete = cls.designate.servers.delete
 
 
-class DesignateTests(BaseDesignateTest):
-    """Designate charm restart and pause tests."""
+class DesignateAPITests(BaseDesignateTest):
+    """Tests interact with designate api."""
 
     TEST_DOMAIN = 'amuletexample.com.'
     TEST_NS1_RECORD = 'ns1.{}'.format(TEST_DOMAIN)
     TEST_NS2_RECORD = 'ns2.{}'.format(TEST_DOMAIN)
     TEST_WWW_RECORD = "www.{}".format(TEST_DOMAIN)
     TEST_RECORD = {TEST_WWW_RECORD: '10.0.0.23'}
-
-    def test_900_restart_on_config_change(self):
-        """Checking restart happens on config change.
-
-        Change debug mode and assert that change propagates to the correct
-        file and that services are restarted as a result
-        """
-        # Services which are expected to restart upon config change,
-        # and corresponding config files affected by the change
-        conf_file = '/etc/designate/designate.conf'
-
-        # Make config change, check for service restarts
-        self.restart_on_changed_debug_oslo_config_file(
-            conf_file,
-            self.designate_svcs,
-        )
-
-    def test_910_pause_and_resume(self):
-        """Run pause and resume tests.
-
-        Pause service and check services are stopped then resume and check
-        they are started
-        """
-        with self.pause_resume(
-                self.designate_svcs,
-                pgrep_full=False):
-            logging.info("Testing pause resume")
 
     def _get_server_id(self, server_name=None, server_id=None):
         for srv in self.server_list():
@@ -245,3 +224,105 @@ class DesignateTests(BaseDesignateTest):
         logging.debug('Tidy up delete test record')
         self._wait_on_domain_gone(domain_id)
         logging.debug('OK')
+
+
+class DesignateCharmTests(BaseDesignateTest):
+    """Designate charm restart and pause tests."""
+
+    def test_900_restart_on_config_change(self):
+        """Checking restart happens on config change.
+
+        Change debug mode and assert that change propagates to the correct
+        file and that services are restarted as a result
+        """
+        # Services which are expected to restart upon config change,
+        # and corresponding config files affected by the change
+        conf_file = '/etc/designate/designate.conf'
+
+        # Make config change, check for service restarts
+        self.restart_on_changed_debug_oslo_config_file(
+            conf_file,
+            self.designate_svcs,
+        )
+
+    def test_910_pause_and_resume(self):
+        """Run pause and resume tests.
+
+        Pause service and check services are stopped then resume and check
+        they are started
+        """
+        with self.pause_resume(
+                self.designate_svcs,
+                pgrep_full=False):
+            logging.info("Testing pause resume")
+
+
+class DesignateTests(DesignateAPITests, DesignateCharmTests):
+    """Collection of all Designate test classes."""
+
+    pass
+
+
+class DesignateBindExpand(BaseDesignateTest):
+    """Test expanding and shrinking bind."""
+
+    TEST_DOMAIN = 'zazabindtesting.com.'
+    TEST_NS1_RECORD = 'ns1.{}'.format(TEST_DOMAIN)
+    TEST_NS2_RECORD = 'ns2.{}'.format(TEST_DOMAIN)
+    TEST_WWW_RECORD = "www.{}".format(TEST_DOMAIN)
+    TEST_RECORD = {TEST_WWW_RECORD: '10.0.0.24'}
+
+    def test_expand_and_contract(self):
+        """Test expanding and shrinking bind."""
+        test_config = lifecycle_utils.get_charm_config(fatal=False)
+        states = test_config.get("target_deploy_status", {})
+        if not self.post_xenial_queens:
+            raise unittest.SkipTest("Test not supported before Queens")
+
+        domain = designate_utils.create_or_return_zone(
+            self.designate,
+            name=self.TEST_DOMAIN,
+            email="test@zaza.com")
+
+        designate_utils.create_or_return_recordset(
+            self.designate,
+            domain['id'],
+            'www',
+            'A',
+            [self.TEST_RECORD[self.TEST_WWW_RECORD]])
+
+        # Test record is in bind and designate
+        designate_utils.check_dns_entry(
+            self.designate,
+            self.TEST_RECORD[self.TEST_WWW_RECORD],
+            self.TEST_DOMAIN,
+            record_name=self.TEST_WWW_RECORD)
+
+        logging.info('Adding a designate-bind unit')
+        zaza.model.add_unit('designate-bind', wait_appear=True)
+        zaza.model.block_until_all_units_idle()
+        zaza.model.wait_for_application_states(states=states)
+
+        logging.info('Performing DNS lookup on all units')
+        designate_utils.check_dns_entry(
+            self.designate,
+            self.TEST_RECORD[self.TEST_WWW_RECORD],
+            self.TEST_DOMAIN,
+            record_name=self.TEST_WWW_RECORD)
+
+        units = zaza.model.get_status().applications['designate-bind']['units']
+        doomed_unit = sorted(units.keys())[0]
+        logging.info('Removing {}'.format(doomed_unit))
+        zaza.model.destroy_unit(
+            'designate-bind',
+            doomed_unit,
+            wait_disappear=True)
+        zaza.model.block_until_all_units_idle()
+        zaza.model.wait_for_application_states(states=states)
+
+        logging.info('Performing DNS lookup on all units')
+        designate_utils.check_dns_entry(
+            self.designate,
+            self.TEST_RECORD[self.TEST_WWW_RECORD],
+            self.TEST_DOMAIN,
+            record_name=self.TEST_WWW_RECORD)

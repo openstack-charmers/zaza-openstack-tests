@@ -39,6 +39,7 @@ from keystoneauth1.identity import (
     v2,
 )
 import zaza.openstack.utilities.cert as cert
+import zaza.utilities.deployment_env as deployment_env
 from novaclient import client as novaclient_client
 from neutronclient.v2_0 import client as neutronclient
 from neutronclient.common import exceptions as neutronexceptions
@@ -72,7 +73,9 @@ CIRROS_RELEASE_URL = 'http://download.cirros-cloud.net/version/released'
 CIRROS_IMAGE_URL = 'http://download.cirros-cloud.net'
 UBUNTU_IMAGE_URLS = {
     'bionic': ('http://cloud-images.ubuntu.com/{release}/current/'
-               '{release}-server-cloudimg-{arch}.img')
+               '{release}-server-cloudimg-{arch}.img'),
+    'focal': ('http://cloud-images.ubuntu.com/{release}/current/'
+              '{release}-server-cloudimg-{arch}.img'),
 }
 
 CHARM_TYPES = {
@@ -108,6 +111,10 @@ CHARM_TYPES = {
         'pkg': 'designate-common',
         'origin_setting': 'openstack-origin'
     },
+    'ovn-central': {
+        'pkg': 'ovn-common',
+        'origin_setting': 'source'
+    },
 }
 
 # Older tests use the order the services appear in the list to imply
@@ -126,6 +133,7 @@ UPGRADE_SERVICES = [
     {'name': 'nova-compute', 'type': CHARM_TYPES['nova']},
     {'name': 'openstack-dashboard',
      'type': CHARM_TYPES['openstack-dashboard']},
+    {'name': 'ovn-central', 'type': CHARM_TYPES['ovn-central']},
 ]
 
 
@@ -155,7 +163,7 @@ WORKLOAD_STATUS_EXCEPTIONS = {
 KEYSTONE_CACERT = "keystone_juju_ca_cert.crt"
 KEYSTONE_REMOTE_CACERT = (
     "/usr/local/share/ca-certificates/{}".format(KEYSTONE_CACERT))
-KEYSTONE_LOCAL_CACERT = ("/tmp/{}".format(KEYSTONE_CACERT))
+KEYSTONE_LOCAL_CACERT = ("tests/{}".format(KEYSTONE_CACERT))
 
 
 def get_cacert():
@@ -487,6 +495,22 @@ def get_project_id(ks_client, project_name, api_version=2, domain_name=None):
     return None
 
 
+def get_domain_id(ks_client, domain_name):
+    """Return domain ID.
+
+    :param ks_client: Authenticated keystoneclient
+    :type ks_client: keystoneclient.v3.Client object
+    :param domain_name: Name of the domain
+    :type domain_name: string
+    :returns: Domain ID
+    :rtype: string or None
+    """
+    all_domains = ks_client.domains.list(name=domain_name)
+    if all_domains:
+        return all_domains[0].id
+    return None
+
+
 # Neutron Helpers
 def get_gateway_uuids():
     """Return machine uuids for neutron-gateway(s).
@@ -709,6 +733,7 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
     if not net_id:
         net_id = get_admin_net(neutronclient)['id']
 
+    ports_created = 0
     for uuid in uuids:
         server = novaclient.servers.get(uuid)
         ext_port_name = "{}_ext-port".format(server.name)
@@ -729,12 +754,19 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
                 }
             }
             port = neutronclient.create_port(body=body_value)
+            ports_created += 1
             server.interface_attach(port_id=port['port']['id'],
                                     net_id=None, fixed_ip=None)
             if add_dataport_to_netplan:
                 mac_address = get_mac_from_port(port, neutronclient)
                 add_interface_to_netplan(server.name,
                                          mac_address=mac_address)
+    if not ports_created:
+        # NOTE: uuids is an iterator so testing it for contents or length prior
+        # to iterating over it is futile.
+        raise RuntimeError('Unable to determine UUIDs for machines to attach '
+                           'external networking to.')
+
     ext_br_macs = []
     for port in neutronclient.list_ports(network_id=net_id)['ports']:
         if 'ext-port' in port['name']:
@@ -1577,7 +1609,7 @@ def get_undercloud_auth():
             'API_VERSION': 3,
         }
         if domain:
-            auth_settings['OS_DOMAIN_NAME': 'admin_domain'] = domain
+            auth_settings['OS_DOMAIN_NAME'] = domain
         else:
             auth_settings['OS_USER_DOMAIN_NAME'] = (
                 os.environ.get('OS_USER_DOMAIN_NAME'))
@@ -1588,6 +1620,10 @@ def get_undercloud_auth():
             os_project_id = os.environ.get('OS_PROJECT_ID')
             if os_project_id is not None:
                 auth_settings['OS_PROJECT_ID'] = os_project_id
+
+    _os_cacert = os.environ.get('OS_CACERT')
+    if _os_cacert:
+        auth_settings.update({'OS_CACERT': _os_cacert})
 
     # Validate settings
     for key, settings in list(auth_settings.items()):
@@ -1718,14 +1754,15 @@ def get_urllib_opener():
 
     Using urllib.request.urlopen will automatically handle proxies so none
     of this function is needed except we are currently specifying proxies
-    via OS_TEST_HTTP_PROXY rather than http_proxy so a ProxyHandler is needed
+    via TEST_HTTP_PROXY rather than http_proxy so a ProxyHandler is needed
     explicitly stating the proxies.
 
     :returns: An opener which opens URLs via BaseHandlers chained together
     :rtype: urllib.request.OpenerDirector
     """
-    http_proxy = os.getenv('OS_TEST_HTTP_PROXY')
-    logging.debug('OS_TEST_HTTP_PROXY: {}'.format(http_proxy))
+    deploy_env = deployment_env.get_deployment_context()
+    http_proxy = deploy_env.get('TEST_HTTP_PROXY')
+    logging.debug('TEST_HTTP_PROXY: {}'.format(http_proxy))
 
     if http_proxy:
         handler = urllib.request.ProxyHandler({'http': http_proxy})
@@ -2069,6 +2106,28 @@ def create_volume(cinder, size, name=None, image=None):
     return volume
 
 
+def attach_volume(nova, volume_id, instance_id):
+    """Attach a cinder volume to a nova instance.
+
+    :param nova: Authenticated nova client
+    :type nova: novaclient.v2.client.Client
+    :param volume_id: the id of the volume to attach
+    :type volume_id: str
+    :param instance_id: the id of the instance to attach the volume to
+    :type instance_id: str
+    :returns: nova volume pointer
+    :rtype: novaclient.v2.volumes.Volume
+    """
+    logging.info(
+        'Attaching volume {} to instance {}'.format(
+            volume_id, instance_id
+        )
+    )
+    return nova.volumes.create_server_volume(server_id=instance_id,
+                                             volume_id=volume_id,
+                                             device='/dev/vdx')
+
+
 def create_volume_backup(cinder, volume_id, name=None):
     """Create cinder volume backup.
 
@@ -2224,7 +2283,7 @@ def get_ports_from_device_id(neutron_client, device_id):
 
 
 @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=120),
-                reraise=True, stop=tenacity.stop_after_attempt(12))
+                reraise=True, stop=tenacity.stop_after_delay(1800))
 def cloud_init_complete(nova_client, vm_id, bootstring):
     """Wait for cloud init to complete on the given vm.
 
@@ -2262,7 +2321,7 @@ def ping_response(ip):
                    check=True)
 
 
-def ssh_test(username, ip, vm_name, password=None, privkey=None):
+def ssh_test(username, ip, vm_name, password=None, privkey=None, retry=True):
     """SSH to given ip using supplied credentials.
 
     :param username: Username to connect with
@@ -2277,6 +2336,9 @@ def ssh_test(username, ip, vm_name, password=None, privkey=None):
     :param privkey: Private key to authenticate with. If a password is
                     supplied it is used rather than the private key.
     :type privkey: str
+    :param retry: If True, retry a few times if an exception is raised in the
+                  process, e.g. on connection failure.
+    :type retry: boolean
     :raises: exceptions.SSHFailed
     """
     def verify(stdin, stdout, stderr):
@@ -2290,8 +2352,18 @@ def ssh_test(username, ip, vm_name, password=None, privkey=None):
                                                               vm_name))
             raise exceptions.SSHFailed()
 
-    ssh_command(username, ip, vm_name, 'uname -n',
-                password=password, privkey=privkey, verify=verify)
+    # NOTE(lourot): paramiko.SSHClient().connect() calls read_all() which can
+    # raise an EOFError, see
+    # * https://docs.paramiko.org/en/stable/api/packet.html
+    # * https://github.com/paramiko/paramiko/issues/925
+    # So retrying a few times makes sense.
+    for attempt in tenacity.Retrying(
+            stop=tenacity.stop_after_attempt(3 if retry else 1),
+            wait=tenacity.wait_exponential(multiplier=1, min=2, max=10),
+            reraise=True):
+        with attempt:
+            ssh_command(username, ip, vm_name, 'uname -n',
+                        password=password, privkey=privkey, verify=verify)
 
 
 def ssh_command(username,

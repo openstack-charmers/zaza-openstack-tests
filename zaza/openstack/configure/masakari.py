@@ -85,7 +85,7 @@ def create_segments(segment_number=1, host_assignment_method=None):
 
 @tenacity.retry(
     wait=tenacity.wait_exponential(multiplier=2, max=60),
-    reraise=True, stop=tenacity.stop_after_attempt(5),
+    reraise=True, stop=tenacity.stop_after_attempt(10),
     retry=tenacity.retry_if_exception_type(ostack_except.ConflictException))
 def enable_host(masakari_client, host, segment):
     """Enable hypervisor within masakari.

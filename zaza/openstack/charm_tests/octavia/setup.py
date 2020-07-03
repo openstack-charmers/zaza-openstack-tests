@@ -26,6 +26,12 @@ import zaza.openstack.utilities.openstack as openstack
 import zaza.openstack.configure.guest
 
 
+def ensure_lts_images():
+    """Ensure that bionic and focal images are available for the tests."""
+    glance_setup.add_lts_image(image_name='bionic', release='bionic')
+    glance_setup.add_lts_image(image_name='focal', release='focal')
+
+
 def add_amphora_image(image_url=None):
     """Add Octavia ``amphora`` test image to glance.
 

@@ -168,6 +168,12 @@ class CephPoolNotConfigured(Exception):
     pass
 
 
+class CephGenericError(Exception):
+    """A generic/other Ceph error occurred."""
+
+    pass
+
+
 class NovaGuestMigrationFailed(Exception):
     """Nova guest migration failed."""
 
@@ -176,6 +182,12 @@ class NovaGuestMigrationFailed(Exception):
 
 class NovaGuestRestartFailed(Exception):
     """Nova guest restart failed."""
+
+    pass
+
+
+class NovaGuestNoPingResponse(Exception):
+    """Nova guest failed to respond to pings."""
 
     pass
 

@@ -38,7 +38,8 @@ class MasakariTest(test_utils.OpenStackBaseTest):
     @classmethod
     def setUpClass(cls):
         """Run class setup for running tests."""
-        super(MasakariTest, cls).setUpClass()
+        super(MasakariTest, cls).setUpClass(application_name="masakari")
+        cls.current_release = openstack_utils.get_os_release()
         cls.keystone_session = openstack_utils.get_overcloud_keystone_session()
         cls.model_name = zaza.model.get_juju_model()
         cls.nova_client = openstack_utils.get_nova_session_client(
@@ -169,8 +170,12 @@ class MasakariTest(test_utils.OpenStackBaseTest):
         zaza.openstack.configure.masakari.enable_hosts()
 
     def test_instance_restart_on_fail(self):
-        """Test singlee guest crash and recovery."""
-        raise unittest.SkipTest("Bug #1866638")
+        """Test single guest crash and recovery."""
+        if self.current_release < openstack_utils.get_os_release(
+                'bionic_ussuri'):
+            raise unittest.SkipTest(
+                "Not supported on {}. Bug #1866638".format(
+                    self.current_release))
         vm_name = 'zaza-test-instance-failover'
         vm = self.ensure_guest(vm_name)
         _, unit_name = self.get_guests_compute_info(vm_name)
@@ -198,6 +203,6 @@ class MasakariTest(test_utils.OpenStackBaseTest):
             unit_name,
             vm.id,
             model_name=self.model_name)
-        logging.info('{} pid is now {}'.format(vm_name, guest_pid))
+        logging.info('{} pid is now {}'.format(vm_name, new_guest_pid))
         assert new_guest_pid and new_guest_pid != guest_pid, (
             "Restart failed or never happened")

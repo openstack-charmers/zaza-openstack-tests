@@ -107,11 +107,17 @@ def run_post_upgrade_functions(post_upgrade_functions):
             cl_utils.get_class(func)()
 
 
-def series_upgrade_non_leaders_first(application, from_series="trusty",
-                                     to_series="xenial",
-                                     origin='openstack-origin',
-                                     completed_machines=[],
-                                     post_upgrade_functions=None):
+def series_upgrade_non_leaders_first(
+    application, from_series="trusty",
+    to_series="xenial",
+    origin='openstack-origin',
+    completed_machines=[],
+    pause_non_leader_primary=False,
+    pause_non_leader_subordinate=False,
+    files=None,
+    workaround_script=None,
+    post_upgrade_functions=None
+):
     """Series upgrade non leaders first.
 
     Wrap all the functionality to handle series upgrade for charms
@@ -129,6 +135,18 @@ def series_upgrade_non_leaders_first(application, from_series="trusty",
     :param completed_machines: List of completed machines which do no longer
                                require series upgrade.
     :type completed_machines: list
+    :param pause_non_leader_primary: Whether the non-leader applications should
+                                     be paused
+    :type pause_non_leader_primary: bool
+    :param pause_non_leader_subordinate: Whether the non-leader subordinate
+                                         hacluster applications should be
+                                         paused
+    :type pause_non_leader_subordinate: bool
+    :param from_series: The series from which to upgrade
+    :param files: Workaround files to scp to unit under upgrade
+    :type files: list
+    :param workaround_script: Workaround script to run during series upgrade
+    :type workaround_script: str
     :returns: None
     :rtype: None
     """
@@ -140,6 +158,23 @@ def series_upgrade_non_leaders_first(application, from_series="trusty",
             leader = unit
         else:
             non_leaders.append(unit)
+
+    # Pause the non-leaders
+    for unit in non_leaders:
+        if pause_non_leader_subordinate:
+            if status["units"][unit].get("subordinates"):
+                for subordinate in status["units"][unit]["subordinates"]:
+                    _app = subordinate.split('/')[0]
+                    if _app in SUBORDINATE_PAUSE_RESUME_BLACKLIST:
+                        logging.info("Skipping pausing {} - blacklisted"
+                                     .format(subordinate))
+                    else:
+                        logging.info("Pausing {}".format(subordinate))
+                        model.run_action(
+                            subordinate, "pause", action_params={})
+        if pause_non_leader_primary:
+            logging.info("Pausing {}".format(unit))
+            model.run_action(unit, "pause", action_params={})
 
     # Series upgrade the non-leaders first
     for unit in non_leaders:
@@ -155,7 +190,7 @@ def series_upgrade_non_leaders_first(application, from_series="trusty",
             completed_machines.append(machine)
         else:
             logging.info("Skipping unit: {}. Machine: {} already upgraded. "
-                         .format(unit, machine, application))
+                         .format(unit, machine))
             model.block_until_all_units_idle()
 
     # Series upgrade the leader
@@ -165,20 +200,28 @@ def series_upgrade_non_leaders_first(application, from_series="trusty",
         series_upgrade(leader, machine,
                        from_series=from_series, to_series=to_series,
                        origin=origin,
+                       workaround_script=workaround_script,
+                       files=files,
                        post_upgrade_functions=post_upgrade_functions)
         completed_machines.append(machine)
     else:
         logging.info("Skipping unit: {}. Machine: {} already upgraded."
-                     .format(unit, machine, application))
+                     .format(unit, machine))
         model.block_until_all_units_idle()
 
 
-async def async_series_upgrade_non_leaders_first(application,
-                                                 from_series="trusty",
-                                                 to_series="xenial",
-                                                 origin='openstack-origin',
-                                                 completed_machines=[],
-                                                 post_upgrade_functions=None):
+async def async_series_upgrade_non_leaders_first(
+    application,
+    from_series="trusty",
+    to_series="xenial",
+    origin='openstack-origin',
+    completed_machines=[],
+    pause_non_leader_primary=False,
+    pause_non_leader_subordinate=False,
+    files=None,
+    workaround_script=None,
+    post_upgrade_functions=None
+):
     """Series upgrade non leaders first.
 
     Wrap all the functionality to handle series upgrade for charms
@@ -196,6 +239,18 @@ async def async_series_upgrade_non_leaders_first(application,
     :param completed_machines: List of completed machines which do no longer
                                require series upgrade.
     :type completed_machines: list
+    :param pause_non_leader_primary: Whether the non-leader applications should
+                                     be paused
+    :type pause_non_leader_primary: bool
+    :param pause_non_leader_subordinate: Whether the non-leader subordinate
+                                         hacluster applications should be
+                                         paused
+    :type pause_non_leader_subordinate: bool
+    :param from_series: The series from which to upgrade
+    :param files: Workaround files to scp to unit under upgrade
+    :type files: list
+    :param workaround_script: Workaround script to run during series upgrade
+    :type workaround_script: str
     :returns: None
     :rtype: None
     """
@@ -207,6 +262,23 @@ async def async_series_upgrade_non_leaders_first(application,
             leader = unit
         else:
             non_leaders.append(unit)
+
+    # Pause the non-leaders
+    for unit in non_leaders:
+        if pause_non_leader_subordinate:
+            if status["units"][unit].get("subordinates"):
+                for subordinate in status["units"][unit]["subordinates"]:
+                    _app = subordinate.split('/')[0]
+                    if _app in SUBORDINATE_PAUSE_RESUME_BLACKLIST:
+                        logging.info("Skipping pausing {} - blacklisted"
+                                     .format(subordinate))
+                    else:
+                        logging.info("Pausing {}".format(subordinate))
+                        await model.async_run_action(
+                            subordinate, "pause", action_params={})
+        if pause_non_leader_primary:
+            logging.info("Pausing {}".format(unit))
+            await model.async_run_action(unit, "pause", action_params={})
 
     # Series upgrade the non-leaders first
     for unit in non_leaders:
@@ -223,7 +295,7 @@ async def async_series_upgrade_non_leaders_first(application,
             completed_machines.append(machine)
         else:
             logging.info("Skipping unit: {}. Machine: {} already upgraded. "
-                         .format(unit, machine, application))
+                         .format(unit, machine))
             await model.async_block_until_all_units_idle()
 
     # Series upgrade the leader
@@ -234,11 +306,13 @@ async def async_series_upgrade_non_leaders_first(application,
             leader, machine,
             from_series=from_series, to_series=to_series,
             origin=origin,
+            workaround_script=workaround_script,
+            files=files,
             post_upgrade_functions=post_upgrade_functions)
         completed_machines.append(machine)
     else:
         logging.info("Skipping unit: {}. Machine: {} already upgraded."
-                     .format(unit, machine, application))
+                     .format(unit, machine))
         await model.async_block_until_all_units_idle()
 
 
