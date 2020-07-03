@@ -23,7 +23,6 @@
 import copy
 import logging
 import tenacity
-import unittest
 
 import zaza
 import zaza.openstack.charm_tests.nova.utils as nova_utils
