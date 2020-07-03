@@ -23,9 +23,9 @@ import telnetlib
 import yaml
 
 from zaza import model
-from zaza.openstack.utilities import juju as juju_utils
 from zaza.openstack.utilities import exceptions as zaza_exceptions
 from zaza.openstack.utilities.os_versions import UBUNTU_OPENSTACK_RELEASE
+from zaza.utilities import juju as juju_utils
 
 
 def assertActionRanOK(action):
