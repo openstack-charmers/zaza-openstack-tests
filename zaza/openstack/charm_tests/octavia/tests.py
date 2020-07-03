@@ -38,7 +38,20 @@ class CharmOperationTest(test_utils.OpenStackBaseTest):
         Pause service and check services are stopped, then resume and check
         they are started.
         """
-        self.pause_resume(['apache2'])
+        services = [
+            'apache2',
+            'octavia-health-manager',
+            'octavia-housekeeping',
+            'octavia-worker',
+        ]
+        if openstack_utils.ovn_present():
+            services.append('octavia-driver-agent')
+        logging.info('Skipping pause resume test LP: #1886202...')
+        return
+        logging.info('Testing pause resume (services="{}")'
+                     .format(services))
+        with self.pause_resume(services, pgrep_full=True):
+            pass
 
 
 class LBAASv2Test(test_utils.OpenStackBaseTest):
