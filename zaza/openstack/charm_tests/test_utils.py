@@ -100,8 +100,7 @@ class BaseCharmTest(unittest.TestCase):
 
     run_resource_cleanup = False
 
-    @classmethod
-    def resource_cleanup(cls):
+    def resource_cleanup(self):
         """Cleanup any resources created during the test run.
 
         Override this method with a method which removes any resources
@@ -111,12 +110,13 @@ class BaseCharmTest(unittest.TestCase):
         """
         pass
 
-    @classmethod
-    def tearDown(cls):
+    # this must be a class instance method otherwise descentents will not be
+    # able to influence if cleanup should be run.
+    def tearDown(self):
         """Run teardown for test class."""
-        if cls.run_resource_cleanup:
+        if self.run_resource_cleanup:
             logging.info('Running resource cleanup')
-            cls.resource_cleanup()
+            self.resource_cleanup()
 
     @classmethod
     def setUpClass(cls, application_name=None, model_alias=None):
@@ -439,6 +439,7 @@ class OpenStackBaseTest(BaseCharmTest):
         cls.cacert = openstack_utils.get_cacert()
         cls.nova_client = (
             openstack_utils.get_nova_session_client(cls.keystone_session))
+
 
     def launch_guest(self, guest_name, userdata=None):
         """Launch two guests to use in tests.
