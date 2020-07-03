@@ -48,12 +48,13 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
     def setUpClass(cls):
         """Run class setup for running LBaaSv2 service tests."""
         super(LBAASv2Test, cls).setUpClass()
-
-        cls.keystone_session = openstack_utils.get_overcloud_keystone_session()
+        cls.keystone_client = openstack_utils.get_keystone_session_client(
+            cls.keystone_session)
         cls.neutron_client = openstack_utils.get_neutron_session_client(
             cls.keystone_session)
         cls.octavia_client = openstack_utils.get_octavia_session_client(
             cls.keystone_session)
+        cls.RESOURCE_PREFIX = 'zaza-octavia'
 
         # NOTE(fnordahl): in the event of a test failure we do not want to run
         # tear down code as it will make debugging a problem virtually
@@ -63,28 +64,24 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         cls.run_tearDown = False
         # List of load balancers created by this test
         cls.loadbalancers = []
-        # LIst of floating IPs created by this test
+        # List of floating IPs created by this test
         cls.fips = []
 
-    @classmethod
-    def tearDown(cls):
-        """Remove resources created during test execution.
-
-        Note that resources created in the configure step prior to executing
-        the test should not be touched here.
-        """
-        if not cls.run_tearDown:
-            return
-        for lb in cls.loadbalancers:
-            cls.octavia_client.load_balancer_delete(lb['id'], cascade=True)
+    def resource_cleanup(self):
+        """Remove resources created during test execution."""
+        for lb in self.loadbalancers:
+            self.octavia_client.load_balancer_delete(lb['id'], cascade=True)
             try:
-                cls.wait_for_lb_resource(
-                    cls.octavia_client.load_balancer_show, lb['id'],
+                self.wait_for_lb_resource(
+                    self.octavia_client.load_balancer_show, lb['id'],
                     provisioning_status='DELETED')
             except osc_lib.exceptions.NotFound:
                 pass
-        for fip in cls.fips:
-            cls.neutron_client.delete_floatingip(fip)
+        for fip in self.fips:
+            self.neutron_client.delete_floatingip(fip)
+        # we run the parent resource_cleanup last as it will remove instances
+        # referenced as members in the above cleaned up load balancers
+        super(LBAASv2Test, self).resource_cleanup()
 
     @staticmethod
     @tenacity.retry(retry=tenacity.retry_if_exception_type(AssertionError),
@@ -238,12 +235,27 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
 
     def test_create_loadbalancer(self):
         """Create load balancer."""
-        nova_client = openstack_utils.get_nova_session_client(
-            self.keystone_session)
+        # Prepare payload instances
+        # First we allow communication to port 80 by adding a security group
+        # rule
+        project_id = openstack_utils.get_project_id(
+            self.keystone_client, 'admin', domain_name='admin_domain')
+        openstack_utils.add_neutron_secgroup_rules(
+            self.neutron_client,
+            project_id,
+            [{'protocol': 'tcp',
+              'port_range_min': '80',
+              'port_range_max': '80',
+              'direction': 'ingress'}])
+
+        # Then we request two Ubuntu instances with the Apache web server
+        # installed
+        instance_1, instance_2 = self.launch_guests(
+            userdata='#cloud-config\npackages:\n - apache2\n')
 
         # Get IP of the prepared payload instances
         payload_ips = []
-        for server in nova_client.servers.list():
+        for server in (instance_1, instance_2):
             payload_ips.append(server.networks['private'][0])
         self.assertTrue(len(payload_ips) > 0)
 
@@ -274,4 +286,4 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
                                  lb_fp['floating_ip_address']))
 
         # If we get here, it means the tests passed
-        self.run_tearDown = True
+        self.run_resource_cleanup = True
