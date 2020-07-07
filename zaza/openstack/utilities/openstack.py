@@ -2202,7 +2202,8 @@ def get_private_key_file(keypair_name):
     :returns: Path to file containing key
     :rtype: str
     """
-    return 'tests/id_rsa_{}'.format(keypair_name)
+    tmp_dir = deployment_env.get_tmpdir()
+    return '{}/id_rsa_{}'.format(tmp_dir, keypair_name)
 
 
 def write_private_key(keypair_name, key):
