@@ -582,16 +582,14 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
 
     def test_get_private_key_file(self):
         self.patch_object(openstack_utils.deployment_env, 'get_tmpdir',
-                          return_value=False)
-        self.get_tmpdir.return_value = '/tmp/zaza-model1'
+                          return_value='/tmp/zaza-model1')
         self.assertEqual(
             openstack_utils.get_private_key_file('mykeys'),
             '/tmp/zaza-model1/id_rsa_mykeys')
 
     def test_write_private_key(self):
         self.patch_object(openstack_utils.deployment_env, 'get_tmpdir',
-                          return_value=False)
-        self.get_tmpdir.return_value = '/tmp/zaza-model1'
+                          return_value='/tmp/zaza-model1')
         m = mock.mock_open()
         with mock.patch(
             'zaza.openstack.utilities.openstack.open', m, create=False
@@ -602,6 +600,8 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         handle.write.assert_called_once_with('keycontents')
 
     def test_get_private_key(self):
+        self.patch_object(openstack_utils.deployment_env, 'get_tmpdir',
+                          return_value='/tmp/zaza-model1')
         self.patch_object(openstack_utils.os.path, "isfile",
                           return_value=True)
         m = mock.mock_open(read_data='myprivkey')
