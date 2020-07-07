@@ -613,6 +613,8 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 'myprivkey')
 
     def test_get_private_key_file_missing(self):
+        self.patch_object(openstack_utils.deployment_env, 'get_tmpdir',
+                          return_value='/tmp/zaza-model1')
         self.patch_object(openstack_utils.os.path, "isfile",
                           return_value=False)
         self.assertIsNone(openstack_utils.get_private_key('mykeys'))
