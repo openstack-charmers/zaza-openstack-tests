@@ -149,7 +149,7 @@ class MySQLCommonTests(MySQLBaseTest):
         set_alternate = {"max-connections": "1000"}
 
         # Make config change, check for service restarts
-        logging.debug("Setting max connections ...")
+        logging.info("Setting max connections ...")
         self.restart_on_changed(
             self.conf_file,
             set_default,
@@ -198,7 +198,7 @@ class PerconaClusterBaseTest(MySQLBaseTest):
         output = zaza.model.run_on_leader(
             self.application, cmd)["Stdout"].strip()
         value = re.search(r"^.+?\s+(.+)", output).group(1)
-        logging.debug("%s = %s" % (attr, value))
+        logging.info("%s = %s" % (attr, value))
         return value
 
     def is_pxc_bootstrapped(self):
@@ -236,7 +236,7 @@ class PerconaClusterBaseTest(MySQLBaseTest):
             cmd = "ip -br addr"
             result = zaza.model.run_on_unit(unit.entity_id, cmd)
             output = result.get("Stdout").strip()
-            logging.debug(output)
+            logging.info(output)
             if self.vip in output:
                 logging.info("vip ({}) running in {}".format(
                     self.vip,
@@ -333,12 +333,12 @@ class PerconaClusterColdStartTest(PerconaClusterBaseTest):
             juju_utils.get_machine_uuids_for_application(self.application))
         # Stop Nodes
         # Avoid hitting an update-status hook
-        logging.debug("Wait till model is idle ...")
+        logging.info("Wait till model is idle ...")
         zaza.model.block_until_all_units_idle()
         logging.info("Stopping instances: {}".format(_machines))
         for uuid in _machines:
             self.nova_client.servers.stop(uuid)
-        logging.debug("Wait till all machines are shutoff ...")
+        logging.info("Wait till all machines are shutoff ...")
         for uuid in _machines:
             openstack_utils.resource_reaches_status(self.nova_client.servers,
                                                     uuid,
@@ -357,7 +357,7 @@ class PerconaClusterColdStartTest(PerconaClusterBaseTest):
                 'unknown',
                 negate_match=True)
 
-        logging.debug("Wait till model is idle ...")
+        logging.info("Wait till model is idle ...")
         # XXX If a hook was executing on a unit when it was powered off
         #     it comes back in an error state.
         try:
@@ -366,7 +366,7 @@ class PerconaClusterColdStartTest(PerconaClusterBaseTest):
             self.resolve_update_status_errors()
             zaza.model.block_until_all_units_idle()
 
-        logging.debug("Wait for application states ...")
+        logging.info("Wait for application states ...")
         for unit in zaza.model.get_units(self.application):
             try:
                 zaza.model.run_on_unit(unit.entity_id, "hooks/update-status")
@@ -389,7 +389,7 @@ class PerconaClusterColdStartTest(PerconaClusterBaseTest):
             _non_leaders[0],
             "bootstrap-pxc",
             action_params={})
-        logging.debug("Wait for application states ...")
+        logging.info("Wait for application states ...")
         for unit in zaza.model.get_units(self.application):
             zaza.model.run_on_unit(unit.entity_id, "hooks/update-status")
         states = {"percona-cluster": {
@@ -403,7 +403,7 @@ class PerconaClusterColdStartTest(PerconaClusterBaseTest):
             self.application,
             "notify-bootstrapped",
             action_params={})
-        logging.debug("Wait for application states ...")
+        logging.info("Wait for application states ...")
         for unit in zaza.model.get_units(self.application):
             zaza.model.run_on_unit(unit.entity_id, "hooks/update-status")
         test_config = lifecycle_utils.get_charm_config(fatal=False)
@@ -532,12 +532,12 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
             juju_utils.get_machine_uuids_for_application(self.application))
         # Stop Nodes
         # Avoid hitting an update-status hook
-        logging.debug("Wait till model is idle ...")
+        logging.info("Wait till model is idle ...")
         zaza.model.block_until_all_units_idle()
         logging.info("Stopping instances: {}".format(_machines))
         for uuid in _machines:
             self.nova_client.servers.stop(uuid)
-        logging.debug("Wait till all machines are shutoff ...")
+        logging.info("Wait till all machines are shutoff ...")
         for uuid in _machines:
             openstack_utils.resource_reaches_status(self.nova_client.servers,
                                                     uuid,
@@ -550,38 +550,37 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
         for uuid in _machines:
             self.nova_client.servers.start(uuid)
 
+        logging.info(
+            "Wait till all {} units are in state 'unkown' ..."
+            .format(self.application))
         for unit in zaza.model.get_units(self.application):
             zaza.model.block_until_unit_wl_status(
                 unit.entity_id,
                 'unknown',
                 negate_match=True)
 
-        logging.debug("Wait till model is idle ...")
+        logging.info("Wait till model is idle ...")
         try:
             zaza.model.block_until_all_units_idle()
         except zaza.model.UnitError:
             self.resolve_update_status_errors()
             zaza.model.block_until_all_units_idle()
 
-        logging.debug("Clear error hooks after reboot ...")
+        logging.info("Clear error hooks after reboot ...")
         for unit in zaza.model.get_units(self.application):
             try:
                 zaza.model.run_on_unit(unit.entity_id, "hooks/update-status")
             except zaza.model.UnitError:
                 self.resolve_update_status_errors()
                 zaza.model.run_on_unit(unit.entity_id, "hooks/update-status")
-        logging.debug("Wait for application states blocked ...")
-        states = {
-            self.application: {
-                "workload-status": "blocked",
-                "workload-status-message":
-                    "MySQL InnoDB Cluster not healthy: None"},
-            "mysql-router": {
-                "workload-status": "blocked",
-                "workload-status-message":
-                    "Failed to connect to MySQL"}}
 
-        zaza.model.wait_for_application_states(states=states)
+        logging.info(
+            "Wait till all {} units are in state 'blocked' ..."
+            .format(self.application))
+        for unit in zaza.model.get_units(self.application):
+            zaza.model.block_until_unit_wl_status(
+                unit.entity_id,
+                'blocked')
 
         logging.info("Execute reboot-cluster-from-complete-outage "
                      "action after cold boot ...")
@@ -592,15 +591,15 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
                 unit.entity_id,
                 "reboot-cluster-from-complete-outage",
                 action_params={})
-            if "Success" in action.data["results"].get("outcome"):
+            if "Success" in action.data.get("results", {}).get("outcome", ""):
                 break
             else:
-                logging.info(action.data["results"].get("output"))
+                logging.info(action.data.get("results", {}).get("output", ""))
 
         assert "Success" in action.data["results"]["outcome"], (
             "Reboot cluster from complete outage action failed: {}"
             .format(action.data))
-        logging.debug("Wait for application states ...")
+        logging.info("Wait for application states ...")
         for unit in zaza.model.get_units(self.application):
             zaza.model.run_on_unit(unit.entity_id, "hooks/update-status")
         test_config = lifecycle_utils.get_charm_config(fatal=False)
