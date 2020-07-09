@@ -2401,7 +2401,7 @@ def ssh_command(username,
         ssh.connect(ip, username=username, password=password)
     else:
         key = paramiko.RSAKey.from_private_key(io.StringIO(privkey))
-        ssh.connect(ip, username=username, password='', pkey=key)
+        ssh.connect(ip, username=username, password=None, pkey=key)
     logging.info("Running {} on {}".format(command, vm_name))
     stdin, stdout, stderr = ssh.exec_command(command)
     if verify and callable(verify):
