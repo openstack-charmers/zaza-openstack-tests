@@ -773,7 +773,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             privkey='myprivkey')
         paramiko_mock.connect.assert_called_once_with(
             '10.0.0.10',
-            password='',
+            password=None,
             pkey='akey',
             username='bob')
 
