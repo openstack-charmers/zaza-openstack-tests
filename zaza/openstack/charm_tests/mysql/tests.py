@@ -521,7 +521,7 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
         zaza.model.resolve_units(
             application_name=self.application,
             erred_hook='update-status',
-            wait=True)
+            wait=True, timeout=180)
 
     def test_100_reboot_cluster_from_complete_outage(self):
         """Reboot cluster from complete outage.
