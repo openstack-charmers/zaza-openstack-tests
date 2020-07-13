@@ -544,7 +544,7 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
     @classmethod
     def setUpClass(cls):
         """Run class setup for running ceph low level tests."""
-        super(CephRGWTest, cls).setUpClass()
+        super(CephRGWTest, cls).setUpClass(application_name='ceph-radosgw')
 
     @property
     def expected_apps(self):
