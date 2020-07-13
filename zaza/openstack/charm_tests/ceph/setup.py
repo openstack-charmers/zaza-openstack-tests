@@ -14,7 +14,23 @@
 
 """Setup for ceph-osd deployments."""
 
+import logging
+import zaza.model
+
 
 def basic_setup():
     """Run basic setup for ceph-osd."""
     pass
+
+
+def ceph_ready():
+    """Wait for ceph to be ready.
+
+    Wait for ceph to be ready. This is useful if the target_deploy_status in
+    the tests.yaml is expecting ceph to be in a blocked state. After ceph
+    has been unblocked the deploy may need to wait to be ceph to be ready.
+    """
+    logging.info("Waiting for ceph units to settle")
+    zaza.model.wait_for_application_states()
+    zaza.model.block_until_all_units_idle()
+    logging.info("Ceph units settled")
