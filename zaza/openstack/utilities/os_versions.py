@@ -108,7 +108,7 @@ SWIFT_CODENAMES = OrderedDict([
     ('train',
         ['2.22.0']),
     ('ussuri',
-        ['2.24.0']),
+        ['2.24.0', '2.25.0']),
     ('victoria',
         ['2.25.0']),
 ])
@@ -177,7 +177,7 @@ PACKAGE_CODENAMES = {
         ('14', 'rocky'),
         ('15', 'stein'),
         ('16', 'train'),
-        ('17', 'ussuri'),
+        ('18', 'ussuri'),
         ('19', 'victoria'),
     ]),
     'ceilometer-common': OrderedDict([
