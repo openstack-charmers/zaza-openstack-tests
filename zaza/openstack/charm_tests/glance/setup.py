@@ -16,6 +16,7 @@
 
 import logging
 import zaza.openstack.utilities.openstack as openstack_utils
+import os
 
 CIRROS_IMAGE_NAME = "cirros"
 LTS_RELEASE = "bionic"
@@ -30,7 +31,8 @@ def basic_setup():
     """
 
 
-def add_image(image_url, glance_client=None, image_name=None, tags=[], properties=None):
+def add_image(image_url, glance_client=None, image_name=None, tags=[],
+              properties=None):
     """Retrieve image from ``image_url`` and add it to glance.
 
     :param image_url: Retrievable URL with image data
@@ -80,7 +82,8 @@ def add_cirros_image(glance_client=None, image_name=None):
               image_name=image_name)
 
 
-def add_lts_image(glance_client=None, image_name=None, release=None):
+def add_lts_image(glance_client=None, image_name=None, release=None,
+                  properties=None):
     """Add an Ubuntu LTS image to the current deployment.
 
     :param glance: Authenticated glanceclient
@@ -91,12 +94,12 @@ def add_lts_image(glance_client=None, image_name=None, release=None):
     :type release: str
     """
     image_arch = os.environ.get('image_arch')
-    if image_arch == "":
+    if not image_arch:
         image_arch = "amd64"
     logging.info("Image architecture set to {}".format(image_arch))
     if image_arch == "arm64":
         properties = "hw_firmware_type=uefi"
-    if image_arch = "ppc64el"
+    if image_arch == "ppc64el":
         properties = "architecture=ppc64"
     image_name = image_name or LTS_IMAGE_NAME
     release = release or LTS_RELEASE

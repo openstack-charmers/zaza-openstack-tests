@@ -1985,7 +1985,8 @@ def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
     return image
 
 
-def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[], properties):
+def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[],
+                 properties=None):
     """Download the image and upload it to glance.
 
     Download an image from image_url and upload it to glance labelling
