@@ -2027,8 +2027,9 @@ def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[],
             'applying tag to image: glance.image_tags.update({}, {}) = {}'
             .format(image.id, tags, result))
 
+    logging.info("Setting image properties: {}".format(properties))
     if properties:
-        result = glance.image.update(image.id, properties)
+        result = glance.images.update(image.id, **properties)
 
     return image
 

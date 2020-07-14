@@ -44,7 +44,7 @@ def add_image(image_url, glance_client=None, image_name=None, tags=[],
     :param tags: List of tags to add to image
     :type tags: list of str
     :param properties: Properties to add to image
-    :type image_name: str
+    :type image_name: dict 
     """
     if not glance_client:
         keystone_session = openstack_utils.get_overcloud_keystone_session()
@@ -98,9 +98,9 @@ def add_lts_image(glance_client=None, image_name=None, release=None,
         image_arch = "amd64"
     logging.info("Image architecture set to {}".format(image_arch))
     if image_arch == "arm64":
-        properties = "hw_firmware_type=uefi"
+        properties = {'hw_firmware_type': 'uefi'}
     if image_arch == "ppc64el":
-        properties = "architecture=ppc64"
+        properties = {'architecture': 'ppc64'}
     image_name = image_name or LTS_IMAGE_NAME
     release = release or LTS_RELEASE
     image_url = openstack_utils.find_ubuntu_image(
