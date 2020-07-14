@@ -401,6 +401,10 @@ class BasePolicydSpecialization(PolicydTest,
 
     def test_003_test_overide_is_observed(self):
         """Test that the override is observed by the underlying service."""
+        if (openstack_utils.get_os_release() <
+                openstack_utils.get_os_release('groovy_victoria')):
+            raise unittest.SkipTest(
+                "Test skipped until Bug #1880959 is fix released")
         if self._test_name is None:
             logging.info("Doing policyd override for {}"
                          .format(self._service_name))
