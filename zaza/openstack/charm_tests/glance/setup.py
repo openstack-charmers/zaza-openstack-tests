@@ -30,7 +30,7 @@ def basic_setup():
     """
 
 
-def add_image(image_url, glance_client=None, image_name=None, tags=[]):
+def add_image(image_url, glance_client=None, image_name=None, tags=[], properties=None):
     """Retrieve image from ``image_url`` and add it to glance.
 
     :param image_url: Retrievable URL with image data
@@ -41,6 +41,8 @@ def add_image(image_url, glance_client=None, image_name=None, tags=[]):
     :type image_name: str
     :param tags: List of tags to add to image
     :type tags: list of str
+    :param properties: Properties to add to image
+    :type image_name: str
     """
     if not glance_client:
         keystone_session = openstack_utils.get_overcloud_keystone_session()
@@ -59,7 +61,8 @@ def add_image(image_url, glance_client=None, image_name=None, tags=[]):
             glance_client,
             image_url,
             image_name,
-            tags=tags)
+            tags=tags,
+            properties=properties)
 
 
 def add_cirros_image(glance_client=None, image_name=None):
@@ -87,11 +90,20 @@ def add_lts_image(glance_client=None, image_name=None, release=None):
     :param release: Name of ubuntu release.
     :type release: str
     """
+    image_arch = os.environ.get('image_arch')
+    if image_arch == "":
+        image_arch = "amd64"
+    logging.info("Image architecture set to {}".format(image_arch))
+    if image_arch == "arm64":
+        properties = "hw_firmware_type=uefi"
+    if image_arch = "ppc64el"
+        properties = "architecture=ppc64"
     image_name = image_name or LTS_IMAGE_NAME
     release = release or LTS_RELEASE
     image_url = openstack_utils.find_ubuntu_image(
         release=release,
-        arch='amd64')
+        arch=image_arch)
     add_image(image_url,
               glance_client=glance_client,
-              image_name=image_name)
+              image_name=image_name,
+              properties=properties)
