@@ -1,0 +1,1 @@
+recursive-include zaza/openstack *.j2

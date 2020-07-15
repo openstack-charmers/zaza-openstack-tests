@@ -178,15 +178,28 @@ class SwiftGlobalReplicationTests(test_utils.OpenStackBaseTest):
             logging.info('Deleting container {}'.format(container['name']))
             cls.swift_region1.delete_container(container['name'])
 
-    def test_two_regions_any_zones_two_replicas(self):
-        """Create an object with two replicas across two regions."""
+    def test_901_two_regions_any_zones_two_replicas(self):
+        """Create an object with two replicas across two regions.
+
+        We set write affinity to write the first copy in the local
+        region of the proxy used to perform the write, the other
+        replica will land in the remote region.
+        """
         swift_utils.apply_proxy_config(
             self.region1_proxy_app,
             {
-                'write-affinity': 'r1, r2',
+                'write-affinity': 'r1',
                 'write-affinity-node-count': '1',
                 'replicas': '2'},
             self.region1_model_name)
+        swift_utils.apply_proxy_config(
+            self.region2_proxy_app,
+            {
+                'write-affinity': 'r2',
+                'write-affinity-node-count': '1',
+                'replicas': '2'},
+            self.region2_model_name)
+        logging.info('Proxy configs updated in both regions')
         container_name, obj_name, obj_replicas = swift_utils.create_object(
             self.swift_region1,
             self.region1_proxy_app,
@@ -204,15 +217,29 @@ class SwiftGlobalReplicationTests(test_utils.OpenStackBaseTest):
             len(obj_replicas.all_zones),
             2)
 
-    def test_two_regions_any_zones_three_replicas(self):
-        """Create an object with three replicas across two regions."""
+    def test_902_two_regions_any_zones_three_replicas(self):
+        """Create an object with three replicas across two regions.
+
+        We set write affinity to write the first copy in the local
+        region of the proxy used to perform the write, at least one
+        of the other two replicas will end up in the opposite region
+        based on primary partitions in the ring.
+        """
         swift_utils.apply_proxy_config(
             self.region1_proxy_app,
             {
-                'write-affinity': 'r1, r2',
+                'write-affinity': 'r1',
                 'write-affinity-node-count': '1',
                 'replicas': '3'},
             self.region1_model_name)
+        swift_utils.apply_proxy_config(
+            self.region2_proxy_app,
+            {
+                'write-affinity': 'r2',
+                'write-affinity-node-count': '1',
+                'replicas': '3'},
+            self.region2_model_name)
+        logging.info('Proxy configs updated in both regions')
         container_name, obj_name, obj_replicas = swift_utils.create_object(
             self.swift_region1,
             self.region1_proxy_app,
@@ -258,7 +285,7 @@ class S3APITest(test_utils.OpenStackBaseTest):
         # Create AWS compatible application credentials in Keystone
         cls.ec2_creds = ks_client.ec2.create(user_id, project_id)
 
-    def test_s3_list_buckets(self):
+    def test_901_s3_list_buckets(self):
         """Use S3 API to list buckets."""
         # We use a mix of the high- and low-level API with common arguments
         kwargs = {
@@ -266,6 +293,7 @@ class S3APITest(test_utils.OpenStackBaseTest):
             'aws_access_key_id': self.ec2_creds.access,
             'aws_secret_access_key': self.ec2_creds.secret,
             'endpoint_url': self.s3_endpoint,
+            'verify': self.cacert,
         }
         s3_client = boto3.client('s3', **kwargs)
         s3 = boto3.resource('s3', **kwargs)

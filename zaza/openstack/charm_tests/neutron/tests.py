@@ -14,7 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Encapsulating `neutron-openvswitch` testing."""
+"""Encapsulating testing of some `neutron-*` charms.
+
+`neutron-api`, `neutron-gateway` and `neutron-openvswitch`
+"""
 
 
 import copy
@@ -23,7 +26,6 @@ import tenacity
 import unittest
 
 import zaza
-import zaza.openstack.charm_tests.glance.setup as glance_setup
 import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.configure.guest as guest
@@ -110,15 +112,78 @@ class NeutronGatewayTest(NeutronPluginApiSharedTests):
         super(NeutronGatewayTest, cls).setUpClass(cls)
         cls.services = cls._get_services()
 
+        # set up clients
+        cls.neutron_client = (
+            openstack_utils.get_neutron_session_client(cls.keystone_session))
+
+    _APP_NAME = 'neutron-gateway'
+
+    def test_401_enable_qos(self):
+        """Check qos settings set via neutron-api charm."""
+        if (self.current_os_release >=
+                openstack_utils.get_os_release('trusty_mitaka')):
+            logging.info('running qos check')
+
+            with self.config_change(
+                    {'enable-qos': 'False'},
+                    {'enable-qos': 'True'},
+                    application_name="neutron-api"):
+
+                self._validate_openvswitch_agent_qos()
+
+    @tenacity.retry(wait=tenacity.wait_exponential(min=5, max=60),
+                    reraise=True, stop=tenacity.stop_after_attempt(8))
+    def _validate_openvswitch_agent_qos(self):
+        """Validate that the qos extension is enabled in the ovs agent."""
+        # obtain the dhcp agent to identify the neutron-gateway host
+        dhcp_agent = self.neutron_client.list_agents(
+            binary='neutron-dhcp-agent')['agents'][0]
+        neutron_gw_host = dhcp_agent['host']
+        logging.debug('neutron gw host: {}'.format(neutron_gw_host))
+
+        # check extensions on the ovs agent to validate qos
+        ovs_agent = self.neutron_client.list_agents(
+            binary='neutron-openvswitch-agent',
+            host=neutron_gw_host)['agents'][0]
+
+        self.assertIn('qos', ovs_agent['configurations']['extensions'])
+
+    @unittest.expectedFailure
+    def test_800_ovs_bridges_are_managed_by_us(self):
+        """Checking OVS bridges' external-id.
+
+        OVS bridges created by us should be marked as managed by us in their
+        external-id. See
+        http://docs.openvswitch.org/en/latest/topics/integration/
+
+        NOTE(lourot): this test is expected to fail as long as this feature
+        hasn't landed yet: https://review.opendev.org/717074
+        """
+        for unit in zaza.model.get_units(self._APP_NAME,
+                                         model_name=self.model_name):
+            for bridge_name in ('br-int', 'br-ex'):
+                logging.info(
+                    'Checking that the bridge {}:{}'.format(
+                        unit.name, bridge_name
+                    ) + ' is marked as managed by us'
+                )
+                expected_external_id = 'charm-neutron-gateway=managed'
+                actual_external_id = zaza.model.run_on_unit(
+                    unit.entity_id,
+                    'ovs-vsctl br-get-external-id {}'.format(bridge_name),
+                    model_name=self.model_name
+                )['Stdout'].strip()
+                self.assertEqual(actual_external_id, expected_external_id)
+
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change.
 
-        Change disk format and assert then change propagates to the correct
+        Change debug mode and assert that change propagates to the correct
         file and that services are restarted as a result
         """
         # Expected default and alternate values
         current_value = zaza.model.get_application_config(
-            'neutron-gateway')['debug']['value']
+            self._APP_NAME)['debug']['value']
         new_value = str(not bool(current_value)).title()
         current_value = str(current_value).title()
 
@@ -132,7 +197,7 @@ class NeutronGatewayTest(NeutronPluginApiSharedTests):
 
         # Make config change, check for service restarts
         logging.info(
-            'Setting verbose on neutron-api {}'.format(set_alternate))
+            'Setting verbose on {} {}'.format(self._APP_NAME, set_alternate))
         self.restart_on_changed(
             conf_file,
             set_default,
@@ -170,7 +235,7 @@ class NeutronGatewayTest(NeutronPluginApiSharedTests):
         logging.debug('Remote unit timestamp {}'.format(mtime))
 
         with self.config_change(set_default, set_alternate):
-            for unit in zaza.model.get_units('neutron-gateway',
+            for unit in zaza.model.get_units(self._APP_NAME,
                                              model_name=self.model_name):
                 logging.info('Checking number of profiles in complain '
                              'mode in {}'.format(unit.entity_id))
@@ -224,68 +289,53 @@ class NeutronCreateNetworkTest(test_utils.OpenStackBaseTest):
         # set up clients
         cls.neutron_client = (
             openstack_utils.get_neutron_session_client(cls.keystone_session))
+        cls.neutron_client.format = 'json'
+
+    _TEST_NET_NAME = 'test_net'
 
     def test_400_create_network(self):
         """Create a network, verify that it exists, and then delete it."""
+        self._assert_test_network_doesnt_exist()
+        self._create_test_network()
+        net_id = self._assert_test_network_exists_and_return_id()
+        self._delete_test_network(net_id)
+        self._assert_test_network_doesnt_exist()
+
+    def _create_test_network(self):
         logging.debug('Creating neutron network...')
-        self.neutron_client.format = 'json'
-        net_name = 'test_net'
-
-        # Verify that the network doesn't exist
-        networks = self.neutron_client.list_networks(name=net_name)
-        net_count = len(networks['networks'])
-        assert net_count == 0, (
-            "Expected zero networks, found {}".format(net_count))
-
-        # Create a network and verify that it exists
-        network = {'name': net_name}
+        network = {'name': self._TEST_NET_NAME}
         self.neutron_client.create_network({'network': network})
 
-        networks = self.neutron_client.list_networks(name=net_name)
+    def _delete_test_network(self, net_id):
+        logging.debug('Deleting neutron network...')
+        self.neutron_client.delete_network(net_id)
+
+    def _assert_test_network_exists_and_return_id(self):
+        logging.debug('Confirming new neutron network...')
+        networks = self.neutron_client.list_networks(name=self._TEST_NET_NAME)
         logging.debug('Networks: {}'.format(networks))
         net_len = len(networks['networks'])
         assert net_len == 1, (
             "Expected 1 network, found {}".format(net_len))
-
-        logging.debug('Confirming new neutron network...')
         network = networks['networks'][0]
-        assert network['name'] == net_name, "network ext_net not found"
+        assert network['name'] == self._TEST_NET_NAME, \
+            "network {} not found".format(self._TEST_NET_NAME)
+        return network['id']
 
-        # Cleanup
-        logging.debug('Deleting neutron network...')
-        self.neutron_client.delete_network(network['id'])
+    def _assert_test_network_doesnt_exist(self):
+        networks = self.neutron_client.list_networks(name=self._TEST_NET_NAME)
+        net_count = len(networks['networks'])
+        assert net_count == 0, (
+            "Expected zero networks, found {}".format(net_count))
 
 
 class NeutronApiTest(NeutronCreateNetworkTest):
     """Test basic Neutron API Charm functionality."""
 
-    def test_401_enable_qos(self):
-        """Check qos settings set via neutron-api charm."""
-        if (self.current_os_release >=
-                openstack_utils.get_os_release('trusty_mitaka')):
-            logging.info('running qos check')
-
-            dhcp_agents = self.neutron_client.list_agents(
-                binary='neutron-dhcp-agent')['agents']
-            if not dhcp_agents:
-                ovn_agents = self.neutron_client.list_agents(
-                    binary='ovn-controller')['agents']
-                if ovn_agents:
-                    raise unittest.SkipTest(
-                        "QoS tests are currently not supported on OVN "
-                        "deployments")
-
-            with self.config_change(
-                    {'enable-qos': 'False'},
-                    {'enable-qos': 'True'},
-                    application_name="neutron-api"):
-
-                self._validate_openvswitch_agent_qos()
-
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change.
 
-        Change disk format and assert then change propagates to the correct
+        Change debug mode and assert that change propagates to the correct
         file and that services are restarted as a result
         """
         # Expected default and alternate values
@@ -334,22 +384,6 @@ class NeutronApiTest(NeutronCreateNetworkTest):
                 ["neutron-server", "apache2", "haproxy"],
                 pgrep_full=pgrep_full):
             logging.info("Testing pause resume")
-
-    @tenacity.retry(wait=tenacity.wait_exponential(min=5, max=60))
-    def _validate_openvswitch_agent_qos(self):
-        """Validate that the qos extension is enabled in the ovs agent."""
-        # obtain the dhcp agent to identify the neutron-gateway host
-        dhcp_agent = self.neutron_client.list_agents(
-            binary='neutron-dhcp-agent')['agents'][0]
-        neutron_gw_host = dhcp_agent['host']
-        logging.debug('neutron gw host: {}'.format(neutron_gw_host))
-
-        # check extensions on the ovs agent to validate qos
-        ovs_agent = self.neutron_client.list_agents(
-            binary='neutron-openvswitch-agent',
-            host=neutron_gw_host)['agents'][0]
-
-        self.assertIn('qos', ovs_agent['configurations']['extensions'])
 
 
 class SecurityTest(test_utils.OpenStackBaseTest):
@@ -410,26 +444,23 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
         """Run class setup for running Neutron Openvswitch tests."""
         super(NeutronOpenvSwitchTest, cls).setUpClass(cls)
 
-        cls.compute_unit = zaza.model.get_units('nova-compute')[0]
-        cls.neutron_api_unit = zaza.model.get_units('neutron-api')[0]
-        cls.n_ovs_unit = zaza.model.get_units('neutron-openvswitch')[0]
-
         # set up client
         cls.neutron_client = (
             openstack_utils.get_neutron_session_client(cls.keystone_session))
 
     def test_101_neutron_sriov_config(self):
         """Verify data in the sriov agent config file."""
-        trusty_kilo = openstack_utils.get_os_release('trusty_kilo')
-        if self.current_os_release < trusty_kilo:
+        xenial_mitaka = openstack_utils.get_os_release('xenial_mitaka')
+        if self.current_os_release < xenial_mitaka:
             logging.debug('Skipping test, sriov agent not supported on < '
-                          'trusty/kilo')
+                          'xenial/mitaka')
             return
 
         zaza.model.set_application_config(
             self.application_name,
             {'enable-sriov': 'True'})
 
+        zaza.model.wait_for_agent_status()
         zaza.model.wait_for_application_states()
 
         self._check_settings_in_config(
@@ -453,6 +484,7 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
             {'enable-sriov': 'False'})
 
         logging.info('Waiting for config-changes to complete...')
+        zaza.model.wait_for_agent_status()
         zaza.model.wait_for_application_states()
 
         logging.debug('OK')
@@ -467,7 +499,7 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
 
         expected = {
             section: {
-                config_file_key: [vpair[1]],
+                config_file_key: [str(vpair[1])],
             },
         }
 
@@ -487,7 +519,7 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
             'neutron-api',
             'l2-population',
             'l2_population',
-            ['False', 'True'],
+            [False, True],
             'agent',
             '/etc/neutron/plugins/ml2/openvswitch_agent.ini')
 
@@ -508,36 +540,17 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
         else:
             conf_file = "/etc/neutron/plugins/ml2/ml2_conf.ini"
 
-        zaza.model.set_application_config(
-            'neutron-api',
-            {'neutron-security-groups': 'True'})
-        zaza.model.set_application_config(
-            'neutron-openvswitch',
-            {'disable-security-groups': 'True'})
-
-        zaza.model.wait_for_application_states()
-
-        expected = {
-            'securitygroup': {
-                'enable_security_group': ['False'],
-            },
-        }
-
-        zaza.model.block_until_oslo_config_entries_match(
-            self.application_name,
-            conf_file,
-            expected,
-        )
-
-        logging.info('Restoring to default configuration...')
-        zaza.model.set_application_config(
-            'neutron-openvswitch',
-            {'disable-security-groups': 'False'})
-        zaza.model.set_application_config(
-            'neutron-api',
-            {'neutron-security-groups': 'False'})
-
-        zaza.model.wait_for_application_states()
+        with self.config_change(
+                {'neutron-security-groups': False},
+                {'neutron-security-groups': True},
+                application_name='neutron-api'):
+            with self.config_change(
+                    {'disable-security-groups': False},
+                    {'disable-security-groups': True}):
+                zaza.model.block_until_oslo_config_entries_match(
+                    self.application_name,
+                    conf_file,
+                    {'securitygroup': {'enable_security_group': ['False']}})
 
     def test_401_restart_on_config_change(self):
         """Verify that the specified services are restarted.
@@ -547,8 +560,8 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
         """
         self.restart_on_changed(
             '/etc/neutron/neutron.conf',
-            {'debug': 'false'},
-            {'debug': 'true'},
+            {'debug': False},
+            {'debug': True},
             {'DEFAULT': {'debug': ['False']}},
             {'DEFAULT': {'debug': ['True']}},
             ['neutron-openvswitch-agent'],
@@ -560,8 +573,8 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
             logging.debug('Skipping test')
             return
 
-        set_default = {'enable-qos': 'false'}
-        set_alternate = {'enable-qos': 'true'}
+        set_default = {'enable-qos': False}
+        set_alternate = {'enable-qos': True}
         app_name = 'neutron-api'
 
         conf_file = '/etc/neutron/plugins/ml2/openvswitch_agent.ini'
@@ -592,68 +605,17 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
             logging.info('Testing pause resume')
 
 
-class NeutronNetworkingTest(unittest.TestCase):
-    """Ensure that openstack instances have valid networking."""
+class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
+    """Base for checking openstack instances have valid networking."""
 
     RESOURCE_PREFIX = 'zaza-neutrontests'
 
     @classmethod
     def setUpClass(cls):
         """Run class setup for running Neutron API Networking tests."""
-        cls.keystone_session = (
-            openstack_utils.get_overcloud_keystone_session())
-        cls.nova_client = (
-            openstack_utils.get_nova_session_client(cls.keystone_session))
-        # NOTE(fnordahl): in the event of a test failure we do not want to run
-        # tear down code as it will make debugging a problem virtually
-        # impossible.  To alleviate each test method will set the
-        # `run_tearDown` instance variable at the end which will let us run
-        # tear down only when there were no failure.
-        cls.run_tearDown = False
-
-    @classmethod
-    def tearDown(cls):
-        """Remove test resources."""
-        if cls.run_tearDown:
-            logging.info('Running teardown')
-            for server in cls.nova_client.servers.list():
-                if server.name.startswith(cls.RESOURCE_PREFIX):
-                    openstack_utils.delete_resource(
-                        cls.nova_client.servers,
-                        server.id,
-                        msg="server")
-
-    def test_instances_have_networking(self):
-        """Validate North/South and East/West networking."""
-        guest.launch_instance(
-            glance_setup.LTS_IMAGE_NAME,
-            vm_name='{}-ins-1'.format(self.RESOURCE_PREFIX))
-        guest.launch_instance(
-            glance_setup.LTS_IMAGE_NAME,
-            vm_name='{}-ins-2'.format(self.RESOURCE_PREFIX))
-
-        instance_1 = self.nova_client.servers.find(
-            name='{}-ins-1'.format(self.RESOURCE_PREFIX))
-
-        instance_2 = self.nova_client.servers.find(
-            name='{}-ins-2'.format(self.RESOURCE_PREFIX))
-
-        def verify(stdin, stdout, stderr):
-            """Validate that the SSH command exited 0."""
-            self.assertEqual(stdout.channel.recv_exit_status(), 0)
-
-        # Verify network from 1 to 2
-        self.validate_instance_can_reach_other(instance_1, instance_2, verify)
-
-        # Verify network from 2 to 1
-        self.validate_instance_can_reach_other(instance_2, instance_1, verify)
-
-        # Validate tenant to external network routing
-        self.validate_instance_can_reach_router(instance_1, verify)
-        self.validate_instance_can_reach_router(instance_2, verify)
-
-        # If we get here, it means the tests passed
-        self.run_tearDown = True
+        super(NeutronNetworkingBase, cls).setUpClass()
+        cls.neutron_client = (
+            openstack_utils.get_neutron_session_client(cls.keystone_session))
 
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
                     reraise=True, stop=tenacity.stop_after_attempt(8))
@@ -711,7 +673,61 @@ class NeutronNetworkingTest(unittest.TestCase):
         openstack_utils.ssh_command(
             username, address, 'instance', 'ping -c 1 192.168.0.1',
             password=password, privkey=privkey, verify=verify)
-        pass
+
+    @tenacity.retry(wait=tenacity.wait_exponential(min=5, max=60),
+                    reraise=True, stop=tenacity.stop_after_attempt(8),
+                    retry=tenacity.retry_if_exception_type(AssertionError))
+    def check_server_state(self, nova_client, state, server_id=None,
+                           server_name=None):
+        """Wait for server to reach desired state.
+
+        :param nova_client: Nova client to use when checking status
+        :type nova_client: nova client
+        :param state: Target state for server
+        :type state: str
+        :param server_id: UUID of server to check
+        :type server_id: str
+        :param server_name: Name of server to check
+        :type server_name: str
+        :raises: AssertionError
+        """
+        if server_name:
+            server_id = nova_client.servers.find(name=server_name).id
+        server = nova_client.servers.find(id=server_id)
+        assert server.status == state
+
+    @tenacity.retry(wait=tenacity.wait_exponential(min=5, max=60),
+                    reraise=True, stop=tenacity.stop_after_attempt(8),
+                    retry=tenacity.retry_if_exception_type(AssertionError))
+    def check_neutron_agent_up(self, neutron_client, host_name):
+        """Wait for agents to come up.
+
+        :param neutron_client: Neutron client to use when checking status
+        :type neutron_client: neutron client
+        :param host_name: The name of the host whose agents need checking
+        :type host_name: str
+        :raises: AssertionError
+        """
+        for agent in neutron_client.list_agents()['agents']:
+            if agent['host'] == host_name:
+                assert agent['admin_state_up']
+                assert agent['alive']
+
+    def check_connectivity(self, instance_1, instance_2):
+        """Run North/South and East/West connectivity tests."""
+        def verify(stdin, stdout, stderr):
+            """Validate that the SSH command exited 0."""
+            self.assertEqual(stdout.channel.recv_exit_status(), 0)
+
+        # Verify network from 1 to 2
+        self.validate_instance_can_reach_other(instance_1, instance_2, verify)
+
+        # Verify network from 2 to 1
+        self.validate_instance_can_reach_other(instance_2, instance_1, verify)
+
+        # Validate tenant to external network routing
+        self.validate_instance_can_reach_router(instance_1, verify)
+        self.validate_instance_can_reach_router(instance_2, verify)
 
 
 def floating_ips_from_instance(instance):
@@ -759,3 +775,61 @@ def ips_from_instance(instance, ip_type):
     return list([
         ip['addr'] for ip in instance.addresses['private']
         if ip['OS-EXT-IPS:type'] == ip_type])
+
+
+class NeutronNetworkingTest(NeutronNetworkingBase):
+    """Ensure that openstack instances have valid networking."""
+
+    def test_instances_have_networking(self):
+        """Validate North/South and East/West networking."""
+        self.launch_guests()
+        instance_1, instance_2 = self.retrieve_guests()
+        self.check_connectivity(instance_1, instance_2)
+        self.run_resource_cleanup = True
+
+
+class NeutronNetworkingVRRPTests(NeutronNetworkingBase):
+    """Check networking when gateways are restarted."""
+
+    def test_gateway_failure(self):
+        """Validate networking in the case of a gateway failure."""
+        instance_1, instance_2 = self.retrieve_guests()
+        if not all([instance_1, instance_2]):
+            self.launch_guests()
+            instance_1, instance_2 = self.retrieve_guests()
+        self.check_connectivity(instance_1, instance_2)
+
+        routers = self.neutron_client.list_routers(
+            name='provider-router')['routers']
+        assert len(routers) == 1, "Unexpected router count {}".format(
+            len(routers))
+        provider_router = routers[0]
+        l3_agents = self.neutron_client.list_l3_agent_hosting_routers(
+            router=provider_router['id'])['agents']
+        logging.info(
+            'Checking there are multiple L3 agents running tenant router')
+        assert len(l3_agents) == 2, "Unexpected l3 agent count {}".format(
+            len(l3_agents))
+        uc_ks_session = openstack_utils.get_undercloud_keystone_session()
+        uc_nova_client = openstack_utils.get_nova_session_client(uc_ks_session)
+        uc_neutron_client = openstack_utils.get_neutron_session_client(
+            uc_ks_session)
+        for agent in l3_agents:
+            gateway_hostname = agent['host']
+            gateway_server = uc_nova_client.servers.find(name=gateway_hostname)
+            logging.info("Shutting down {}".format(gateway_hostname))
+            gateway_server.stop()
+            self.check_server_state(
+                uc_nova_client,
+                'SHUTOFF',
+                server_name=gateway_hostname)
+            self.check_connectivity(instance_1, instance_2)
+            gateway_server.start()
+            self.check_server_state(
+                uc_nova_client,
+                'ACTIVE',
+                server_name=gateway_hostname)
+            self.check_neutron_agent_up(
+                uc_neutron_client,
+                gateway_hostname)
+            self.check_connectivity(instance_1, instance_2)

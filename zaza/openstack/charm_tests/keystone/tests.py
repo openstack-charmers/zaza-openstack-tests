@@ -328,6 +328,21 @@ class AuthenticationAuthorizationTest(BaseKeystoneTest):
                         {'OS_AUTH_URL': 'http://{}:5000/v3'.format(ip)})
                     _validate_token_data(openrc)
 
+    def test_backward_compatible_uuid_for_default_domain(self):
+        """Check domain named ``default`` literally has ``default`` as ID.
+
+        Some third party software chooses to hard code this value for some
+        inexplicable reason.
+        """
+        with self.v3_keystone_preferred():
+            ks_session = openstack_utils.get_keystone_session(
+                openstack_utils.get_overcloud_auth())
+            ks_client = openstack_utils.get_keystone_session_client(
+                ks_session)
+            domain = ks_client.domains.get('default')
+            logging.info(pprint.pformat(domain))
+            assert domain.id == 'default'
+
 
 class SecurityTests(BaseKeystoneTest):
     """Keystone security tests tests."""
@@ -343,13 +358,13 @@ class SecurityTests(BaseKeystoneTest):
         # this initial work to get validation in. There will be bugs targeted
         # to each one and resolved independently where possible.
         expected_failures = [
-            'disable-admin-token',
         ]
         expected_passes = [
             'check-max-request-body-size',
-            'uses-sha256-for-hashing-tokens',
-            'uses-fernet-token-after-default',
+            'disable-admin-token',
             'insecure-debug-is-false',
+            'uses-fernet-token-after-default',
+            'uses-sha256-for-hashing-tokens',
             'validate-file-ownership',
             'validate-file-permissions',
         ]
@@ -363,7 +378,7 @@ class SecurityTests(BaseKeystoneTest):
                 action_params={}),
             expected_passes,
             expected_failures,
-            expected_to_pass=False)
+            expected_to_pass=True)
 
 
 class LdapTests(BaseKeystoneTest):

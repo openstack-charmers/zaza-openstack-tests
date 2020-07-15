@@ -14,7 +14,9 @@
 
 """Run configuration phase."""
 
+import base64
 import functools
+import logging
 import requests
 import tempfile
 
@@ -27,6 +29,22 @@ import zaza.openstack.utilities.generic
 import zaza.utilities.juju as juju_utils
 
 
+def get_cacert_file():
+    """Retrieve CA cert used for vault endpoints and write to file.
+
+    :returns: Path to file with CA cert.
+    :rtype: str
+    """
+    cacert_file = None
+    vault_config = zaza.model.get_application_config('vault')
+    cacert_b64 = vault_config['ssl-ca']['value']
+    if cacert_b64:
+        with tempfile.NamedTemporaryFile(mode='wb', delete=False) as fp:
+            fp.write(base64.b64decode(cacert_b64))
+            cacert_file = fp.name
+    return cacert_file
+
+
 def basic_setup(cacert=None, unseal_and_authorize=False):
     """Run basic setup for vault tests.
 
@@ -35,6 +53,7 @@ def basic_setup(cacert=None, unseal_and_authorize=False):
     :param unseal_and_authorize: Whether to unseal and authorize vault.
     :type unseal_and_authorize: bool
     """
+    cacert = cacert or get_cacert_file()
     vault_svc = vault_utils.VaultFacade(cacert=cacert)
     if unseal_and_authorize:
         vault_svc.unseal()
@@ -47,6 +66,7 @@ def basic_setup_and_unseal(cacert=None):
     :param cacert: Path to CA cert used for vaults api cert.
     :type cacert: str
     """
+    cacert = cacert or get_cacert_file()
     vault_svc = vault_utils.VaultFacade(cacert=cacert)
     vault_svc.unseal()
     for unit in zaza.model.get_units('vault'):
@@ -66,7 +86,21 @@ def mojo_unseal_by_unit():
             zaza.model.run_on_unit(unit_name, './hooks/update-status')
 
 
-def auto_initialize(cacert=None, validation_application='keystone'):
+async def async_mojo_unseal_by_unit():
+    """Unseal any units reported as sealed using mojo cacert."""
+    cacert = zaza.openstack.utilities.generic.get_mojo_cacert_path()
+    vault_creds = vault_utils.get_credentails()
+    for client in vault_utils.get_clients(cacert=cacert):
+        if client.hvac_client.is_sealed():
+            client.hvac_client.unseal(vault_creds['keys'][0])
+            unit_name = await juju_utils.async_get_unit_name_from_ip_address(
+                client.addr,
+                'vault')
+            await zaza.model.async_run_on_unit(
+                unit_name, './hooks/update-status')
+
+
+def auto_initialize(cacert=None, validation_application='keystone', wait=True):
     """Auto initialize vault for testing.
 
     Generate a csr and uploading a signed certificate.
@@ -81,6 +115,7 @@ def auto_initialize(cacert=None, validation_application='keystone'):
     :returns: None
     :rtype: None
     """
+    logging.info('Running auto_initialize')
     basic_setup(cacert=cacert, unseal_and_authorize=True)
 
     action = vault_utils.run_get_csr()
@@ -98,10 +133,11 @@ def auto_initialize(cacert=None, validation_application='keystone'):
         root_ca=cacertificate,
         allowed_domains='openstack.local')
 
-    zaza.model.wait_for_agent_status()
-    test_config = lifecycle_utils.get_charm_config(fatal=False)
-    zaza.model.wait_for_application_states(
-        states=test_config.get('target_deploy_status', {}))
+    if wait:
+        zaza.model.wait_for_agent_status()
+        test_config = lifecycle_utils.get_charm_config(fatal=False)
+        zaza.model.wait_for_application_states(
+            states=test_config.get('target_deploy_status', {}))
 
     if validation_application:
         validate_ca(cacertificate, application=validation_application)
@@ -128,6 +164,12 @@ def auto_initialize(cacert=None, validation_application='keystone'):
 auto_initialize_no_validation = functools.partial(
     auto_initialize,
     validation_application=None)
+
+
+auto_initialize_no_validation_no_wait = functools.partial(
+    auto_initialize,
+    validation_application=None,
+    wait=False)
 
 
 def validate_ca(cacertificate, application="keystone", port=5000):

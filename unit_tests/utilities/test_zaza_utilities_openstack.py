@@ -16,6 +16,7 @@ import copy
 import datetime
 import io
 import mock
+import subprocess
 import tenacity
 
 import unit_tests.utils as ut_utils
@@ -292,8 +293,9 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.patch_object(openstack_utils.urllib.request, "ProxyHandler")
         self.patch_object(openstack_utils.urllib.request, "HTTPHandler")
         self.patch_object(openstack_utils.urllib.request, "build_opener")
-        self.patch_object(openstack_utils.os, "getenv")
-        self.getenv.return_value = None
+        self.patch_object(openstack_utils.deployment_env,
+                          "get_deployment_context",
+                          return_value=dict(TEST_HTTP_PROXY=None))
         HTTPHandler_mock = mock.MagicMock()
         self.HTTPHandler.return_value = HTTPHandler_mock
         openstack_utils.get_urllib_opener()
@@ -304,8 +306,9 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.patch_object(openstack_utils.urllib.request, "ProxyHandler")
         self.patch_object(openstack_utils.urllib.request, "HTTPHandler")
         self.patch_object(openstack_utils.urllib.request, "build_opener")
-        self.patch_object(openstack_utils.os, "getenv")
-        self.getenv.return_value = 'http://squidy'
+        self.patch_object(openstack_utils.deployment_env,
+                          "get_deployment_context",
+                          return_value=dict(TEST_HTTP_PROXY='http://squidy'))
         ProxyHandler_mock = mock.MagicMock()
         self.ProxyHandler.return_value = ProxyHandler_mock
         openstack_utils.get_urllib_opener()
@@ -578,21 +581,27 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         nova_mock.keypairs.create.assert_called_once_with(name='mykeys')
 
     def test_get_private_key_file(self):
+        self.patch_object(openstack_utils.deployment_env, 'get_tmpdir',
+                          return_value='/tmp/zaza-model1')
         self.assertEqual(
             openstack_utils.get_private_key_file('mykeys'),
-            'tests/id_rsa_mykeys')
+            '/tmp/zaza-model1/id_rsa_mykeys')
 
     def test_write_private_key(self):
+        self.patch_object(openstack_utils.deployment_env, 'get_tmpdir',
+                          return_value='/tmp/zaza-model1')
         m = mock.mock_open()
         with mock.patch(
             'zaza.openstack.utilities.openstack.open', m, create=False
         ):
             openstack_utils.write_private_key('mykeys', 'keycontents')
-        m.assert_called_once_with('tests/id_rsa_mykeys', 'w')
+        m.assert_called_once_with('/tmp/zaza-model1/id_rsa_mykeys', 'w')
         handle = m()
         handle.write.assert_called_once_with('keycontents')
 
     def test_get_private_key(self):
+        self.patch_object(openstack_utils.deployment_env, 'get_tmpdir',
+                          return_value='/tmp/zaza-model1')
         self.patch_object(openstack_utils.os.path, "isfile",
                           return_value=True)
         m = mock.mock_open(read_data='myprivkey')
@@ -604,6 +613,8 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 'myprivkey')
 
     def test_get_private_key_file_missing(self):
+        self.patch_object(openstack_utils.deployment_env, 'get_tmpdir',
+                          return_value='/tmp/zaza-model1')
         self.patch_object(openstack_utils.os.path, "isfile",
                           return_value=False)
         self.assertIsNone(openstack_utils.get_private_key('mykeys'))
@@ -664,17 +675,19 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             [])
 
     def test_ping_response(self):
-        self.patch_object(openstack_utils.subprocess, 'check_call')
+        self.patch_object(openstack_utils.subprocess, 'run')
         openstack_utils.ping_response('10.0.0.10')
-        self.check_call.assert_called_once_with(
-            ['ping', '-c', '1', '-W', '1', '10.0.0.10'], stdout=-3)
+        self.run.assert_called_once_with(
+            ['ping', '-c', '1', '-W', '1', '10.0.0.10'], check=True,
+            stdout=mock.ANY, stderr=mock.ANY)
 
     def test_ping_response_fail(self):
         openstack_utils.ping_response.retry.wait = \
             tenacity.wait_none()
-        self.patch_object(openstack_utils.subprocess, 'check_call')
-        self.check_call.side_effect = Exception()
-        with self.assertRaises(Exception):
+        self.patch_object(openstack_utils.subprocess, 'run')
+        self.run.side_effect = subprocess.CalledProcessError(returncode=42,
+                                                             cmd='mycmd')
+        with self.assertRaises(subprocess.CalledProcessError):
             openstack_utils.ping_response('10.0.0.10')
 
     def test_ssh_test(self):
@@ -735,7 +748,8 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 'bob',
                 '10.0.0.10',
                 'myvm',
-                password='reallyhardpassord')
+                password='reallyhardpassord',
+                retry=False)
         paramiko_mock.connect.assert_called_once_with(
             '10.0.0.10',
             password='reallyhardpassord',
@@ -759,7 +773,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             privkey='myprivkey')
         paramiko_mock.connect.assert_called_once_with(
             '10.0.0.10',
-            password='',
+            password=None,
             pkey='akey',
             username='bob')
 
@@ -1212,3 +1226,33 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.assertTrue(openstack_utils.ovn_present())
         self.get_application.side_effect = [KeyError, KeyError]
         self.assertFalse(openstack_utils.ovn_present())
+
+    def test_configure_gateway_ext_port(self):
+        # FIXME: this is not a complete unit test for the function as one did
+        # not exist at all I'm adding this to test one bit and we'll add more
+        # as we go.
+        self.patch_object(openstack_utils, 'deprecated_external_networking')
+        self.patch_object(openstack_utils, 'dvr_enabled')
+        self.patch_object(openstack_utils, 'ovn_present')
+        self.patch_object(openstack_utils, 'get_gateway_uuids')
+        self.patch_object(openstack_utils, 'get_admin_net')
+        self.dvr_enabled = False
+        self.ovn_present = False
+        self.get_admin_net.return_value = {'id': 'fakeid'}
+
+        novaclient = mock.MagicMock()
+        neutronclient = mock.MagicMock()
+
+        def _fake_empty_generator(empty=True):
+            if empty:
+                return
+            yield
+
+        self.get_gateway_uuids.side_effect = _fake_empty_generator
+        with self.assertRaises(RuntimeError):
+            openstack_utils.configure_gateway_ext_port(
+                novaclient, neutronclient)
+        # provide a uuid and check that we don't raise RuntimeError
+        self.get_gateway_uuids.side_effect = ['fake-uuid']
+        openstack_utils.configure_gateway_ext_port(
+            novaclient, neutronclient)

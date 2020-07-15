@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
 import mock
 
 import unit_tests.utils as ut_utils
@@ -171,38 +170,6 @@ class TestOpenStackUpgradeUtils(ut_utils.BaseTestCase):
             'percona-cluster',
             {'source': 'new-src'},
             model_name=None)
-
-    def test__extract_charm_name_from_url(self):
-        self.assertEqual(
-            openstack_upgrade._extract_charm_name_from_url(
-                'local:bionic/heat-12'),
-            'heat')
-        self.assertEqual(
-            openstack_upgrade._extract_charm_name_from_url(
-                'cs:bionic/heat-12'),
-            'heat')
-        self.assertEqual(
-            openstack_upgrade._extract_charm_name_from_url('cs:heat'),
-            'heat')
-
-    def test_get_upgrade_candidates(self):
-        expect = copy.deepcopy(self.juju_status.applications)
-        del expect['mydb']  # Filter as it is on UPGRADE_EXCLUDE_LIST
-        del expect['ntp']  # Filter as it has no source option
-        del expect['neutron-openvswitch']  # Filter as it is a subordinates
-        self.assertEqual(
-            openstack_upgrade.get_upgrade_candidates(),
-            expect)
-
-    def test_get_upgrade_groups(self):
-        self.assertEqual(
-            openstack_upgrade.get_upgrade_groups(),
-            {
-                'Compute': ['nova-compute'],
-                'Control Plane': ['cinder'],
-                'Core Identity': [],
-                'Storage': [],
-                'sweep_up': []})
 
     def test_is_action_upgradable(self):
         self.assertTrue(

@@ -16,26 +16,14 @@
 
 This module contains a number of functions for upgrading OpenStack.
 """
-import re
 import logging
 import zaza.openstack.utilities.juju as juju_utils
 
 import zaza.model
 from zaza import sync_wrapper
-
-SERVICE_GROUPS = {
-    'Core Identity': ['keystone'],
-    'Storage': [
-        'ceph-mon', 'ceph-osd', 'ceph-fs', 'ceph-radosgw', 'swift-proxy',
-        'swift-storage'],
-    'Control Plane': [
-        'aodh', 'barbican', 'ceilometer', 'cinder', 'designate',
-        'designate-bind', 'glance', 'gnocchi', 'heat', 'manila',
-        'manila-generic', 'neutron-api', 'neutron-gateway', 'placement',
-        'nova-cloud-controller', 'openstack-dashboard'],
-    'Compute': ['nova-compute']}
-
-UPGRADE_EXCLUDE_LIST = ['rabbitmq-server', 'percona-cluster']
+from zaza.openstack.utilities.upgrade_utils import (
+    get_upgrade_groups,
+)
 
 
 async def async_pause_units(units, model_name=None):
@@ -187,88 +175,6 @@ def set_upgrade_application_config(applications, new_source,
             app,
             config,
             model_name=model_name)
-
-
-def _extract_charm_name_from_url(charm_url):
-    """Extract the charm name from the charm url.
-
-    E.g. Extract 'heat' from local:bionic/heat-12
-
-    :param charm_url: Name of model to query.
-    :type charm_url: str
-    :returns: Charm name
-    :rtype: str
-    """
-    charm_name = re.sub(r'-[0-9]+$', '', charm_url.split('/')[-1])
-    return charm_name.split(':')[-1]
-
-
-def get_upgrade_candidates(model_name=None):
-    """Extract list of apps from model that can be upgraded.
-
-    :param model_name: Name of model to query.
-    :type model_name: str
-    :returns: List of application that can have their payload upgraded.
-    :rtype: []
-    """
-    status = zaza.model.get_status(model_name=model_name)
-    candidates = {}
-    for app, app_config in status.applications.items():
-        # Filter out subordinates
-        if app_config.get("subordinate-to"):
-            logging.warning(
-                "Excluding {} from upgrade, it is a subordinate".format(app))
-            continue
-
-        # Filter out charms on the naughty list
-        charm_name = _extract_charm_name_from_url(app_config['charm'])
-        if app in UPGRADE_EXCLUDE_LIST or charm_name in UPGRADE_EXCLUDE_LIST:
-            logging.warning(
-                "Excluding {} from upgrade, on the exclude list".format(app))
-            continue
-
-        # Filter out charms that have no source option
-        charm_options = zaza.model.get_application_config(
-            app, model_name=model_name).keys()
-        src_options = ['openstack-origin', 'source']
-        if not [x for x in src_options if x in charm_options]:
-            logging.warning(
-                "Excluding {} from upgrade, no src option".format(app))
-            continue
-
-        candidates[app] = app_config
-    return candidates
-
-
-def get_upgrade_groups(model_name=None):
-    """Place apps in the model into their upgrade groups.
-
-    Place apps in the model into their upgrade groups. If an app is deployed
-    but is not in SERVICE_GROUPS then it is placed in a sweep_up group.
-
-    :param model_name: Name of model to query.
-    :type model_name: str
-    :returns: Dict of group lists keyed on group name.
-    :rtype: {}
-    """
-    apps_in_model = get_upgrade_candidates(model_name=model_name)
-
-    groups = {}
-    for phase_name, charms in SERVICE_GROUPS.items():
-        group = []
-        for app, app_config in apps_in_model.items():
-            charm_name = _extract_charm_name_from_url(app_config['charm'])
-            if charm_name in charms:
-                group.append(app)
-        groups[phase_name] = group
-
-    sweep_up = []
-    for app in apps_in_model:
-        if not (app in [a for group in groups.values() for a in group]):
-            sweep_up.append(app)
-
-    groups['sweep_up'] = sweep_up
-    return groups
 
 
 def is_action_upgradable(app, model_name=None):

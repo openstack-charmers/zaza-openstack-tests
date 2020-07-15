@@ -13,18 +13,31 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Module for interacting with juju."""
-import os
-from pathlib import Path
-import yaml
+"""Deprecated, please use zaza.utilities.juju."""
 
-from zaza import (
-    model,
-    controller,
-)
-from zaza.openstack.utilities import generic as generic_utils
+import logging
+import functools
+
+import zaza.utilities.juju
 
 
+def deprecate():
+    """Add a deprecation warning to wrapped function."""
+    def wrap(f):
+
+        @functools.wraps(f)
+        def wrapped_f(*args, **kwargs):
+            msg = (
+                "{} from zaza.openstack.utilities.juju is deprecated. "
+                "Please use the equivalent from zaza.utilities.juju".format(
+                    f.__name__))
+            logging.warning(msg)
+            return f(*args, **kwargs)
+        return wrapped_f
+    return wrap
+
+
+@deprecate()
 def get_application_status(application=None, unit=None, model_name=None):
     """Return the juju status for an application.
 
@@ -37,18 +50,29 @@ def get_application_status(application=None, unit=None, model_name=None):
     :returns: Juju status output for an application
     :rtype: dict
     """
-    status = get_full_juju_status()
-
-    if unit and not application:
-        application = unit.split("/")[0]
-
-    if application:
-        status = status.applications.get(application)
-    if unit:
-        status = status.get("units").get(unit)
-    return status
+    return zaza.utilities.juju.get_application_status(
+        application=application,
+        unit=unit,
+        model_name=model_name)
 
 
+@deprecate()
+def get_application_ip(application, model_name=None):
+    """Get the application's IP address.
+
+    :param application: Application name
+    :type application: str
+    :param model_name: Name of model to query.
+    :type model_name: str
+    :returns: Application's IP address
+    :rtype: str
+    """
+    return zaza.utilities.juju.get_application_ip(
+        application,
+        model_name=model_name)
+
+
+@deprecate()
 def get_cloud_configs(cloud=None):
     """Get cloud configuration from local clouds.yaml.
 
@@ -60,14 +84,11 @@ def get_cloud_configs(cloud=None):
     :returns: Dictionary of cloud configuration
     :rtype: dict
     """
-    home = str(Path.home())
-    cloud_config = os.path.join(home, ".local", "share", "juju", "clouds.yaml")
-    if cloud:
-        return generic_utils.get_yaml_config(cloud_config)["clouds"].get(cloud)
-    else:
-        return generic_utils.get_yaml_config(cloud_config)
+    return zaza.utilities.juju.get_cloud_configs(
+        cloud=cloud)
 
 
+@deprecate()
 def get_full_juju_status(model_name=None):
     """Return the full juju status output.
 
@@ -76,10 +97,11 @@ def get_full_juju_status(model_name=None):
     :returns: Full juju status output
     :rtype: dict
     """
-    status = model.get_status(model_name=model_name)
-    return status
+    return zaza.utilities.juju.get_full_juju_status(
+        model_name=model_name)
 
 
+@deprecate()
 def get_machines_for_application(application, model_name=None):
     """Return machines for a given application.
 
@@ -90,20 +112,12 @@ def get_machines_for_application(application, model_name=None):
     :returns: machines for an application
     :rtype: Iterator[str]
     """
-    status = get_application_status(application, model_name=model_name)
-    if not status:
-        return
-
-    # libjuju juju status no longer has units for subordinate charms
-    # Use the application it is subordinate-to to find machines
-    if status.get("units") is None and status.get("subordinate-to"):
-        status = get_application_status(status.get("subordinate-to")[0],
-                                        model_name=model_name)
-
-    for unit in status.get("units").keys():
-        yield status.get("units").get(unit).get("machine")
+    return zaza.utilities.juju.get_machines_for_application(
+        application,
+        model_name=model_name)
 
 
+@deprecate()
 def get_unit_name_from_host_name(host_name, application, model_name=None):
     """Return the juju unit name corresponding to a hostname.
 
@@ -114,17 +128,13 @@ def get_unit_name_from_host_name(host_name, application, model_name=None):
     :param model_name: Name of model to query.
     :type model_name: str
     """
-    # Assume that a juju managed hostname always ends in the machine number and
-    # remove the domain name if it present.
-    machine_number = host_name.split('-')[-1].split('.')[0]
-    unit_names = [
-        u.entity_id
-        for u in model.get_units(application_name=application,
-                                 model_name=model_name)
-        if int(u.data['machine-id']) == int(machine_number)]
-    return unit_names[0]
+    return zaza.utilities.juju.get_unit_name_from_host_name(
+        host_name,
+        application,
+        model_name=model_name)
 
 
+@deprecate()
 def get_machine_status(machine, key=None, model_name=None):
     """Return the juju status for a machine.
 
@@ -137,17 +147,13 @@ def get_machine_status(machine, key=None, model_name=None):
     :returns: Juju status output for a machine
     :rtype: dict
     """
-    status = get_full_juju_status(model_name=model_name)
-    if "lxd" in machine:
-        host = machine.split('/')[0]
-        status = status.machines.get(host)['containers'][machine]
-    else:
-        status = status.machines.get(machine)
-    if key:
-        status = status.get(key)
-    return status
+    return zaza.utilities.juju.get_machine_status(
+        machine,
+        key=key,
+        model_name=model_name)
 
 
+@deprecate()
 def get_machine_series(machine, model_name=None):
     """Return the juju series for a machine.
 
@@ -158,13 +164,12 @@ def get_machine_series(machine, model_name=None):
     :returns: Juju series
     :rtype: string
     """
-    return get_machine_status(
-        machine=machine,
-        key='series',
-        model_name=model_name
-    )
+    return zaza.utilities.juju.get_machine_series(
+        machine,
+        model_name=model_name)
 
 
+@deprecate()
 def get_machine_uuids_for_application(application, model_name=None):
     """Return machine uuids for a given application.
 
@@ -175,30 +180,22 @@ def get_machine_uuids_for_application(application, model_name=None):
     :returns: machine uuuids for an application
     :rtype: Iterator[str]
     """
-    for machine in get_machines_for_application(application,
-                                                model_name=model_name):
-        yield get_machine_status(machine, key="instance-id",
-                                 model_name=model_name)
+    return zaza.utilities.juju.get_machine_uuids_for_application(
+        application,
+        model_name=model_name)
 
 
+@deprecate()
 def get_provider_type():
     """Get the type of the undercloud.
 
     :returns: Name of the undercloud type
     :rtype: string
     """
-    cloud = controller.get_cloud()
-    if cloud:
-        # If the controller was deployed from this system with
-        # the cloud configured in ~/.local/share/juju/clouds.yaml
-        # Determine the cloud type directly
-        return get_cloud_configs(cloud)["type"]
-    else:
-        # If the controller was deployed elsewhere
-        # For now assume openstack
-        return "openstack"
+    return zaza.utilities.juju.get_provider_type()
 
 
+@deprecate()
 def remote_run(unit, remote_cmd, timeout=None, fatal=None, model_name=None):
     """Run command on unit and return the output.
 
@@ -217,46 +214,15 @@ def remote_run(unit, remote_cmd, timeout=None, fatal=None, model_name=None):
     :rtype: string
     :raises: model.CommandRunFailed
     """
-    if fatal is None:
-        fatal = True
-    result = model.run_on_unit(
+    return zaza.utilities.juju.remote_run(
         unit,
         remote_cmd,
         timeout=timeout,
+        fatal=fatal,
         model_name=model_name)
-    if result:
-        if int(result.get("Code")) == 0:
-            return result.get("Stdout")
-        else:
-            if fatal:
-                raise model.CommandRunFailed(remote_cmd, result)
-            return result.get("Stderr")
 
 
-def _get_unit_names(names, model_name=None):
-    """Resolve given application names to first unit name of said application.
-
-    Helper function that resolves application names to first unit name of
-    said application.  Any already resolved unit names are returned as-is.
-
-    :param names: List of units/applications to translate
-    :type names: list(str)
-    :param model_name: Name of model to query.
-    :type model_name: str
-    :returns: List of units
-    :rtype: list(str)
-    """
-    result = []
-    for name in names:
-        if '/' in name:
-            result.append(name)
-        else:
-            result.append(model.get_first_unit_name(
-                name,
-                model_name=model_name))
-    return result
-
-
+@deprecate()
 def get_relation_from_unit(entity, remote_entity, remote_interface_name,
                            model_name=None):
     """Get relation data passed between two units.
@@ -281,22 +247,14 @@ def get_relation_from_unit(entity, remote_entity, remote_interface_name,
     :rtype: dict
     :raises: model.CommandRunFailed
     """
-    application = entity.split('/')[0]
-    remote_application = remote_entity.split('/')[0]
-    rid = model.get_relation_id(application, remote_application,
-                                remote_interface_name=remote_interface_name,
-                                model_name=model_name)
-    (unit, remote_unit) = _get_unit_names(
-        [entity, remote_entity],
+    return zaza.utilities.juju.get_relation_from_unit(
+        entity,
+        remote_entity,
+        remote_interface_name,
         model_name=model_name)
-    cmd = 'relation-get --format=yaml -r "{}" - "{}"' .format(rid, remote_unit)
-    result = model.run_on_unit(unit, cmd, model_name=model_name)
-    if result and int(result.get('Code')) == 0:
-        return yaml.safe_load(result.get('Stdout'))
-    else:
-        raise model.CommandRunFailed(cmd, result)
 
 
+@deprecate()
 def leader_get(application, key='', model_name=None):
     """Get leader settings from leader unit of named application.
 
@@ -310,14 +268,13 @@ def leader_get(application, key='', model_name=None):
     :rtype: dict
     :raises: model.CommandRunFailed
     """
-    cmd = 'leader-get --format=yaml {}'.format(key)
-    result = model.run_on_leader(application, cmd, model_name=model_name)
-    if result and int(result.get('Code')) == 0:
-        return yaml.safe_load(result.get('Stdout'))
-    else:
-        raise model.CommandRunFailed(cmd, result)
+    return zaza.utilities.juju.leader_get(
+        application,
+        key=key,
+        model_name=model_name)
 
 
+@deprecate()
 def get_subordinate_units(unit_list, charm_name=None, status=None,
                           model_name=None):
     """Get a list of all subordinate units associated with units in unit_list.
@@ -348,17 +305,8 @@ def get_subordinate_units(unit_list, charm_name=None, status=None,
     :returns: List of matching unit names.
     :rtype: []
     """
-    if not status:
-        status = model.get_status(model_name=model_name)
-    sub_units = []
-    for unit_name in unit_list:
-        app_name = unit_name.split('/')[0]
-        subs = status.applications[app_name]['units'][unit_name].get(
-            'subordinates') or {}
-        if charm_name:
-            for unit_name, unit_data in subs.items():
-                if charm_name in unit_data['charm']:
-                    sub_units.append(unit_name)
-        else:
-            sub_units.extend([n for n in subs.keys()])
-    return sub_units
+    return zaza.utilities.juju.get_subordinate_units(
+        unit_list,
+        charm_name=charm_name,
+        status=status,
+        model_name=model_name)

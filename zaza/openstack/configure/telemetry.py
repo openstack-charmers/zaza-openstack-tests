@@ -18,6 +18,8 @@ Functions for managing masakari resources and simulating compute node loss
 and recovery.
 """
 
+import logging
+import tenacity
 import time
 
 import zaza.model
@@ -119,3 +121,25 @@ def create_server_power_off_alarm(aodh_client, alarm_name, server_uuid):
                        'type': 'string',
                        'value': server_uuid}]}}
     return aodh_client.alarm.create(alarm_def)
+
+
+def block_until_alarm_state(aodh_client, alarm_id, target_state='alarm'):
+    """Block until alarm has reached target state.
+
+    :param aodh_client: Authenticated aodh v2 client
+    :type aodh_client: aodhclient.v2.client.Client
+    :param alarm_id: ID of provided alarm
+    :type alarm_id: str
+    :param target_state: uuid of alarm to check
+    :stype target_state: str
+    """
+    for attempt in tenacity.Retrying(
+            stop=tenacity.stop_after_attempt(3),
+            wait=tenacity.wait_exponential(multiplier=1, min=2, max=10)):
+        with attempt:
+            alarm_state = get_alarm_state(
+                aodh_client,
+                alarm_id)
+
+            logging.info('Alarm in state {}'.format(alarm_state))
+            assert alarm_state == target_state

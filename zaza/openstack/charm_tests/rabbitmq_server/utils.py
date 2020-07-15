@@ -120,6 +120,26 @@ def delete_user(units, username="testuser1"):
     output = zaza.model.run_on_unit(units[0].entity_id, cmd_user_del)
 
 
+def is_rabbitmq_version_ge_382(unit):
+    """Test is the rabbitmq version on the :param:`unit` is 3.8.2+.
+
+    Returns True if the rabbitmq_server version installed on the :param:`unit`
+    is >= 3.8.2
+
+    :param unit: the unit to test
+    :type unit: :class:`juju.model.ModelEntity`
+    :returns: True if the server is 3.8.2 or later
+    :rtype: Boolean
+    """
+    cmd = 'rabbitmqctl version'
+    output = zaza.model.run_on_unit(unit.entity_id, cmd)['Stdout'].strip()
+    logging.debug('{} rabbitmq version:{}'.format(unit.entity_id, output))
+    try:
+        return tuple(map(int, output.split('.')[:3])) >= (3, 8, 2)
+    except Exception:
+        return False
+
+
 def get_cluster_status(unit):
     """Get RabbitMQ cluster status output.
 
@@ -138,10 +158,34 @@ def get_cluster_status(unit):
 def get_cluster_running_nodes(unit):
     """Get a list of RabbitMQ cluster's running nodes.
 
+    Return a list of the running rabbitmq cluster nodes from the specified
+    unit.
+
+    NOTE: this calls one of two functions depending on whether the installed
+    version on the unit is 3.8.2 and newer, or older.  If newer then the
+    --formatter=json option is used to simplify parsing of the cluster data.
+
+    :param unit: the unit to fetch running nodes list from
+    :type unit: :class:`juju.model.ModelEntity`
+    :returns: List containing node names of running nodes
+    :rtype: List[str]
+    """
+    if is_rabbitmq_version_ge_382(unit):
+        return _get_cluster_running_nodes_38(unit)
+    else:
+        return _get_cluster_running_nodes_pre_38(unit)
+
+
+def _get_cluster_running_nodes_pre_38(unit):
+    """Get a list of RabbitMQ cluster's running nodes (pre 3.8.2).
+
     Parse rabbitmqctl cluster_status output string, return list of
     running rabbitmq cluster nodes.
+
     :param unit: unit pointer
+    :type unit: :class:`juju.model.ModelEntity`
     :returns: List containing node names of running nodes
+    :rtype: List[str]
     """
     # NOTE(beisner): rabbitmqctl cluster_status output is not
     # json-parsable, do string chop foo, then json.loads that.
@@ -154,6 +198,23 @@ def get_cluster_running_nodes(unit):
         return run_nodes
     else:
         return []
+
+
+def _get_cluster_running_nodes_38(unit):
+    """Get a list of RabbitMQ cluster's running nodes (3.8.2+).
+
+    Return a list of the running rabbitmq cluster nodes from the specified
+    unit.
+
+    :param unit: the unit to fetch running nodes list from
+    :type unit: :class:`juju.model.ModelEntity`
+    :returns: List containing node names of running nodes
+    :rtype: List[str]
+    """
+    cmd = 'rabbitmqctl cluster_status --formatter=json'
+    output = zaza.model.run_on_unit(unit.entity_id, cmd)['Stdout'].strip()
+    decoded = json.loads(output)
+    return decoded['running_nodes']
 
 
 def validate_cluster_running_nodes(units):
@@ -454,10 +515,53 @@ def get_amqp_message_by_unit(unit, queue="test",
 
 
 def check_unit_cluster_nodes(unit, unit_node_names):
-    """Check if unit exists in list of Rmq cluster node names."""
-    unit_name = unit.entity_id
+    """Check if unit exists in list of Rmq cluster node names.
+
+    NOTE: this calls one of two functions depending on whether the installed
+    version on the unit is 3.8.2 and newer, or older.  If newer then the
+    --formatter=json option is used to simplify parsing of the cluster data.
+
+    :param unit: the unit to fetch running nodes list from
+    :type unit: :class:`juju.model.ModelEntity`
+    :param unit_node_names: The unit node names to check against
+    :type unit_node_names: List[str]
+    :returns: List containing node names of running nodes
+    :rtype: List[str]
+    """
+    if is_rabbitmq_version_ge_382(unit):
+        return _check_unit_cluster_nodes_38(unit, unit_node_names)
+    else:
+        return _check_unit_cluster_nodes_pre_38(unit, unit_node_names)
+
+
+def _check_unit_cluster_nodes_38(unit, unit_node_names):
+    """Check if unit exists in list of Rmq cluster node names (3.8.2+).
+
+    :param unit: the unit to fetch running nodes list from
+    :type unit: :class:`juju.model.ModelEntity`
+    :param unit_node_names: The unit node names to check against
+    :type unit_node_names: List[str]
+    :returns: List containing node names of running nodes
+    :rtype: List[str]
+    """
+    cmd = 'rabbitmqctl cluster_status --formatter=json'
+    output = zaza.model.run_on_unit(unit.entity_id, cmd)['Stdout'].strip()
+    decoded = json.loads(output)
+    return _post_check_unit_cluster_nodes(
+        unit, decoded['disk_nodes'], unit_node_names)
+
+
+def _check_unit_cluster_nodes_pre_38(unit, unit_node_names):
+    """Check if unit exists in list of Rmq cluster node names (pre 3.8.2).
+
+    :param unit: the unit to fetch running nodes list from
+    :type unit: :class:`juju.model.ModelEntity`
+    :param unit_node_names: The unit node names to check against
+    :type unit_node_names: List[str]
+    :returns: List containing node names of running nodes
+    :rtype: List[str]
+    """
     nodes = []
-    errors = []
     str_stat = get_cluster_status(unit)
     # make the interesting part of rabbitmqctl cluster_status output
     # json-parseable.
@@ -466,11 +570,25 @@ def check_unit_cluster_nodes(unit, unit_node_names):
         pos_end = str_stat.find(']}]},', pos_start) + 1
         str_nodes = str_stat[pos_start:pos_end].replace("'", '"')
         nodes = json.loads(str_nodes)
+    return _post_check_unit_cluster_nodes(unit, nodes, unit_node_names)
+
+
+def _post_check_unit_cluster_nodes(unit, nodes, unit_node_names):
+    """Finish of the check_unit_cluster_nodes function (internal)."""
+    unit_name = unit.entity_id
+    errors = []
     for node in nodes:
         if node not in unit_node_names:
             errors.append('Cluster registration check failed on {}: '
                           '{} should not be registered with RabbitMQ '
                           'after unit removal.\n'
                           ''.format(unit_name, node))
-
     return errors
+
+
+async def complete_cluster_series_upgrade():
+    """Run the complete-cluster-series-upgrade action on the lead unit."""
+    await zaza.model.async_run_action_on_leader(
+        'rabbitmq-server',
+        'complete-cluster-series-upgrade',
+        action_params={})

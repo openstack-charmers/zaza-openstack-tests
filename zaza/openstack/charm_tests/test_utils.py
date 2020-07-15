@@ -14,13 +14,19 @@
 """Module containing base class for implementing charm tests."""
 import contextlib
 import logging
+import ipaddress
 import subprocess
+import tenacity
 import unittest
+
+import novaclient
 
 import zaza.model as model
 import zaza.charm_lifecycle.utils as lifecycle_utils
+import zaza.openstack.configure.guest as configure_guest
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.utilities.generic as generic_utils
+import zaza.openstack.charm_tests.glance.setup as glance_setup
 
 
 def skipIfNotHA(service_name):
@@ -50,7 +56,7 @@ def skipUntilVersion(service, package, release):
                                       stderr=subprocess.STDOUT,
                                       universal_newlines=True)
                 return f(*args, **kwargs)
-            except subprocess.CalledProcessError as cp:
+            except subprocess.CalledProcessError:
                 logging.warn("Skipping test for older ({})"
                              "service {}, requested {}".format(
                                  package_version, service, release))
@@ -89,13 +95,12 @@ def audit_assertions(action,
             assert value == "PASS", "Unexpected failure: {}".format(key)
 
 
-class OpenStackBaseTest(unittest.TestCase):
-    """Generic helpers for testing OpenStack API charms."""
+class BaseCharmTest(unittest.TestCase):
+    """Generic helpers for testing charms."""
 
     run_resource_cleanup = False
 
-    @classmethod
-    def resource_cleanup(cls):
+    def resource_cleanup(self):
         """Cleanup any resources created during the test run.
 
         Override this method with a method which removes any resources
@@ -105,12 +110,13 @@ class OpenStackBaseTest(unittest.TestCase):
         """
         pass
 
-    @classmethod
-    def tearDown(cls):
+    # this must be a class instance method otherwise descentents will not be
+    # able to influence if cleanup should be run.
+    def tearDown(self):
         """Run teardown for test class."""
-        if cls.run_resource_cleanup:
+        if self.run_resource_cleanup:
             logging.info('Running resource cleanup')
-            cls.resource_cleanup()
+            self.resource_cleanup()
 
     @classmethod
     def setUpClass(cls, application_name=None, model_alias=None):
@@ -120,8 +126,6 @@ class OpenStackBaseTest(unittest.TestCase):
             cls.model_name = cls.model_aliases[model_alias]
         else:
             cls.model_name = model.get_juju_model()
-        cls.keystone_session = openstack_utils.get_overcloud_keystone_session(
-            model_name=cls.model_name)
         cls.test_config = lifecycle_utils.get_charm_config(fatal=False)
         if application_name:
             cls.application_name = application_name
@@ -162,7 +166,7 @@ class OpenStackBaseTest(unittest.TestCase):
 
         Workaround:
         libjuju refuses to accept data with types other than strings
-        through the zuzu.model.set_application_config
+        through the zaza.model.set_application_config
 
         :param config: Config dictionary with any typed values
         :type  config: Dict[str,Any]
@@ -256,12 +260,50 @@ class OpenStackBaseTest(unittest.TestCase):
         # TODO: Optimize with a block on a specific application until idle.
         model.block_until_all_units_idle()
 
+    def restart_on_changed_debug_oslo_config_file(self, config_file, services,
+                                                  config_section='DEFAULT'):
+        """Check restart happens on config change by flipping debug mode.
+
+        Change debug mode and assert that change propagates to the correct
+        file and that services are restarted as a result. config_file must be
+        an oslo config file and debug option must be set in the
+        `config_section` section.
+
+        :param config_file: OSLO Config file to check for settings
+        :type config_file: str
+        :param services: Services expected to be restarted when config_file is
+                         changed.
+        :type services: list
+        """
+        # Expected default and alternate values
+        current_value = model.get_application_config(
+            self.application_name)['debug']['value']
+        new_value = str(not bool(current_value)).title()
+        current_value = str(current_value).title()
+
+        set_default = {'debug': current_value}
+        set_alternate = {'debug': new_value}
+        default_entry = {config_section: {'debug': [current_value]}}
+        alternate_entry = {config_section: {'debug': [new_value]}}
+
+        # Make config change, check for service restarts
+        logging.info(
+            'Changing settings on {} to {}'.format(
+                self.application_name, set_alternate))
+        self.restart_on_changed(
+            config_file,
+            set_default,
+            set_alternate,
+            default_entry,
+            alternate_entry,
+            services)
+
     def restart_on_changed(self, config_file, default_config, alternate_config,
                            default_entry, alternate_entry, services,
                            pgrep_full=False):
         """Run restart on change tests.
 
-        Test that changing config results in config file being updates and
+        Test that changing config results in config file being updated and
         services restarted. Return config to default_config afterwards
 
         :param config_file: Config file to check for settings
@@ -319,7 +361,7 @@ class OpenStackBaseTest(unittest.TestCase):
         # If this is not an OSLO config file set default_config={}
         if default_entry:
             logging.debug(
-                'Waiting for updates to propagate to '.format(config_file))
+                'Waiting for updates to propagate to {}'.format(config_file))
             model.block_until_oslo_config_entries_match(
                 self.application_name,
                 config_file,
@@ -352,10 +394,10 @@ class OpenStackBaseTest(unittest.TestCase):
             self.lead_unit,
             'active',
             model_name=self.model_name)
-        model.run_action(
+        generic_utils.assertActionRanOK(model.run_action(
             self.lead_unit,
             'pause',
-            model_name=self.model_name)
+            model_name=self.model_name))
         model.block_until_unit_wl_status(
             self.lead_unit,
             'maintenance',
@@ -368,10 +410,10 @@ class OpenStackBaseTest(unittest.TestCase):
             model_name=self.model_name,
             pgrep_full=pgrep_full)
         yield
-        model.run_action(
+        generic_utils.assertActionRanOK(model.run_action(
             self.lead_unit,
             'resume',
-            model_name=self.model_name)
+            model_name=self.model_name))
         model.block_until_unit_wl_status(
             self.lead_unit,
             'active',
@@ -383,3 +425,136 @@ class OpenStackBaseTest(unittest.TestCase):
             'running',
             model_name=self.model_name,
             pgrep_full=pgrep_full)
+
+
+class OpenStackBaseTest(BaseCharmTest):
+    """Generic helpers for testing OpenStack API charms."""
+
+    @classmethod
+    def setUpClass(cls, application_name=None, model_alias=None):
+        """Run setup for test class to create common resources."""
+        super(OpenStackBaseTest, cls).setUpClass(application_name, model_alias)
+        cls.keystone_session = openstack_utils.get_overcloud_keystone_session(
+            model_name=cls.model_name)
+        cls.cacert = openstack_utils.get_cacert()
+        cls.nova_client = (
+            openstack_utils.get_nova_session_client(cls.keystone_session))
+
+    def resource_cleanup(self):
+        """Remove test resources."""
+        try:
+            logging.info('Removing instances launched by test ({}*)'
+                         .format(self.RESOURCE_PREFIX))
+            for server in self.nova_client.servers.list():
+                if server.name.startswith(self.RESOURCE_PREFIX):
+                    openstack_utils.delete_resource(
+                        self.nova_client.servers,
+                        server.id,
+                        msg="server")
+        except AttributeError:
+            # Test did not define self.RESOURCE_PREFIX, ignore.
+            pass
+
+    def launch_guest(self, guest_name, userdata=None):
+        """Launch two guests to use in tests.
+
+        Note that it is up to the caller to have set the RESOURCE_PREFIX class
+        variable prior to calling this method.
+
+        Also note that this method will remove any already existing instance
+        with same name as what is requested.
+
+        :param guest_name: Name of instance
+        :type guest_name: str
+        :param userdata: Userdata to attach to instance
+        :type userdata: Optional[str]
+        :returns: Nova instance objects
+        :rtype: Server
+        """
+        instance_name = '{}-{}'.format(self.RESOURCE_PREFIX, guest_name)
+
+        instance = self.retrieve_guest(instance_name)
+        if instance:
+            logging.info('Removing already existing instance ({}) with '
+                         'requested name ({})'
+                         .format(instance.id, instance_name))
+            openstack_utils.delete_resource(
+                self.nova_client.servers,
+                instance.id,
+                msg="server")
+
+        return configure_guest.launch_instance(
+            glance_setup.LTS_IMAGE_NAME,
+            vm_name=instance_name,
+            userdata=userdata)
+
+    def launch_guests(self, userdata=None):
+        """Launch two guests to use in tests.
+
+        Note that it is up to the caller to have set the RESOURCE_PREFIX class
+        variable prior to calling this method.
+
+        :param userdata: Userdata to attach to instance
+        :type userdata: Optional[str]
+        :returns: List of launched Nova instance objects
+        :rtype: List[Server]
+        """
+        launched_instances = []
+        for guest_number in range(1, 2+1):
+            for attempt in tenacity.Retrying(
+                    stop=tenacity.stop_after_attempt(3),
+                    wait=tenacity.wait_exponential(
+                        multiplier=1, min=2, max=10)):
+                with attempt:
+                    launched_instances.append(
+                        self.launch_guest(
+                            guest_name='ins-{}'.format(guest_number),
+                            userdata=userdata))
+        return launched_instances
+
+    def retrieve_guest(self, guest_name):
+        """Return guest matching name.
+
+        :param nova_client: Nova client to use when checking status
+        :type nova_client: Nova client
+        :returns: the matching guest
+        :rtype: Union[novaclient.Server, None]
+        """
+        try:
+            return self.nova_client.servers.find(name=guest_name)
+        except novaclient.exceptions.NotFound:
+            return None
+
+    def retrieve_guests(self):
+        """Return test guests.
+
+        Note that it is up to the caller to have set the RESOURCE_PREFIX class
+        variable prior to calling this method.
+
+        :param nova_client: Nova client to use when checking status
+        :type nova_client: Nova client
+        :returns: the matching guest
+        :rtype: Union[novaclient.Server, None]
+        """
+        instance_1 = self.retrieve_guest(
+            '{}-ins-1'.format(self.RESOURCE_PREFIX))
+        instance_2 = self.retrieve_guest(
+            '{}-ins-1'.format(self.RESOURCE_PREFIX))
+        return instance_1, instance_2
+
+
+def format_addr(addr):
+    """Validate and format IP address.
+
+    :param addr: IPv6 or IPv4 address
+    :type addr: str
+    :returns: Address string, optionally encapsulated in brackets([])
+    :rtype: str
+    :raises: ValueError
+    """
+    ipaddr = ipaddress.ip_address(addr)
+    if isinstance(ipaddr, ipaddress.IPv6Address):
+        fmt = '[{}]'
+    else:
+        fmt = '{}'
+    return fmt.format(ipaddr)

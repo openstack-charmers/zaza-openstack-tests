@@ -26,6 +26,12 @@ import zaza.openstack.utilities.openstack as openstack
 import zaza.openstack.configure.guest
 
 
+def ensure_lts_images():
+    """Ensure that bionic and focal images are available for the tests."""
+    glance_setup.add_lts_image(image_name='bionic', release='bionic')
+    glance_setup.add_lts_image(image_name='focal', release='focal')
+
+
 def add_amphora_image(image_url=None):
     """Add Octavia ``amphora`` test image to glance.
 
@@ -90,25 +96,6 @@ def configure_octavia():
     with _singleton.config_change(cert_config, cert_config):
         # wait for configuration to be applied then return
         pass
-
-
-def prepare_payload_instance():
-    """Prepare a instance we can use as payload test."""
-    session = openstack.get_overcloud_keystone_session()
-    keystone = openstack.get_keystone_session_client(session)
-    neutron = openstack.get_neutron_session_client(session)
-    project_id = openstack.get_project_id(
-        keystone, 'admin', domain_name='admin_domain')
-    openstack.add_neutron_secgroup_rules(
-        neutron,
-        project_id,
-        [{'protocol': 'tcp',
-          'port_range_min': '80',
-          'port_range_max': '80',
-          'direction': 'ingress'}])
-    zaza.openstack.configure.guest.launch_instance(
-        glance_setup.LTS_IMAGE_NAME,
-        userdata='#cloud-config\npackages:\n - apache2\n')
 
 
 def centralized_fip_network():

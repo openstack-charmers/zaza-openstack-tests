@@ -26,6 +26,8 @@ DEMO_ADMIN_USER_PASSWORD = 'password'
 DEMO_USER = 'demo'
 DEMO_PASSWORD = 'password'
 
+TEMPEST_ROLES = ['member', 'ResellerAdmin']
+
 
 class BaseKeystoneTest(test_utils.OpenStackBaseTest):
     """Base for Keystone charm tests."""

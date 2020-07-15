@@ -214,8 +214,8 @@ class GenericPolicydTest(PolicydTest, test_utils.OpenStackBaseTest):
     def setUpClass(cls, application_name=None):
         """Run class setup for running KeystonePolicydTest tests."""
         super(GenericPolicydTest, cls).setUpClass(application_name)
-        if (openstack_utils.get_os_release()
-                < openstack_utils.get_os_release('xenial_queens')):
+        if (openstack_utils.get_os_release() <
+                openstack_utils.get_os_release('xenial_queens')):
             raise unittest.SkipTest(
                 "zaza.openstack.charm_tests.policyd.tests.GenericPolicydTest "
                 "not valid before xenial_queens")
@@ -258,7 +258,7 @@ class BasePolicydSpecialization(PolicydTest,
 
         class KeystonePolicydTest(BasePolicydSpecialization):
 
-            _rule = {'rule.yaml': "{'identity:list_services': '!'}"}
+            _rule = {'rule.yaml': "{'identity:list_credentials': '!'}"}
 
             def get_client_and_attempt_operation(self, keystone_session):
                 ... etc.
@@ -276,8 +276,8 @@ class BasePolicydSpecialization(PolicydTest,
     def setUpClass(cls, application_name=None):
         """Run class setup for running KeystonePolicydTest tests."""
         super(BasePolicydSpecialization, cls).setUpClass(application_name)
-        if (openstack_utils.get_os_release()
-                < openstack_utils.get_os_release('xenial_queens')):
+        if (openstack_utils.get_os_release() <
+                openstack_utils.get_os_release('xenial_queens')):
             raise unittest.SkipTest(
                 "zaza.openstack.charm_tests.policyd.tests.* "
                 "not valid before xenial_queens")
@@ -401,6 +401,10 @@ class BasePolicydSpecialization(PolicydTest,
 
     def test_003_test_overide_is_observed(self):
         """Test that the override is observed by the underlying service."""
+        if (openstack_utils.get_os_release() <
+                openstack_utils.get_os_release('groovy_victoria')):
+            raise unittest.SkipTest(
+                "Test skipped until Bug #1880959 is fix released")
         if self._test_name is None:
             logging.info("Doing policyd override for {}"
                          .format(self._service_name))
@@ -430,6 +434,8 @@ class BasePolicydSpecialization(PolicydTest,
         # now do the policyd override.
         logging.info("Doing policyd override with: {}".format(self._rule))
         self._set_policy_with(self._rule)
+        zaza_model.block_until_wl_status_info_starts_with(
+            self.application_name, "PO:")
         zaza_model.block_until_all_units_idle()
 
         # now make sure the operation fails
@@ -485,7 +491,7 @@ class BasePolicydSpecialization(PolicydTest,
 class KeystoneTests(BasePolicydSpecialization):
     """Test the policyd override using the keystone client."""
 
-    _rule = {'rule.yaml': "{'identity:list_services': '!'}"}
+    _rule = {'rule.yaml': "{'identity:list_credentials': '!'}"}
 
     @classmethod
     def setUpClass(cls, application_name=None):
@@ -506,7 +512,7 @@ class KeystoneTests(BasePolicydSpecialization):
         keystone_client = openstack_utils.get_keystone_session_client(
             self.get_keystone_session_demo_admin_user(ip))
         try:
-            keystone_client.services.list()
+            keystone_client.credentials.list()
         except keystoneauth1.exceptions.http.Forbidden:
             raise PolicydOperationFailedException()
 
@@ -514,7 +520,7 @@ class KeystoneTests(BasePolicydSpecialization):
 class NeutronApiTests(BasePolicydSpecialization):
     """Test the policyd override using the neutron client."""
 
-    _rule = {'rule.yaml': "{'get_network': '!'}"}
+    _rule = {'rule.yaml': "{'create_network': '!'}"}
 
     @classmethod
     def setUpClass(cls, application_name=None):
@@ -541,13 +547,16 @@ class NeutronApiTests(BasePolicydSpecialization):
         neutron_client = openstack_utils.get_neutron_session_client(
             self.get_keystone_session_demo_user(ip))
         try:
-            # If we are allowed to list networks, this will return something.
-            # if the policyd override is present, then no error is generated,
-            # but no networks are returned.
-            networks = neutron_client.list_networks()
-            logging.debug("networks: {}".format(networks))
-            if len(networks['networks']) == 0:
-                raise PolicydOperationFailedException()
+            # If we are allowed to create networks, this will return something.
+            # if the policyd override is present, an exception will be raised
+            created_network = neutron_client.create_network(
+                {
+                    'network': {
+                        'name': 'zaza-policyd-test',
+                    },
+                })
+            logging.debug("networks: {}".format(created_network))
+            neutron_client.delete_network(created_network['network']['id'])
         except Exception:
             raise PolicydOperationFailedException()
 

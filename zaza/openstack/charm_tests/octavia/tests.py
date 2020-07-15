@@ -18,6 +18,8 @@ import logging
 import subprocess
 import tenacity
 
+import osc_lib.exceptions
+
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 
@@ -36,7 +38,20 @@ class CharmOperationTest(test_utils.OpenStackBaseTest):
         Pause service and check services are stopped, then resume and check
         they are started.
         """
-        self.pause_resume(['apache2'])
+        services = [
+            'apache2',
+            'octavia-health-manager',
+            'octavia-housekeeping',
+            'octavia-worker',
+        ]
+        if openstack_utils.ovn_present():
+            services.append('octavia-driver-agent')
+        logging.info('Skipping pause resume test LP: #1886202...')
+        return
+        logging.info('Testing pause resume (services="{}")'
+                     .format(services))
+        with self.pause_resume(services, pgrep_full=True):
+            pass
 
 
 class LBAASv2Test(test_utils.OpenStackBaseTest):
@@ -46,16 +61,52 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
     def setUpClass(cls):
         """Run class setup for running LBaaSv2 service tests."""
         super(LBAASv2Test, cls).setUpClass()
+        cls.keystone_client = openstack_utils.get_keystone_session_client(
+            cls.keystone_session)
+        cls.neutron_client = openstack_utils.get_neutron_session_client(
+            cls.keystone_session)
+        cls.octavia_client = openstack_utils.get_octavia_session_client(
+            cls.keystone_session)
+        cls.RESOURCE_PREFIX = 'zaza-octavia'
+
+        # NOTE(fnordahl): in the event of a test failure we do not want to run
+        # tear down code as it will make debugging a problem virtually
+        # impossible.  To alleviate each test method will set the
+        # `run_tearDown` instance variable at the end which will let us run
+        # tear down only when there were no failure.
+        cls.run_tearDown = False
+        # List of load balancers created by this test
+        cls.loadbalancers = []
+        # List of floating IPs created by this test
+        cls.fips = []
+
+    def resource_cleanup(self):
+        """Remove resources created during test execution."""
+        for lb in self.loadbalancers:
+            self.octavia_client.load_balancer_delete(lb['id'], cascade=True)
+            try:
+                self.wait_for_lb_resource(
+                    self.octavia_client.load_balancer_show, lb['id'],
+                    provisioning_status='DELETED')
+            except osc_lib.exceptions.NotFound:
+                pass
+        for fip in self.fips:
+            self.neutron_client.delete_floatingip(fip)
+        # we run the parent resource_cleanup last as it will remove instances
+        # referenced as members in the above cleaned up load balancers
+        super(LBAASv2Test, self).resource_cleanup()
 
     @staticmethod
-    @tenacity.retry(wait=tenacity.wait_fixed(1),
-                    reraise=True, stop=tenacity.stop_after_delay(900))
+    @tenacity.retry(retry=tenacity.retry_if_exception_type(AssertionError),
+                    wait=tenacity.wait_fixed(1), reraise=True,
+                    stop=tenacity.stop_after_delay(900))
     def wait_for_lb_resource(octavia_show_func, resource_id,
-                             operating_status=None):
+                             provisioning_status=None, operating_status=None):
         """Wait for loadbalancer resource to reach expected status."""
+        provisioning_status = provisioning_status or 'ACTIVE'
         resp = octavia_show_func(resource_id)
         logging.info(resp['provisioning_status'])
-        assert resp['provisioning_status'] == 'ACTIVE', (
+        assert resp['provisioning_status'] == provisioning_status, (
             'load balancer resource has not reached '
             'expected provisioning status: {}'
             .format(resp))
@@ -197,36 +248,48 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
 
     def test_create_loadbalancer(self):
         """Create load balancer."""
-        keystone_session = openstack_utils.get_overcloud_keystone_session()
-        neutron_client = openstack_utils.get_neutron_session_client(
-            keystone_session)
-        nova_client = openstack_utils.get_nova_session_client(
-            keystone_session)
+        # Prepare payload instances
+        # First we allow communication to port 80 by adding a security group
+        # rule
+        project_id = openstack_utils.get_project_id(
+            self.keystone_client, 'admin', domain_name='admin_domain')
+        openstack_utils.add_neutron_secgroup_rules(
+            self.neutron_client,
+            project_id,
+            [{'protocol': 'tcp',
+              'port_range_min': '80',
+              'port_range_max': '80',
+              'direction': 'ingress'}])
+
+        # Then we request two Ubuntu instances with the Apache web server
+        # installed
+        instance_1, instance_2 = self.launch_guests(
+            userdata='#cloud-config\npackages:\n - apache2\n')
 
         # Get IP of the prepared payload instances
         payload_ips = []
-        for server in nova_client.servers.list():
+        for server in (instance_1, instance_2):
             payload_ips.append(server.networks['private'][0])
         self.assertTrue(len(payload_ips) > 0)
 
-        resp = neutron_client.list_networks(name='private')
+        resp = self.neutron_client.list_networks(name='private')
         subnet_id = resp['networks'][0]['subnets'][0]
         if openstack_utils.dvr_enabled():
-            resp = neutron_client.list_networks(name='private_lb_fip_network')
+            resp = self.neutron_client.list_networks(
+                name='private_lb_fip_network')
             vip_subnet_id = resp['networks'][0]['subnets'][0]
         else:
             vip_subnet_id = subnet_id
-        octavia_client = openstack_utils.get_octavia_session_client(
-            keystone_session)
-        for provider in self.get_lb_providers(octavia_client).keys():
+        for provider in self.get_lb_providers(self.octavia_client).keys():
             logging.info('Creating loadbalancer with provider {}'
                          .format(provider))
-            lb = self._create_lb_resources(octavia_client, provider,
+            lb = self._create_lb_resources(self.octavia_client, provider,
                                            vip_subnet_id, subnet_id,
                                            payload_ips)
+            self.loadbalancers.append(lb)
 
             lb_fp = openstack_utils.create_floating_ip(
-                neutron_client, 'ext_net', port={'id': lb['vip_port_id']})
+                self.neutron_client, 'ext_net', port={'id': lb['vip_port_id']})
 
             snippet = 'This is the default welcome page'
             assert snippet in self._get_payload(lb_fp['floating_ip_address'])
@@ -234,3 +297,6 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
                          ' (provider="{}") at "http://{}/"'
                          .format(snippet, provider,
                                  lb_fp['floating_ip_address']))
+
+        # If we get here, it means the tests passed
+        self.run_resource_cleanup = True

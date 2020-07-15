@@ -14,6 +14,12 @@
 
 """Code for setting up keystone."""
 
+import logging
+
+import keystoneauth1
+
+import zaza.charm_lifecycle.utils as lifecycle_utils
+import zaza.model
 import zaza.openstack.utilities.openstack as openstack_utils
 from zaza.openstack.charm_tests.keystone import (
     BaseKeystoneTest,
@@ -24,7 +30,27 @@ from zaza.openstack.charm_tests.keystone import (
     DEMO_ADMIN_USER_PASSWORD,
     DEMO_USER,
     DEMO_PASSWORD,
+    TEMPEST_ROLES,
 )
+
+
+def wait_for_cacert(model_name=None):
+    """Wait for keystone to install a cacert.
+
+    :param model_name: Name of model to query.
+    :type model_name: str
+    """
+    logging.info("Waiting for cacert")
+    zaza.model.block_until_file_has_contents(
+        'keystone',
+        openstack_utils.KEYSTONE_REMOTE_CACERT,
+        'CERTIFICATE',
+        model_name=model_name)
+    zaza.model.block_until_all_units_idle(model_name=model_name)
+    test_config = lifecycle_utils.get_charm_config(fatal=False)
+    zaza.model.wait_for_application_states(
+        states=test_config.get('target_deploy_status', {}),
+        model_name=model_name)
 
 
 def add_demo_user():
@@ -115,3 +141,30 @@ def add_demo_user():
     else:
         # create only V3 user
         _v3()
+
+
+def _add_additional_roles(roles):
+    """Add additional roles to this deployment.
+
+    :param ctxt: roles
+    :type ctxt: list
+    :returns: None
+    :rtype: None
+    """
+    keystone_session = openstack_utils.get_overcloud_keystone_session()
+    keystone_client = openstack_utils.get_keystone_session_client(
+        keystone_session)
+    for role_name in roles:
+        try:
+            keystone_client.roles.create(role_name)
+        except keystoneauth1.exceptions.http.Conflict:
+            pass
+
+
+def add_tempest_roles():
+    """Add tempest roles to this deployment.
+
+    :returns: None
+    :rtype: None
+    """
+    _add_additional_roles(TEMPEST_ROLES)

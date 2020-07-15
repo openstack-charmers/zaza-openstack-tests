@@ -23,6 +23,12 @@ import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.glance.setup as glance_setup
 
+from tenacity import (
+    Retrying,
+    stop_after_attempt,
+    wait_exponential,
+)
+
 
 class CinderTests(test_utils.OpenStackBaseTest):
     """Encapsulate Cinder tests."""
@@ -32,7 +38,10 @@ class CinderTests(test_utils.OpenStackBaseTest):
     @classmethod
     def setUpClass(cls):
         """Run class setup for running tests."""
-        super(CinderTests, cls).setUpClass()
+        super(CinderTests, cls).setUpClass(application_name='cinder')
+        cls.application_name = 'cinder'
+        cls.lead_unit = zaza.model.get_lead_unit_name(
+            "cinder", model_name=cls.model_name)
         cls.cinder_client = openstack_utils.get_cinder_session_client(
             cls.keystone_session)
         cls.nova_client = openstack_utils.get_nova_session_client(
@@ -42,18 +51,66 @@ class CinderTests(test_utils.OpenStackBaseTest):
     def tearDown(cls):
         """Remove test resources."""
         logging.info('Running teardown')
-        for snapshot in cls.cinder_client.volume_snapshots.list():
+        for attempt in Retrying(
+                stop=stop_after_attempt(8),
+                wait=wait_exponential(multiplier=1, min=2, max=60)):
+            with attempt:
+                volumes = list(cls.cinder_client.volumes.list())
+                snapped_volumes = [v for v in volumes
+                                   if v.name.endswith("-from-snap")]
+                if snapped_volumes:
+                    logging.info("Removing volumes from snapshot")
+                    cls._remove_volumes(snapped_volumes)
+                    volumes = list(cls.cinder_client.volumes.list())
+
+                snapshots = list(cls.cinder_client.volume_snapshots.list())
+                if snapshots:
+                    logging.info("tearDown - snapshots: {}".format(
+                        ", ".join(s.name for s in snapshots)))
+                    cls._remove_snapshots(snapshots)
+
+                if volumes:
+                    logging.info("tearDown - volumes: {}".format(
+                        ", ".join(v.name for v in volumes)))
+                    cls._remove_volumes(volumes)
+
+    @classmethod
+    def _remove_snapshots(cls, snapshots):
+        """Remove snapshots passed as param.
+
+        :param volumes: the snapshots to delete
+        :type volumes: List[snapshot objects]
+        """
+        for snapshot in snapshots:
             if snapshot.name.startswith(cls.RESOURCE_PREFIX):
-                openstack_utils.delete_resource(
-                    cls.cinder_client.volume_snapshots,
-                    snapshot.id,
-                    msg="snapshot")
-        for volume in cls.cinder_client.volumes.list():
+                logging.info("removing snapshot: {}".format(snapshot.name))
+                try:
+                    openstack_utils.delete_resource(
+                        cls.cinder_client.volume_snapshots,
+                        snapshot.id,
+                        msg="snapshot")
+                except Exception as e:
+                    logging.error("error removing snapshot: {}".format(str(e)))
+                    raise
+
+    @classmethod
+    def _remove_volumes(cls, volumes):
+        """Remove volumes passed as param.
+
+        :param volumes: the volumes to delete
+        :type volumes: List[volume objects]
+        """
+        for volume in volumes:
             if volume.name.startswith(cls.RESOURCE_PREFIX):
-                openstack_utils.delete_resource(
-                    cls.cinder_client.volumes,
-                    volume.id,
-                    msg="volume")
+                logging.info("removing volume: {}".format(volume.name))
+                try:
+                    openstack_utils.delete_resource(
+                        cls.cinder_client.volumes,
+                        volume.id,
+                        msg="volume")
+                except Exception as e:
+                    logging.error("error removing volume: {}".format(str(e)))
+                    raise
 
     def test_100_volume_create_extend_delete(self):
         """Test creating, extending a volume."""
@@ -63,6 +120,8 @@ class CinderTests(test_utils.OpenStackBaseTest):
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_new.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
         self.cinder_client.volumes.extend(
@@ -71,20 +130,30 @@ class CinderTests(test_utils.OpenStackBaseTest):
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_new.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
 
     def test_105_volume_create_from_img(self):
         """Test creating a volume from an image."""
+        logging.debug("finding image {} ..."
+                      .format(glance_setup.LTS_IMAGE_NAME))
         image = self.nova_client.glance.find_image(
             glance_setup.LTS_IMAGE_NAME)
+        logging.debug("using cinder_client to create volume from image {}"
+                      .format(image.id))
         vol_img = self.cinder_client.volumes.create(
             name='{}-105-vol-from-img'.format(self.RESOURCE_PREFIX),
             size=3,
             imageRef=image.id)
+        logging.debug("now waiting for volume {} to reach available"
+                      .format(vol_img.id))
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_img.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
 
@@ -97,6 +166,8 @@ class CinderTests(test_utils.OpenStackBaseTest):
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_new.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
 
@@ -107,6 +178,8 @@ class CinderTests(test_utils.OpenStackBaseTest):
         openstack_utils.resource_reaches_status(
             self.cinder_client.volume_snapshots,
             snap_new.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
 
@@ -118,6 +191,8 @@ class CinderTests(test_utils.OpenStackBaseTest):
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_from_snap.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
 
@@ -129,6 +204,8 @@ class CinderTests(test_utils.OpenStackBaseTest):
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_new.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
         vol_new.force_delete()
@@ -139,36 +216,38 @@ class CinderTests(test_utils.OpenStackBaseTest):
 
     @property
     def services(self):
-        """Return a list services for OpenStack release."""
-        services = ['cinder-scheduler', 'cinder-volume']
-        if (openstack_utils.get_os_release() >=
-                openstack_utils.get_os_release('xenial_ocata')):
-            services.append('apache2')
+        """Return a list services for the selected OpenStack release."""
+        current_value = zaza.model.get_application_config(
+            self.application_name)['enabled-services']['value']
+
+        if current_value == "all":
+            services = ['cinder-scheduler', 'cinder-volume', 'cinder-api']
         else:
-            services.append('cinder-api')
+            services = ['cinder-{}'.format(svc)
+                        for svc in ('api', 'scheduler', 'volume')
+                        if svc in current_value]
+
+        if ('cinder-api' in services and
+            (openstack_utils.get_os_release() >=
+                openstack_utils.get_os_release('xenial_ocata'))):
+            services.remove('cinder-api')
+            services.append('apache2')
+
         return services
 
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change.
 
-        Change disk format and assert then change propagates to the correct
+        Change debug mode and assert that change propagates to the correct
         file and that services are restarted as a result
         """
-        # Expected default and alternate values
-        set_default = {'debug': 'False'}
-        set_alternate = {'debug': 'True'}
-
         # Config file affected by juju set config change
         conf_file = '/etc/cinder/cinder.conf'
 
         # Make config change, check for service restarts
-        logging.debug('Setting disk format glance...')
-        self.restart_on_changed(
+        logging.debug('Setting debug mode...')
+        self.restart_on_changed_debug_oslo_config_file(
             conf_file,
-            set_default,
-            set_alternate,
-            {'DEFAULT': {'debug': ['False']}},
-            {'DEFAULT': {'debug': ['True']}},
             self.services)
 
     def test_901_pause_resume(self):
@@ -177,13 +256,7 @@ class CinderTests(test_utils.OpenStackBaseTest):
         Pause service and check services are stopped then resume and check
         they are started
         """
-        services = ['cinder-scheduler', 'cinder-volume']
-        if (openstack_utils.get_os_release() >=
-                openstack_utils.get_os_release('xenial_ocata')):
-            services.append('apache2')
-        else:
-            services.append('cinder-api')
-        with self.pause_resume(services):
+        with self.pause_resume(self.services):
             logging.info("Testing pause resume")
 
 
