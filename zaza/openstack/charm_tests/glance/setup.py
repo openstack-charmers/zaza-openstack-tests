@@ -94,10 +94,10 @@ def add_lts_image(glance_client=None, image_name=None, release=None,
     :type release: str
     """
     deploy_ctxt = deployment_env.get_deployment_context()
-    image_arch = deploy_ctxt.get('TEST_IMAGE_ARCH', 'amd64'))
+    image_arch = deploy_ctxt.get('TEST_IMAGE_ARCH', 'amd64')
     arch_image_properties = {
         'arm64': {'hw_firmware_type': 'uefi'},
-        'ppc64el' {'architecture': 'ppc64'}}
+        'ppc64el': {'architecture': 'ppc64'}}
     properties = properties or arch_image_properties.get(image_arch)
     logging.info("Image architecture set to {}".format(image_arch))
     image_name = image_name or LTS_IMAGE_NAME
