@@ -16,7 +16,7 @@
 
 import logging
 import zaza.openstack.utilities.openstack as openstack_utils
-import os
+import zaza.utilities.deployment_env as deployment_env
 
 CIRROS_IMAGE_NAME = "cirros"
 LTS_RELEASE = "bionic"
@@ -93,14 +93,13 @@ def add_lts_image(glance_client=None, image_name=None, release=None,
     :param release: Name of ubuntu release.
     :type release: str
     """
-    image_arch = os.environ.get('image_arch')
-    if not image_arch:
-        image_arch = "amd64"
+    deploy_ctxt = deployment_env.get_deployment_context()
+    image_arch = deploy_ctxt.get('TEST_IMAGE_ARCH', 'amd64'))
+    arch_image_properties = {
+        'arm64': {'hw_firmware_type': 'uefi'},
+        'ppc64el' {'architecture': 'ppc64'}}
+    properties = properties or arch_image_properties.get(image_arch)
     logging.info("Image architecture set to {}".format(image_arch))
-    if image_arch == "arm64":
-        properties = {'hw_firmware_type': 'uefi'}
-    if image_arch == "ppc64el":
-        properties = {'architecture': 'ppc64'}
     image_name = image_name or LTS_IMAGE_NAME
     release = release or LTS_RELEASE
     image_url = openstack_utils.find_ubuntu_image(
