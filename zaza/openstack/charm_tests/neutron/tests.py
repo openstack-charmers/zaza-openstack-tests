@@ -613,7 +613,8 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
     @classmethod
     def setUpClass(cls):
         """Run class setup for running Neutron API Networking tests."""
-        super(NeutronNetworkingBase, cls).setUpClass()
+        super(NeutronNetworkingBase, cls).setUpClass(
+            application_name='neutron-api')
         cls.neutron_client = (
             openstack_utils.get_neutron_session_client(cls.keystone_session))
 
