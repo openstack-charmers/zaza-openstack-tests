@@ -40,6 +40,7 @@ from keystoneauth1.identity import (
 )
 import zaza.openstack.utilities.cert as cert
 import zaza.utilities.deployment_env as deployment_env
+import zaza.utilities.juju as juju_utils
 from novaclient import client as novaclient_client
 from neutronclient.v2_0 import client as neutronclient
 from neutronclient.common import exceptions as neutronexceptions
@@ -66,7 +67,6 @@ from zaza import model
 from zaza.openstack.utilities import (
     exceptions,
     generic as generic_utils,
-    juju as juju_utils,
 )
 
 CIRROS_RELEASE_URL = 'http://download.cirros-cloud.net/version/released'

@@ -817,12 +817,12 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             name='_get_os_version'
         )
         self.patch(
-            'zaza.openstack.utilities.juju.get_machines_for_application',
+            'zaza.utilities.juju.get_machines_for_application',
             new_callable=mock.MagicMock(),
             name='_get_machines'
         )
         self.patch(
-            'zaza.openstack.utilities.juju.get_machine_series',
+            'zaza.utilities.juju.get_machine_series',
             new_callable=mock.MagicMock(),
             name='_get_machine_series'
         )

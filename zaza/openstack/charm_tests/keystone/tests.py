@@ -21,7 +21,7 @@ import keystoneauth1
 
 import zaza.model
 import zaza.openstack.utilities.exceptions as zaza_exceptions
-import zaza.openstack.utilities.juju as juju_utils
+import zaza.utilities.juju as juju_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.charm_lifecycle.utils as lifecycle_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
@@ -262,6 +262,7 @@ class AuthenticationAuthorizationTest(BaseKeystoneTest):
                 openrc['OS_CACERT'] = openstack_utils.KEYSTONE_LOCAL_CACERT
                 openrc['OS_AUTH_URL'] = (
                     openrc['OS_AUTH_URL'].replace('http', 'https'))
+            logging.info('keystone IP {}'.format(ip))
             keystone_session = openstack_utils.get_keystone_session(
                 openrc)
             keystone_client = openstack_utils.get_keystone_session_client(
@@ -319,10 +320,7 @@ class AuthenticationAuthorizationTest(BaseKeystoneTest):
                 'OS_PROJECT_DOMAIN_NAME': DEMO_DOMAIN,
                 'OS_PROJECT_NAME': DEMO_PROJECT,
             }
-            with self.config_change(
-                    {'preferred-api-version': self.default_api_version},
-                    {'preferred-api-version': self.api_v3},
-                    application_name="keystone"):
+            with self.v3_keystone_preferred():
                 for ip in self.keystone_ips:
                     openrc.update(
                         {'OS_AUTH_URL': 'http://{}:5000/v3'.format(ip)})
