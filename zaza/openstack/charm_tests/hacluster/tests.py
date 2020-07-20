@@ -21,16 +21,21 @@ import os
 
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.configure.hacluster
+import zaza.utilities.juju as juju_utils
 
 
-class HaclusterTest(test_utils.OpenStackBaseTest):
-    """hacluster tests."""
+class HaclusterBaseTest(test_utils.OpenStackBaseTest):
+    """Base class for hacluster tests."""
 
     @classmethod
     def setUpClass(cls):
         """Run class setup for running hacluster tests."""
-        super(HaclusterTest, cls).setUpClass()
+        super(HaclusterBaseTest, cls).setUpClass()
         cls.vip = os.environ.get("TEST_VIP00")
+
+
+class HaclusterTest(HaclusterBaseTest):
+    """hacluster tests."""
 
     def test_900_action_cleanup(self):
         """The services can be cleaned up."""
@@ -69,3 +74,57 @@ class HaclusterTest(test_utils.OpenStackBaseTest):
 
         self._toggle_maintenance_and_wait('true')
         self._toggle_maintenance_and_wait('false')
+
+
+class HaclusterScalebackTest(HaclusterBaseTest):
+    """hacluster scaleback tests."""
+
+    _PRINCIPLE_APP_NAME = 'keystone'
+    _HACLUSTER_APP_NAME = 'hacluster'
+    _HACLUSTER_CHARM_NAME = 'hacluster'
+
+    def test_930_scaleback(self):
+        """Remove a unit, recalculate quorum and add a new one."""
+        principle_units = zaza.model.get_status().applications[
+            self._PRINCIPLE_APP_NAME]['units']
+        self.assertEqual(len(principle_units), 3)
+        doomed_principle = sorted(principle_units.keys())[0]
+        doomed_unit = juju_utils.get_subordinate_units(
+            [doomed_principle], charm_name=self._HACLUSTER_CHARM_NAME)[0]
+
+        logging.info('Pausing unit {}'.format(doomed_unit))
+        zaza.model.run_action(
+            doomed_unit,
+            'pause',
+            raise_on_failure=True)
+        logging.info('OK')
+
+        logging.info('Removing {}'.format(doomed_principle))
+        zaza.model.destroy_unit(
+            self._PRINCIPLE_APP_NAME,
+            doomed_principle,
+            wait_disappear=True)
+        logging.info('OK')
+
+        expected_states = {
+            self._HACLUSTER_APP_NAME: {
+                "workload-status": "blocked",
+                "workload-status-message":
+                    "Insufficient peer units for ha cluster (require 3)"
+            },
+            self._PRINCIPLE_APP_NAME: {
+                "workload-status": "blocked",
+                "workload-status-message": "Database not initialised",
+            },
+        }
+        zaza.model.wait_for_application_states(states=expected_states)
+        zaza.model.block_until_all_units_idle()
+        logging.info('OK')
+
+        logging.info('Adding a hacluster unit')
+        zaza.model.add_unit(self._PRINCIPLE_APP_NAME, wait_appear=True)
+        expected_states = {self._HACLUSTER_APP_NAME: {
+            "workload-status": "active",
+            "workload-status-message": "Unit is ready and clustered"}}
+        zaza.model.wait_for_application_states(states=expected_states)
+        logging.debug('OK')
