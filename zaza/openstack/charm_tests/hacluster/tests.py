@@ -21,6 +21,7 @@ import os
 
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.configure.hacluster
+import zaza.utilities.juju as juju_utils
 
 
 class HaclusterTest(test_utils.OpenStackBaseTest):
@@ -69,3 +70,71 @@ class HaclusterTest(test_utils.OpenStackBaseTest):
 
         self._toggle_maintenance_and_wait('true')
         self._toggle_maintenance_and_wait('false')
+
+    def test_930_scaleback_bionic(self):
+        """Remove a unit, recalculate quorum and add a new one."""
+        principle_app = 'keystone'
+        principle_units = zaza.model.get_status().applications[
+            principle_app]['units']
+        self.assertEqual(len(principle_units), 3)
+        doomed_principle = sorted(principle_units.keys())[0]
+        series = juju_utils.get_machine_series(
+            principle_units[doomed_principle].machine)
+        if series != 'bionic':
+            logging.debug("noop - only run test in bionic")
+            logging.info('SKIP')
+            return
+
+        doomed_unit = juju_utils.get_subordinate_units(
+            [doomed_principle], charm_name='hac')[0]
+
+        logging.info('Pausing unit {}'.format(doomed_unit))
+        zaza.model.run_action(
+            doomed_unit,
+            'pause',
+            raise_on_failure=True)
+        logging.info('OK')
+
+        logging.info('Resuming unit {}'.format(doomed_unit))
+        zaza.model.run_action(
+            doomed_unit,
+            'resume',
+            raise_on_failure=True)
+        logging.info('OK')
+
+        logging.info('Removing {}'.format(doomed_principle))
+        zaza.model.destroy_unit(
+            principle_app,
+            doomed_principle,
+            wait_disappear=True)
+        logging.info('OK')
+
+        logging.info('Updating corosync ring')
+        zaza.model.run_action_on_leader(
+            self.application_name,
+            'update-ring',
+            action_params={'i-really-mean-it': True},
+            raise_on_failure=True)
+
+        _states = {
+            self.application_name: {
+                "workload-status": "blocked",
+                "workload-status-message":
+                    "Insufficient peer units for ha cluster (require 3)"
+            },
+            'keystone': {
+                "workload-status": "blocked",
+                "workload-status-message": "Database not initialised",
+            },
+        }
+        zaza.model.wait_for_application_states(states=_states)
+        zaza.model.block_until_all_units_idle()
+        logging.info('OK')
+
+        logging.info('Adding a hacluster unit')
+        zaza.model.add_unit(principle_app, wait_appear=True)
+        _states = {self.application_name: {
+            "workload-status": "active",
+            "workload-status-message": "Unit is ready and clustered"}}
+        zaza.model.wait_for_application_states(states=_states)
+        logging.debug('OK')
