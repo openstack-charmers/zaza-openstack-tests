@@ -47,6 +47,24 @@ class CinderTests(test_utils.OpenStackBaseTest):
         cls.nova_client = openstack_utils.get_nova_session_client(
             cls.keystone_session)
 
+    def setUp(self):
+        """Verify cinder services are up and ready."""
+        super(CinderTests, self).setUp()
+        for attempt in Retrying(
+                stop=stop_after_attempt(8),
+                wait=wait_exponential(multiplier=1, min=2, max=60)):
+            with attempt:
+                services = list(self.cinder_client.services.list())
+                services_ready = [
+                    svc.binary for svc in services
+                    if svc.state == 'up' and svc.status == 'enabled'
+                ]
+                if len(services) != len(services_ready):
+                    logging.debug('services ready: {}; waiting for all'
+                                  ' services to become ready.'
+                                  ''.format(', '.join(services_ready)))
+                    continue
+
     @classmethod
     def tearDown(cls):
         """Remove test resources."""
@@ -114,105 +132,137 @@ class CinderTests(test_utils.OpenStackBaseTest):
 
     def test_100_volume_create_extend_delete(self):
         """Test creating, extending a volume."""
-        vol_new = self.cinder_client.volumes.create(
-            name='{}-100-vol'.format(self.RESOURCE_PREFIX),
-            size='1')
+        for attempt in Retrying(
+                stop=stop_after_attempt(8),
+                wait=wait_exponential(multiplier=1, min=2, max=60)):
+            with attempt:
+                vol_new = self.cinder_client.volumes.create(
+                    name='{}-100-vol'.format(self.RESOURCE_PREFIX),
+                    size='1')
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_new.id,
-            wait_iteration_max_time=1200,
+            wait_iteration_max_time=180,
             stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
-        self.cinder_client.volumes.extend(
-            vol_new.id,
-            '2')
+        for attempt in Retrying(
+                stop=stop_after_attempt(8),
+                wait=wait_exponential(multiplier=1, min=2, max=60)):
+            with attempt:
+                self.cinder_client.volumes.extend(
+                    vol_new.id,
+                    '2')
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_new.id,
-            wait_iteration_max_time=1200,
+            wait_iteration_max_time=180,
             stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
 
     def test_105_volume_create_from_img(self):
         """Test creating a volume from an image."""
-        logging.debug("finding image {} ..."
-                      .format(glance_setup.LTS_IMAGE_NAME))
-        image = self.nova_client.glance.find_image(
-            glance_setup.LTS_IMAGE_NAME)
-        logging.debug("using cinder_client to create volume from image {}"
-                      .format(image.id))
-        vol_img = self.cinder_client.volumes.create(
-            name='{}-105-vol-from-img'.format(self.RESOURCE_PREFIX),
-            size=3,
-            imageRef=image.id)
+        for attempt in Retrying(
+                stop=stop_after_attempt(8),
+                wait=wait_exponential(multiplier=1, min=2, max=60)):
+            with attempt:
+                logging.debug("finding image {} ..."
+                              .format(glance_setup.LTS_IMAGE_NAME))
+                image = self.nova_client.glance.find_image(
+                    glance_setup.LTS_IMAGE_NAME)
+                logging.debug("using cinder_client to create volume"
+                              " from image {}".format(image.id))
+                vol_img = self.cinder_client.volumes.create(
+                    name='{}-105-vol-from-img'.format(self.RESOURCE_PREFIX),
+                    size=3,
+                    imageRef=image.id)
         logging.debug("now waiting for volume {} to reach available"
                       .format(vol_img.id))
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_img.id,
-            wait_iteration_max_time=1200,
+            wait_iteration_max_time=300,
             stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
 
     def test_110_volume_snap_clone(self):
         """Test creating snapshot and build a volume from it."""
-        # Create a 1GB
-        vol_new = self.cinder_client.volumes.create(
-            name='{}-110-vol'.format(self.RESOURCE_PREFIX),
-            size='1')
+        for attempt in Retrying(
+                stop=stop_after_attempt(8),
+                wait=wait_exponential(multiplier=1, min=2, max=60)):
+            with attempt:
+                # Create a 1GB
+                vol_new = self.cinder_client.volumes.create(
+                    name='{}-110-vol'.format(self.RESOURCE_PREFIX),
+                    size='1')
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_new.id,
-            wait_iteration_max_time=1200,
+            wait_iteration_max_time=600,
             stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
 
-        # Snapshot the volume
-        snap_new = self.cinder_client.volume_snapshots.create(
-            volume_id=vol_new.id,
-            name='{}-110-snap'.format(self.RESOURCE_PREFIX))
+        for attempt in Retrying(
+                stop=stop_after_attempt(8),
+                wait=wait_exponential(multiplier=1, min=2, max=60)):
+            with attempt:
+                # Snapshot the volume
+                snap_new = self.cinder_client.volume_snapshots.create(
+                    volume_id=vol_new.id,
+                    name='{}-110-snap'.format(self.RESOURCE_PREFIX))
         openstack_utils.resource_reaches_status(
             self.cinder_client.volume_snapshots,
             snap_new.id,
-            wait_iteration_max_time=1200,
+            wait_iteration_max_time=600,
             stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
 
-        # Create a volume from the snapshot
-        vol_from_snap = self.cinder_client.volumes.create(
-            name='{}-110-vol-from-snap'.format(self.RESOURCE_PREFIX),
-            size=snap_new.size,
-            snapshot_id=snap_new.id)
+        for attempt in Retrying(
+                stop=stop_after_attempt(8),
+                wait=wait_exponential(multiplier=1, min=2, max=60)):
+            with attempt:
+                # Create a volume from the snapshot
+                vol_from_snap = self.cinder_client.volumes.create(
+                    name='{}-110-vol-from-snap'.format(self.RESOURCE_PREFIX),
+                    size=snap_new.size,
+                    snapshot_id=snap_new.id)
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_from_snap.id,
-            wait_iteration_max_time=1200,
+            wait_iteration_max_time=600,
             stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
 
     def test_120_volume_force_delete(self):
         """Test force deleting a volume."""
-        vol_new = self.cinder_client.volumes.create(
-            name='{}-120-vol'.format(self.RESOURCE_PREFIX),
-            size='1')
+        for attempt in Retrying(
+                stop=stop_after_attempt(8),
+                wait=wait_exponential(multiplier=1, min=2, max=60)):
+            with attempt:
+                vol_new = self.cinder_client.volumes.create(
+                    name='{}-120-vol'.format(self.RESOURCE_PREFIX),
+                    size='1')
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             vol_new.id,
-            wait_iteration_max_time=1200,
+            wait_iteration_max_time=600,
             stop_after_attempt=20,
             expected_status="available",
             msg="Volume status wait")
-        vol_new.force_delete()
-        openstack_utils.resource_removed(
-            self.cinder_client.volumes,
-            vol_new.id,
-            msg="Volume")
+        for attempt in Retrying(
+                stop=stop_after_attempt(8),
+                wait=wait_exponential(multiplier=1, min=2, max=60)):
+            with attempt:
+                vol_new.force_delete()
+                openstack_utils.resource_removed(
+                    self.cinder_client.volumes,
+                    vol_new.id,
+                    msg="Volume")
 
     @property
     def services(self):
