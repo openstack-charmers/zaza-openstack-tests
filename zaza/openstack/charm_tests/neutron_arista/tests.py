@@ -39,15 +39,36 @@ class NeutronCreateAristaNetworkTest(neutron_tests.NeutronCreateNetworkTest):
                 cls.neutron_client.list_networks()
 
     def _assert_test_network_exists_and_return_id(self):
-        actual_network_names = arista_utils.query_fixture_networks(
-            arista_utils.fixture_ip_addr())
-        self.assertEqual(actual_network_names, [self._TEST_NET_NAME])
+        logging.info('Checking that the test network exists on the Arista '
+                     'test fixture...')
+
+        # Sometimes the API call from Neutron to Arista fails and Neutron
+        # retries a couple of seconds later, which is why the newly created
+        # test network may not be immediately visible on Arista's API.
+        for attempt in tenacity.Retrying(
+                wait=tenacity.wait_fixed(10),  # seconds
+                stop=tenacity.stop_after_attempt(3),
+                reraise=True):
+            with attempt:
+                actual_network_names = arista_utils.query_fixture_networks(
+                    arista_utils.fixture_ip_addr())
+                self.assertEqual(actual_network_names, [self._TEST_NET_NAME])
+
         return super(NeutronCreateAristaNetworkTest,
                      self)._assert_test_network_exists_and_return_id()
 
     def _assert_test_network_doesnt_exist(self):
-        actual_network_names = arista_utils.query_fixture_networks(
-            arista_utils.fixture_ip_addr())
-        self.assertEqual(actual_network_names, [])
+        logging.info("Checking that the test network doesn't exist on the "
+                     "Arista test fixture...")
+
+        for attempt in tenacity.Retrying(
+                wait=tenacity.wait_fixed(10),  # seconds
+                stop=tenacity.stop_after_attempt(3),
+                reraise=True):
+            with attempt:
+                actual_network_names = arista_utils.query_fixture_networks(
+                    arista_utils.fixture_ip_addr())
+                self.assertEqual(actual_network_names, [])
+
         super(NeutronCreateAristaNetworkTest,
               self)._assert_test_network_doesnt_exist()
