@@ -1737,6 +1737,15 @@ def get_overcloud_auth(address=None, model_name=None):
         }
     if tls_rid:
         unit = model.get_first_unit_name('keystone', model_name=model_name)
+
+        # ensure that the path to put the local cacert in actually exists.  The
+        # assumption that 'tests/' exists for, say, mojo is false.
+        # Needed due to:
+        # commit: 537473ad3addeaa3d1e4e2d0fd556aeaa4018eb2
+        _dir = os.path.dirname(KEYSTONE_LOCAL_CACERT)
+        if not os.path.exists(_dir):
+            os.makedirs(_dir)
+
         model.scp_from_unit(
             unit,
             KEYSTONE_REMOTE_CACERT,
