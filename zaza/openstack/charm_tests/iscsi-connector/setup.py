@@ -35,7 +35,8 @@ def basic_target_setup():
     unit = zaza.model.get_units('ubuntu-target')[0]
     setup_cmds = [
         "apt install --yes tgt",
-        "systemctl start tgt",]
+        "systemctl start tgt",
+        "open-port 3260"]
     for cmd in setup_cmds:
         zaza.model.run_on_unit(
             unit.entity_id,
