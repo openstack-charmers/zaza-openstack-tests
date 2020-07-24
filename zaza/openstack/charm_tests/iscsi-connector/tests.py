@@ -14,6 +14,7 @@
 
 """Encapsulate iscsi-connector testing."""
 
+import json
 import logging
 import tempfile
 
@@ -29,14 +30,14 @@ class ISCSIConnectorTest(test_utils.BaseCharmTest):
     def setUpClass(cls):
         """Run class setup for running glance tests."""
         super(ISCSIConnectorTest, cls).setUpClass()
-    
-    IQN = 'iqn.2020-07.canonical.com:lun1'
 
     def configure_iscsi_connector(self):
+        iqn = 'iqn.2020-07.canonical.com:lun1'
         unit_fqdn = self.get_unit_full_hostname('ubuntu')
         target_ip = zaza.model.get_app_ips('ubuntu-target')[0]
+        initiator_dictionary = json.dumps({unit_fqdn:iqn})
         conf = {
-            'initiator-dictionary': '{"{unit_fqdn}":"{IQN}"}',
+            'initiator-dictionary': initiator_dictionary,
             'target': target_ip,
             'port': '3260',
         }
@@ -51,3 +52,10 @@ class ISCSIConnectorTest(test_utils.BaseCharmTest):
 
     def test_iscsi_connector(self):
         self.configure_iscsi_connector()
+        logging.info('Wait for idle/ready status...')
+        zaza_model.wait_for_application_states()
+    
+    def test_validate_iscsi_session(self):
+        unit = zaza.model.get_units('ubuntu')[0]
+        run = zaza.model.run_on_unit(unit.entity_id, 'iscsiadm -m session')
+        assert run['Stdout'] != "iscsiadm: No active sessions."
