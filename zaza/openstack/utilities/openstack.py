@@ -40,6 +40,7 @@ from keystoneauth1.identity import (
 )
 import zaza.openstack.utilities.cert as cert
 import zaza.utilities.deployment_env as deployment_env
+import zaza.utilities.juju as juju_utils
 from novaclient import client as novaclient_client
 from neutronclient.v2_0 import client as neutronclient
 from neutronclient.common import exceptions as neutronexceptions
@@ -66,7 +67,6 @@ from zaza import model
 from zaza.openstack.utilities import (
     exceptions,
     generic as generic_utils,
-    juju as juju_utils,
 )
 
 CIRROS_RELEASE_URL = 'http://download.cirros-cloud.net/version/released'
@@ -163,7 +163,7 @@ WORKLOAD_STATUS_EXCEPTIONS = {
 KEYSTONE_CACERT = "keystone_juju_ca_cert.crt"
 KEYSTONE_REMOTE_CACERT = (
     "/usr/local/share/ca-certificates/{}".format(KEYSTONE_CACERT))
-KEYSTONE_LOCAL_CACERT = ("/tmp/{}".format(KEYSTONE_CACERT))
+KEYSTONE_LOCAL_CACERT = ("tests/{}".format(KEYSTONE_CACERT))
 
 
 def get_cacert():
@@ -1609,7 +1609,7 @@ def get_undercloud_auth():
             'API_VERSION': 3,
         }
         if domain:
-            auth_settings['OS_DOMAIN_NAME': 'admin_domain'] = domain
+            auth_settings['OS_DOMAIN_NAME'] = domain
         else:
             auth_settings['OS_USER_DOMAIN_NAME'] = (
                 os.environ.get('OS_USER_DOMAIN_NAME'))
@@ -1620,6 +1620,10 @@ def get_undercloud_auth():
             os_project_id = os.environ.get('OS_PROJECT_ID')
             if os_project_id is not None:
                 auth_settings['OS_PROJECT_ID'] = os_project_id
+
+    _os_cacert = os.environ.get('OS_CACERT')
+    if _os_cacert:
+        auth_settings.update({'OS_CACERT': _os_cacert})
 
     # Validate settings
     for key, settings in list(auth_settings.items()):
@@ -1733,6 +1737,15 @@ def get_overcloud_auth(address=None, model_name=None):
         }
     if tls_rid:
         unit = model.get_first_unit_name('keystone', model_name=model_name)
+
+        # ensure that the path to put the local cacert in actually exists.  The
+        # assumption that 'tests/' exists for, say, mojo is false.
+        # Needed due to:
+        # commit: 537473ad3addeaa3d1e4e2d0fd556aeaa4018eb2
+        _dir = os.path.dirname(KEYSTONE_LOCAL_CACERT)
+        if not os.path.exists(_dir):
+            os.makedirs(_dir)
+
         model.scp_from_unit(
             unit,
             KEYSTONE_REMOTE_CACERT,
@@ -2032,7 +2045,8 @@ def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
     return image
 
 
-def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[]):
+def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[],
+                 properties=None):
     """Download the image and upload it to glance.
 
     Download an image from image_url and upload it to glance labelling
@@ -2049,6 +2063,8 @@ def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[]):
     :type image_cache_dir: Option[str, None]
     :param tags: Tags to add to image
     :type tags: list of str
+    :param properties: Properties and values to add to image
+    :type properties: dict
     :returns: glance image pointer
     :rtype: glanceclient.common.utils.RequestIdProxy
     """
@@ -2070,6 +2086,11 @@ def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[]):
         logging.debug(
             'applying tag to image: glance.image_tags.update({}, {}) = {}'
             .format(image.id, tags, result))
+
+    logging.info("Setting image properties: {}".format(properties))
+    if properties:
+        result = glance.images.update(image.id, **properties)
+
     return image
 
 
@@ -2198,7 +2219,8 @@ def get_private_key_file(keypair_name):
     :returns: Path to file containing key
     :rtype: str
     """
-    return 'tests/id_rsa_{}'.format(keypair_name)
+    tmp_dir = deployment_env.get_tmpdir()
+    return '{}/id_rsa_{}'.format(tmp_dir, keypair_name)
 
 
 def write_private_key(keypair_name, key):
@@ -2279,7 +2301,7 @@ def get_ports_from_device_id(neutron_client, device_id):
 
 
 @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=120),
-                reraise=True, stop=tenacity.stop_after_attempt(12))
+                reraise=True, stop=tenacity.stop_after_delay(1800))
 def cloud_init_complete(nova_client, vm_id, bootstring):
     """Wait for cloud init to complete on the given vm.
 
@@ -2396,7 +2418,7 @@ def ssh_command(username,
         ssh.connect(ip, username=username, password=password)
     else:
         key = paramiko.RSAKey.from_private_key(io.StringIO(privkey))
-        ssh.connect(ip, username=username, password='', pkey=key)
+        ssh.connect(ip, username=username, password=None, pkey=key)
     logging.info("Running {} on {}".format(command, vm_name))
     stdin, stdout, stderr = ssh.exec_command(command)
     if verify and callable(verify):

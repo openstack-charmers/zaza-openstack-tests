@@ -30,3 +30,15 @@ class TestOpenStackBaseTest(unittest.TestCase):
 
         MyTestClass.setUpClass('foo', 'bar')
         _setUpClass.assert_called_with('foo', 'bar')
+
+
+class TestUtils(unittest.TestCase):
+
+    def test_format_addr(self):
+        self.assertEquals('1.2.3.4', test_utils.format_addr('1.2.3.4'))
+        self.assertEquals(
+            '[2001:db8::42]', test_utils.format_addr('2001:db8::42'))
+        with self.assertRaises(ValueError):
+            test_utils.format_addr('999.999.999.999')
+        with self.assertRaises(ValueError):
+            test_utils.format_addr('2001:db8::g')

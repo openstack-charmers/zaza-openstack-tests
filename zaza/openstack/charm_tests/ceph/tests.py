@@ -544,7 +544,7 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
     @classmethod
     def setUpClass(cls):
         """Run class setup for running ceph low level tests."""
-        super(CephRGWTest, cls).setUpClass()
+        super(CephRGWTest, cls).setUpClass(application_name='ceph-radosgw')
 
     @property
     def expected_apps(self):
@@ -622,7 +622,9 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
                                     'multisite configuration')
         logging.info('Checking Swift REST API')
         keystone_session = zaza_openstack.get_overcloud_keystone_session()
-        region_name = 'RegionOne'
+        region_name = zaza_model.get_application_config(
+            self.application_name,
+            model_name=self.model_name)['region']['value']
         swift_client = zaza_openstack.get_swift_session_client(
             keystone_session,
             region_name,

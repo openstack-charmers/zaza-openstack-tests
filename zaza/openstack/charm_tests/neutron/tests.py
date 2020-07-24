@@ -25,10 +25,7 @@ import logging
 import tenacity
 import unittest
 
-import novaclient
-
 import zaza
-import zaza.openstack.charm_tests.glance.setup as glance_setup
 import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.configure.guest as guest
@@ -292,36 +289,44 @@ class NeutronCreateNetworkTest(test_utils.OpenStackBaseTest):
         # set up clients
         cls.neutron_client = (
             openstack_utils.get_neutron_session_client(cls.keystone_session))
+        cls.neutron_client.format = 'json'
+
+    _TEST_NET_NAME = 'test_net'
 
     def test_400_create_network(self):
         """Create a network, verify that it exists, and then delete it."""
+        self._assert_test_network_doesnt_exist()
+        self._create_test_network()
+        net_id = self._assert_test_network_exists_and_return_id()
+        self._delete_test_network(net_id)
+        self._assert_test_network_doesnt_exist()
+
+    def _create_test_network(self):
         logging.debug('Creating neutron network...')
-        self.neutron_client.format = 'json'
-        net_name = 'test_net'
-
-        # Verify that the network doesn't exist
-        networks = self.neutron_client.list_networks(name=net_name)
-        net_count = len(networks['networks'])
-        assert net_count == 0, (
-            "Expected zero networks, found {}".format(net_count))
-
-        # Create a network and verify that it exists
-        network = {'name': net_name}
+        network = {'name': self._TEST_NET_NAME}
         self.neutron_client.create_network({'network': network})
 
-        networks = self.neutron_client.list_networks(name=net_name)
+    def _delete_test_network(self, net_id):
+        logging.debug('Deleting neutron network...')
+        self.neutron_client.delete_network(net_id)
+
+    def _assert_test_network_exists_and_return_id(self):
+        logging.debug('Confirming new neutron network...')
+        networks = self.neutron_client.list_networks(name=self._TEST_NET_NAME)
         logging.debug('Networks: {}'.format(networks))
         net_len = len(networks['networks'])
         assert net_len == 1, (
             "Expected 1 network, found {}".format(net_len))
-
-        logging.debug('Confirming new neutron network...')
         network = networks['networks'][0]
-        assert network['name'] == net_name, "network ext_net not found"
+        assert network['name'] == self._TEST_NET_NAME, \
+            "network {} not found".format(self._TEST_NET_NAME)
+        return network['id']
 
-        # Cleanup
-        logging.debug('Deleting neutron network...')
-        self.neutron_client.delete_network(network['id'])
+    def _assert_test_network_doesnt_exist(self):
+        networks = self.neutron_client.list_networks(name=self._TEST_NET_NAME)
+        net_count = len(networks['networks'])
+        assert net_count == 0, (
+            "Expected zero networks, found {}".format(net_count))
 
 
 class NeutronApiTest(NeutronCreateNetworkTest):
@@ -600,7 +605,7 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
             logging.info('Testing pause resume')
 
 
-class NeutronNetworkingBase(unittest.TestCase):
+class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
     """Base for checking openstack instances have valid networking."""
 
     RESOURCE_PREFIX = 'zaza-neutrontests'
@@ -608,30 +613,10 @@ class NeutronNetworkingBase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Run class setup for running Neutron API Networking tests."""
-        cls.keystone_session = (
-            openstack_utils.get_overcloud_keystone_session())
-        cls.nova_client = (
-            openstack_utils.get_nova_session_client(cls.keystone_session))
+        super(NeutronNetworkingBase, cls).setUpClass(
+            application_name='neutron-api')
         cls.neutron_client = (
             openstack_utils.get_neutron_session_client(cls.keystone_session))
-        # NOTE(fnordahl): in the event of a test failure we do not want to run
-        # tear down code as it will make debugging a problem virtually
-        # impossible.  To alleviate each test method will set the
-        # `run_tearDown` instance variable at the end which will let us run
-        # tear down only when there were no failure.
-        cls.run_tearDown = False
-
-    @classmethod
-    def tearDown(cls):
-        """Remove test resources."""
-        if cls.run_tearDown:
-            logging.info('Running teardown')
-            for server in cls.nova_client.servers.list():
-                if server.name.startswith(cls.RESOURCE_PREFIX):
-                    openstack_utils.delete_resource(
-                        cls.nova_client.servers,
-                        server.id,
-                        msg="server")
 
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
                     reraise=True, stop=tenacity.stop_after_attempt(8))
@@ -729,44 +714,6 @@ class NeutronNetworkingBase(unittest.TestCase):
                 assert agent['admin_state_up']
                 assert agent['alive']
 
-    def launch_guests(self):
-        """Launch two guests to use in tests."""
-        guest.launch_instance(
-            glance_setup.LTS_IMAGE_NAME,
-            vm_name='{}-ins-1'.format(self.RESOURCE_PREFIX))
-        guest.launch_instance(
-            glance_setup.LTS_IMAGE_NAME,
-            vm_name='{}-ins-2'.format(self.RESOURCE_PREFIX))
-
-    def retrieve_guest(self, nova_client, guest_name):
-        """Return guest matching name.
-
-        :param nova_client: Nova client to use when checking status
-        :type nova_client: Nova client
-        :returns: the matching guest
-        :rtype: Union[novaclient.Server, None]
-        """
-        try:
-            return nova_client.servers.find(name=guest_name)
-        except novaclient.exceptions.NotFound:
-            return None
-
-    def retrieve_guests(self, nova_client):
-        """Return test guests.
-
-        :param nova_client: Nova client to use when checking status
-        :type nova_client: Nova client
-        :returns: the matching guest
-        :rtype: Union[novaclient.Server, None]
-        """
-        instance_1 = self.retrieve_guest(
-            nova_client,
-            '{}-ins-1'.format(self.RESOURCE_PREFIX))
-        instance_2 = self.retrieve_guest(
-            nova_client,
-            '{}-ins-1'.format(self.RESOURCE_PREFIX))
-        return instance_1, instance_2
-
     def check_connectivity(self, instance_1, instance_2):
         """Run North/South and East/West connectivity tests."""
         def verify(stdin, stdout, stderr):
@@ -837,9 +784,9 @@ class NeutronNetworkingTest(NeutronNetworkingBase):
     def test_instances_have_networking(self):
         """Validate North/South and East/West networking."""
         self.launch_guests()
-        instance_1, instance_2 = self.retrieve_guests(self.nova_client)
+        instance_1, instance_2 = self.retrieve_guests()
         self.check_connectivity(instance_1, instance_2)
-        self.run_tearDown = True
+        self.run_resource_cleanup = True
 
 
 class NeutronNetworkingVRRPTests(NeutronNetworkingBase):
@@ -847,10 +794,10 @@ class NeutronNetworkingVRRPTests(NeutronNetworkingBase):
 
     def test_gateway_failure(self):
         """Validate networking in the case of a gateway failure."""
-        instance_1, instance_2 = self.retrieve_guests(self.nova_client)
+        instance_1, instance_2 = self.retrieve_guests()
         if not all([instance_1, instance_2]):
             self.launch_guests()
-            instance_1, instance_2 = self.retrieve_guests(self.nova_client)
+            instance_1, instance_2 = self.retrieve_guests()
         self.check_connectivity(instance_1, instance_2)
 
         routers = self.neutron_client.list_routers(

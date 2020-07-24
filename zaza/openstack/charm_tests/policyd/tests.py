@@ -401,6 +401,10 @@ class BasePolicydSpecialization(PolicydTest,
 
     def test_003_test_overide_is_observed(self):
         """Test that the override is observed by the underlying service."""
+        if (openstack_utils.get_os_release() <
+                openstack_utils.get_os_release('groovy_victoria')):
+            raise unittest.SkipTest(
+                "Test skipped until Bug #1880959 is fix released")
         if self._test_name is None:
             logging.info("Doing policyd override for {}"
                          .format(self._service_name))
@@ -655,7 +659,7 @@ class HeatTests(BasePolicydSpecialization):
 class OctaviaTests(BasePolicydSpecialization):
     """Test the policyd override using the octavia client."""
 
-    _rule = {'rule.yaml': "{'os_load-balancer_api:loadbalancer:get_one': '!'}"}
+    _rule = {'rule.yaml': "{'os_load-balancer_api:provider:get_all': '!'}"}
 
     @classmethod
     def setUpClass(cls, application_name=None):
@@ -663,89 +667,8 @@ class OctaviaTests(BasePolicydSpecialization):
         super(OctaviaTests, cls).setUpClass(application_name="octavia")
         cls.application_name = "octavia"
 
-    def setup_for_attempt_operation(self, ip):
-        """Create a loadbalancer.
-
-        This is necessary so that the attempt is to show the load-balancer and
-        this is an operator that the policy can stop.  Unfortunately, octavia,
-        whilst it has a policy for just listing load-balancers, unfortunately,
-        it doesn't work; whereas showing the load-balancer can be stopped.
-
-        NB this only works if the setup phase of the octavia tests have been
-        completed.
-
-        :param ip: the ip of for keystone.
-        :type ip: str
-        """
-        logging.info("Setting up loadbalancer.")
-        auth = openstack_utils.get_overcloud_auth(address=ip)
-        sess = openstack_utils.get_keystone_session(auth)
-
-        octavia_client = openstack_utils.get_octavia_session_client(sess)
-        neutron_client = openstack_utils.get_neutron_session_client(sess)
-
-        if openstack_utils.dvr_enabled():
-            network_name = 'private_lb_fip_network'
-        else:
-            network_name = 'private'
-        resp = neutron_client.list_networks(name=network_name)
-
-        vip_subnet_id = resp['networks'][0]['subnets'][0]
-
-        res = octavia_client.load_balancer_create(
-            json={
-                'loadbalancer': {
-                    'description': 'Created by Zaza',
-                    'admin_state_up': True,
-                    'vip_subnet_id': vip_subnet_id,
-                    'name': 'zaza-lb-0',
-                }})
-        self.lb_id = res['loadbalancer']['id']
-        # now wait for it to get to the active state
-
-        @tenacity.retry(wait=tenacity.wait_fixed(1),
-                        reraise=True, stop=tenacity.stop_after_delay(900))
-        def wait_for_lb_resource(client, resource_id):
-            resp = client.load_balancer_show(resource_id)
-            logging.info(resp['provisioning_status'])
-            assert resp['provisioning_status'] == 'ACTIVE', (
-                'load balancer resource has not reached '
-                'expected provisioning status: {}'
-                .format(resp))
-            return resp
-
-        logging.info('Awaiting loadbalancer to reach provisioning_status '
-                     '"ACTIVE"')
-        resp = wait_for_lb_resource(octavia_client, self.lb_id)
-        logging.info(resp)
-        logging.info("Setup loadbalancer complete.")
-
-    def cleanup_for_attempt_operation(self, ip):
-        """Remove the loadbalancer.
-
-        :param ip: the ip of for keystone.
-        :type ip: str
-        """
-        logging.info("Deleting loadbalancer {}.".format(self.lb_id))
-        auth = openstack_utils.get_overcloud_auth(address=ip)
-        sess = openstack_utils.get_keystone_session(auth)
-
-        octavia_client = openstack_utils.get_octavia_session_client(sess)
-        octavia_client.load_balancer_delete(self.lb_id)
-        logging.info("Deleting loadbalancer in progress ...")
-
-        @tenacity.retry(wait=tenacity.wait_fixed(1),
-                        reraise=True, stop=tenacity.stop_after_delay(900))
-        def wait_til_deleted(client, lb_id):
-            lb_list = client.load_balancer_list()
-            ids = [lb['id'] for lb in lb_list['loadbalancers']]
-            assert lb_id not in ids, 'load balancer still deleting'
-
-        wait_til_deleted(octavia_client, self.lb_id)
-        logging.info("Deleted loadbalancer.")
-
     def get_client_and_attempt_operation(self, ip):
-        """Attempt to show the loadbalancer as a policyd override.
+        """Attempt to list available provider drivers.
 
         This operation should pass normally, and fail when
         the rule has been overriden (see the `rule` class variable.
@@ -757,6 +680,6 @@ class OctaviaTests(BasePolicydSpecialization):
         octavia_client = openstack_utils.get_octavia_session_client(
             self.get_keystone_session_admin_user(ip))
         try:
-            octavia_client.load_balancer_show(self.lb_id)
+            octavia_client.provider_list()
         except octaviaclient.OctaviaClientException:
             raise PolicydOperationFailedException()
