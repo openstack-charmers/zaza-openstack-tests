@@ -33,7 +33,7 @@ class ISCSIConnectorTest(test_utils.BaseCharmTest):
     IQN = 'iqn.2020-07.canonical.com:lun1'
 
     def configure_iscsi_connector(self):
-        unit_fqdn = self.get_unit_full_hostname('ubuntu/0')
+        unit_fqdn = self.get_unit_full_hostname('ubuntu')
         target_ip = zaza.model.get_app_ips('ubuntu-target')[0]
         conf = {
             'initiator-dictionary': '{"{unit_fqdn}":"{IQN}"}',
