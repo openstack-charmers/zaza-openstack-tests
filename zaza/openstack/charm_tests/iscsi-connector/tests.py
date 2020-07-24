@@ -25,6 +25,11 @@ import zaza.openstack.utilities.generic as generic_utils
 class ISCSIConnectorTest(test_utils.BaseCharmTest):
     """Class for iscsi-connector tests."""
 
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running glance tests."""
+        super(ISCSIConnectorTest, cls).setUpClass()
+    
     IQN = 'iqn.2020-07.canonical.com:lun1'
 
     def configure_iscsi_connector(self):
