@@ -26,12 +26,15 @@
 # - configure ubuntu initiator with init dict, target, port
 # """
 
+import logging
+
 import zaza.model
 import zaza.openstack.utilities.openstack as openstack_utils
 
 
 def basic_target_setup():
     """Run basic setup for iscsi guest."""
+    logging.info('Installing package tgt on ubuntu-target')
     unit = zaza.model.get_units('ubuntu-target')[0]
     setup_cmds = [
         "apt install --yes tgt",
@@ -50,6 +53,7 @@ def configure_iscsi_target():
         """echo -e '<target {}>\n\tbacking-store {}\n\tinitiator-address {}\n</target>' | """
         """sudo tee /etc/tgt/conf.d/iscsi.conf""".format(lun, backing_store,initiator_address)
     )
+    logging.info('Writing target iscsi.conf')
     zaza.model.run_on_unit('ubuntu-target/0', write_file)
     # Restart tgt to load new config
     restart_tgt = "systemctl restart tgt"
