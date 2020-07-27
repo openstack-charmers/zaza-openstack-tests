@@ -49,9 +49,14 @@ def configure_iscsi_target():
     lun = 'iqn.2020-07.canonical.com:lun1'
     backing_store = 'dev/vdb'
     initiator_address = zaza.model.get_app_ips('ubuntu')[0]
+    username = 'iscsi-user'
+    password = 'password123'
+    username_in = 'iscsi-target'
+    password_in = 'secretpass'
     write_file = (
-        """echo -e '<target {}>\n\tbacking-store {}\n\tinitiator-address {}\n</target>' | """
-        """sudo tee /etc/tgt/conf.d/iscsi.conf""".format(lun, backing_store,initiator_address)
+        """echo -e '<target {}>\n\tbacking-store {}\n\tinitiator-address {}\n\tincominguser {} {}\n\t"""
+        """outgoinguser {} {}</target>' | sudo tee /etc/tgt/conf.d/iscsi.conf""".format(lun, backing_store,
+        initiator_address, username, password, username_in, password_in)
     )
     logging.info('Writing target iscsi.conf')
     zaza.model.run_on_unit('ubuntu-target/0', write_file)

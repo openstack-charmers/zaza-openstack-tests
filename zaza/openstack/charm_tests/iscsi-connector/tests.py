@@ -40,6 +40,11 @@ class ISCSIConnectorTest(test_utils.BaseCharmTest):
             'initiator-dictionary': initiator_dictionary,
             'target': target_ip,
             'port': '3260',
+            'iscsi-node-session-auth-authmethod': 'CHAP',
+            'iscsi-node-session-auth-username': 'iscsi-user',
+            'iscsi-node-session-auth-password': 'password123',
+            'iscsi-node-session-auth-username_in': 'iscsi-target',
+            'iscsi-node-session-auth-password_in': 'secretpass',
         }
         zaza.model.set_application_config('iscsi-connector', conf)
 
