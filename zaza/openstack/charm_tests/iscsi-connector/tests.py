@@ -53,9 +53,11 @@ class ISCSIConnectorTest(test_utils.BaseCharmTest):
     def test_iscsi_connector(self):
         self.configure_iscsi_connector()
         logging.info('Wait for idle/ready status...')
-        zaza_model.wait_for_application_states()
+        zaza.model.wait_for_application_states()
     
     def test_validate_iscsi_session(self):
         unit = zaza.model.get_units('ubuntu')[0]
+        logging.info('Checking if iscsi session is active.')
         run = zaza.model.run_on_unit(unit.entity_id, 'iscsiadm -m session')
-        assert run['Stdout'] != "iscsiadm: No active sessions."
+        logging.info('iscsiadm -m session: Stdout: {}, Stderr: {}, Code: {}'.format(run['Stdout'], run['Stderr'], run['Code']))
+        assert run['Code'] == '0'
