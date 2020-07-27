@@ -55,7 +55,7 @@ def configure_iscsi_target():
     password_in = 'secretpass'
     write_file = (
         """echo -e '<target {}>\n\tbacking-store {}\n\tinitiator-address {}\n\tincominguser {} {}\n\t"""
-        """outgoinguser {} {}</target>' | sudo tee /etc/tgt/conf.d/iscsi.conf""".format(lun, backing_store,
+        """outgoinguser {} {}\n</target>' | sudo tee /etc/tgt/conf.d/iscsi.conf""".format(lun, backing_store,
         initiator_address, username, password, username_in, password_in)
     )
     logging.info('Writing target iscsi.conf')
