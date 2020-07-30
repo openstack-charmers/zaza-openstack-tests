@@ -29,14 +29,7 @@ class NeutronCreateAristaNetworkTest(neutron_tests.NeutronCreateNetworkTest):
     def setUpClass(cls):
         """Run class setup for running Neutron Arista tests."""
         super(NeutronCreateAristaNetworkTest, cls).setUpClass()
-
-        logging.info('Waiting for Neutron to become ready...')
-        for attempt in tenacity.Retrying(
-                wait=tenacity.wait_fixed(5),  # seconds
-                stop=tenacity.stop_after_attempt(12),
-                reraise=True):
-            with attempt:
-                cls.neutron_client.list_networks()
+        cls._wait_for_neutron_ready()
 
     def _assert_test_network_exists_and_return_id(self):
         logging.info('Checking that the test network exists on the Arista '
