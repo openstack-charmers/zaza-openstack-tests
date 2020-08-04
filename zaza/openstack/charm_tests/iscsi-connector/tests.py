@@ -16,11 +16,9 @@
 
 import json
 import logging
-import tempfile
 
 import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
-import zaza.openstack.utilities.generic as generic_utils
 
 
 class ISCSIConnectorTest(test_utils.BaseCharmTest):
@@ -32,10 +30,11 @@ class ISCSIConnectorTest(test_utils.BaseCharmTest):
         super(ISCSIConnectorTest, cls).setUpClass()
 
     def configure_iscsi_connector(self):
+        """Configure iscsi connector."""
         iqn = 'iqn.2020-07.canonical.com:lun1'
         unit_fqdn = self.get_unit_full_hostname('ubuntu')
         target_ip = zaza.model.get_app_ips('ubuntu-target')[0]
-        initiator_dictionary = json.dumps({unit_fqdn:iqn})
+        initiator_dictionary = json.dumps({unit_fqdn: iqn})
         conf = {
             'initiator-dictionary': initiator_dictionary,
             'target': target_ip,
@@ -56,13 +55,18 @@ class ISCSIConnectorTest(test_utils.BaseCharmTest):
         return hostname
 
     def test_iscsi_connector(self):
+        """Test iscsi configuration and wait for idle status."""
         self.configure_iscsi_connector()
         logging.info('Wait for idle/ready status...')
         zaza.model.wait_for_application_states()
-    
+
     def test_validate_iscsi_session(self):
+        """Validate that the iscsi session is active."""
         unit = zaza.model.get_units('ubuntu')[0]
         logging.info('Checking if iscsi session is active.')
         run = zaza.model.run_on_unit(unit.entity_id, 'iscsiadm -m session')
-        logging.info('iscsiadm -m session: Stdout: {}, Stderr: {}, Code: {}'.format(run['Stdout'], run['Stderr'], run['Code']))
+        logging.info("""iscsiadm -m session: Stdout: {}, Stderr: {}, """
+                     """Code: {}""".format(run['Stdout'],
+                                           run['Stderr'],
+                                           run['Code']))
         assert run['Code'] == '0'
