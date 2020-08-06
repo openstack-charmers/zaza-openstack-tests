@@ -93,7 +93,7 @@ class CharmKeystoneSAMLMellonTest(BaseKeystoneTest):
             proto = "http"
 
         url = "{}://{}/horizon/auth/login/".format(proto, horizon_ip)
-        region = "{}://{}:5000/v3".format(proto, keystone_ip)
+        region = "default"
         horizon_expect = ('<option value="samltest_mapped">'
                           'samltest.id</option>')
 
