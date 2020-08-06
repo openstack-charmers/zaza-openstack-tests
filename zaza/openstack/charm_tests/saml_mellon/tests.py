@@ -72,12 +72,6 @@ class CharmKeystoneSAMLMellonTest(BaseKeystoneTest):
 
     def test_saml_mellon_redirects(self):
         """Validate the horizon -> keystone -> IDP redirects."""
-        if self.vip:
-            keystone_ip = self.vip
-        else:
-            unit = zaza.model.get_units(self.application_name)[0]
-            keystone_ip = unit.public_address
-
         horizon = "openstack-dashboard"
         horizon_vip = (zaza.model.get_application_config(horizon)
                        .get("vip").get("value"))
