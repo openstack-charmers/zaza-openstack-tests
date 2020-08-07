@@ -21,6 +21,7 @@ import requests
 import zaza.model
 from zaza.openstack.charm_tests.keystone import BaseKeystoneTest
 import zaza.charm_lifecycle.utils as lifecycle_utils
+import zaza.openstack.utilities.openstack as openstack_utils
 
 
 class FailedToReachIDP(Exception):
@@ -42,6 +43,8 @@ class CharmKeystoneSAMLMellonTest(BaseKeystoneTest):
         cls.test_config = lifecycle_utils.get_charm_config()
         cls.application_name = cls.test_config['charm_name']
         cls.action = "get-sp-metadata"
+        cls.current_release = openstack_utils.get_os_release()
+        cls.FOCAL_USSURI = openstack_utils.get_os_release("focal_ussuri")
 
     def test_run_get_sp_metadata_action(self):
         """Validate the get-sp-metadata action."""
@@ -72,6 +75,12 @@ class CharmKeystoneSAMLMellonTest(BaseKeystoneTest):
 
     def test_saml_mellon_redirects(self):
         """Validate the horizon -> keystone -> IDP redirects."""
+        if self.vip:
+            keystone_ip = self.vip
+        else:
+            unit = zaza.model.get_units(self.application_name)[0]
+            keystone_ip = unit.public_address
+
         horizon = "openstack-dashboard"
         horizon_vip = (zaza.model.get_application_config(horizon)
                        .get("vip").get("value"))
@@ -86,8 +95,13 @@ class CharmKeystoneSAMLMellonTest(BaseKeystoneTest):
         else:
             proto = "http"
 
+        # Use Keystone URL for < Focal
+        if self.current_release < self.FOCAL_USSURI:
+            region = "{}://{}:5000/v3".format(proto, keystone_ip)
+        else:
+            region = "default"
+
         url = "{}://{}/horizon/auth/login/".format(proto, horizon_ip)
-        region = "default"
         horizon_expect = ('<option value="samltest_mapped">'
                           'samltest.id</option>')
 
