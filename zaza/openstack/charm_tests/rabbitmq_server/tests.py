@@ -272,6 +272,29 @@ class RmqTests(test_utils.OpenStackBaseTest):
 
         logging.info('OK')
 
+    def test_415_queue_master_locator(self):
+        """Check rabbitmq loaded the configured queue master locator policy."""
+        units = zaza.model.get_units(self.application_name)
+
+        # Feature available for rabbitmq-server>=3.6 available since Bionic.
+        if CompareHostReleases(get_series(units[0])) < 'bionic':
+            logging.info('SKIP')
+            logging.info('Skipping queue-master-locator check due to '
+                         'unsupported version of RabbitMQ')
+            return
+
+        logging.info('Checking queue_master_locator was picked up by rabbitmq')
+        cmd = ("rabbitmqctl eval "
+               "'application:get_env(rabbit, queue_master_locator).'")
+        result = zaza.model.run_on_leader(self.application_name, cmd)
+        assert result['Code'] == '0', result['Stderr']
+
+        config = zaza.model.get_application_config(self.application_name)
+        locator_policy = config["queue-master-locator"]["value"]
+        cfg = '{ok,<<"%s">>}' % locator_policy
+        output = result["Stdout"].strip()
+        assert cfg == output, "%s != %s" % (cfg, output)
+
     def test_910_pause_and_resume(self):
         """The services can be paused and resumed."""
         logging.info('Checking pause and resume actions...')
