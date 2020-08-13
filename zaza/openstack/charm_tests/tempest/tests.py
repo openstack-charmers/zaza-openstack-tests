@@ -20,6 +20,7 @@ import subprocess
 import zaza
 import zaza.charm_lifecycle.utils
 import zaza.charm_lifecycle.test
+import zaza.openstack.charm_tests.tempest.utils as tempest_utils
 import tempfile
 
 
@@ -33,21 +34,24 @@ class TempestTest():
 
         Test keys are parsed from ['tests_options']['tempest']['model'], where
         valid test keys are: smoke (bool), whitelist (list of tests), blacklist
-        (list of tests), and regex (list of regex's).
+        (list of tests), regex (list of regex's), and keep-workspace (bool).
 
         :returns: Status of tempest run
         :rtype: bool
         """
+        result = True
         charm_config = zaza.charm_lifecycle.utils.get_charm_config()
+        workspace_name, workspace_path = tempest_utils.get_workspace()
         tempest_options = ['tempest', 'run', '--workspace',
-                           'tempest-workspace', '--config',
-                           'tempest-workspace/etc/tempest.conf']
+                           workspace_name, '--config',
+                           os.path.join(workspace_path, 'etc/tempest.conf')]
         for model_alias in zaza.model.get_juju_model_aliases().keys():
             tempest_test_key = model_alias
             if model_alias == zaza.charm_lifecycle.utils.DEFAULT_MODEL_ALIAS:
                 tempest_test_key = 'default'
             config = charm_config['tests_options']['tempest'][tempest_test_key]
-            if config.get('smoke'):
+            smoke = config.get('smoke')
+            if smoke and smoke == True:
                 tempest_options.extend(['--smoke'])
             if config.get('regex'):
                 tempest_options.extend(
@@ -74,5 +78,9 @@ class TempestTest():
                 try:
                     subprocess.check_call(tempest_options)
                 except subprocess.CalledProcessError:
-                    return False
-        return True
+                    result = False
+                    break
+        keep_workspace = config.get('keep-workspace')
+        if not keep_workspace or keep_workspace != True:
+            tempest_utils.destroy_workspace(workspace_name, workspace_path)
+        return result
