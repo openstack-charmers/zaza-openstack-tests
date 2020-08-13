@@ -17,7 +17,6 @@
 import jinja2
 import urllib.parse
 import os
-import subprocess
 
 import zaza.utilities.deployment_env as deployment_env
 import zaza.openstack.utilities.juju as juju_utils

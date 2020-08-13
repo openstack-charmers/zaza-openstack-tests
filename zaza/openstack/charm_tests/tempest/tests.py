@@ -51,7 +51,7 @@ class TempestTest():
                 tempest_test_key = 'default'
             config = charm_config['tests_options']['tempest'][tempest_test_key]
             smoke = config.get('smoke')
-            if smoke and smoke == True:
+            if smoke and smoke is True:
                 tempest_options.extend(['--smoke'])
             if config.get('regex'):
                 tempest_options.extend(
@@ -81,6 +81,6 @@ class TempestTest():
                     result = False
                     break
         keep_workspace = config.get('keep-workspace')
-        if not keep_workspace or keep_workspace != True:
+        if not keep_workspace or keep_workspace is not True:
             tempest_utils.destroy_workspace(workspace_name, workspace_path)
         return result

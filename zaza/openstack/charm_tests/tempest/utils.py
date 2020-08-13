@@ -33,6 +33,7 @@ def get_workspace():
     workspace_path = os.path.join(home, '.tempest', workspace_name)
     return (workspace_name, workspace_path)
 
+
 def destroy_workspace(workspace_name, workspace_path):
     """Delete tempest workspace.
 
@@ -50,6 +51,7 @@ def destroy_workspace(workspace_name, workspace_path):
         pass
     if os.path.isdir(workspace_path):
         shutil.rmtree(workspace_path)
+
 
 def init_workspace(workspace_path):
     """Initialize tempest workspace.
