@@ -16,12 +16,15 @@
 
 """Encapsulate Gnocchi testing."""
 
+import base64
 import boto3
 import logging
 import pprint
 from gnocchiclient.v1 import client as gnocchi_client
 
+import zaza.model as model
 import zaza.openstack.charm_tests.test_utils as test_utils
+import zaza.openstack.utilities as utilities
 import zaza.openstack.utilities.openstack as openstack_utils
 
 
@@ -88,6 +91,41 @@ class GnocchiS3Test(test_utils.OpenStackBaseTest):
 
         # Create AWS compatible application credentials in Keystone
         cls.ec2_creds = ks_client.ec2.create(user_id, project_id)
+
+    def test_upload_external_cert(self):
+        """Verify that the external CA is uploaded correctly."""
+        logging.info('Changing value for trusted-external-ca-cert.')
+        ca_cert_option = 'trusted-external-ca-cert'
+        ppk, cert = utilities.cert.generate_cert('gnocchi_test.ci.local')
+        b64_cert = base64.b64encode(cert).decode()
+        config = {
+            ca_cert_option: b64_cert,
+        }
+        model.set_application_config(
+            'gnocchi',
+            config
+        )
+        model.block_until_all_units_idle()
+
+    def test_validate_cert_location(self):
+        """Validate that the cert is correctly uploaded to the unit."""
+        cert_location = '/usr/local/share/ca-certificates'
+        cert_name = 'gnocchi-external.crt'
+        cmd = 'ls ' + cert_location + '/' + cert_name
+        logging.info("Validating that the file {} is created in \
+                     {}".format(cert_name, cert_location))
+        result = model.run_on_unit('gnocchi/0', cmd)
+        self.assertEqual(result['Code'], '0')
+
+    def test_validate_update_ca_certificates(self):
+        """Validate that /usr/sbin/update-ca-certificates ran successfully."""
+        linked_cert_location = '/etc/ssl/certs'
+        cert_name = 'gnocchi-external.pem'
+        cmd = 'ls ' + linked_cert_location + '/' + cert_name
+        logging.info("Validating that the link {} is created in \
+                     {}".format(cert_name, linked_cert_location))
+        result = model.run_on_unit('gnocchi/0', cmd)
+        self.assertEqual(result['Code'], '0')
 
     def test_s3_list_gnocchi_buckets(self):
         """Verify that the gnocchi buckets were created in the S3 backend."""
