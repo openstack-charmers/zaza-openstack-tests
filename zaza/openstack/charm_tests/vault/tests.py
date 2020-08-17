@@ -51,6 +51,10 @@ class BaseVaultTest(test_utils.OpenStackBaseTest):
         vault_utils.auth_all(cls.clients, cls.vault_creds['root_token'])
         vault_utils.ensure_secret_backend(cls.clients[0])
 
+    def tearDown(self):
+        """Tun test cleanup for Vault tests."""
+        vault_utils.unseal_all(self.clients, self.vault_creds['keys'][0])
+
     @contextlib.contextmanager
     def pause_resume(self, services, pgrep_full=False):
         """Override pause_resume for Vault behavior."""

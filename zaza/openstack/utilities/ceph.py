@@ -5,6 +5,11 @@ import logging
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.model as zaza_model
 
+REPLICATED_POOL_TYPE = 'replicated'
+ERASURE_POOL_TYPE = 'erasure-coded'
+REPLICATED_POOL_CODE = 1
+ERASURE_POOL_CODE = 3
+
 
 def get_expected_pools(radosgw=False):
     """Get expected ceph pools.
@@ -95,6 +100,39 @@ def get_ceph_pools(unit_name, model_name=None):
 
     logging.debug('Pools on {}: {}'.format(unit_name, pools))
     return pools
+
+
+def get_ceph_pool_details(query_leader=True, unit_name=None, model_name=None):
+    """Get ceph pool details.
+
+    Return a list of ceph pools details dicts.
+
+    :param query_leader: Whether to query the leader for pool details.
+    :type query_leader: bool
+    :param unit_name: Name of unit to get the pools on if query_leader is False
+    :type unit_name: string
+    :param model_name: Name of model to operate in
+    :type model_name: str
+    :returns: Dict of ceph pools
+    :rtype: List[Dict,]
+    :raise: zaza_model.CommandRunFailed
+    """
+    cmd = 'sudo ceph osd pool ls detail -f json'
+    if query_leader and unit_name:
+        raise ValueError("Cannot set query_leader and unit_name")
+    if query_leader:
+        result = zaza_model.run_on_leader(
+            'ceph-mon',
+            cmd,
+            model_name=model_name)
+    else:
+        result = zaza_model.run_on_unit(
+            unit_name,
+            cmd,
+            model_name=model_name)
+    if int(result.get('Code')) != 0:
+        raise zaza_model.CommandRunFailed(cmd, result)
+    return json.loads(result.get('Stdout'))
 
 
 def get_ceph_df(unit_name, model_name=None):
