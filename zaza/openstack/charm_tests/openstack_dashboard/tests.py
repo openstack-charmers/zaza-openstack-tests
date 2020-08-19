@@ -46,11 +46,11 @@ class FailedAuth(AuthExceptions):
 @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1,
                                                min=5, max=10),
                 reraise=True)
-def _login(dashboard_ip, domain, username, password):
+def _login(dashboard_url, domain, username, password, cafile=None):
     """Login to the website to get a session.
 
-    :param dashboard_ip: The IP address of the dashboard to log in to.
-    :type dashboard_ip: str
+    :param dashboard_url: The URL of the dashboard to log in to.
+    :type dashboard_url: str
     :param domain: the domain to login into
     :type domain: str
     :param username: the username to login as
@@ -62,11 +62,11 @@ def _login(dashboard_ip, domain, username, password):
     :rtype: (requests.sessions.Session, requests.models.Response)
     :raises: FailedAuth if the authorisation doesn't work
     """
-    auth_url = 'http://{}/horizon/auth/login/'.format(dashboard_ip)
+    auth_url = '{}/auth/login/'.format(dashboard_url)
 
     # start session, get csrftoken
     client = requests.session()
-    client.get(auth_url)
+    client.get(auth_url, verify=cafile)
 
     if 'csrftoken' in client.cookies:
         csrftoken = client.cookies['csrftoken']
@@ -117,7 +117,11 @@ def _login(dashboard_ip, domain, username, password):
         del auth['domain']
 
     logging.info('POST data: "{}"'.format(auth))
-    response = client.post(auth_url, data=auth, headers={'Referer': auth_url})
+    response = client.post(
+        auth_url,
+        data=auth,
+        headers={'Referer': auth_url},
+        verify=cafile)
 
     # NOTE(ajkavanagh) there used to be a trusty/icehouse test in the
     # amulet test, but as the zaza tests only test from trusty/mitaka
@@ -147,7 +151,7 @@ def _login(dashboard_ip, domain, username, password):
                 retry=tenacity.retry_if_exception_type(
                     http.client.RemoteDisconnected),
                 reraise=True)
-def _do_request(request):
+def _do_request(request, cafile=None):
     """Open a webpage via urlopen.
 
     :param request: A urllib request object.
@@ -156,7 +160,7 @@ def _do_request(request):
     :rtype: object
     :raises: URLError on protocol errors
     """
-    return urllib.request.urlopen(request)
+    return urllib.request.urlopen(request, cafile=cafile)
 
 
 class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
@@ -167,6 +171,13 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
         """Run class setup for running openstack dashboard charm tests."""
         super(OpenStackDashboardTests, cls).setUpClass()
         cls.application = 'openstack-dashboard'
+        cls.use_https = False
+        vault_relation = zaza_model.get_relation_id(
+            cls.application,
+            'vault',
+            remote_interface_name='certificates')
+        if vault_relation:
+            cls.use_https = True
 
     def test_050_local_settings_permissions_regression_check_lp1755027(self):
         """Assert regression check lp1755027.
@@ -226,6 +237,7 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
         request = urllib.request.Request(
             'http://{}:{}'.format(unit.public_address, port))
 
+        request = urllib.request.Request(self.get_base_url())
         output = str(generic_utils.get_file_contents(unit, conf))
 
         for line in output.split('\n'):
@@ -291,22 +303,42 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
                         mismatches.append(msg)
         return mismatches
 
+    def get_base_url(self):
+        """Return the base url for http(s) requests.
+
+        :returns: URL
+        :rtype: str
+        """
+        unit = zaza_model.get_unit_from_name(
+            zaza_model.get_lead_unit_name(self.application_name))
+        logging.debug("Dashboard ip is:{}".format(unit.public_address))
+        scheme = 'http'
+        if self.use_https:
+            scheme = 'https'
+        url = '{}://{}'.format(scheme, unit.public_address)
+        logging.debug("Base URL is: {}".format(url))
+        return url
+
+    def get_horizon_url(self):
+        """Return the url for acccessing horizon.
+
+        :returns: Horizon URL
+        :rtype: str
+        """
+        url = '{}/horizon'.format(self.get_base_url())
+        logging.info("Horizon URL is: {}".format(url))
+        return url
+
     def test_400_connection(self):
         """Test that dashboard responds to http request.
 
         Ported from amulet tests.
         """
         logging.info('Checking dashboard http response...')
-
-        unit = zaza_model.get_unit_from_name(
-            zaza_model.get_lead_unit_name(self.application_name))
-        logging.debug("... dashboard_ip is:{}".format(unit.public_address))
-
-        request = urllib.request.Request(
-            'http://{}/horizon'.format(unit.public_address))
+        request = urllib.request.Request(self.get_horizon_url())
         try:
             logging.info("... trying to fetch the page")
-            html = _do_request(request)
+            html = _do_request(request, cafile=self.cacert)
             logging.info("... fetched page")
         except Exception as e:
             logging.info("... exception raised was {}".format(str(e)))
@@ -319,8 +351,6 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
         """Validate that authentication succeeds for client log in."""
         logging.info('Checking authentication through dashboard...')
 
-        unit = zaza_model.get_unit_from_name(
-            zaza_model.get_lead_unit_name(self.application_name))
         overcloud_auth = openstack_utils.get_overcloud_auth()
         password = overcloud_auth['OS_PASSWORD'],
         logging.info("admin password is {}".format(password))
@@ -329,7 +359,12 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
         domain = 'admin_domain',
         username = 'admin',
         password = overcloud_auth['OS_PASSWORD'],
-        _login(unit.public_address, domain, username, password)
+        _login(
+            self.get_horizon_url(),
+            domain,
+            username,
+            password,
+            cafile=self.cacert)
         logging.info('OK')
 
     def test_404_connection(self):
@@ -338,22 +373,16 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
         Ported from amulet tests.
         """
         logging.info('Checking apache mod_status gets disabled.')
-
-        unit = zaza_model.get_unit_from_name(
-            zaza_model.get_lead_unit_name(self.application_name))
-        logging.debug("... dashboard_ip is: {}".format(unit.public_address))
-
         logging.debug('Maybe enabling hardening for apache...')
         _app_config = zaza_model.get_application_config(self.application_name)
         logging.info(_app_config['harden'])
 
-        request = urllib.request.Request(
-            'http://{}/server-status'.format(unit.public_address))
+        request = urllib.request.Request(self.get_horizon_url())
         with self.config_change(
                 {'harden': _app_config['harden'].get('value', '')},
                 {'harden': 'apache'}):
             try:
-                _do_request(request)
+                _do_request(request, cafile=self.cacert)
             except urllib.request.HTTPError as e:
                 # test failed if it didn't return 404
                 msg = "Apache mod_status check failed."
