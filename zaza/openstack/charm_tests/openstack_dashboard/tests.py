@@ -237,7 +237,6 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
         request = urllib.request.Request(
             'http://{}:{}'.format(unit.public_address, port))
 
-        request = urllib.request.Request(self.get_base_url())
         output = str(generic_utils.get_file_contents(unit, conf))
 
         for line in output.split('\n'):
@@ -309,13 +308,20 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
         :returns: URL
         :rtype: str
         """
-        unit = zaza_model.get_unit_from_name(
-            zaza_model.get_lead_unit_name(self.application_name))
-        logging.debug("Dashboard ip is:{}".format(unit.public_address))
+        vip = (zaza_model.get_application_config(self.application_name)
+               .get("vip").get("value"))
+        if vip:
+            ip = vip
+        else:
+            unit = zaza_model.get_unit_from_name(
+                zaza_model.get_lead_unit_name(self.application_name))
+            ip = unit.public_address
+
+        logging.debug("Dashboard ip is:{}".format(ip))
         scheme = 'http'
         if self.use_https:
             scheme = 'https'
-        url = '{}://{}'.format(scheme, unit.public_address)
+        url = '{}://{}'.format(scheme, ip)
         logging.debug("Base URL is: {}".format(url))
         return url
 
