@@ -107,8 +107,7 @@ class GnocchiS3Test(test_utils.OpenStackBaseTest):
         )
         model.block_until_all_units_idle()
 
-    def test_validate_cert_location(self):
-        """Validate that the cert is correctly uploaded to the unit."""
+        logging.info('Validate that the cert is correctly uploaded to the unit')
         cert_location = '/usr/local/share/ca-certificates'
         cert_name = 'gnocchi-external.crt'
         cmd = 'ls ' + cert_location + '/' + cert_name
@@ -117,13 +116,12 @@ class GnocchiS3Test(test_utils.OpenStackBaseTest):
         result = model.run_on_unit('gnocchi/0', cmd)
         self.assertEqual(result['Code'], '0')
 
-    def test_validate_update_ca_certificates(self):
-        """Validate that /usr/sbin/update-ca-certificates ran successfully."""
+        logging.info('Validate that /usr/sbin/update-ca-certificates ran successfully')
         linked_cert_location = '/etc/ssl/certs'
-        cert_name = 'gnocchi-external.pem'
-        cmd = 'ls ' + linked_cert_location + '/' + cert_name
+        linked_cert_name = 'gnocchi-external.pem'
+        cmd = 'ls ' + linked_cert_location + '/' + linked_cert_name
         logging.info("Validating that the link {} is created in \
-                     {}".format(cert_name, linked_cert_location))
+                     {}".format(linked_cert_name, linked_cert_location))
         result = model.run_on_unit('gnocchi/0', cmd)
         self.assertEqual(result['Code'], '0')
 
