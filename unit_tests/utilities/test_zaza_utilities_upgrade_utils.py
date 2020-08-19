@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import collections
 import copy
 import mock
 import pprint
@@ -89,12 +88,14 @@ class TestUpgradeUtils(ut_utils.BaseTestCase):
             expected)
 
     def test_get_upgrade_groups(self):
-        expected = collections.OrderedDict([
+        # expected = collections.OrderedDict([
+        expected = [
+            ('Database Services', []),
             ('Stateful Services', []),
             ('Core Identity', []),
             ('Control Plane', ['cinder']),
             ('Data Plane', ['nova-compute']),
-            ('sweep_up', [])])
+            ('sweep_up', [])]
         actual = openstack_upgrade.get_upgrade_groups()
         pprint.pprint(expected)
         pprint.pprint(actual)
@@ -103,12 +104,14 @@ class TestUpgradeUtils(ut_utils.BaseTestCase):
             expected)
 
     def test_get_series_upgrade_groups(self):
-        expected = collections.OrderedDict([
-            ('Stateful Services', ['mydb']),
+        # expected = collections.OrderedDict([
+        expected = [
+            ('Database Services', ['mydb']),
+            ('Stateful Services', []),
             ('Core Identity', []),
             ('Control Plane', ['cinder']),
             ('Data Plane', ['nova-compute']),
-            ('sweep_up', ['ntp'])])
+            ('sweep_up', ['ntp'])]
         actual = openstack_upgrade.get_series_upgrade_groups()
         pprint.pprint(expected)
         pprint.pprint(actual)
