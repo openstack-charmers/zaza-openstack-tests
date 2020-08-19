@@ -107,7 +107,6 @@ class GnocchiS3Test(test_utils.OpenStackBaseTest):
         )
         model.block_until_all_units_idle()
 
-        logging.info('Validate that the cert is correctly uploaded to the unit')
         cert_location = '/usr/local/share/ca-certificates'
         cert_name = 'gnocchi-external.crt'
         cmd = 'ls ' + cert_location + '/' + cert_name
@@ -116,7 +115,6 @@ class GnocchiS3Test(test_utils.OpenStackBaseTest):
         result = model.run_on_unit('gnocchi/0', cmd)
         self.assertEqual(result['Code'], '0')
 
-        logging.info('Validate that /usr/sbin/update-ca-certificates ran successfully')
         linked_cert_location = '/etc/ssl/certs'
         linked_cert_name = 'gnocchi-external.pem'
         cmd = 'ls ' + linked_cert_location + '/' + linked_cert_name
