@@ -133,24 +133,12 @@ class GnocchiExternalCATest(test_utils.OpenStackBaseTest):
         )
         model.block_until_all_units_idle()
 
-        # cert_location = '/usr/local/share/ca-certificates'
-        # cert_name = 'gnocchi-external.crt'
-        # cmd = 'ls ' + cert_location + '/' + cert_name
-        # logging.info("Validating that the file {} is created in \
-        #              {}".format(cert_name, cert_location))
-        # result = model.run_on_unit('gnocchi/0', cmd)
-        remote_file = '/usr/local/share/ca-certificates/gnocchi-external.crt'
-        logging.info("Validating that {} is created.".format(remote_file))
-        result = model.block_until_file_ready('gnocchi', remote_file, b64_cert)
-        self.assertTrue(result)
+        files = [
+            '/usr/local/share/ca-certificates/gnocchi-external.crt',
+            '/etc/ssl/certs/gnocchi-external.pem',
+        ]
 
-        # linked_cert_location = '/etc/ssl/certs'
-        # linked_cert_name = 'gnocchi-external.pem'
-        # cmd = 'ls ' + linked_cert_location + '/' + linked_cert_name
-        # logging.info("Validating that the link {} is created in \
-        #              {}".format(linked_cert_name, linked_cert_location))
-        # result = model.run_on_unit('gnocchi/0', cmd)
-        remote_linked_file = '/etc/ssl/certs/gnocchi-external.pem'
-        result = model.block_until_file_ready('gnocchi', remote_linked_file, b64_cert)
-        # self.assertEqual(result['Code'], '0')
-        self.assertTrue(result)
+        for file in files:
+            logging.info("Validating that {} is created.".format(file))
+            model.block_until_file_has_contents('gnocchi', file, 'CERTIFICATE')
+            logging.info("Found {} successfully.".format(file))
