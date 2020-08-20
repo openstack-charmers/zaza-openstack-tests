@@ -76,7 +76,7 @@ class GnocchiS3Test(test_utils.OpenStackBaseTest):
         session = openstack_utils.get_overcloud_keystone_session()
         ks_client = openstack_utils.get_keystone_session_client(session)
 
-        # Get token data so we can glean our user_id and project_id
+        # Get token data so we can clean our user_id and project_id
         token_data = ks_client.tokens.get_token_data(session.get_token())
         project_id = token_data['token']['project']['id']
         user_id = token_data['token']['user']['id']
@@ -133,18 +133,12 @@ class GnocchiExternalCATest(test_utils.OpenStackBaseTest):
         )
         model.block_until_all_units_idle()
 
-        cert_location = '/usr/local/share/ca-certificates'
-        cert_name = 'gnocchi-external.crt'
-        cmd = 'ls ' + cert_location + '/' + cert_name
-        logging.info("Validating that the file {} is created in \
-                     {}".format(cert_name, cert_location))
-        result = model.run_on_unit('gnocchi/0', cmd)
-        self.assertEqual(result['Code'], '0')
+        files = [
+            '/usr/local/share/ca-certificates/gnocchi-external.crt',
+            '/etc/ssl/certs/gnocchi-external.pem',
+        ]
 
-        linked_cert_location = '/etc/ssl/certs'
-        linked_cert_name = 'gnocchi-external.pem'
-        cmd = 'ls ' + linked_cert_location + '/' + linked_cert_name
-        logging.info("Validating that the link {} is created in \
-                     {}".format(linked_cert_name, linked_cert_location))
-        result = model.run_on_unit('gnocchi/0', cmd)
-        self.assertEqual(result['Code'], '0')
+        for file in files:
+            logging.info("Validating that {} is created.".format(file))
+            model.block_until_file_has_contents('gnocchi', file, 'CERTIFICATE')
+            logging.info("Found {} successfully.".format(file))
