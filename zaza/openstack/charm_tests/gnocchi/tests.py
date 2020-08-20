@@ -133,13 +133,15 @@ class GnocchiExternalCATest(test_utils.OpenStackBaseTest):
         )
         model.block_until_all_units_idle()
 
-        cert_location = '/usr/local/share/ca-certificates'
-        cert_name = 'gnocchi-external.crt'
-        cmd = 'ls ' + cert_location + '/' + cert_name
-        logging.info("Validating that the file {} is created in \
-                     {}".format(cert_name, cert_location))
-        result = model.run_on_unit('gnocchi/0', cmd)
-        self.assertEqual(result['Code'], '0')
+        # cert_location = '/usr/local/share/ca-certificates'
+        # cert_name = 'gnocchi-external.crt'
+        # cmd = 'ls ' + cert_location + '/' + cert_name
+        # logging.info("Validating that the file {} is created in \
+        #              {}".format(cert_name, cert_location))
+        # result = model.run_on_unit('gnocchi/0', cmd)
+        remote_file = '/usr/local/share/ca-certificates/gnocchi-external.crt'
+        result = model.block_until_file_ready('gnocchi', remote_file, b64_cert)
+        self.assertTrue(result)
 
         linked_cert_location = '/etc/ssl/certs'
         linked_cert_name = 'gnocchi-external.pem'
