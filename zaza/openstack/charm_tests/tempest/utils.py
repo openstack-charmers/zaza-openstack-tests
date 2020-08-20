@@ -47,7 +47,7 @@ def destroy_workspace(workspace_name, workspace_path):
     try:
         subprocess.check_call(['tempest', 'workspace', 'remove', '--rmdir',
                                '--name', workspace_name])
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, FileNotFoundError):
         pass
     if os.path.isdir(workspace_path):
         shutil.rmtree(workspace_path)
