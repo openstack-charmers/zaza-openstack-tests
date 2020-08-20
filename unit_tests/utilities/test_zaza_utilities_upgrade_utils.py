@@ -88,7 +88,6 @@ class TestUpgradeUtils(ut_utils.BaseTestCase):
             expected)
 
     def test_get_upgrade_groups(self):
-        # expected = collections.OrderedDict([
         expected = [
             ('Database Services', []),
             ('Stateful Services', []),
@@ -104,7 +103,6 @@ class TestUpgradeUtils(ut_utils.BaseTestCase):
             expected)
 
     def test_get_series_upgrade_groups(self):
-        # expected = collections.OrderedDict([
         expected = [
             ('Database Services', ['mydb']),
             ('Stateful Services', []),
