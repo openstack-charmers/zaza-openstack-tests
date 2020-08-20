@@ -65,32 +65,8 @@ class GnocchiTest(test_utils.OpenStackBaseTest):
             logging.info("Testing pause and resume")
 
 
-class GnocchiS3Test(test_utils.OpenStackBaseTest):
-    """Test Gnocchi for S3 storage backend."""
-
-    @classmethod
-    def setUpClass(cls):
-        """Run class setup for running tests."""
-        super(GnocchiS3Test, cls).setUpClass()
-
-        session = openstack_utils.get_overcloud_keystone_session()
-        ks_client = openstack_utils.get_keystone_session_client(session)
-
-        # Get token data so we can glean our user_id and project_id
-        token_data = ks_client.tokens.get_token_data(session.get_token())
-        project_id = token_data['token']['project']['id']
-        user_id = token_data['token']['user']['id']
-
-        # Store URL to service providing S3 compatible API
-        for entry in token_data['token']['catalog']:
-            if entry['type'] == 's3':
-                for endpoint in entry['endpoints']:
-                    if endpoint['interface'] == 'public':
-                        cls.s3_region = endpoint['region']
-                        cls.s3_endpoint = endpoint['url']
-
-        # Create AWS compatible application credentials in Keystone
-        cls.ec2_creds = ks_client.ec2.create(user_id, project_id)
+class GnocchiExternalCATest(test_utils.OpenStackBaseTest):
+    """Test Gnocchi for external root CA config option."""
 
     def test_upload_external_cert(self):
         """Verify that the external CA is uploaded correctly."""
@@ -122,6 +98,34 @@ class GnocchiS3Test(test_utils.OpenStackBaseTest):
                      {}".format(linked_cert_name, linked_cert_location))
         result = model.run_on_unit('gnocchi/0', cmd)
         self.assertEqual(result['Code'], '0')
+
+
+class GnocchiS3Test(test_utils.OpenStackBaseTest):
+    """Test Gnocchi for S3 storage backend."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running tests."""
+        super(GnocchiS3Test, cls).setUpClass()
+
+        session = openstack_utils.get_overcloud_keystone_session()
+        ks_client = openstack_utils.get_keystone_session_client(session)
+
+        # Get token data so we can glean our user_id and project_id
+        token_data = ks_client.tokens.get_token_data(session.get_token())
+        project_id = token_data['token']['project']['id']
+        user_id = token_data['token']['user']['id']
+
+        # Store URL to service providing S3 compatible API
+        for entry in token_data['token']['catalog']:
+            if entry['type'] == 's3':
+                for endpoint in entry['endpoints']:
+                    if endpoint['interface'] == 'public':
+                        cls.s3_region = endpoint['region']
+                        cls.s3_endpoint = endpoint['url']
+
+        # Create AWS compatible application credentials in Keystone
+        cls.ec2_creds = ks_client.ec2.create(user_id, project_id)
 
     def test_s3_list_gnocchi_buckets(self):
         """Verify that the gnocchi buckets were created in the S3 backend."""
