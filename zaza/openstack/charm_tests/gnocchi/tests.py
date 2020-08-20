@@ -16,12 +16,15 @@
 
 """Encapsulate Gnocchi testing."""
 
+import base64
 import boto3
 import logging
 import pprint
 from gnocchiclient.v1 import client as gnocchi_client
 
+import zaza.model as model
 import zaza.openstack.charm_tests.test_utils as test_utils
+import zaza.openstack.utilities as utilities
 import zaza.openstack.utilities.openstack as openstack_utils
 
 
