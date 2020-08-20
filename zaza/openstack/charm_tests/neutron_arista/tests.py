@@ -38,9 +38,10 @@ class NeutronCreateAristaNetworkTest(neutron_tests.NeutronCreateNetworkTest):
         # Sometimes the API call from Neutron to Arista fails and Neutron
         # retries a couple of seconds later, which is why the newly created
         # test network may not be immediately visible on Arista's API.
+        # NOTE(lourot): I experienced a run where it took 53 seconds.
         for attempt in tenacity.Retrying(
                 wait=tenacity.wait_fixed(10),  # seconds
-                stop=tenacity.stop_after_attempt(3),
+                stop=tenacity.stop_after_attempt(12),
                 reraise=True):
             with attempt:
                 actual_network_names = arista_utils.query_fixture_networks(
@@ -56,7 +57,7 @@ class NeutronCreateAristaNetworkTest(neutron_tests.NeutronCreateNetworkTest):
 
         for attempt in tenacity.Retrying(
                 wait=tenacity.wait_fixed(10),  # seconds
-                stop=tenacity.stop_after_attempt(3),
+                stop=tenacity.stop_after_attempt(12),
                 reraise=True):
             with attempt:
                 actual_network_names = arista_utils.query_fixture_networks(
