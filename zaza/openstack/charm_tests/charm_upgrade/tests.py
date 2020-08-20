@@ -53,8 +53,11 @@ class FullCloudCharmUpgradeTest(unittest.TestCase):
         """Run charm upgrade."""
         self.lts.test_launch_small_instance()
         applications = zaza.model.get_status().applications
-        groups = upgrade_utils.get_charm_upgrade_groups()
-        for group_name, group in groups.items():
+        groups = upgrade_utils.get_charm_upgrade_groups(
+            extra_filters=[upgrade_utils._filter_etcd,
+                           upgrade_utils._filter_easyrsa,
+                           upgrade_utils._filter_memcached])
+        for group_name, group in groups:
             logging.info("About to upgrade {} ({})".format(group_name, group))
             for application, app_details in applications.items():
                 if application not in group:
