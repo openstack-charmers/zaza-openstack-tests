@@ -16,15 +16,12 @@
 
 """Encapsulate Gnocchi testing."""
 
-import base64
 import boto3
 import logging
 import pprint
 from gnocchiclient.v1 import client as gnocchi_client
 
-import zaza.model as model
 import zaza.openstack.charm_tests.test_utils as test_utils
-import zaza.openstack.utilities as utilities
 import zaza.openstack.utilities.openstack as openstack_utils
 
 
@@ -63,41 +60,6 @@ class GnocchiTest(test_utils.OpenStackBaseTest):
         """
         with self.pause_resume(self.services):
             logging.info("Testing pause and resume")
-
-
-class GnocchiExternalCATest(test_utils.OpenStackBaseTest):
-    """Test Gnocchi for external root CA config option."""
-
-    def test_upload_external_cert(self):
-        """Verify that the external CA is uploaded correctly."""
-        logging.info('Changing value for trusted-external-ca-cert.')
-        ca_cert_option = 'trusted-external-ca-cert'
-        ppk, cert = utilities.cert.generate_cert('gnocchi_test.ci.local')
-        b64_cert = base64.b64encode(cert).decode()
-        config = {
-            ca_cert_option: b64_cert,
-        }
-        model.set_application_config(
-            'gnocchi',
-            config
-        )
-        model.block_until_all_units_idle()
-
-        cert_location = '/usr/local/share/ca-certificates'
-        cert_name = 'gnocchi-external.crt'
-        cmd = 'ls ' + cert_location + '/' + cert_name
-        logging.info("Validating that the file {} is created in \
-                     {}".format(cert_name, cert_location))
-        result = model.run_on_unit('gnocchi/0', cmd)
-        self.assertEqual(result['Code'], '0')
-
-        linked_cert_location = '/etc/ssl/certs'
-        linked_cert_name = 'gnocchi-external.pem'
-        cmd = 'ls ' + linked_cert_location + '/' + linked_cert_name
-        logging.info("Validating that the link {} is created in \
-                     {}".format(linked_cert_name, linked_cert_location))
-        result = model.run_on_unit('gnocchi/0', cmd)
-        self.assertEqual(result['Code'], '0')
 
 
 class GnocchiS3Test(test_utils.OpenStackBaseTest):
@@ -148,3 +110,38 @@ class GnocchiS3Test(test_utils.OpenStackBaseTest):
                     break
                 else:
                     AssertionError('Bucket "{}" not found'.format(gnocchi_bkt))
+
+
+class GnocchiExternalCATest(test_utils.OpenStackBaseTest):
+    """Test Gnocchi for external root CA config option."""
+
+    def test_upload_external_cert(self):
+        """Verify that the external CA is uploaded correctly."""
+        logging.info('Changing value for trusted-external-ca-cert.')
+        ca_cert_option = 'trusted-external-ca-cert'
+        ppk, cert = utilities.cert.generate_cert('gnocchi_test.ci.local')
+        b64_cert = base64.b64encode(cert).decode()
+        config = {
+            ca_cert_option: b64_cert,
+        }
+        model.set_application_config(
+            'gnocchi',
+            config
+        )
+        model.block_until_all_units_idle()
+
+        cert_location = '/usr/local/share/ca-certificates'
+        cert_name = 'gnocchi-external.crt'
+        cmd = 'ls ' + cert_location + '/' + cert_name
+        logging.info("Validating that the file {} is created in \
+                     {}".format(cert_name, cert_location))
+        result = model.run_on_unit('gnocchi/0', cmd)
+        self.assertEqual(result['Code'], '0')
+
+        linked_cert_location = '/etc/ssl/certs'
+        linked_cert_name = 'gnocchi-external.pem'
+        cmd = 'ls ' + linked_cert_location + '/' + linked_cert_name
+        logging.info("Validating that the link {} is created in \
+                     {}".format(linked_cert_name, linked_cert_location))
+        result = model.run_on_unit('gnocchi/0', cmd)
+        self.assertEqual(result['Code'], '0')
