@@ -30,6 +30,26 @@ import zaza.openstack.utilities.swift as swift_utils
 import boto3
 
 
+class SwiftMonitorTest(test_utils.OpenStackBaseTest):
+    """Test NRPE checks."""
+
+    def test_100_test_monitor(self):
+        """Test existence of NRPE config/commands for HTTP API checks."""
+        nrpe_configs = [
+            "/etc/nagios/nrpe.d/check_swift-object-server-api.cfg",
+            "/etc/nagios/nrpe.d/check_swift-container-server-api.cfg",
+            "/etc/nagios/nrpe.d/check_swift-account-server-api.cfg"
+        ]
+
+        for config in nrpe_configs:
+            command = (
+                "sudo -u nagios "
+                "$(grep command {} | cut -d= -f2)".format(config)
+            )
+            action = zaza.model.run_on_unit("swift-storage/0", command)
+            self.assertEqual(int(action["Code"]), 0)
+
+
 class SwiftImageCreateTest(test_utils.OpenStackBaseTest):
     """Test swift proxy via glance."""
 
