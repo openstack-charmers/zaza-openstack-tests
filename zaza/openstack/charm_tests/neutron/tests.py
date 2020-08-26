@@ -37,7 +37,7 @@ class NeutronPluginApiSharedTests(test_utils.OpenStackBaseTest):
     @classmethod
     def setUpClass(cls):
         """Run class setup for running Neutron Openvswitch tests."""
-        super(NeutronPluginApiSharedTests, cls).setUpClass(cls)
+        super(NeutronPluginApiSharedTests, cls).setUpClass()
 
         cls.current_os_release = openstack_utils.get_os_release()
         cls.bionic_stein = openstack_utils.get_os_release('bionic_stein')
@@ -109,7 +109,7 @@ class NeutronGatewayTest(NeutronPluginApiSharedTests):
     @classmethod
     def setUpClass(cls):
         """Run class setup for running Neutron Gateway tests."""
-        super(NeutronGatewayTest, cls).setUpClass(cls)
+        super(NeutronGatewayTest, cls).setUpClass()
         cls.services = cls._get_services()
 
         # set up clients
@@ -427,7 +427,7 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
     @classmethod
     def setUpClass(cls):
         """Run class setup for running Neutron Openvswitch tests."""
-        super(NeutronOpenvSwitchTest, cls).setUpClass(cls)
+        super(NeutronOpenvSwitchTest, cls).setUpClass()
 
         # set up client
         cls.neutron_client = (
