@@ -147,29 +147,6 @@ class NeutronGatewayTest(NeutronPluginApiSharedTests):
 
         self.assertIn('qos', ovs_agent['configurations']['extensions'])
 
-    def test_800_ovs_bridges_are_managed_by_us(self):
-        """Checking OVS bridges' external-id.
-
-        OVS bridges created by us should be marked as managed by us in their
-        external-id. See
-        http://docs.openvswitch.org/en/latest/topics/integration/
-        """
-        for unit in zaza.model.get_units(self._APP_NAME,
-                                         model_name=self.model_name):
-            for bridge_name in ('br-int', 'br-ex'):
-                logging.info(
-                    'Checking that the bridge {}:{}'.format(
-                        unit.name, bridge_name
-                    ) + ' is marked as managed by us'
-                )
-                expected_external_id = 'charm-neutron-gateway=managed'
-                actual_external_id = zaza.model.run_on_unit(
-                    unit.entity_id,
-                    'ovs-vsctl br-get-external-id {}'.format(bridge_name),
-                    model_name=self.model_name
-                )['Stdout'].strip()
-                self.assertEqual(actual_external_id, expected_external_id)
-
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change.
 
@@ -610,6 +587,33 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
         with self.pause_resume(['neutron-openvswitch-agent'],
                                pgrep_full=self.pgrep_full):
             logging.info('Testing pause resume')
+
+
+class NeutronOvsVsctlTest(NeutronPluginApiSharedTests):
+    """Test 'ovs-vsctl'-related functionality on Neutron charms."""
+
+    def test_800_ovs_bridges_are_managed_by_us(self):
+        """Checking OVS bridges' external-id.
+
+        OVS bridges created by us should be marked as managed by us in their
+        external-id. See
+        http://docs.openvswitch.org/en/latest/topics/integration/
+        """
+        for unit in zaza.model.get_units(self.application_name,
+                                         model_name=self.model_name):
+            for bridge_name in ('br-int', 'br-ex'):
+                logging.info(
+                    'Checking that the bridge {}:{}'.format(
+                        unit.name, bridge_name
+                    ) + ' is marked as managed by us'
+                )
+                expected_external_id = 'charm-neutron-gateway=managed'
+                actual_external_id = zaza.model.run_on_unit(
+                    unit.entity_id,
+                    'ovs-vsctl br-get-external-id {}'.format(bridge_name),
+                    model_name=self.model_name
+                )['Stdout'].strip()
+                self.assertEqual(actual_external_id, expected_external_id)
 
 
 class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
