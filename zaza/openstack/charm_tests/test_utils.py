@@ -100,8 +100,7 @@ class BaseCharmTest(unittest.TestCase):
 
     run_resource_cleanup = False
 
-    @classmethod
-    def resource_cleanup(cls):
+    def resource_cleanup(self):
         """Cleanup any resources created during the test run.
 
         Override this method with a method which removes any resources
@@ -111,12 +110,13 @@ class BaseCharmTest(unittest.TestCase):
         """
         pass
 
-    @classmethod
-    def tearDown(cls):
+    # this must be a class instance method otherwise descentents will not be
+    # able to influence if cleanup should be run.
+    def tearDown(self):
         """Run teardown for test class."""
-        if cls.run_resource_cleanup:
+        if self.run_resource_cleanup:
             logging.info('Running resource cleanup')
-            cls.resource_cleanup()
+            self.resource_cleanup()
 
     @classmethod
     def setUpClass(cls, application_name=None, model_alias=None):
@@ -439,6 +439,21 @@ class OpenStackBaseTest(BaseCharmTest):
         cls.cacert = openstack_utils.get_cacert()
         cls.nova_client = (
             openstack_utils.get_nova_session_client(cls.keystone_session))
+
+    def resource_cleanup(self):
+        """Remove test resources."""
+        try:
+            logging.info('Removing instances launched by test ({}*)'
+                         .format(self.RESOURCE_PREFIX))
+            for server in self.nova_client.servers.list():
+                if server.name.startswith(self.RESOURCE_PREFIX):
+                    openstack_utils.delete_resource(
+                        self.nova_client.servers,
+                        server.id,
+                        msg="server")
+        except AttributeError:
+            # Test did not define self.RESOURCE_PREFIX, ignore.
+            pass
 
     def launch_guest(self, guest_name, userdata=None):
         """Launch two guests to use in tests.

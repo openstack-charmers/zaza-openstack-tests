@@ -16,6 +16,7 @@
 
 import base64
 import functools
+import logging
 import requests
 import tempfile
 
@@ -99,7 +100,7 @@ async def async_mojo_unseal_by_unit():
                 unit_name, './hooks/update-status')
 
 
-def auto_initialize(cacert=None, validation_application='keystone'):
+def auto_initialize(cacert=None, validation_application='keystone', wait=True):
     """Auto initialize vault for testing.
 
     Generate a csr and uploading a signed certificate.
@@ -114,6 +115,7 @@ def auto_initialize(cacert=None, validation_application='keystone'):
     :returns: None
     :rtype: None
     """
+    logging.info('Running auto_initialize')
     basic_setup(cacert=cacert, unseal_and_authorize=True)
 
     action = vault_utils.run_get_csr()
@@ -131,10 +133,11 @@ def auto_initialize(cacert=None, validation_application='keystone'):
         root_ca=cacertificate,
         allowed_domains='openstack.local')
 
-    zaza.model.wait_for_agent_status()
-    test_config = lifecycle_utils.get_charm_config(fatal=False)
-    zaza.model.wait_for_application_states(
-        states=test_config.get('target_deploy_status', {}))
+    if wait:
+        zaza.model.wait_for_agent_status()
+        test_config = lifecycle_utils.get_charm_config(fatal=False)
+        zaza.model.wait_for_application_states(
+            states=test_config.get('target_deploy_status', {}))
 
     if validation_application:
         validate_ca(cacertificate, application=validation_application)
@@ -161,6 +164,12 @@ def auto_initialize(cacert=None, validation_application='keystone'):
 auto_initialize_no_validation = functools.partial(
     auto_initialize,
     validation_application=None)
+
+
+auto_initialize_no_validation_no_wait = functools.partial(
+    auto_initialize,
+    validation_application=None,
+    wait=False)
 
 
 def validate_ca(cacertificate, application="keystone", port=5000):

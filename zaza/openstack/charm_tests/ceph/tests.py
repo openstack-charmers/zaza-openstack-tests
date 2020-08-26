@@ -544,7 +544,7 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
     @classmethod
     def setUpClass(cls):
         """Run class setup for running ceph low level tests."""
-        super(CephRGWTest, cls).setUpClass()
+        super(CephRGWTest, cls).setUpClass(application_name='ceph-radosgw')
 
     @property
     def expected_apps(self):
@@ -622,7 +622,9 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
                                     'multisite configuration')
         logging.info('Checking Swift REST API')
         keystone_session = zaza_openstack.get_overcloud_keystone_session()
-        region_name = 'RegionOne'
+        region_name = zaza_model.get_application_config(
+            self.application_name,
+            model_name=self.model_name)['region']['value']
         swift_client = zaza_openstack.get_swift_session_client(
             keystone_session,
             region_name,
@@ -790,6 +792,50 @@ class CephPrometheusTest(unittest.TestCase):
             zaza_model.get_lead_unit_name('prometheus2'))
         self.assertEqual(
             '3', _get_mon_count_from_prometheus(unit.public_address))
+
+
+class CephPoolConfig(Exception):
+    """Custom Exception for bad Ceph pool config."""
+
+    pass
+
+
+class CheckPoolTypes(unittest.TestCase):
+    """Test the ceph pools created for clients are of the expected type."""
+
+    def test_check_pool_types(self):
+        """Check type of pools created for clients."""
+        app_pools = [
+            ('glance', 'glance'),
+            ('nova-compute', 'nova'),
+            ('cinder-ceph', 'cinder-ceph')]
+        runtime_pool_details = zaza_ceph.get_ceph_pool_details()
+        for app, pool_name in app_pools:
+            juju_pool_config = zaza_model.get_application_config(app).get(
+                'pool-type')
+            if juju_pool_config:
+                expected_pool_type = juju_pool_config['value']
+            else:
+                # If the pool-type option is absent assume the default of
+                # replicated.
+                expected_pool_type = zaza_ceph.REPLICATED_POOL_TYPE
+            for pool_config in runtime_pool_details:
+                if pool_config['pool_name'] == pool_name:
+                    logging.info('Checking {} is {}'.format(
+                        pool_name,
+                        expected_pool_type))
+                    expected_pool_code = -1
+                    if expected_pool_type == zaza_ceph.REPLICATED_POOL_TYPE:
+                        expected_pool_code = zaza_ceph.REPLICATED_POOL_CODE
+                    elif expected_pool_type == zaza_ceph.ERASURE_POOL_TYPE:
+                        expected_pool_code = zaza_ceph.ERASURE_POOL_CODE
+                    self.assertEqual(
+                        pool_config['type'],
+                        expected_pool_code)
+                    break
+            else:
+                raise CephPoolConfig(
+                    "Failed to find config for {}".format(pool_name))
 
 
 # NOTE: We might query before prometheus has fetch data

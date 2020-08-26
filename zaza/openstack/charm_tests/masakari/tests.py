@@ -134,6 +134,26 @@ class MasakariTest(test_utils.OpenStackBaseTest):
             vm_uuid,
             model_name=self.model_name)
 
+    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=2, max=60),
+                    reraise=True, stop=tenacity.stop_after_attempt(5),
+                    retry=tenacity.retry_if_exception_type(AssertionError))
+    def wait_for_guest_ready(self, vm_name):
+        """Wait for the guest to be ready.
+
+        :param vm_name: Name of guest to check.
+        :type vm_name: str
+        """
+        guest_ready_attr_checks = [
+            ('OS-EXT-STS:task_state', None),
+            ('status', 'ACTIVE'),
+            ('OS-EXT-STS:power_state', 1),
+            ('OS-EXT-STS:vm_state', 'active')]
+        guest = self.nova_client.servers.find(name=vm_name)
+        logging.info('Checking guest {} attributes'.format(vm_name))
+        for (attr, required_state) in guest_ready_attr_checks:
+            logging.info('Checking {} is {}'.format(attr, required_state))
+            assert getattr(guest, attr) == required_state
+
     def test_instance_failover(self):
         """Test masakari managed guest migration."""
         # Workaround for Bug #1874719
@@ -168,6 +188,7 @@ class MasakariTest(test_utils.OpenStackBaseTest):
             model_name=self.model_name)
         openstack_utils.enable_all_nova_services(self.nova_client)
         zaza.openstack.configure.masakari.enable_hosts()
+        self.wait_for_guest_ready(vm_name)
 
     def test_instance_restart_on_fail(self):
         """Test single guest crash and recovery."""
@@ -178,6 +199,7 @@ class MasakariTest(test_utils.OpenStackBaseTest):
                     self.current_release))
         vm_name = 'zaza-test-instance-failover'
         vm = self.ensure_guest(vm_name)
+        self.wait_for_guest_ready(vm_name)
         _, unit_name = self.get_guests_compute_info(vm_name)
         logging.info('{} is running on {}'.format(vm_name, unit_name))
         guest_pid = self.get_guest_qemu_pid(

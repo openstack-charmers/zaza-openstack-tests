@@ -34,7 +34,7 @@ attach_encrypted_volume = false
 
 {% if 'keystone' in enabled_services %}
 [identity]
-uri = {proto}://{{ keystone }}:5000/v2.0
+uri = {{ proto }}://{{ keystone }}:5000/v2.0
 auth_version = v2
 admin_role = Admin
 region = RegionOne

@@ -290,19 +290,31 @@ class NeutronCreateNetworkTest(test_utils.OpenStackBaseTest):
 
     def test_400_create_network(self):
         """Create a network, verify that it exists, and then delete it."""
+        self._wait_for_neutron_ready()
         self._assert_test_network_doesnt_exist()
         self._create_test_network()
         net_id = self._assert_test_network_exists_and_return_id()
         self._delete_test_network(net_id)
         self._assert_test_network_doesnt_exist()
 
+    @classmethod
+    def _wait_for_neutron_ready(cls):
+        logging.info('Waiting for Neutron to become ready...')
+        zaza.model.wait_for_application_states()
+        for attempt in tenacity.Retrying(
+                wait=tenacity.wait_fixed(5),  # seconds
+                stop=tenacity.stop_after_attempt(12),
+                reraise=True):
+            with attempt:
+                cls.neutron_client.list_networks()
+
     def _create_test_network(self):
-        logging.debug('Creating neutron network...')
+        logging.info('Creating neutron network...')
         network = {'name': self._TEST_NET_NAME}
         self.neutron_client.create_network({'network': network})
 
     def _delete_test_network(self, net_id):
-        logging.debug('Deleting neutron network...')
+        logging.info('Deleting neutron network...')
         self.neutron_client.delete_network(net_id)
 
     def _assert_test_network_exists_and_return_id(self):
@@ -608,27 +620,10 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
     @classmethod
     def setUpClass(cls):
         """Run class setup for running Neutron API Networking tests."""
-        super(NeutronNetworkingBase, cls).setUpClass()
+        super(NeutronNetworkingBase, cls).setUpClass(
+            application_name='neutron-api')
         cls.neutron_client = (
             openstack_utils.get_neutron_session_client(cls.keystone_session))
-        # NOTE(fnordahl): in the event of a test failure we do not want to run
-        # tear down code as it will make debugging a problem virtually
-        # impossible.  To alleviate each test method will set the
-        # `run_tearDown` instance variable at the end which will let us run
-        # tear down only when there were no failure.
-        cls.run_tearDown = False
-
-    @classmethod
-    def tearDown(cls):
-        """Remove test resources."""
-        if cls.run_tearDown:
-            logging.info('Running teardown')
-            for server in cls.nova_client.servers.list():
-                if server.name.startswith(cls.RESOURCE_PREFIX):
-                    openstack_utils.delete_resource(
-                        cls.nova_client.servers,
-                        server.id,
-                        msg="server")
 
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
                     reraise=True, stop=tenacity.stop_after_attempt(8))
@@ -798,7 +793,7 @@ class NeutronNetworkingTest(NeutronNetworkingBase):
         self.launch_guests()
         instance_1, instance_2 = self.retrieve_guests()
         self.check_connectivity(instance_1, instance_2)
-        self.run_tearDown = True
+        self.run_resource_cleanup = True
 
 
 class NeutronNetworkingVRRPTests(NeutronNetworkingBase):

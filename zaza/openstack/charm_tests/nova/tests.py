@@ -56,6 +56,16 @@ class LTSGuestCreateTest(BaseGuestCreateTest):
             glance_setup.LTS_IMAGE_NAME)
 
 
+class LTSGuestCreateVolumeBackedTest(BaseGuestCreateTest):
+    """Tests to launch a LTS image."""
+
+    def test_launch_small_instance(self):
+        """Launch a Bionic instance and test connectivity."""
+        zaza.openstack.configure.guest.launch_instance(
+            glance_setup.LTS_IMAGE_NAME,
+            use_boot_volume=True)
+
+
 class NovaCompute(test_utils.OpenStackBaseTest):
     """Run nova-compute specific tests."""
 

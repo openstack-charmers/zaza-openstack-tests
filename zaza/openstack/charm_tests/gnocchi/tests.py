@@ -16,12 +16,15 @@
 
 """Encapsulate Gnocchi testing."""
 
+import base64
 import boto3
 import logging
 import pprint
 from gnocchiclient.v1 import client as gnocchi_client
 
+import zaza.model as model
 import zaza.openstack.charm_tests.test_utils as test_utils
+import zaza.openstack.utilities as utilities
 import zaza.openstack.utilities.openstack as openstack_utils
 
 
@@ -73,7 +76,7 @@ class GnocchiS3Test(test_utils.OpenStackBaseTest):
         session = openstack_utils.get_overcloud_keystone_session()
         ks_client = openstack_utils.get_keystone_session_client(session)
 
-        # Get token data so we can glean our user_id and project_id
+        # Get token data so we can clean our user_id and project_id
         token_data = ks_client.tokens.get_token_data(session.get_token())
         project_id = token_data['token']['project']['id']
         user_id = token_data['token']['user']['id']
@@ -110,3 +113,32 @@ class GnocchiS3Test(test_utils.OpenStackBaseTest):
                     break
                 else:
                     AssertionError('Bucket "{}" not found'.format(gnocchi_bkt))
+
+
+class GnocchiExternalCATest(test_utils.OpenStackBaseTest):
+    """Test Gnocchi for external root CA config option."""
+
+    def test_upload_external_cert(self):
+        """Verify that the external CA is uploaded correctly."""
+        logging.info('Changing value for trusted-external-ca-cert.')
+        ca_cert_option = 'trusted-external-ca-cert'
+        ppk, cert = utilities.cert.generate_cert('gnocchi_test.ci.local')
+        b64_cert = base64.b64encode(cert).decode()
+        config = {
+            ca_cert_option: b64_cert,
+        }
+        model.set_application_config(
+            'gnocchi',
+            config
+        )
+        model.block_until_all_units_idle()
+
+        files = [
+            '/usr/local/share/ca-certificates/gnocchi-external.crt',
+            '/etc/ssl/certs/gnocchi-external.pem',
+        ]
+
+        for file in files:
+            logging.info("Validating that {} is created.".format(file))
+            model.block_until_file_has_contents('gnocchi', file, 'CERTIFICATE')
+            logging.info("Found {} successfully.".format(file))

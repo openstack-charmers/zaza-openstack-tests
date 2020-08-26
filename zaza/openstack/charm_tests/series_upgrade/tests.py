@@ -30,22 +30,6 @@ from zaza.openstack.utilities import (
 from zaza.openstack.charm_tests.nova.tests import LTSGuestCreateTest
 
 
-def _filter_easyrsa(app, app_config, model_name=None):
-    charm_name = upgrade_utils.extract_charm_name_from_url(app_config['charm'])
-    if "easyrsa" in charm_name:
-        logging.warn("Skipping series upgrade of easyrsa Bug #1850121")
-        return True
-    return False
-
-
-def _filter_etcd(app, app_config, model_name=None):
-    charm_name = upgrade_utils.extract_charm_name_from_url(app_config['charm'])
-    if "etcd" in charm_name:
-        logging.warn("Skipping series upgrade of easyrsa Bug #1850124")
-        return True
-    return False
-
-
 class SeriesUpgradeTest(unittest.TestCase):
     """Class to encapsulate Series Upgrade Tests."""
 
@@ -75,7 +59,7 @@ class SeriesUpgradeTest(unittest.TestCase):
                 continue
             if "etcd" in app_details["charm"]:
                 logging.warn(
-                    "Skipping series upgrade of easyrsa Bug #1850124")
+                    "Skipping series upgrade of etcd Bug #1850124")
                 continue
             charm_name = upgrade_utils.extract_charm_name_from_url(
                 app_details['charm'])
@@ -208,10 +192,11 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
         # Set Feature Flag
         os.environ["JUJU_DEV_FEATURE_FLAGS"] = "upgrade-series"
         upgrade_groups = upgrade_utils.get_series_upgrade_groups(
-            extra_filters=[_filter_etcd, _filter_easyrsa])
+            extra_filters=[upgrade_utils._filter_etcd,
+                           upgrade_utils._filter_easyrsa])
         applications = model.get_status().applications
         completed_machines = []
-        for group_name, group in upgrade_groups.items():
+        for group_name, group in upgrade_groups:
             logging.warn("About to upgrade {} ({})".format(group_name, group))
             upgrade_group = []
             for application, app_details in applications.items():

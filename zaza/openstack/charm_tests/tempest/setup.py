@@ -16,11 +16,12 @@
 
 import jinja2
 import urllib.parse
-import subprocess
+import os
 
 import zaza.utilities.deployment_env as deployment_env
 import zaza.openstack.utilities.juju as juju_utils
 import zaza.openstack.utilities.openstack as openstack_utils
+import zaza.openstack.charm_tests.tempest.utils as tempest_utils
 import zaza.openstack.charm_tests.glance.setup as glance_setup
 
 SETUP_ENV_VARS = {
@@ -235,6 +236,9 @@ def get_tempest_context():
         'cinder': add_cinder_config,
         'keystone': add_keystone_config}
     ctxt['enabled_services'] = get_service_list(keystone_session)
+    if set(['cinderv2', 'cinderv3']) \
+            .intersection(set(ctxt['enabled_services'])):
+        ctxt['enabled_services'].append('cinder')
     ctxt['disabled_services'] = list(
         set(TEMPEST_SVC_LIST) - set(ctxt['enabled_services']))
     add_application_ips(ctxt)
@@ -276,21 +280,15 @@ def setup_tempest(tempest_template, accounts_template):
     :returns: None
     :rtype: None
     """
-    try:
-        subprocess.check_call(['tempest', 'workspace', 'remove', '--rmdir',
-                               '--name', 'tempest-workspace'])
-    except subprocess.CalledProcessError:
-        pass
-    try:
-        subprocess.check_call(['tempest', 'init', 'tempest-workspace'])
-    except subprocess.CalledProcessError:
-        pass
+    workspace_name, workspace_path = tempest_utils.get_workspace()
+    tempest_utils.destroy_workspace(workspace_name, workspace_path)
+    tempest_utils.init_workspace(workspace_path)
     render_tempest_config(
-        'tempest-workspace/etc/tempest.conf',
+        os.path.join(workspace_path, 'etc/tempest.conf'),
         get_tempest_context(),
         tempest_template)
     render_tempest_config(
-        'tempest-workspace/etc/accounts.yaml',
+        os.path.join(workspace_path, 'etc/accounts.yaml'),
         get_tempest_context(),
         accounts_template)
 
