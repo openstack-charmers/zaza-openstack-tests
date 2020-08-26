@@ -34,9 +34,10 @@ import zaza.openstack.utilities.openstack as openstack_utils
 class NeutronPluginApiSharedTests(test_utils.OpenStackBaseTest):
     """Shared tests for Neutron Plugin API Charms."""
 
+    @classmethod
     def setUpClass(cls):
         """Run class setup for running Neutron Openvswitch tests."""
-        super(NeutronPluginApiSharedTests, cls).setUpClass()
+        super(NeutronPluginApiSharedTests, cls).setUpClass(cls)
 
         cls.current_os_release = openstack_utils.get_os_release()
         cls.bionic_stein = openstack_utils.get_os_release('bionic_stein')
