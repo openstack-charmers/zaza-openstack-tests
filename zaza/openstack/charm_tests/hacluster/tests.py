@@ -97,13 +97,6 @@ class HaclusterScalebackTest(HaclusterBaseTest):
             raise_on_failure=True)
         logging.info('OK')
 
-        logging.info('Resuming unit {}'.format(doomed_unit))
-        zaza.model.run_action(
-            doomed_unit,
-            'resume',
-            raise_on_failure=True)
-        logging.info('OK')
-
         logging.info('Removing {}'.format(doomed_principle))
         zaza.model.destroy_unit(
             self._PRINCIPLE_APP,
