@@ -872,3 +872,141 @@ def _get_mon_count_from_prometheus(prometheus_ip):
     response = client.get(url)
     logging.debug("Prometheus response: {}".format(response.json()))
     return response.json()['data']['result'][0]['value'][1]
+
+
+class BlueStoreCompressionCharmOperation(test_utils.BaseCharmTest):
+    """Test charm handling of bluestore compression configuration options."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Perform class one time initialization."""
+        super(BlueStoreCompressionCharmOperation, cls).setUpClass()
+        cls.current_release = zaza_openstack.get_os_release(
+            zaza_openstack.get_current_os_release_pair(
+                application='ceph-mon'))
+        cls.bionic_rocky = zaza_openstack.get_os_release('bionic_rocky')
+
+    def setUp(self):
+        """Perform common per test initialization steps."""
+        super(BlueStoreCompressionCharmOperation, self).setUp()
+
+        # determine if the tests should be run or not
+        logging.debug('os_release: {} >= {} = {}'
+                      .format(self.current_release,
+                              self.bionic_rocky,
+                              self.current_release >= self.bionic_rocky))
+        self.mimic_or_newer = self.current_release >= self.bionic_rocky
+
+    def _assert_pools_properties(self, pools, pools_detail,
+                                 expected_properties, log_func=logging.info):
+        """Check properties on a set of pools.
+
+        :param pools: List of pool names to check.
+        :type pools: List[str]
+        :param pools_detail: List of dictionaries with pool detail
+        :type pools_detail List[Dict[str,any]]
+        :param expected_properties: Properties to check and their expected
+                                    values.
+        :type expected_properties: Dict[str,any]
+        :returns: Nothing
+        :raises: AssertionError
+        """
+        for pool in pools:
+            for pd in pools_detail:
+                if pd['pool_name'] == pool:
+                    if 'options' in expected_properties:
+                        for k, v in expected_properties['options'].items():
+                            self.assertEquals(pd['options'][k], v)
+                            log_func("['options']['{}'] == {}".format(k, v))
+                    for k, v in expected_properties.items():
+                        if k == 'options':
+                            continue
+                        self.assertEquals(pd[k], v)
+                        log_func("{} == {}".format(k, v))
+
+    def test_configure_compression(self):
+        """Enable compression and validate properties flush through to pool."""
+        if not self.mimic_or_newer:
+            logging.info('Skipping test, Mimic or newer required.')
+            return
+        if self.application_name == 'ceph-osd':
+            # The ceph-osd charm itself does not request pools, neither does
+            # the BlueStore Compression configuration options it have affect
+            # pool properties.
+            logging.info('test does not apply to ceph-osd charm.')
+            return
+        elif self.application_name == 'ceph-radosgw':
+            # The Ceph RadosGW creates many light weight pools to keep track of
+            # metadata, we only compress the pool containing actual data.
+            app_pools = ['.rgw.buckets.data']
+        else:
+            # Retrieve which pools the charm under test has requested skipping
+            # metadata pools as they are deliberately not compressed.
+            app_pools = [
+                pool
+                for pool in zaza_ceph.get_pools_from_broker_req(
+                    self.application_name, model_name=self.model_name)
+                if 'metadata' not in pool
+            ]
+
+        ceph_pools_detail = zaza_ceph.get_ceph_pool_details(
+            model_name=self.model_name)
+
+        logging.debug('BEFORE: {}'.format(ceph_pools_detail))
+        try:
+            logging.info('Checking Ceph pool compression_mode prior to change')
+            self._assert_pools_properties(
+                app_pools, ceph_pools_detail,
+                {'options': {'compression_mode': 'none'}})
+        except KeyError:
+            logging.info('property does not exist on pool, which is OK.')
+        logging.info('Changing "bluestore-compression-mode" to "force" on {}'
+                     .format(self.application_name))
+        with self.config_change(
+                {'bluestore-compression-mode': 'none'},
+                {'bluestore-compression-mode': 'force'}):
+            # Retrieve pool details from Ceph after changing configuration
+            ceph_pools_detail = zaza_ceph.get_ceph_pool_details(
+                model_name=self.model_name)
+            logging.debug('CONFIG_CHANGE: {}'.format(ceph_pools_detail))
+            logging.info('Checking Ceph pool compression_mode after to change')
+            self._assert_pools_properties(
+                app_pools, ceph_pools_detail,
+                {'options': {'compression_mode': 'force'}})
+        ceph_pools_detail = zaza_ceph.get_ceph_pool_details(
+            model_name=self.model_name)
+        logging.debug('AFTER: {}'.format(ceph_pools_detail))
+        logging.debug(zaza_juju.get_relation_from_unit(
+            'ceph-mon', self.application_name, None,
+            model_name=self.model_name))
+        logging.info('Checking Ceph pool compression_mode after restoring '
+                     'config to previous value')
+        self._assert_pools_properties(
+            app_pools, ceph_pools_detail,
+            {'options': {'compression_mode': 'none'}})
+
+    def test_invalid_compression_configuration(self):
+        """Set invalid configuration and validate charm response."""
+        if not self.mimic_or_newer:
+            logging.info('Skipping test, Mimic or newer required.')
+            return
+        stored_target_deploy_status = self.test_config.get(
+            'target_deploy_status', {})
+        new_target_deploy_status = stored_target_deploy_status.copy()
+        new_target_deploy_status[self.application_name] = {
+            'workload-status': 'blocked',
+            'workload-status-message': 'Invalid configuration',
+        }
+        if 'target_deploy_status' in self.test_config:
+            self.test_config['target_deploy_status'].update(
+                new_target_deploy_status)
+        else:
+            self.test_config['target_deploy_status'] = new_target_deploy_status
+
+        with self.config_change(
+                {'bluestore-compression-mode': 'none'},
+                {'bluestore-compression-mode': 'PEBCAK'}):
+            logging.info('Charm went into blocked state as expected, restore '
+                         'configuration')
+            self.test_config[
+                'target_deploy_status'] = stored_target_deploy_status
