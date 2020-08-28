@@ -79,16 +79,18 @@ class HaclusterTest(HaclusterBaseTest):
 class HaclusterScalebackTest(HaclusterBaseTest):
     """hacluster scaleback tests."""
 
-    _PRINCIPLE_APP = 'keystone'
+    _PRINCIPLE_APP_NAME = 'keystone'
+    _HACLUSTER_APP_NAME = 'hacluster'
+    _HACLUSTER_CHARM_NAME = 'hacluster'
 
     def test_930_scaleback(self):
         """Remove a unit, recalculate quorum and add a new one."""
         principle_units = zaza.model.get_status().applications[
-            self._PRINCIPLE_APP]['units']
+            self._PRINCIPLE_APP_NAME]['units']
         self.assertEqual(len(principle_units), 3)
         doomed_principle = sorted(principle_units.keys())[0]
         doomed_unit = juju_utils.get_subordinate_units(
-            [doomed_principle], charm_name=self.application_name)[0]
+            [doomed_principle], charm_name=self._HACLUSTER_CHARM_NAME)[0]
 
         logging.info('Pausing unit {}'.format(doomed_unit))
         zaza.model.run_action(
@@ -99,25 +101,25 @@ class HaclusterScalebackTest(HaclusterBaseTest):
 
         logging.info('Removing {}'.format(doomed_principle))
         zaza.model.destroy_unit(
-            self._PRINCIPLE_APP,
+            self._PRINCIPLE_APP_NAME,
             doomed_principle,
             wait_disappear=True)
         logging.info('OK')
 
         logging.info('Updating corosync ring')
         zaza.model.run_action_on_leader(
-            self.application_name,
+            self._HACLUSTER_APP_NAME,
             'update-ring',
             action_params={'i-really-mean-it': True},
             raise_on_failure=True)
 
         expected_states = {
-            self.application_name: {
+            self._HACLUSTER_APP_NAME: {
                 "workload-status": "blocked",
                 "workload-status-message":
                     "Insufficient peer units for ha cluster (require 3)"
             },
-            self._PRINCIPLE_APP: {
+            self._PRINCIPLE_APP_NAME: {
                 "workload-status": "blocked",
                 "workload-status-message": "Database not initialised",
             },
@@ -127,8 +129,8 @@ class HaclusterScalebackTest(HaclusterBaseTest):
         logging.info('OK')
 
         logging.info('Adding a hacluster unit')
-        zaza.model.add_unit(self._PRINCIPLE_APP, wait_appear=True)
-        expected_states = {self.application_name: {
+        zaza.model.add_unit(self._PRINCIPLE_APP_NAME, wait_appear=True)
+        expected_states = {self._HACLUSTER_APP_NAME: {
             "workload-status": "active",
             "workload-status-message": "Unit is ready and clustered"}}
         zaza.model.wait_for_application_states(states=expected_states)
