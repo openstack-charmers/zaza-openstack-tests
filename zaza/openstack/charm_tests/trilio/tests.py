@@ -24,8 +24,8 @@ import zaza.model as zaza_model
 import zaza.openstack.charm_tests.glance.setup as glance_setup
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.configure.guest as guest_utils
-import zaza.openstack.juju as juju_utils
 import zaza.openstack.utilities.openstack as openstack_utils
+from zaza.utilities import juju as juju_utils
 
 
 def _resource_reaches_status(
