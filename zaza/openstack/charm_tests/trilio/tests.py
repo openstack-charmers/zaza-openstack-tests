@@ -117,7 +117,12 @@ class WorkloadmgrCLIHelper(object):
     SNAPSHOT_STATUS_CMD = (
         "openstack {auth_args} workload snapshot show "
         "-f value -c status "
-        "{resource_id} "
+        "{resource_id}"
+    )
+
+    SNAPSHOT_FULL_STATUS_CMD = (
+        "openstack {auth_args} workload snapshot show "
+        "{resource_id}"
     )
 
     ONECLICK_RESTORE_CMD = (
@@ -133,7 +138,13 @@ class WorkloadmgrCLIHelper(object):
 
     RESTORE_STATUS_CMD = (
         "openstack {auth_args} workloadmgr restore show "
-        "-f value -c status {resource_id}"
+        "-f value -c status "
+        "{resource_id}"
+    )
+
+    RESTORE_FULL_STATUS_CMD = (
+        "openstack {auth_args} workloadmgr restore show "
+        "{resource_id}"
     )
 
     def __init__(self, keystone_client):
@@ -259,6 +270,7 @@ class WorkloadmgrCLIHelper(object):
             self.trilio_wlm_unit,
             self.auth_args,
             self.SNAPSHOT_STATUS_CMD,
+            self.SNAPSHOT_FULL_STATUS_CMD,
             snapshot_id,
             "available",
         )
@@ -299,6 +311,7 @@ class WorkloadmgrCLIHelper(object):
             self.trilio_wlm_unit,
             self.auth_args,
             self.RESTORE_STATUS_CMD,
+            self.RESTORE_FULL_STATUS_CMD,
             restore_id,
             "available",
         )
