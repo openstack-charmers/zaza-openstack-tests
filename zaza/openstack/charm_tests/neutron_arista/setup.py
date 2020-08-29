@@ -45,9 +45,15 @@ def download_arista_image():
         if os.environ['TEST_ARISTA_IMAGE_REMOTE']:
             logging.info('Downloading Arista image from {}'
                          .format(os.environ['TEST_ARISTA_IMAGE_REMOTE']))
-            openstack_utils.download_image(
-                os.environ['TEST_ARISTA_IMAGE_REMOTE'],
-                os.environ['TEST_ARISTA_IMAGE_LOCAL'])
+
+            for attempt in tenacity.Retrying(
+                    stop=tenacity.stop_after_attempt(3),
+                    reraise=True):
+                with attempt:
+                    openstack_utils.download_image(
+                        os.environ['TEST_ARISTA_IMAGE_REMOTE'],
+                        os.environ['TEST_ARISTA_IMAGE_LOCAL'])
+
     except KeyError:
         # TEST_ARISTA_IMAGE_REMOTE isn't set, which means the image is already
         # available at TEST_ARISTA_IMAGE_LOCAL
