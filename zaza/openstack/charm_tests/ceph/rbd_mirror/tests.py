@@ -36,7 +36,9 @@ class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
         """Run setup for ``ceph-rbd-mirror`` tests."""
         super().setUpClass()
         # get ready for multi-model Zaza
-        cls.site_a_model = cls.site_b_model = zaza.model.get_juju_model()
+        default_model = zaza.model.get_juju_model()
+        cls.site_a_model = cls.model_aliases.get('ceph_site_a', default_model)
+        cls.site_b_model = cls.model_aliases.get('ceph_site_b', default_model)
         cls.site_b_app_suffix = '-b'
 
     def run_status_action(self, application_name=None, model_name=None):
