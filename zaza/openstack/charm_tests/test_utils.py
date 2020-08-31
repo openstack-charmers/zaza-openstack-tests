@@ -182,7 +182,7 @@ class BaseCharmTest(unittest.TestCase):
 
     @contextlib.contextmanager
     def config_change(self, default_config, alternate_config,
-                      application_name=None):
+                      application_name=None, reset_to_charm_default=False):
         """Run change config tests.
 
         Change config to `alternate_config`, wait for idle workload status,
@@ -202,6 +202,12 @@ class BaseCharmTest(unittest.TestCase):
                                  by a charm under test other than the object's
                                  application.
         :type application_name: str
+        :param reset_to_charm_default: When True we will ask Juju to reset each
+                                       configuration option mentioned in the
+                                       `alternate_config` dictionary back to
+                                       the charm default and ignore the
+                                       `default_config` dictionary.
+        :type reset_to_charm_default: bool
         """
         if not application_name:
             application_name = self.application_name
@@ -246,11 +252,20 @@ class BaseCharmTest(unittest.TestCase):
 
             yield
 
-        logging.debug('Restoring charm setting to {}'.format(default_config))
-        model.set_application_config(
-            application_name,
-            self._stringed_value_config(default_config),
-            model_name=self.model_name)
+        if reset_to_charm_default:
+            logging.debug('Resetting these charm configuration options to the '
+                          'charm default: "{}"'
+                          .format(alternate_config.keys()))
+            model.reset_application_config(application_name,
+                                           alternate_config.keys(),
+                                           model_name=self.model_name)
+        else:
+            logging.debug('Restoring charm setting to {}'
+                          .format(default_config))
+            model.set_application_config(
+                application_name,
+                self._stringed_value_config(default_config),
+                model_name=self.model_name)
 
         logging.debug(
             'Waiting for units to reach target states')
