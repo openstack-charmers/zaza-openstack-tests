@@ -12,10 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
 import zaza.openstack.charm_tests.test_utils as test_utils
 
-from unittest.mock import patch
+import unit_tests.utils as ut_utils
 
 
 class TestBaseCharmTest(unittest.TestCase):
@@ -38,15 +37,16 @@ class TestBaseCharmTest(unittest.TestCase):
         }), 'aValue')
 
 
-class TestOpenStackBaseTest(unittest.TestCase):
+class TestOpenStackBaseTest(ut_utils.BaseTestCase):
 
-    @patch.object(test_utils.openstack_utils, 'get_cacert')
-    @patch.object(test_utils.openstack_utils, 'get_overcloud_keystone_session')
-    @patch.object(test_utils.BaseCharmTest, 'setUpClass')
-    def test_setUpClass(self, _setUpClass, _get_ovcks, _get_cacert):
+    def test_setUpClass(self):
+        self.patch_object(test_utils.openstack_utils, 'get_cacert')
+        self.patch_object(test_utils.openstack_utils,
+                          'get_overcloud_keystone_session')
+        self.patch_object(test_utils.BaseCharmTest, 'setUpClass')
 
         class MyTestClass(test_utils.OpenStackBaseTest):
             model_name = 'deadbeef'
 
         MyTestClass.setUpClass('foo', 'bar')
-        _setUpClass.assert_called_with('foo', 'bar')
+        self.setUpClass.assert_called_with('foo', 'bar')
