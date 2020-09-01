@@ -138,8 +138,26 @@ class HaclusterScalebackTest(HaclusterBaseTest):
 
         logging.info('Adding a hacluster unit')
         zaza.model.add_unit(self._PRINCIPLE_APP_NAME, wait_appear=True)
-        expected_states = {self._HACLUSTER_APP_NAME: {
-            "workload-status": "active",
-            "workload-status-message": "Unit is ready and clustered"}}
+        expected_states = {
+            self._HACLUSTER_APP_NAME: {
+                "workload-status": "active",
+                "workload-status-message": "Unit is ready and clustered"
+            },
+
+            # NOTE(lourot): these applications remain in the 'waiting' state
+            # after scaling back up until lp:1400481 is solved.
+            'glance': {
+                "workload-status": "waiting",
+                "workload-status-message": "Incomplete relations: identity",
+            },
+            'neutron-api': {
+                "workload-status": "waiting",
+                "workload-status-message": "Incomplete relations: identity",
+            },
+            'nova-cloud-controller': {
+                "workload-status": "waiting",
+                "workload-status-message": "Incomplete relations: identity",
+            },
+        }
         zaza.model.wait_for_application_states(states=expected_states)
         logging.debug('OK')
