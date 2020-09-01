@@ -116,6 +116,21 @@ class HaclusterScalebackTest(HaclusterBaseTest):
                 "workload-status": "blocked",
                 "workload-status-message": "Database not initialised",
             },
+
+            # NOTE(lourot): these applications are present in the zaza bundles
+            # used to test mysql-router, against which we also run this test:
+            'glance': {
+                "workload-status": "waiting",
+                "workload-status-message": "Incomplete relations: identity",
+            },
+            'neutron-api': {
+                "workload-status": "waiting",
+                "workload-status-message": "Incomplete relations: identity",
+            },
+            'nova-cloud-controller': {
+                "workload-status": "waiting",
+                "workload-status-message": "Incomplete relations: identity",
+            },
         }
         zaza.model.wait_for_application_states(states=expected_states)
         zaza.model.block_until_all_units_idle()
