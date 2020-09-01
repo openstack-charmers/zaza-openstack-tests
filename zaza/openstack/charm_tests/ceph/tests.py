@@ -766,16 +766,23 @@ class CephProxyTest(unittest.TestCase):
             msg = 'cinder-ceph pool was not found upon querying ceph-mon/0'
             raise zaza_exceptions.CephPoolNotFound(msg)
 
-        expected = "pool=cinder-ceph, allow class-read " \
-                   "object_prefix rbd_children"
+        # Checking for cinder-ceph specific permissions makes
+        # the test more rugged when we add additional relations
+        # to ceph for other applications (such as glance and nova).
+        expected_permissions = [
+            "allow rwx pool=cinder-ceph",
+            "allow class-read object_prefix rbd_children",
+        ]
         cmd = "sudo ceph auth get client.cinder-ceph"
         result = zaza_model.run_on_unit('ceph-mon/0', cmd)
         output = result.get('Stdout').strip()
 
-        if expected not in output:
-            msg = ('cinder-ceph pool restriction was not configured correctly.'
-                   ' Found: {}'.format(output))
-            raise zaza_exceptions.CephPoolNotConfigured(msg)
+        for expected in expected_permissions:
+            if expected not in output:
+                msg = ('cinder-ceph pool restriction ({}) was not'
+                       ' configured correctly.'
+                       ' Found: {}'.format(expected, output))
+                raise zaza_exceptions.CephPoolNotConfigured(msg)
 
 
 class CephPrometheusTest(unittest.TestCase):
