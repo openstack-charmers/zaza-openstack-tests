@@ -114,6 +114,17 @@ class SwiftStorageTests(test_utils.OpenStackBaseTest):
                     'swift-object-replicator',
                     'swift-object-updater',
                     'swift-container-sync']
+
+        focal_victoria = openstack_utils.get_os_release('focal_victoria')
+        if self.current_os_release < focal_victoria:
+            services += ['swift-account-replicator',
+                         'swift-container-replicator',
+                         'swift-object-replicator']
+        else:
+            services += ['swift-account-server',
+                         'swift-container-server',
+                         'swift-object-server']
+
         with self.pause_resume(services):
             logging.info("Testing pause resume")
 
