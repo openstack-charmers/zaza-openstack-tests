@@ -14,23 +14,30 @@
 
 """Ceph Benchmark Tests."""
 
-import logging
 import re
 import unittest
 
 import zaza.model
 
 
-class BenchmarkTests(unittest.TestCase):
-    """Ceph Bencharmk Tests."""
+class CephBaseBenchmarkTests(unittest.TestCase):
+    """FIO Bencharmk Tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running ceph benchmark tests."""
+        super().setUpClass()
+        cls.test_results = {}
+
+
+class RadosBenchmarkTests(CephBaseBenchmarkTests):
+    """Rados Bencharmk Tests."""
 
     @classmethod
     def setUpClass(cls):
         """Run class setup for running ceph benchmark tests."""
         super().setUpClass()
         cls.results_match = "^[A-Z].*"
-        cls.pool = "zaza_benchmarks"
-        cls.test_results = {}
         cls.time_in_secs = 30
 
     def parse_bench_results(self, results_string):
@@ -55,70 +62,172 @@ class BenchmarkTests(unittest.TestCase):
                     pass
         return _results
 
-    def run_rados_bench(self, action, params=None):
-        """Run rados bench.
-
-        :param action: String rados bench command i.e. write, rand, seq
-        :type action: string
-        :param params: List of string extra parameters to rados bench command
-        :type params: List[strings]
-        :returns: Unit run dict result
-        :rtype: dict
-        """
-        _cmd = "rados bench -p {} {} {}".format(
-            self.pool, self.time_in_secs, action)
-        if params:
-            _cmd += " "
-            _cmd += " ".join(params)
-        logging.info(
-            "Running '{}' for {} seconds ...".format(_cmd, self.time_in_secs))
-        _result = zaza.model.run_on_leader(
-            "ceph-mon", _cmd, timeout=self.time_in_secs + 60)
-        return _result
-
-    def test_001_create_pool(self):
-        """Create ceph pool."""
-        _cmd = "ceph osd pool create {} 100 100".format(self.pool)
-        _result = zaza.model.run_on_leader(
-            "ceph-mon", _cmd)
-        if _result.get("Code") and not _result.get("Code").startswith('0'):
-            if "already exists" in _result.get("Stderr", ""):
-                logging.warning(
-                    "Ceph osd pool {} already exits.".format(self.pool))
-            else:
-                logging.error("Ceph osd pool create failed")
-                raise Exception(_result.get("Stderr", ""))
+    def rados_bench_action(self, operation, seconds, switches=None):
+        """Rados bench action."""
+        _params = {
+            "seconds": seconds,
+            "operation": operation}
+        if switches:
+            _params["switches"] = switches
+        action = zaza.model.run_action_on_leader(
+            "ceph-benchmarking",
+            "rados-bench",
+            action_params=_params)
+        assert action.data.get("results") is not None, (
+            "Rados-bench action failed: {}"
+            .format(action.data))
+        if action.data.get("results", {}).get("code") is not None:
+            assert action.data.get(
+                "results", {}).get("code", "").startswith("0"), (
+                "Rados-bench action return code is non-zero: {}"
+                .format(action.data))
+        return action.data["results"]
 
     def test_100_rados_bench_write(self):
         """Rados bench write test."""
-        _result = self.run_rados_bench("write", params=["--no-cleanup"])
         self.test_results["write"] = (
-            self.parse_bench_results(_result.get("Stdout", "")))
+            self.parse_bench_results(
+                self.rados_bench_action(
+                    "write", seconds=self.time_in_secs, switches="--no-cleanup"
+                ).get("stdout", "")))
 
     def test_200_rados_bench_read_seq(self):
         """Rados bench read sequential test."""
-        _result = self.run_rados_bench("seq")
         self.test_results["read_seq"] = (
-            self.parse_bench_results(_result.get("Stdout", "")))
+            self.parse_bench_results(
+                self.rados_bench_action(
+                    "seq", seconds=self.time_in_secs).get("stdout", "")))
 
     def test_300_rados_bench_read_rand(self):
         """Rados bench read random test."""
-        _result = self.run_rados_bench("rand")
         self.test_results["read_rand"] = (
-            self.parse_bench_results(_result.get("Stdout", "")))
-
-    def test_998_rados_cleanup(self):
-        """Cleanup rados bench data."""
-        _cmd = "rados -p {} cleanup".format(self.pool)
-        _result = zaza.model.run_on_leader("ceph-mon", _cmd)
-        if _result.get("Code") and not _result.get("Code").startswith('0'):
-            logging.warning("rados cleanup failed")
+            self.parse_bench_results(
+                self.rados_bench_action(
+                    "rand", seconds=self.time_in_secs).get("stdout", "")))
 
     def test_999_print_rados_bench_results(self):
         """Print rados bench results."""
-        print("######## Begin Ceph Results ########")
+        print("######## Begin Rados Results ########")
         for test, results in self.test_results.items():
             print("##### {} ######".format(test))
             for key, value in results.items():
                 print("{}: {}".format(key, value))
-        print("######## End Ceph Results ########")
+        print("######## End Rados Results ########")
+
+
+class RBDBenchmarkTests(CephBaseBenchmarkTests):
+    """RBD Bencharmk Tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running ceph benchmark tests."""
+        super().setUpClass()
+
+    def rbd_bench_action(self, operation):
+        """RBD bench action."""
+        _params = {"operation": operation}
+        action = zaza.model.run_action_on_leader(
+            "ceph-benchmarking",
+            "rbd-bench",
+            action_params=_params)
+        assert action.data.get("results") is not None, (
+            "RBD-bench action failed: {}"
+            .format(action.data))
+        if action.data.get("results", {}).get("code") is not None:
+            assert action.data.get(
+                "results", {}).get("code", "").startswith("0"), (
+                "RBD-bench action return code is non-zero: {}"
+                .format(action.data))
+        return action.data["results"]
+
+    def test_100_rbd_bench_write(self):
+        """RBD bench write test."""
+        self.test_results["write"] = (
+            self.rbd_bench_action("write").get("stdout", ""))
+
+    def test_999_print_rbd_bench_results(self):
+        """Print rbd bench results."""
+        print("######## Begin RBD Results ########")
+        for test, results in self.test_results.items():
+            print("##### {} ######".format(test))
+            print(results)
+        print("######## End RBD Results ########")
+
+
+class FIOBenchmarkTests(CephBaseBenchmarkTests):
+    """FIO Bencharmk Tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running ceph benchmark tests."""
+        super().setUpClass()
+
+    def fio_action(self, operation):
+        """FIO action."""
+        _params = {"operation": operation}
+        action = zaza.model.run_action_on_leader(
+            "ceph-benchmarking",
+            "fio",
+            action_params=_params)
+        assert action.data.get("results") is not None, (
+            "FIO action failed: {}"
+            .format(action.data))
+        if action.data.get("results", {}).get("code") is not None:
+            assert action.data.get(
+                "results", {}).get("code", "").startswith("0"), (
+                "FIO action return code is non-zero: {}"
+                .format(action.data))
+        return action.data["results"]
+
+    def test_100_fio_write(self):
+        """FIO write test."""
+        self.test_results["write"] = (
+            self.fio_action("write").get("stdout", ""))
+
+    def test_999_print_fio_results(self):
+        """Print fio results."""
+        print("######## Begin FIO Results ########")
+        for test, results in self.test_results.items():
+            print("##### {} ######".format(test))
+            print(results)
+        print("######## End FIO Results ########")
+
+
+class SwiftBenchmarkTests(CephBaseBenchmarkTests):
+    """Swift Bencharmk Tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running ceph benchmark tests."""
+        super().setUpClass()
+
+    def swift_bench_action(self, operation):
+        """Swift bench action."""
+        _radosgw_ip = zaza.model.get_lead_unit_ip("ceph-radosgw")
+        _params = {"swift-address": _radosgw_ip}
+        action = zaza.model.run_action_on_leader(
+            "ceph-benchmarking",
+            "swift-bench",
+            action_params=_params)
+        assert action.data.get("results") is not None, (
+            "Swift bench action failed: {}"
+            .format(action.data))
+        if action.data.get("results", {}).get("code") is not None:
+            assert action.data.get(
+                "results", {}).get("code", "").startswith("0"), (
+                "Swift bench action return code is non-zero: {}"
+                .format(action.data))
+        return action.data["results"]
+
+    def test_100_swift_bench(self):
+        """Swift bench test."""
+        self.test_results["write"] = (
+            self.swift_bench_action("write").get("stdout", ""))
+
+    def test_999_print_swift_bench_results(self):
+        """Print swift bench results."""
+        print("######## Begin Swift Bench Results ########")
+        for test, results in self.test_results.items():
+            print("##### {} ######".format(test))
+            print(results)
+        print("######## End Swift Bench Results ########")
