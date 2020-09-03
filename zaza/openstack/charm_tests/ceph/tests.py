@@ -818,8 +818,15 @@ class CheckPoolTypes(unittest.TestCase):
             ('cinder-ceph', 'cinder-ceph')]
         runtime_pool_details = zaza_ceph.get_ceph_pool_details()
         for app, pool_name in app_pools:
-            juju_pool_config = zaza_model.get_application_config(app).get(
-                'pool-type')
+            try:
+                app_config = zaza_model.get_application_config(app)
+            except KeyError:
+                logging.info(
+                    'Skipping pool check of %s, application %s not present',
+                    pool_name,
+                    app)
+                continue
+            juju_pool_config = app_config.get('pool-type')
             if juju_pool_config:
                 expected_pool_type = juju_pool_config['value']
             else:
