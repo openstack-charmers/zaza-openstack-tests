@@ -158,6 +158,10 @@ class HaclusterScalebackTest(HaclusterBaseTest):
                 "workload-status": "waiting",
                 "workload-status-message": "Incomplete relations: identity",
             },
+            'placement': {
+                "workload-status": "waiting",
+                "workload-status-message": "'identity-service' incomplete",
+            },
         }
         zaza.model.wait_for_application_states(states=expected_states)
         logging.debug('OK')
