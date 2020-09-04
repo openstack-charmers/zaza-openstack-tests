@@ -144,11 +144,15 @@ class HaclusterScalebackTest(HaclusterBaseTest):
                 "workload-status-message": "Unit is ready and clustered"
             },
 
-            # NOTE(lourot): these applications remain in the 'waiting' state
-            # after scaling back up until lp:1400481 is solved.
+            # NOTE(lourot): these applications remain waiting/blocked after
+            # scaling back up until lp:1400481 is solved.
             'glance': {
                 "workload-status": "waiting",
                 "workload-status-message": "Incomplete relations: identity",
+            },
+            'keystone': {
+                "workload-status": "blocked",
+                "workload-status-message": "Database not initialised",
             },
             'neutron-api': {
                 "workload-status": "waiting",
