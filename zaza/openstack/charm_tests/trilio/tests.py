@@ -21,15 +21,16 @@ import tenacity
 
 import zaza.model as zaza_model
 
-import zaza.openstack.charm_tests.test_utils as test_utils
-import zaza.openstack.utilities.juju as juju_utils
-import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.glance.setup as glance_setup
+import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.configure.guest as guest_utils
+import zaza.openstack.utilities.openstack as openstack_utils
+from zaza.utilities import juju as juju_utils
 
 
 def _resource_reaches_status(
-    unit, auth_args, command, resource_id, target_status
+    unit, auth_args, status_command, full_status_command, resource_id,
+    target_status
 ):
     """Wait for a workload resource to reach a status.
 
@@ -37,8 +38,12 @@ def _resource_reaches_status(
     :type unit: zaza_model.Unit
     :param auth_args: authentication arguments for command
     :type auth_args: str
-    :param command: command to execute
-    :type command: str
+    :param status_command: command to execute to get the resource status that
+                           is expected to reach target_status
+    :type status_command: str
+    :param full_status_command: command to execute to get insights on why the
+                                resource failed to reach target_status
+    :type full_status_command: str
     :param resource_id: resource ID to monitor
     :type resource_id: str
     :param target_status: status to monitor for
@@ -47,7 +52,7 @@ def _resource_reaches_status(
     resource_status = (
         juju_utils.remote_run(
             unit,
-            remote_cmd=command.format(
+            remote_cmd=status_command.format(
                 auth_args=auth_args, resource_id=resource_id
             ),
             timeout=180,
@@ -63,7 +68,20 @@ def _resource_reaches_status(
     )
     if resource_status == target_status:
         return
-    raise Exception("Resource not ready: {}".format(resource_status))
+
+    full_resource_status = (
+        juju_utils.remote_run(
+            unit,
+            remote_cmd=full_status_command.format(
+                auth_args=auth_args, resource_id=resource_id
+            ),
+            timeout=180,
+            fatal=True,
+        )
+        .strip()
+    )
+
+    raise Exception("Resource not ready:\n{}".format(full_resource_status))
 
 
 class WorkloadmgrCLIHelper(object):
@@ -78,7 +96,12 @@ class WorkloadmgrCLIHelper(object):
     WORKLOAD_STATUS_CMD = (
         "openstack {auth_args} workload show "
         "-f value -c status "
-        " {resource_id} "
+        "{resource_id}"
+    )
+
+    WORKLOAD_FULL_STATUS_CMD = (
+        "openstack {auth_args} workload show "
+        "{resource_id}"
     )
 
     SNAPSHOT_CMD = (
@@ -94,7 +117,12 @@ class WorkloadmgrCLIHelper(object):
     SNAPSHOT_STATUS_CMD = (
         "openstack {auth_args} workload snapshot show "
         "-f value -c status "
-        "{resource_id} "
+        "{resource_id}"
+    )
+
+    SNAPSHOT_FULL_STATUS_CMD = (
+        "openstack {auth_args} workload snapshot show "
+        "{resource_id}"
     )
 
     ONECLICK_RESTORE_CMD = (
@@ -110,7 +138,13 @@ class WorkloadmgrCLIHelper(object):
 
     RESTORE_STATUS_CMD = (
         "openstack {auth_args} workloadmgr restore show "
-        "-f value -c status {resource_id}"
+        "-f value -c status "
+        "{resource_id}"
+    )
+
+    RESTORE_FULL_STATUS_CMD = (
+        "openstack {auth_args} workloadmgr restore show "
+        "{resource_id}"
     )
 
     def __init__(self, keystone_client):
@@ -193,6 +227,7 @@ class WorkloadmgrCLIHelper(object):
             self.trilio_wlm_unit,
             self.auth_args,
             self.WORKLOAD_STATUS_CMD,
+            self.WORKLOAD_FULL_STATUS_CMD,
             workload_id,
             "available",
         )
@@ -235,6 +270,7 @@ class WorkloadmgrCLIHelper(object):
             self.trilio_wlm_unit,
             self.auth_args,
             self.SNAPSHOT_STATUS_CMD,
+            self.SNAPSHOT_FULL_STATUS_CMD,
             snapshot_id,
             "available",
         )
@@ -275,6 +311,7 @@ class WorkloadmgrCLIHelper(object):
             self.trilio_wlm_unit,
             self.auth_args,
             self.RESTORE_STATUS_CMD,
+            self.RESTORE_FULL_STATUS_CMD,
             restore_id,
             "available",
         )
