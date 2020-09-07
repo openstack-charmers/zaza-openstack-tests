@@ -826,6 +826,15 @@ class CheckPoolTypes(unittest.TestCase):
                     pool_name,
                     app)
                 continue
+            rel_id = zaza_model.get_relation_id(
+                app,
+                'ceph-mon',
+                remote_interface_name='client')
+            if not rel_id:
+                logging.info(
+                    'Skipping pool check of %s, ceph relation not present',
+                    app)
+                continue
             juju_pool_config = app_config.get('pool-type')
             if juju_pool_config:
                 expected_pool_type = juju_pool_config['value']
