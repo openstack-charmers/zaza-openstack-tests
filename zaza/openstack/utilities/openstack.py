@@ -631,15 +631,20 @@ def add_interface_to_netplan(server_name, mac_address):
     :type mac_address: string
     """
     if dvr_enabled():
-        application_name = 'neutron-openvswitch'
+        application_names = ('neutron-openvswitch',)
     elif ovn_present():
         # OVN chassis is a subordinate to nova-compute
-        application_name = 'nova-compute'
+        application_names = ('nova-compute', 'ovn-dedicated-chassis')
     else:
-        application_name = 'neutron-gateway'
+        application_names = ('neutron-gateway',)
 
-    unit_name = juju_utils.get_unit_name_from_host_name(
-        server_name, application_name)
+    for app_name in application_names:
+        unit_name = juju_utils.get_unit_name_from_host_name(
+            server_name, app_name)
+        if unit_name:
+            break
+    else:
+        raise RuntimeError('Unable to find unit to run commands on.')
     run_cmd_nic = "ip -f link -br -o addr|grep {}".format(mac_address)
     interface = model.run_on_unit(unit_name, run_cmd_nic)
     interface = interface['Stdout'].split(' ')[0]
@@ -746,8 +751,9 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
                     'Neutron Gateway already has additional port')
                 break
         else:
-            logging.info('Attaching additional port to instance, '
-                         'connected to net id: {}'.format(net_id))
+            logging.info('Attaching additional port to instance ("{}"), '
+                         'connected to net id: {}'
+                         .format(uuid, net_id))
             body_value = {
                 "port": {
                     "admin_state_up": True,
