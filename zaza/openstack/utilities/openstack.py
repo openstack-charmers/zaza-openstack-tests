@@ -68,6 +68,8 @@ from zaza.openstack.utilities import (
     exceptions,
     generic as generic_utils,
 )
+import zaza.utilities.networking as network_utils
+
 
 CIRROS_RELEASE_URL = 'http://download.cirros-cloud.net/version/released'
 CIRROS_IMAGE_URL = 'http://download.cirros-cloud.net'
@@ -1704,6 +1706,7 @@ def get_overcloud_auth(address=None, model_name=None):
 
     if not address:
         address = get_keystone_ip(model_name=model_name)
+    address = network_utils.format_addr(address)
 
     password = juju_utils.leader_get(
         'keystone',

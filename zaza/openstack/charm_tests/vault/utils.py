@@ -27,7 +27,7 @@ import yaml
 import collections
 
 import zaza.model
-import zaza.openstack.charm_tests.test_utils as test_utils
+import zaza.utilities.networking as network_utils
 
 AUTH_FILE = "vault_tests.yaml"
 CharmVaultClient = collections.namedtuple(
@@ -102,7 +102,7 @@ def get_unit_api_url(ip):
     transport = 'http'
     if vault_config['ssl-cert']['value']:
         transport = 'https'
-    return '{}://{}:8200'.format(transport, test_utils.format_addr(ip))
+    return '{}://{}:8200'.format(transport, network_utils.format_addr(ip))
 
 
 def get_hvac_client(vault_url, cacert=None):
