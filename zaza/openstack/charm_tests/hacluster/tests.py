@@ -85,7 +85,6 @@ class HaclusterScalebackTest(HaclusterBaseTest):
         super(HaclusterScalebackTest, cls).setUpClass()
         test_config = cls.test_config['tests_options']['hacluster']
         cls._principle_app_name = test_config['principle-app-name']
-        cls._hacluster_app_name = test_config['hacluster-app-name']
         cls._hacluster_charm_name = test_config['hacluster-charm-name']
 
     def test_930_scaleback(self):
@@ -121,8 +120,9 @@ class HaclusterScalebackTest(HaclusterBaseTest):
         logging.info('OK')
 
         logging.info('Updating corosync ring')
+        hacluster_app_name = other_hacluster_unit.application
         zaza.model.run_action_on_leader(
-            self._hacluster_app_name,
+            hacluster_app_name,
             'update-ring',
             action_params={'i-really-mean-it': True},
             raise_on_failure=True)
@@ -132,7 +132,7 @@ class HaclusterScalebackTest(HaclusterBaseTest):
         logging.info('OK')
 
         logging.info('Waiting for model to settle')
-        expected_states = {self._hacluster_app_name: {
+        expected_states = {hacluster_app_name: {
             "workload-status": "active",
             "workload-status-message": "Unit is ready and clustered"}}
         zaza.model.wait_for_application_states(states=expected_states)
