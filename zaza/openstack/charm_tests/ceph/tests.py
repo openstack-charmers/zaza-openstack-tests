@@ -766,16 +766,23 @@ class CephProxyTest(unittest.TestCase):
             msg = 'cinder-ceph pool was not found upon querying ceph-mon/0'
             raise zaza_exceptions.CephPoolNotFound(msg)
 
-        expected = "pool=cinder-ceph, allow class-read " \
-                   "object_prefix rbd_children"
+        # Checking for cinder-ceph specific permissions makes
+        # the test more rugged when we add additional relations
+        # to ceph for other applications (such as glance and nova).
+        expected_permissions = [
+            "allow rwx pool=cinder-ceph",
+            "allow class-read object_prefix rbd_children",
+        ]
         cmd = "sudo ceph auth get client.cinder-ceph"
         result = zaza_model.run_on_unit('ceph-mon/0', cmd)
         output = result.get('Stdout').strip()
 
-        if expected not in output:
-            msg = ('cinder-ceph pool restriction was not configured correctly.'
-                   ' Found: {}'.format(output))
-            raise zaza_exceptions.CephPoolNotConfigured(msg)
+        for expected in expected_permissions:
+            if expected not in output:
+                msg = ('cinder-ceph pool restriction ({}) was not'
+                       ' configured correctly.'
+                       ' Found: {}'.format(expected, output))
+                raise zaza_exceptions.CephPoolNotConfigured(msg)
 
 
 class CephPrometheusTest(unittest.TestCase):
@@ -792,6 +799,66 @@ class CephPrometheusTest(unittest.TestCase):
             zaza_model.get_lead_unit_name('prometheus2'))
         self.assertEqual(
             '3', _get_mon_count_from_prometheus(unit.public_address))
+
+
+class CephPoolConfig(Exception):
+    """Custom Exception for bad Ceph pool config."""
+
+    pass
+
+
+class CheckPoolTypes(unittest.TestCase):
+    """Test the ceph pools created for clients are of the expected type."""
+
+    def test_check_pool_types(self):
+        """Check type of pools created for clients."""
+        app_pools = [
+            ('glance', 'glance'),
+            ('nova-compute', 'nova'),
+            ('cinder-ceph', 'cinder-ceph')]
+        runtime_pool_details = zaza_ceph.get_ceph_pool_details()
+        for app, pool_name in app_pools:
+            try:
+                app_config = zaza_model.get_application_config(app)
+            except KeyError:
+                logging.info(
+                    'Skipping pool check of %s, application %s not present',
+                    pool_name,
+                    app)
+                continue
+            rel_id = zaza_model.get_relation_id(
+                app,
+                'ceph-mon',
+                remote_interface_name='client')
+            if not rel_id:
+                logging.info(
+                    'Skipping pool check of %s, ceph relation not present',
+                    app)
+                continue
+            juju_pool_config = app_config.get('pool-type')
+            if juju_pool_config:
+                expected_pool_type = juju_pool_config['value']
+            else:
+                # If the pool-type option is absent assume the default of
+                # replicated.
+                expected_pool_type = zaza_ceph.REPLICATED_POOL_TYPE
+            for pool_config in runtime_pool_details:
+                if pool_config['pool_name'] == pool_name:
+                    logging.info('Checking {} is {}'.format(
+                        pool_name,
+                        expected_pool_type))
+                    expected_pool_code = -1
+                    if expected_pool_type == zaza_ceph.REPLICATED_POOL_TYPE:
+                        expected_pool_code = zaza_ceph.REPLICATED_POOL_CODE
+                    elif expected_pool_type == zaza_ceph.ERASURE_POOL_TYPE:
+                        expected_pool_code = zaza_ceph.ERASURE_POOL_CODE
+                    self.assertEqual(
+                        pool_config['type'],
+                        expected_pool_code)
+                    break
+            else:
+                raise CephPoolConfig(
+                    "Failed to find config for {}".format(pool_name))
 
 
 # NOTE: We might query before prometheus has fetch data

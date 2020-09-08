@@ -29,25 +29,40 @@ class NeutronCreateAristaNetworkTest(neutron_tests.NeutronCreateNetworkTest):
     def setUpClass(cls):
         """Run class setup for running Neutron Arista tests."""
         super(NeutronCreateAristaNetworkTest, cls).setUpClass()
+        cls._wait_for_neutron_ready()
 
-        logging.info('Waiting for Neutron to become ready...')
+    def _assert_test_network_exists_and_return_id(self):
+        logging.info('Checking that the test network exists on the Arista '
+                     'test fixture...')
+
+        # Sometimes the API call from Neutron to Arista fails and Neutron
+        # retries a couple of seconds later, which is why the newly created
+        # test network may not be immediately visible on Arista's API.
+        # NOTE(lourot): I experienced a run where it took 53 seconds.
         for attempt in tenacity.Retrying(
-                wait=tenacity.wait_fixed(5),  # seconds
+                wait=tenacity.wait_fixed(10),  # seconds
                 stop=tenacity.stop_after_attempt(12),
                 reraise=True):
             with attempt:
-                cls.neutron_client.list_networks()
+                actual_network_names = arista_utils.query_fixture_networks(
+                    arista_utils.fixture_ip_addr())
+                self.assertEqual(actual_network_names, [self._TEST_NET_NAME])
 
-    def _assert_test_network_exists_and_return_id(self):
-        actual_network_names = arista_utils.query_fixture_networks(
-            arista_utils.fixture_ip_addr())
-        self.assertEqual(actual_network_names, [self._TEST_NET_NAME])
         return super(NeutronCreateAristaNetworkTest,
                      self)._assert_test_network_exists_and_return_id()
 
     def _assert_test_network_doesnt_exist(self):
-        actual_network_names = arista_utils.query_fixture_networks(
-            arista_utils.fixture_ip_addr())
-        self.assertEqual(actual_network_names, [])
+        logging.info("Checking that the test network doesn't exist on the "
+                     "Arista test fixture...")
+
+        for attempt in tenacity.Retrying(
+                wait=tenacity.wait_fixed(10),  # seconds
+                stop=tenacity.stop_after_attempt(12),
+                reraise=True):
+            with attempt:
+                actual_network_names = arista_utils.query_fixture_networks(
+                    arista_utils.fixture_ip_addr())
+                self.assertEqual(actual_network_names, [])
+
         super(NeutronCreateAristaNetworkTest,
               self)._assert_test_network_doesnt_exist()

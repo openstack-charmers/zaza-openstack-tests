@@ -73,11 +73,14 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
         workaround_script = None
         files = []
         applications = model.get_status().applications
-        for group_name, apps in upgrade_groups.items():
+        for group_name, apps in upgrade_groups:
             logging.info("About to upgrade {} from {} to {}".format(
                 group_name, from_series, to_series))
             upgrade_functions = []
-            if group_name in ["Stateful Services", "Data Plane", "sweep_up"]:
+            if group_name in ["Database Services",
+                              "Stateful Services",
+                              "Data Plane",
+                              "sweep_up"]:
                 logging.info("Going to upgrade {} unit by unit".format(apps))
                 upgrade_function = \
                     parallel_series_upgrade.serial_series_upgrade

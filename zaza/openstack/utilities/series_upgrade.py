@@ -14,11 +14,13 @@
 
 """Collection of functions for testing series upgrade."""
 
+import asyncio
 import collections
 import copy
 import concurrent
 import logging
 import os
+import time
 
 from zaza import model
 from zaza.charm_lifecycle import utils as cl_utils
@@ -642,13 +644,13 @@ def series_upgrade(unit_name, machine_num,
     model.block_until_unit_wl_status(unit_name, "blocked")
     logging.info("Waiting for model idleness")
     model.block_until_all_units_idle()
+    logging.info("Complete series upgrade on {}".format(machine_num))
+    model.complete_series_upgrade(machine_num)
+    model.block_until_all_units_idle()
     logging.info("Set origin on {}".format(application))
     # Allow for charms which have neither source nor openstack-origin
     if origin:
         os_utils.set_origin(application, origin)
-    model.block_until_all_units_idle()
-    logging.info("Complete series upgrade on {}".format(machine_num))
-    model.complete_series_upgrade(machine_num)
     model.block_until_all_units_idle()
     logging.info("Running run_post_upgrade_functions {}".format(
         post_upgrade_functions))
@@ -882,6 +884,21 @@ def dist_upgrade(unit_name):
         """-o "Dpkg::Options::=--force-confdef" """
         """-o "Dpkg::Options::=--force-confold" dist-upgrade""")
     model.run_on_unit(unit_name, dist_upgrade_cmd)
+    rdict = model.run_on_unit(unit_name, "cat /var/run/reboot-required")
+    if "Stdout" in rdict and "restart" in rdict["Stdout"].lower():
+        logging.info("dist-upgrade required reboot {}".format(unit_name))
+        os_utils.reboot(unit_name)
+        logging.info("Waiting for workload status 'unknown' on {}"
+                     .format(unit_name))
+        model.block_until_unit_wl_status(unit_name, "unknown")
+        logging.info("Waiting for workload status to return to normal on {}"
+                     .format(unit_name))
+        model.block_until_unit_wl_status(
+            unit_name, "unknown", negate_match=True)
+        logging.info("Waiting for model idleness")
+        # pause for a big
+        time.sleep(5.0)
+        model.block_until_all_units_idle()
 
 
 async def async_dist_upgrade(unit_name):
@@ -902,6 +919,21 @@ async def async_dist_upgrade(unit_name):
         """-o "Dpkg::Options::=--force-confdef" """
         """-o "Dpkg::Options::=--force-confold" dist-upgrade""")
     await model.async_run_on_unit(unit_name, dist_upgrade_cmd)
+    rdict = await model.async_run_on_unit(unit_name,
+                                          "cat /var/run/reboot-required")
+    if "Stdout" in rdict and "restart" in rdict["Stdout"].lower():
+        logging.info("dist-upgrade required reboot {}".format(unit_name))
+        await os_utils.async_reboot(unit_name)
+        logging.info("Waiting for workload status 'unknown' on {}"
+                     .format(unit_name))
+        await model.async_block_until_unit_wl_status(unit_name, "unknown")
+        logging.info("Waiting for workload status to return to normal on {}"
+                     .format(unit_name))
+        await model.async_block_until_unit_wl_status(
+            unit_name, "unknown", negate_match=True)
+        logging.info("Waiting for model idleness")
+        await asyncio.sleep(5.0)
+        await model.async_block_until_all_units_idle()
 
 
 def do_release_upgrade(unit_name):

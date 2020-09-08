@@ -13,15 +13,17 @@
 # limitations under the License.
 
 """Collection of functions to support upgrade testing."""
-import re
+
+import itertools
 import logging
-import collections
+import re
+
 import zaza.model
 
 
-SERVICE_GROUPS = collections.OrderedDict([
-    ('Stateful Services', ['percona-cluster', 'rabbitmq-server', 'ceph-mon',
-                           'mysql-innodb-cluster']),
+SERVICE_GROUPS = (
+    ('Database Services', ['percona-cluster', 'mysql-innodb-cluster']),
+    ('Stateful Services', ['rabbitmq-server', 'ceph-mon']),
     ('Core Identity', ['keystone']),
     ('Control Plane', [
         'aodh', 'barbican', 'ceilometer', 'ceph-fs',
@@ -31,8 +33,7 @@ SERVICE_GROUPS = collections.OrderedDict([
         'nova-cloud-controller', 'openstack-dashboard']),
     ('Data Plane', [
         'nova-compute', 'ceph-osd',
-        'swift-proxy', 'swift-storage'])
-])
+        'swift-proxy', 'swift-storage']))
 
 UPGRADE_EXCLUDE_LIST = ['rabbitmq-server', 'percona-cluster']
 
@@ -106,6 +107,30 @@ def _apply_extra_filters(filters, extra_filters):
     return filters
 
 
+def _filter_easyrsa(app, app_config, model_name=None):
+    charm_name = extract_charm_name_from_url(app_config['charm'])
+    if "easyrsa" in charm_name:
+        logging.warn("Skipping upgrade of easyrsa Bug #1850121")
+        return True
+    return False
+
+
+def _filter_etcd(app, app_config, model_name=None):
+    charm_name = extract_charm_name_from_url(app_config['charm'])
+    if "etcd" in charm_name:
+        logging.warn("Skipping upgrade of easyrsa Bug #1850124")
+        return True
+    return False
+
+
+def _filter_memcached(app, app_config, model_name=None):
+    charm_name = extract_charm_name_from_url(app_config['charm'])
+    if "memcached" in charm_name:
+        logging.warn("Skipping upgrade of memcached charm")
+        return True
+    return False
+
+
 def get_upgrade_groups(model_name=None, extra_filters=None):
     """Place apps in the model into their upgrade groups.
 
@@ -170,21 +195,21 @@ def get_charm_upgrade_groups(model_name=None, extra_filters=None):
 
 
 def _build_service_groups(applications):
-    groups = collections.OrderedDict()
-    for phase_name, charms in SERVICE_GROUPS.items():
+    groups = []
+    for phase_name, charms in SERVICE_GROUPS:
         group = []
         for app, app_config in applications.items():
             charm_name = extract_charm_name_from_url(app_config['charm'])
             if charm_name in charms:
                 group.append(app)
-        groups[phase_name] = group
+        groups.append((phase_name, group))
 
-    sweep_up = []
-    for app in applications:
-        if not (app in [a for group in groups.values() for a in group]):
-            sweep_up.append(app)
-    groups['sweep_up'] = sweep_up
-    for name, group in groups.items():
+    # collect all the values into a list, and then a lookup hash
+    values = list(itertools.chain(*(ls for _, ls in groups)))
+    vhash = {v: 1 for v in values}
+    sweep_up = [app for app in applications if app not in vhash]
+    groups.append(('sweep_up', sweep_up))
+    for name, group in groups:
         group.sort()
     return groups
 

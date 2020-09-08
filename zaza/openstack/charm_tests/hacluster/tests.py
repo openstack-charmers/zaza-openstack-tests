@@ -79,58 +79,60 @@ class HaclusterTest(HaclusterBaseTest):
 class HaclusterScalebackTest(HaclusterBaseTest):
     """hacluster scaleback tests."""
 
-    _PRINCIPLE_APP_NAME = 'keystone'
-    _HACLUSTER_APP_NAME = 'hacluster'
-    _HACLUSTER_CHARM_NAME = 'hacluster'
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running hacluster scaleback tests."""
+        super(HaclusterScalebackTest, cls).setUpClass()
+        test_config = cls.test_config['tests_options']['hacluster']
+        cls._principle_app_name = test_config['principle-app-name']
+        cls._hacluster_app_name = test_config['hacluster-app-name']
+        cls._hacluster_charm_name = test_config['hacluster-charm-name']
 
     def test_930_scaleback(self):
         """Remove a unit, recalculate quorum and add a new one."""
-        principle_units = zaza.model.get_status().applications[
-            self._PRINCIPLE_APP_NAME]['units']
+        principle_units = sorted(zaza.model.get_status().applications[
+            self._principle_app_name]['units'].keys())
         self.assertEqual(len(principle_units), 3)
-        doomed_principle = sorted(principle_units.keys())[0]
-        doomed_unit = juju_utils.get_subordinate_units(
-            [doomed_principle], charm_name=self._HACLUSTER_CHARM_NAME)[0]
+        doomed_principle_unit = principle_units[0]
+        other_principle_unit = principle_units[1]
+        doomed_hacluster_unit = juju_utils.get_subordinate_units(
+            [doomed_principle_unit], charm_name=self._hacluster_charm_name)[0]
+        other_hacluster_unit = juju_utils.get_subordinate_units(
+            [other_principle_unit], charm_name=self._hacluster_charm_name)[0]
 
-        logging.info('Pausing unit {}'.format(doomed_unit))
+        logging.info('Pausing unit {}'.format(doomed_hacluster_unit))
         zaza.model.run_action(
-            doomed_unit,
+            doomed_hacluster_unit,
             'pause',
             raise_on_failure=True)
         logging.info('OK')
 
-        logging.info('Removing {}'.format(doomed_principle))
+        logging.info('Removing {}'.format(doomed_principle_unit))
         zaza.model.destroy_unit(
-            self._PRINCIPLE_APP_NAME,
-            doomed_principle,
+            self._principle_app_name,
+            doomed_principle_unit,
             wait_disappear=True)
+        logging.info('OK')
+
+        logging.info('Waiting for model to settle')
+        zaza.model.block_until_unit_wl_status(other_hacluster_unit, 'blocked')
+        zaza.model.block_until_unit_wl_status(other_principle_unit, 'blocked')
+        zaza.model.block_until_all_units_idle()
         logging.info('OK')
 
         logging.info('Updating corosync ring')
         zaza.model.run_action_on_leader(
-            self._HACLUSTER_APP_NAME,
+            self._hacluster_app_name,
             'update-ring',
             action_params={'i-really-mean-it': True},
             raise_on_failure=True)
 
-        expected_states = {
-            self._HACLUSTER_APP_NAME: {
-                "workload-status": "blocked",
-                "workload-status-message":
-                    "Insufficient peer units for ha cluster (require 3)"
-            },
-            self._PRINCIPLE_APP_NAME: {
-                "workload-status": "blocked",
-                "workload-status-message": "Database not initialised",
-            },
-        }
-        zaza.model.wait_for_application_states(states=expected_states)
-        zaza.model.block_until_all_units_idle()
+        logging.info('Adding an hacluster unit')
+        zaza.model.add_unit(self._principle_app_name, wait_appear=True)
         logging.info('OK')
 
-        logging.info('Adding a hacluster unit')
-        zaza.model.add_unit(self._PRINCIPLE_APP_NAME, wait_appear=True)
-        expected_states = {self._HACLUSTER_APP_NAME: {
+        logging.info('Waiting for model to settle')
+        expected_states = {self._hacluster_app_name: {
             "workload-status": "active",
             "workload-status-message": "Unit is ready and clustered"}}
         zaza.model.wait_for_application_states(states=expected_states)

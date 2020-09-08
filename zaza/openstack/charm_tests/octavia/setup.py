@@ -92,7 +92,7 @@ def configure_octavia():
     del test_config['target_deploy_status']['octavia']
 
     _singleton = zaza.openstack.charm_tests.test_utils.OpenStackBaseTest()
-    _singleton.setUpClass()
+    _singleton.setUpClass(application_name='octavia')
     with _singleton.config_change(cert_config, cert_config):
         # wait for configuration to be applied then return
         pass

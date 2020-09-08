@@ -14,7 +14,6 @@
 """Module containing base class for implementing charm tests."""
 import contextlib
 import logging
-import ipaddress
 import subprocess
 import tenacity
 import unittest
@@ -541,20 +540,3 @@ class OpenStackBaseTest(BaseCharmTest):
         instance_2 = self.retrieve_guest(
             '{}-ins-1'.format(self.RESOURCE_PREFIX))
         return instance_1, instance_2
-
-
-def format_addr(addr):
-    """Validate and format IP address.
-
-    :param addr: IPv6 or IPv4 address
-    :type addr: str
-    :returns: Address string, optionally encapsulated in brackets([])
-    :rtype: str
-    :raises: ValueError
-    """
-    ipaddr = ipaddress.ip_address(addr)
-    if isinstance(ipaddr, ipaddress.IPv6Address):
-        fmt = '[{}]'
-    else:
-        fmt = '{}'
-    return fmt.format(ipaddr)
