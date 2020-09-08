@@ -554,6 +554,20 @@ def dvr_enabled():
     return get_application_config_option('neutron-api', 'enable-dvr')
 
 
+def ngw_present():
+    """Check whether Neutron Gateway is present in deployment.
+
+    :returns: True when Neutron Gateway is present, False otherwise
+    :rtype: bool
+    """
+    try:
+        model.get_application('neutron-gateway')
+        return True
+    except KeyError:
+        pass
+    return False
+
+
 def ovn_present():
     """Check whether OVN is present in deployment.
 
@@ -721,6 +735,9 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
         except KeyError:
             # neutron-gateway not in deployment
             pass
+    elif ngw_present():
+        uuids = itertools.islice(get_gateway_uuids(), limit_gws)
+        application_names = ['neutron-gateway']
     elif ovn_present():
         uuids = itertools.islice(get_ovn_uuids(), limit_gws)
         application_names = ['ovn-chassis']
@@ -735,8 +752,7 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
         config.update({'ovn-bridge-mappings': 'physnet1:br-ex'})
         add_dataport_to_netplan = True
     else:
-        uuids = itertools.islice(get_gateway_uuids(), limit_gws)
-        application_names = ['neutron-gateway']
+        raise RuntimeError('Unable to determine charm network topology.')
 
     if not net_id:
         net_id = get_admin_net(neutronclient)['id']
