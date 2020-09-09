@@ -120,7 +120,8 @@ class HaclusterScalebackTest(HaclusterBaseTest):
         logging.info('OK')
 
         logging.info('Updating corosync ring')
-        hacluster_app_name = other_hacluster_unit.application
+        hacluster_app_name = zaza.model.get_unit_from_name(
+            other_hacluster_unit).application
         zaza.model.run_action_on_leader(
             hacluster_app_name,
             'update-ring',
