@@ -40,12 +40,54 @@ class _OVNSetupHelper(test_utils.BaseCharmTest):
         return int(n_api_config['global-physnet-mtu']['value']) - (
             GENEVE_ENCAP_OVERHEAD + IP4_HEADER_SIZE)
 
+    def _configure_apps(self, apps, cfg,
+                        first_match_raise_if_none_found=False):
+        """Conditionally configure a set of applications.
+
+        :param apps: Applications.
+        :type apps: Iterator[str]
+        :param cfg: Configuration to apply.
+        :type cfg: Dict[str,any]
+        :param first_match_raise_if_none_found: When set the method will
+                                                configure the first application
+                                                it finds in the model and raise
+                                                an exception if none are found.
+        :type first_match_raise_if_none_found: bool
+        :raises: RuntimeError
+        """
+        for app in apps:
+            try:
+                zaza.model.get_application(app)
+                for k, v in cfg.items():
+                    logging.info('Setting `{}` to "{}" on "{}"...'
+                                 .format(k, v, app))
+                    with self.config_change(cfg, cfg, app):
+                        # The intent here is to change the config and not
+                        # restore it. We accomplish that by passing in the same
+                        # value for default and alternate.
+                        #
+                        # The reason for using the `config_change` helper for
+                        # this is that it already deals with all the
+                        # permutations of config already being set etc and does
+                        # not get into trouble if the test bundle already has
+                        # the values we try to set.
+                        if first_match_raise_if_none_found:
+                            break
+                        else:
+                            continue
+                else:
+                    if first_match_raise_if_none_found:
+                        raise RuntimeError(
+                            'None of the expected apps ({}) are present in '
+                            'the model.'
+                            .format(apps)
+                        )
+            except KeyError:
+                pass
+
     def configure_ngw_novs(self):
         """Configure n-ovs and n-gw units."""
         cfg = {
-            # To be able to successfully clean up after the Neutron agents we
-            # need to use the 'openvswitch' `firewall-driver`.
-            'firewall-driver': 'openvswitch',
             # To be able to have instances successfully survive the migration
             # without communication issues we need to lower the MTU announced
             # to instances prior to migration.
@@ -59,25 +101,13 @@ class _OVNSetupHelper(test_utils.BaseCharmTest):
             'instance-mtu': self._get_instance_mtu_from_global_physnet_mtu()
         }
         apps = ('neutron-gateway', 'neutron-openvswitch')
-        for app in apps:
-            try:
-                zaza.model.get_application(app)
-                for k, v in cfg.items():
-                    logging.info('Setting `{}` to "{}" on "{}"...'
-                                 .format(k, v, app))
-                with self.config_change(cfg, cfg, app):
-                    # The intent here is to change the config and not restore
-                    # it. We accomplish that by passing in the same value for
-                    # default and alternate.
-                    #
-                    # The reason for using the `config_change` helper for this
-                    # is that it already deals with all the permutations of
-                    # config already being set etc and does not get into
-                    # trouble if the test bundle already have the values we try
-                    # to set.
-                    continue
-            except KeyError:
-                pass
+        self._configure_apps(apps, cfg)
+        cfg_ovs = {
+            # To be able to successfully clean up after the Neutron agents we
+            # need to use the 'openvswitch' `firewall-driver`.
+            'firewall-driver': 'openvswitch',
+        }
+        self._configure_apps(('neutron-openvswitch',), cfg_ovs)
 
     def configure_ovn_mappings(self):
         """Copy mappings from n-gw or n-ovs application."""
@@ -102,23 +132,8 @@ class _OVNSetupHelper(test_utils.BaseCharmTest):
                 .format(src_apps)
             )
 
-        for app in dst_apps:
-            try:
-                zaza.model.get_application(app)
-                for k, v in ovn_cfg.items():
-                    logging.info('Setting `{}` to "{}" on "{}"...'
-                                 .format(k, v, app))
-                with self.config_change(ovn_cfg, ovn_cfg, app):
-                    # Set values only on ovn-dedicated-chassis when present,
-                    # otherwise we set them on ovn-chassis.
-                    break
-            except KeyError:
-                pass
-        else:
-            raise RuntimeError(
-                'None of the expected apps ({}) are present in the model.'
-                .format(dst_apps)
-            )
+        self._configure_apps(
+            dst_apps, ovn_cfg, first_match_raise_if_none_found=True)
 
 
 def pre_migration_configuration():

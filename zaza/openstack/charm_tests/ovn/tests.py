@@ -84,7 +84,7 @@ class OVSOVNMigrationTest(test_utils.BaseCharmTest):
     def setUp(self):
         """Perform migration steps prior to validation."""
         super(OVSOVNMigrationTest, self).setUp()
-        # These steps here due to them having to be executed once and in a
+        # These steps are here due to them having to be executed once and in a
         # specific order prior to running any tests. The steps should still
         # be idempotent if at all possible as a courtesy to anyone iterating
         # on the test code.
@@ -104,6 +104,11 @@ class OVSOVNMigrationTest(test_utils.BaseCharmTest):
 
         # Stop Neutron agents on hypervisors
         self._pause_units('neutron-openvswitch')
+        try:
+            self._pause_units('neutron-gateway')
+        except KeyError:
+            logging.info(
+                'No neutron-gateway in deployment, skip pausing it.')
 
         # Add the neutron-api-plugin-ovn subordinate which will make the
         # `neutron-api-plugin-ovn` unit appear in the deployment.
@@ -155,7 +160,13 @@ class OVSOVNMigrationTest(test_utils.BaseCharmTest):
         self._resume_units('neutron-api')
 
         # Run `cleanup` action on neutron-openvswitch units/hypervisors
-        self._run_cleanup_action()
+        self._run_cleanup_action('neutron-openvswitch')
+        # Run `cleanup` action on neutron-gateway units when present
+        try:
+            self._run_cleanup_action('neutron-gateway')
+        except KeyError:
+            logging.info(
+                'No neutron-gateway in deployment, skip cleanup of it.')
 
         # Start the OVN controller on hypervisors
         #
@@ -164,11 +175,18 @@ class OVSOVNMigrationTest(test_utils.BaseCharmTest):
         # you will program the network to a state of infinite loop.
         self._resume_units('ovn-chassis')
 
+        try:
+            self._resume_units('ovn-dedicated-chassis')
+        except KeyError:
+            logging.info(
+                'No ovn-dedicated-chassis in deployment, skip resume.')
+
         # And we should be off to the races
 
         self.one_time_init_done = True
 
     def _add_neutron_api_plugin_ovn_subordinate_relation(self):
+        """Add relation between neutron-api and neutron-api-plugin-ovn."""
         try:
             logging.info('Adding relation neutron-api-plugin-ovn '
                          '-> neutron-api')
@@ -200,6 +218,7 @@ class OVSOVNMigrationTest(test_utils.BaseCharmTest):
             logging.info('done')
 
     def _run_offline_neutron_morph_db_action(self):
+        """Run offline-neutron-morph-db action."""
         logging.info('Running the optional `offline-neutron-morph-db` action '
                      'on neutron-api-plugin-ovn/leader')
         generic_utils.assertActionRanOK(
@@ -213,6 +232,7 @@ class OVSOVNMigrationTest(test_utils.BaseCharmTest):
         )
 
     def _run_migrate_ovn_db_action(self):
+        """Run migrate-ovn-db action."""
         logging.info('Running `migrate-ovn-db` action on '
                      'neutron-api-plugin-ovn/leader')
         generic_utils.assertActionRanOK(
@@ -230,6 +250,14 @@ class OVSOVNMigrationTest(test_utils.BaseCharmTest):
     @tenacity.retry(wait=tenacity.wait_exponential(min=5, max=60),
                     reraise=True, stop=tenacity.stop_after_attempt(3))
     def _run_migrate_mtu_action(self):
+        """Run migrate-mtu action with retry.
+
+        The action is idempotent.
+
+        Due to LP: #1854518 and the point in time of the test life cycle we run
+        this action the probability for the Neutron API not being available
+        for the script to do its job is high, thus we retry.
+        """
         logging.info('Running `migrate-mtu` action on '
                      'neutron-api-plugin-ovn/leader')
         generic_utils.assertActionRanOK(
@@ -243,6 +271,11 @@ class OVSOVNMigrationTest(test_utils.BaseCharmTest):
         )
 
     def _pause_units(self, application):
+        """Pause units of application.
+
+        :param application: Name of application
+        :type application: str
+        """
         logging.info('Pausing {} units'.format(application))
         zaza.model.run_action_on_units(
             [unit.entity_id
@@ -259,11 +292,17 @@ class OVSOVNMigrationTest(test_utils.BaseCharmTest):
             },
         )
 
-    def _run_cleanup_action(self):
-        logging.info('Running `cleanup` action on neutron-openvswitch units.')
+    def _run_cleanup_action(self, application):
+        """Run cleanup action on application units.
+
+        :param application: Name of application
+        :type application: str
+        """
+        logging.info('Running `cleanup` action on {} units.'
+                     .format(application))
         zaza.model.run_action_on_units(
             [unit.entity_id
-                for unit in zaza.model.get_units('neutron-openvswitch')],
+                for unit in zaza.model.get_units(application)],
             'cleanup',
             action_params={
                 'i-really-mean-it': True},
@@ -271,6 +310,11 @@ class OVSOVNMigrationTest(test_utils.BaseCharmTest):
         )
 
     def _resume_units(self, application):
+        """Resume units of application.
+
+        :param application: Name of application
+        :type application: str
+        """
         logging.info('Resuming {} units'.format(application))
         zaza.model.run_action_on_units(
             [unit.entity_id
