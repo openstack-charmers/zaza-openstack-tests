@@ -24,6 +24,8 @@ import copy
 import logging
 import tenacity
 
+from neutronclient.common import exceptions as neutronexceptions
+
 import zaza
 import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
@@ -635,7 +637,8 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
     def validate_instance_can_reach_other(self,
                                           instance_1,
                                           instance_2,
-                                          verify):
+                                          verify,
+                                          mtu=None):
         """
         Validate that an instance can reach a fixed and floating of another.
 
@@ -644,6 +647,12 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
 
         :param instance_2: The instance to check networking from
         :type instance_2: nova_client.Server
+
+        :param verify: callback to verify result
+        :type verify: callable
+
+        :param mtu: Check that we can send non-fragmented packets of given size
+        :type mtu: Optional[int]
         """
         floating_1 = floating_ips_from_instance(instance_1)[0]
         floating_2 = floating_ips_from_instance(instance_2)[0]
@@ -653,19 +662,30 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
         password = guest.boot_tests['bionic'].get('password')
         privkey = openstack_utils.get_private_key(nova_utils.KEYPAIR_NAME)
 
-        openstack_utils.ssh_command(
-            username, floating_1, 'instance-1',
-            'ping -c 1 {}'.format(address_2),
-            password=password, privkey=privkey, verify=verify)
+        cmds = [
+            'ping -c 1',
+        ]
+        if mtu:
+            # the on-wire packet will be 28 bytes larger than the value
+            # provided to ping(8) -s parameter
+            packetsize = mtu - 28
+            cmds.append(
+                'ping -M do -s {} -c 1'.format(packetsize))
 
-        openstack_utils.ssh_command(
-            username, floating_1, 'instance-1',
-            'ping -c 1 {}'.format(floating_2),
-            password=password, privkey=privkey, verify=verify)
+        for cmd in cmds:
+            openstack_utils.ssh_command(
+                username, floating_1, 'instance-1',
+                '{} {}'.format(cmd, address_2),
+                password=password, privkey=privkey, verify=verify)
+
+            openstack_utils.ssh_command(
+                username, floating_1, 'instance-1',
+                '{} {}'.format(cmd, floating_2),
+                password=password, privkey=privkey, verify=verify)
 
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
                     reraise=True, stop=tenacity.stop_after_attempt(8))
-    def validate_instance_can_reach_router(self, instance, verify):
+    def validate_instance_can_reach_router(self, instance, verify, mtu=None):
         """
         Validate that an instance can reach it's primary gateway.
 
@@ -676,6 +696,12 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
 
         :param instance: The instance to check networking from
         :type instance: nova_client.Server
+
+        :param verify: callback to verify result
+        :type verify: callable
+
+        :param mtu: Check that we can send non-fragmented packets of given size
+        :type mtu: Optional[int]
         """
         address = floating_ips_from_instance(instance)[0]
 
@@ -683,9 +709,20 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
         password = guest.boot_tests['bionic'].get('password')
         privkey = openstack_utils.get_private_key(nova_utils.KEYPAIR_NAME)
 
-        openstack_utils.ssh_command(
-            username, address, 'instance', 'ping -c 1 192.168.0.1',
-            password=password, privkey=privkey, verify=verify)
+        cmds = [
+            'ping -c 1',
+        ]
+        if mtu:
+            # the on-wire packet will be 28 bytes larger than the value
+            # provided to ping(8) -s parameter
+            packetsize = mtu - 28
+            cmds.append(
+                'ping -M do -s {} -c 1'.format(packetsize))
+
+        for cmd in cmds:
+            openstack_utils.ssh_command(
+                username, address, 'instance', '{} 192.168.0.1'.format(cmd),
+                password=password, privkey=privkey, verify=verify)
 
     @tenacity.retry(wait=tenacity.wait_exponential(min=5, max=60),
                     reraise=True, stop=tenacity.stop_after_attempt(8),
@@ -726,21 +763,67 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
                 assert agent['admin_state_up']
                 assert agent['alive']
 
+    def effective_network_mtu(self, network_name):
+        """Retrieve effective MTU for a network.
+
+        If the `instance-mtu` configuration option is set to a value lower than
+        the network MTU this method will return the value of that. Otherwise
+        Neutron's value for MTU on a network will be returned.
+
+        :param network_name: Name of network to query
+        :type network_name: str
+        :returns: MTU for network
+        :rtype: int
+        """
+        cfg_instance_mtu = None
+        for app in ('neutron-gateway', 'neutron-openvswitch'):
+            try:
+                cfg = zaza.model.get_application_config(app)
+                cfg_instance_mtu = int(cfg['instance-mtu']['value'])
+                break
+            except KeyError:
+                pass
+
+        networks = self.neutron_client.show_network('', name=network_name)
+        network_mtu = int(next(iter(networks['networks']))['mtu'])
+
+        if cfg_instance_mtu and cfg_instance_mtu < network_mtu:
+            logging.info('Using MTU from application "{}" config: {}'
+                         .format(app, cfg_instance_mtu))
+            return cfg_instance_mtu
+        else:
+            logging.info('Using MTU from network "{}": {}'
+                         .format(network_name, network_mtu))
+            return network_mtu
+
     def check_connectivity(self, instance_1, instance_2):
         """Run North/South and East/West connectivity tests."""
         def verify(stdin, stdout, stderr):
             """Validate that the SSH command exited 0."""
             self.assertEqual(stdout.channel.recv_exit_status(), 0)
 
+        try:
+            mtu_1 = self.effective_network_mtu(
+                network_name_from_instance(instance_1))
+            mtu_2 = self.effective_network_mtu(
+                network_name_from_instance(instance_2))
+            mtu_min = min(mtu_1, mtu_2)
+        except neutronexceptions.NotFound:
+            # Older versions of OpenStack cannot look up network by name, just
+            # skip the check if that is the case.
+            mtu_1 = mtu_2 = mtu_min = None
+
         # Verify network from 1 to 2
-        self.validate_instance_can_reach_other(instance_1, instance_2, verify)
+        self.validate_instance_can_reach_other(
+            instance_1, instance_2, verify, mtu_min)
 
         # Verify network from 2 to 1
-        self.validate_instance_can_reach_other(instance_2, instance_1, verify)
+        self.validate_instance_can_reach_other(
+            instance_2, instance_1, verify, mtu_min)
 
         # Validate tenant to external network routing
-        self.validate_instance_can_reach_router(instance_1, verify)
-        self.validate_instance_can_reach_router(instance_2, verify)
+        self.validate_instance_can_reach_router(instance_1, verify, mtu_1)
+        self.validate_instance_can_reach_router(instance_2, verify, mtu_2)
 
 
 def floating_ips_from_instance(instance):
@@ -769,6 +852,17 @@ def fixed_ips_from_instance(instance):
     return ips_from_instance(instance, 'fixed')
 
 
+def network_name_from_instance(instance):
+    """Retrieve name of primary network the instance is attached to.
+
+    :param instance: The instance to fetch name of network from.
+    :type instance: nova_client.Server
+    :returns: Name of primary network the instance is attached to.
+    :rtype: str
+    """
+    return next(iter(instance.addresses))
+
+
 def ips_from_instance(instance, ip_type):
     """
     Retrieve IPs of a certain type from an instance.
@@ -786,7 +880,8 @@ def ips_from_instance(instance, ip_type):
             "Only 'floating' and 'fixed' are valid IP types to search for"
         )
     return list([
-        ip['addr'] for ip in instance.addresses['private']
+        ip['addr'] for ip in instance.addresses[
+            network_name_from_instance(instance)]
         if ip['OS-EXT-IPS:type'] == ip_type])
 
 
@@ -794,11 +889,22 @@ class NeutronNetworkingTest(NeutronNetworkingBase):
     """Ensure that openstack instances have valid networking."""
 
     def test_instances_have_networking(self):
-        """Validate North/South and East/West networking."""
-        self.launch_guests()
+        """Validate North/South and East/West networking.
+
+        Tear down can optionally be disabled by setting the module path +
+        class name + run_tearDown key under the `tests_options` key in
+        tests.yaml.
+
+        Abbreviated example:
+        ...charm_tests.neutron.tests.NeutronNetworkingTest.run_tearDown: false
+        """
         instance_1, instance_2 = self.retrieve_guests()
+        if not all([instance_1, instance_2]):
+            self.launch_guests()
+            instance_1, instance_2 = self.retrieve_guests()
         self.check_connectivity(instance_1, instance_2)
-        self.run_resource_cleanup = True
+        self.run_resource_cleanup = self.get_my_tests_options(
+            'run_resource_cleanup', True)
 
 
 class NeutronNetworkingVRRPTests(NeutronNetworkingBase):

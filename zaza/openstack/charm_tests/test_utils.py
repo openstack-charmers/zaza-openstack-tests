@@ -15,6 +15,7 @@
 import contextlib
 import logging
 import subprocess
+import sys
 import tenacity
 import unittest
 
@@ -424,6 +425,50 @@ class BaseCharmTest(unittest.TestCase):
             'running',
             model_name=self.model_name,
             pgrep_full=pgrep_full)
+
+    def get_my_tests_options(self, key, default=None):
+        """Retrieve tests_options for specific test.
+
+        Prefix for key is built from dot-notated absolute path to calling
+        method or function.
+
+        Example:
+           # In tests.yaml:
+           tests_options:
+             zaza.charm_tests.noop.tests.NoopTest.test_foo.key: true
+           # called from zaza.charm_tests.noop.tests.NoopTest.test_foo()
+           >>> get_my_tests_options('key')
+           True
+
+        :param key: Suffix for tests_options key.
+        :type key: str
+        :param default: Default value to return if key is not found.
+        :type default: any
+        :returns: Value associated with key in tests_options.
+        :rtype: any
+        """
+        # note that we need to do this in-line otherwise we would get the path
+        # to ourself. I guess we could create a common method that would go two
+        # frames back, but that would be kind of useless for anyone else than
+        # this method.
+        caller_path = []
+
+        # get path to module
+        caller_path.append(sys.modules[
+            sys._getframe().f_back.f_globals['__name__']].__name__)
+
+        # attempt to get class name
+        try:
+            caller_path.append(
+                sys._getframe().f_back.f_locals['self'].__class__.__name__)
+        except KeyError:
+            pass
+
+        # get method or function name
+        caller_path.append(sys._getframe().f_back.f_code.co_name)
+
+        return self.test_config.get('tests_options', {}).get(
+            '.'.join(caller_path + [key]), default)
 
 
 class OpenStackBaseTest(BaseCharmTest):

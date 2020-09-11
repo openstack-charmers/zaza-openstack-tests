@@ -63,6 +63,9 @@ import tenacity
 import textwrap
 import urllib
 
+import zaza
+import zaza.charm_lifecycle.utils as lifecycle_utils
+
 from zaza import model
 from zaza.openstack.utilities import (
     exceptions,
@@ -553,6 +556,20 @@ def dvr_enabled():
     return get_application_config_option('neutron-api', 'enable-dvr')
 
 
+def ngw_present():
+    """Check whether Neutron Gateway is present in deployment.
+
+    :returns: True when Neutron Gateway is present, False otherwise
+    :rtype: bool
+    """
+    try:
+        model.get_application('neutron-gateway')
+        return True
+    except KeyError:
+        pass
+    return False
+
+
 def ovn_present():
     """Check whether OVN is present in deployment.
 
@@ -630,15 +647,20 @@ def add_interface_to_netplan(server_name, mac_address):
     :type mac_address: string
     """
     if dvr_enabled():
-        application_name = 'neutron-openvswitch'
+        application_names = ('neutron-openvswitch',)
     elif ovn_present():
         # OVN chassis is a subordinate to nova-compute
-        application_name = 'nova-compute'
+        application_names = ('nova-compute', 'ovn-dedicated-chassis')
     else:
-        application_name = 'neutron-gateway'
+        application_names = ('neutron-gateway',)
 
-    unit_name = juju_utils.get_unit_name_from_host_name(
-        server_name, application_name)
+    for app_name in application_names:
+        unit_name = juju_utils.get_unit_name_from_host_name(
+            server_name, app_name)
+        if unit_name:
+            break
+    else:
+        raise RuntimeError('Unable to find unit to run commands on.')
     run_cmd_nic = "ip -f link -br -o addr|grep {}".format(mac_address)
     interface = model.run_on_unit(unit_name, run_cmd_nic)
     interface = interface['Stdout'].split(' ')[0]
@@ -715,6 +737,9 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
         except KeyError:
             # neutron-gateway not in deployment
             pass
+    elif ngw_present():
+        uuids = itertools.islice(get_gateway_uuids(), limit_gws)
+        application_names = ['neutron-gateway']
     elif ovn_present():
         uuids = itertools.islice(get_ovn_uuids(), limit_gws)
         application_names = ['ovn-chassis']
@@ -729,8 +754,7 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
         config.update({'ovn-bridge-mappings': 'physnet1:br-ex'})
         add_dataport_to_netplan = True
     else:
-        uuids = itertools.islice(get_gateway_uuids(), limit_gws)
-        application_names = ['neutron-gateway']
+        raise RuntimeError('Unable to determine charm network topology.')
 
     if not net_id:
         net_id = get_admin_net(neutronclient)['id']
@@ -745,8 +769,9 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
                     'Neutron Gateway already has additional port')
                 break
         else:
-            logging.info('Attaching additional port to instance, '
-                         'connected to net id: {}'.format(net_id))
+            logging.info('Attaching additional port to instance ("{}"), '
+                         'connected to net id: {}'
+                         .format(uuid, net_id))
             body_value = {
                 "port": {
                     "admin_state_up": True,
@@ -796,7 +821,15 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
         # NOTE(fnordahl): We are stuck with juju_wait until we figure out how
         # to deal with all the non ['active', 'idle', 'Unit is ready.']
         # workload/agent states and msgs that our mojo specs are exposed to.
-        juju_wait.wait(wait_for_workload=True)
+        if lifecycle_utils.get_config_options().get(
+                'configure_gateway_ext_port_use_juju_wait', True):
+            juju_wait.wait(wait_for_workload=True)
+        else:
+            zaza.model.wait_for_agent_status()
+            test_config = zaza.charm_lifecycle.utils.get_charm_config(
+                fatal=False)
+            zaza.model.wait_for_application_states(
+                states=test_config.get('target_deploy_status', {}))
 
 
 @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
