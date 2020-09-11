@@ -33,8 +33,8 @@ SETUP_ENV_VARS = {
 TEMPEST_FLAVOR_NAME = 'm1.tempest'
 TEMPEST_ALT_FLAVOR_NAME = 'm2.tempest'
 TEMPEST_SVC_LIST = ['ceilometer', 'cinder', 'glance', 'heat', 'horizon',
-                    'ironic', 'neutron', 'nova', 'sahara', 'swift', 'trove',
-                    'zaqar']
+                    'ironic', 'neutron', 'nova', 'octavia', 'sahara', 'swift',
+                    'trove', 'zaqar']
 
 
 def add_application_ips(ctxt):
