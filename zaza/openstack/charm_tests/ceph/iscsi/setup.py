@@ -19,12 +19,12 @@ import zaza.model
 
 def basic_guest_setup():
     """Run basic setup for iscsi guest."""
-    unit = zaza.model.get_units('ubuntu')[0]
-    setup_cmds = [
-        "apt install --yes open-iscsi multipath-tools",
-        "systemctl start iscsi",
-        "systemctl start iscsid"]
-    for cmd in setup_cmds:
-        zaza.model.run_on_unit(
-            unit.entity_id,
-            cmd)
+    for unit in zaza.model.get_units('ubuntu'):
+        setup_cmds = [
+            "apt install --yes open-iscsi multipath-tools",
+            "systemctl start iscsi",
+            "systemctl start iscsid"]
+        for cmd in setup_cmds:
+            zaza.model.run_on_unit(
+                unit.entity_id,
+                cmd)
