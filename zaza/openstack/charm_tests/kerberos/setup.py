@@ -113,6 +113,7 @@ def retrieve_and_attach_keytab():
                                    'keystone_keytab',
                                    tmp_file)
 
+    zaza.model.wait_for_application_states()
     zaza.model.block_until_all_units_idle()
 
 
