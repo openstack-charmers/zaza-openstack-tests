@@ -98,7 +98,7 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
                     ctxt['gw1_entity_id'],
                     ctxt['gw2_entity_id']),
                 'iqn': self.GW_IQN,
-                'rbd-pool-name': ctxt['pool_name'],
+                'rbd-pool-name': ctxt.get('pool_name', ''),
                 'ec-rbd-metadata-pool': ctxt.get('ec_meta_pool_name', ''),
                 'image-size': ctxt['img_size'],
                 'image-name': ctxt['img_name'],
@@ -193,6 +193,23 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
             'chap_password': 'myiscsipassword2',
             'img_size': '2G',
             'img_name': 'disk_ec_1'})
+        self.create_iscsi_target(ctxt)
+        self.mount_iscsi_target(ctxt)
+        self.check_client_device(ctxt)
+
+    def test_create_and_mount_volume_default_pool(self):
+        """Test creating a target and mounting it on a client."""
+        self.create_data_pool()
+        ctxt = self.get_base_ctxt()
+        client_entity_id = ctxt['client_entity_ids'][2]
+        ctxt.update({
+            'client_entity_id': client_entity_id,
+            'client_initiatorname': self.get_client_initiatorname(
+                client_entity_id),
+            'chap_username': 'myiscsiusername3',
+            'chap_password': 'myiscsipassword3',
+            'img_size': '3G',
+            'img_name': 'disk_default_1'})
         self.create_iscsi_target(ctxt)
         self.mount_iscsi_target(ctxt)
         self.check_client_device(ctxt)
