@@ -151,6 +151,7 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
             'create-pool',
             action_params={
                 'name': self.EC_DATA_POOL,
+                'pool-type': 'erasure-coded',
                 'allow-ec-overwrites': True,
                 'erasure-profile-name': self.EC_PROFILE_NAME}))
         generic_utils.assertActionRanOK(zaza.model.run_action_on_leader(
