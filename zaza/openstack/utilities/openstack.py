@@ -119,6 +119,10 @@ CHARM_TYPES = {
         'pkg': 'ovn-common',
         'origin_setting': 'source'
     },
+    'ceph-mon': {
+        'pkg': 'ceph-common',
+        'origin_setting': 'source'
+    },
 }
 
 # Older tests use the order the services appear in the list to imply
@@ -138,6 +142,7 @@ UPGRADE_SERVICES = [
     {'name': 'openstack-dashboard',
      'type': CHARM_TYPES['openstack-dashboard']},
     {'name': 'ovn-central', 'type': CHARM_TYPES['ovn-central']},
+    {'name': 'ceph-mon', 'type': CHARM_TYPES['ceph-mon']},
 ]
 
 

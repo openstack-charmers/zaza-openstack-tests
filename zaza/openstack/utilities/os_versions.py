@@ -249,4 +249,11 @@ PACKAGE_CODENAMES = {
         ('2', 'train'),
         ('20', 'ussuri'),
     ]),
+    'ceph-common': OrderedDict([
+        ('10', 'mitaka'),  # jewel
+        ('12', 'queens'),  # luminous
+        ('13', 'rocky'),   # mimic
+        ('14', 'train'),   # nautilus
+        ('15', 'ussuri'),  # octopus
+    ]),
 }
