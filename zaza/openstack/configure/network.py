@@ -184,7 +184,8 @@ def setup_sdn(network_config, keystone_session=None):
 
 
 def setup_gateway_ext_port(network_config, keystone_session=None,
-                           limit_gws=None):
+                           limit_gws=None,
+                           use_juju_wait=True):
     """Perform setup external port on Neutron Gateway.
 
     For OpenStack on OpenStack scenarios.
@@ -195,6 +196,8 @@ def setup_gateway_ext_port(network_config, keystone_session=None,
     :type keystone_session: keystoneauth1.session.Session object
     :param limit_gws: Limit the number of gateways that get a port attached
     :type limit_gws: Optional[int]
+    :param use_juju_wait: Use juju wait (default True) for model to settle
+    :type use_juju_wait: boolean
     :returns: None
     :rtype: None
     """
@@ -230,7 +233,8 @@ def setup_gateway_ext_port(network_config, keystone_session=None,
         neutron_client,
         net_id=net_id,
         add_dataport_to_netplan=add_dataport_to_netplan,
-        limit_gws=limit_gws)
+        limit_gws=limit_gws,
+        use_juju_wait=use_juju_wait)
 
 
 def run_from_cli(**kwargs):
@@ -269,6 +273,11 @@ def run_from_cli(**kwargs):
                         default="network.yaml")
     parser.add_argument("--cacert", help="Path to CA certificate bundle file",
                         default=None)
+    parser.add_argument("--no-use-juju-wait",
+                        help=("don't use juju wait for the model to settle "
+                              "(default true)"),
+                        action="store_false",
+                        default=True)
     # Handle CLI options
     options = parser.parse_args()
     net_topology = (kwargs.get('net_toplogoy') or
@@ -289,7 +298,9 @@ def run_from_cli(**kwargs):
         undercloud_ks_sess = openstack_utils.get_undercloud_keystone_session(
             verify=cacert)
         setup_gateway_ext_port(network_config,
-                               keystone_session=undercloud_ks_sess)
+                               keystone_session=undercloud_ks_sess,
+                               use_juju_wait=cli_utils.parse_arg(
+                                   options, 'no_use_juju_wait'))
 
     overcloud_ks_sess = openstack_utils.get_overcloud_keystone_session(
         verify=cacert)

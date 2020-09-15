@@ -64,7 +64,6 @@ import textwrap
 import urllib
 
 import zaza
-import zaza.charm_lifecycle.utils as lifecycle_utils
 
 from zaza import model
 from zaza.openstack.utilities import (
@@ -703,7 +702,8 @@ def add_interface_to_netplan(server_name, mac_address):
 
 def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
                                add_dataport_to_netplan=False,
-                               limit_gws=None):
+                               limit_gws=None,
+                               use_juju_wait=True):
     """Configure the neturong-gateway external port.
 
     :param novaclient: Authenticated novaclient
@@ -714,6 +714,9 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
     :type net_id: string
     :param limit_gws: Limit the number of gateways that get a port attached
     :type limit_gws: Optional[int]
+    :param use_juju_wait: Whether to use juju wait to wait for the model to
+        settle once the gateway has been configured. Default is True
+    :type use_juju_wait: boolean
     """
     deprecated_extnet_mode = deprecated_external_networking()
 
@@ -821,11 +824,13 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
         # NOTE(fnordahl): We are stuck with juju_wait until we figure out how
         # to deal with all the non ['active', 'idle', 'Unit is ready.']
         # workload/agent states and msgs that our mojo specs are exposed to.
-        if lifecycle_utils.get_config_options().get(
-                'configure_gateway_ext_port_use_juju_wait', True):
+        if use_juju_wait:
             juju_wait.wait(wait_for_workload=True)
         else:
             zaza.model.wait_for_agent_status()
+            # TODO: shouldn't access get_charm_config() here as it relies on
+            # ./tests/tests.yaml existing by default (regardless of the
+            # fatal=False) ... it's not great design.
             test_config = zaza.charm_lifecycle.utils.get_charm_config(
                 fatal=False)
             zaza.model.wait_for_application_states(
