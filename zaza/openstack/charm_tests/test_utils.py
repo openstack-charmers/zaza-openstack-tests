@@ -495,6 +495,11 @@ class OpenStackBaseTest(BaseCharmTest):
                         self.nova_client.servers,
                         server.id,
                         msg="server")
+        except AssertionError as e:
+            # Resource failed to be removed within the expected time frame,
+            # log this fact and carry on.
+            logging.warning('Gave up waiting for resource cleanup: "{}"'
+                            .format(str(e)))
         except AttributeError:
             # Test did not define self.RESOURCE_PREFIX, ignore.
             pass
