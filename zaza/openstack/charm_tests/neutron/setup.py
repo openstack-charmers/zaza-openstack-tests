@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 # Copyright 2018 Canonical Ltd.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,6 +25,8 @@ from zaza.openstack.utilities import (
     juju as juju_utils,
     openstack as openstack_utils,
 )
+
+import zaza.charm_lifecycle.utils as lifecycle_utils
 
 
 # The overcloud network configuration settings are declared.
@@ -81,12 +81,20 @@ def basic_overcloud_network(limit_gws=None):
     # Get keystone session
     keystone_session = openstack_utils.get_overcloud_keystone_session()
 
+    # Get optional use_juju_wait for netw ork option
+    options = (lifecycle_utils
+               .get_charm_config(fatal=False)
+               .get('configure_options', {}))
+    use_juju_wait = options.get(
+        'configure_gateway_ext_port_use_juju_wait', True)
+
     # Handle network for OpenStack-on-OpenStack scenarios
     if juju_utils.get_provider_type() == "openstack":
         undercloud_ks_sess = openstack_utils.get_undercloud_keystone_session()
         network.setup_gateway_ext_port(network_config,
                                        keystone_session=undercloud_ks_sess,
-                                       limit_gws=None)
+                                       limit_gws=None,
+                                       use_juju_wait=use_juju_wait)
 
     # Confugre the overcloud network
     network.setup_sdn(network_config, keystone_session=keystone_session)
