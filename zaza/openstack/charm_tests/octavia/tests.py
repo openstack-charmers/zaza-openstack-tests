@@ -18,6 +18,7 @@ import logging
 import subprocess
 import tenacity
 
+from keystoneauth1 import exceptions as keystone_exceptions
 import osc_lib.exceptions
 
 import zaza.openstack.charm_tests.test_utils as test_utils
@@ -80,8 +81,15 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         # List of floating IPs created by this test
         cls.fips = []
 
-    def resource_cleanup(self):
-        """Remove resources created during test execution."""
+    @tenacity.retry(stop=tenacity.stop_after_attempt(3),
+                    wait=tenacity.wait_exponential(
+                        multiplier=1, min=2, max=10))
+    def resource_cleanup(self, only_local=False):
+        """Remove resources created during test execution.
+
+        :param only_local: When set to true do not call parent method
+        :type only_local: bool
+        """
         for lb in self.loadbalancers:
             self.octavia_client.load_balancer_delete(lb['id'], cascade=True)
             try:
@@ -90,8 +98,16 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
                     provisioning_status='DELETED')
             except osc_lib.exceptions.NotFound:
                 pass
+        # allow resource cleanup to be run multiple times
+        self.loadbalancers = []
         for fip in self.fips:
             self.neutron_client.delete_floatingip(fip)
+        # allow resource cleanup to be run multiple times
+        self.fips = []
+
+        if only_local:
+            return
+
         # we run the parent resource_cleanup last as it will remove instances
         # referenced as members in the above cleaned up load balancers
         super(LBAASv2Test, self).resource_cleanup()
@@ -157,6 +173,7 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
                     'provider': provider,
                 }})
         lb = result['loadbalancer']
+        self.loadbalancers.append(lb)
         lb_id = lb['id']
 
         logging.info('Awaiting loadbalancer to reach provisioning_status '
@@ -283,10 +300,25 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         for provider in self.get_lb_providers(self.octavia_client).keys():
             logging.info('Creating loadbalancer with provider {}'
                          .format(provider))
-            lb = self._create_lb_resources(self.octavia_client, provider,
-                                           vip_subnet_id, subnet_id,
-                                           payload_ips)
-            self.loadbalancers.append(lb)
+            final_exc = None
+            # NOTE: we cannot use tenacity here as the method we call into
+            # already uses it to wait for operations to complete.
+            for retry in range(0, 3):
+                try:
+                    lb = self._create_lb_resources(self.octavia_client,
+                                                   provider,
+                                                   vip_subnet_id,
+                                                   subnet_id,
+                                                   payload_ips)
+                    break
+                except (AssertionError,
+                        keystone_exceptions.connection.ConnectFailure) as e:
+                    logging.info('Retrying load balancer creation, last '
+                                 'failure: "{}"'.format(str(e)))
+                    self.resource_cleanup(only_local=True)
+                    final_exc = e
+            else:
+                raise final_exc
 
             lb_fp = openstack_utils.create_floating_ip(
                 self.neutron_client, 'ext_net', port={'id': lb['vip_port_id']})
