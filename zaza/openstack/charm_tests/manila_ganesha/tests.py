@@ -62,13 +62,7 @@ packages:
             share_proto="nfs", size=1)
 
         # Spawn Servers
-        instance_1 = guest.launch_instance(
-            glance_setup.LTS_IMAGE_NAME,
-            vm_name='{}-ins-1'.format(self.RESOURCE_PREFIX),
-            userdata=self.INSTANCE_USERDATA)
-        instance_2 = guest.launch_instance(
-            glance_setup.LTS_IMAGE_NAME,
-            vm_name='{}-ins-2'.format(self.RESOURCE_PREFIX),
+        instance_1, instance_2 = self.launch_guests(
             userdata=self.INSTANCE_USERDATA)
 
         fip_1 = neutron_tests.floating_ips_from_instance(instance_1)[0]
