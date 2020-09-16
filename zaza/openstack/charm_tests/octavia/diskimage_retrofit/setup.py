@@ -15,6 +15,7 @@
 """Code for configuring octavia-diskimage-retrofit."""
 
 import logging
+import tenacity
 
 import zaza.model
 
@@ -39,12 +40,20 @@ def retrofit_amphora_image(unit='octavia-diskimage-retrofit/0',
     if image_id:
         params.update({'source-image': image_id})
 
-    # NOTE(fnordahl) ``zaza.model.run_action_on_leader`` fails here,
-    # apparently has to do with handling of subordinates in ``libjuju`` or
-    # ``juju`` itself.
-    action = zaza.model.run_action(
-        unit,
-        'retrofit-image',
-        action_params=params,
-        raise_on_failure=True)
+    # NOTE(fnordahl) the retrofit process involves downloading packages from
+    # the internet and is as such susceptible to random failures due to
+    # internet gremlins.
+    for attempt in tenacity.Retrying(
+            stop=tenacity.stop_after_attempt(3),
+            wait=tenacity.wait_exponential(
+            multiplier=1, min=2, max=10)):
+        with attempt:
+            # NOTE(fnordahl) ``zaza.model.run_action_on_leader`` fails here,
+            # apparently has to do with handling of subordinates in ``libjuju``
+            # or ``juju`` itself.
+            action = zaza.model.run_action(
+                unit,
+                'retrofit-image',
+                action_params=params,
+                raise_on_failure=True)
     return action
