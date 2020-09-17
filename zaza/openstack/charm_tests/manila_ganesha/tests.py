@@ -20,7 +20,6 @@ from tenacity import Retrying, stop_after_attempt, wait_exponential
 
 from manilaclient import client as manilaclient
 
-import zaza.openstack.charm_tests.glance.setup as glance_setup
 import zaza.openstack.charm_tests.neutron.tests as neutron_tests
 import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
