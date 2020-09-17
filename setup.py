@@ -33,7 +33,7 @@ install_require = [
     'hvac<0.7.0',
     'jinja2',
     'juju',
-    'juju-wait',
+    'juju-wait@git+https://git.launchpad.net/~ajkavanagh/juju-wait@clean-up-popen-objects-early#egg=juju-wait',
     'lxml',
     'PyYAML',
     'tenacity',
