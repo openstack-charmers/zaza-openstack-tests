@@ -21,7 +21,7 @@ import zaza.model
 
 
 class CephBaseBenchmarkTests(unittest.TestCase):
-    """FIO Bencharmk Tests."""
+    """Ceph Base Bencharmk Tests."""
 
     @classmethod
     def setUpClass(cls):
@@ -161,10 +161,15 @@ class FIOBenchmarkTests(CephBaseBenchmarkTests):
     def setUpClass(cls):
         """Run class setup for running ceph benchmark tests."""
         super().setUpClass()
+        cls.block_size = "4k"
+        cls.iodepth = 128
+        cls.num_jobs = 8
 
     def fio_action(self, operation):
         """FIO action."""
-        _params = {"operation": operation}
+        _params = {"operation": operation,
+                   "block-size": self.block_size,
+                   "num-jobs": self.num_jobs}
         action = zaza.model.run_action_on_leader(
             "ceph-benchmarking",
             "fio",
@@ -183,6 +188,11 @@ class FIOBenchmarkTests(CephBaseBenchmarkTests):
         """FIO write test."""
         self.test_results["write"] = (
             self.fio_action("write").get("stdout", ""))
+
+    def test_200_fio_read(self):
+        """FIO read test."""
+        self.test_results["read"] = (
+            self.fio_action("read").get("stdout", ""))
 
     def test_999_print_fio_results(self):
         """Print fio results."""
@@ -231,3 +241,33 @@ class SwiftBenchmarkTests(CephBaseBenchmarkTests):
             print("##### {} ######".format(test))
             print(results)
         print("######## End Swift Bench Results ########")
+
+
+class FIO4KBenchmarkTests(FIOBenchmarkTests):
+    """FIO 4K Bencharmk Tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running ceph benchmark tests."""
+        super().setUpClass()
+        cls.block_size = "4k"
+
+
+class FIO64KBenchmarkTests(FIOBenchmarkTests):
+    """FIO 64K Bencharmk Tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running ceph benchmark tests."""
+        super().setUpClass()
+        cls.block_size = "64k"
+
+
+class FIO1024KBenchmarkTests(FIOBenchmarkTests):
+    """FIO 1024K Bencharmk Tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running ceph benchmark tests."""
+        super().setUpClass()
+        cls.block_size = "1024k"
