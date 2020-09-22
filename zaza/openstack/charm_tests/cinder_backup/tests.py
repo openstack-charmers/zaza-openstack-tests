@@ -63,7 +63,7 @@ class CinderBackupTest(test_utils.OpenStackBaseTest):
             self.cinder_client.volumes,
             vol_new.id,
             expected_status="available",
-            msg="Volume status wait")
+            msg="Extended volume")
 
     def test_410_cinder_vol_create_backup_delete_restore_pool_inspect(self):
         """Create, backup, delete, restore a ceph-backed cinder volume.
@@ -99,7 +99,7 @@ class CinderBackupTest(test_utils.OpenStackBaseTest):
             wait_iteration_max_time=180,
             stop_after_attempt=30,
             expected_status='available',
-            msg='Volume status wait')
+            msg='ceph-backed cinder volume')
 
         # Backup the volume
         vol_backup = self.cinder_client.backups.create(
@@ -111,7 +111,7 @@ class CinderBackupTest(test_utils.OpenStackBaseTest):
             wait_iteration_max_time=180,
             stop_after_attempt=30,
             expected_status='available',
-            msg='Volume status wait')
+            msg='Backup volume')
         # Delete the volume
         openstack_utils.delete_volume(self.cinder_client, cinder_vol.id)
         # Restore the volume
@@ -122,7 +122,7 @@ class CinderBackupTest(test_utils.OpenStackBaseTest):
             wait_iteration_max_time=180,
             stop_after_attempt=15,
             expected_status='available',
-            msg='Backup status wait')
+            msg='Restored backup volume')
         # Delete the backup
         openstack_utils.delete_volume_backup(
             self.cinder_client,
