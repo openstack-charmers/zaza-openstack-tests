@@ -19,6 +19,7 @@ import subprocess
 import tenacity
 
 from keystoneauth1 import exceptions as keystone_exceptions
+import octaviaclient.api.v2.octavia
 import osc_lib.exceptions
 
 import zaza.openstack.charm_tests.test_utils as test_utils
@@ -81,6 +82,27 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         # List of floating IPs created by this test
         cls.fips = []
 
+    def _remove_amphorae_instances(self):
+        """Remove amphorae instances forcefully.
+
+        In some situations Octavia is unable to remove load balancer resources.
+        This helper can be used to remove the underlying instances.
+        """
+        result = self.octavia_client.amphora_list()
+        for amphora in result.get('amphorae', []):
+            for server in self.nova_client.servers.list():
+                if 'compute_id' in amphora and server.id == amphora[
+                        'compute_id']:
+                    try:
+                        openstack_utils.delete_resource(
+                            self.nova_client.servers,
+                            server.id,
+                            msg="server")
+                    except AssertionError as e:
+                        logging.warning(
+                            'Gave up waiting for resource cleanup: "{}"'
+                            .format(str(e)))
+
     @tenacity.retry(stop=tenacity.stop_after_attempt(3),
                     wait=tenacity.wait_exponential(
                         multiplier=1, min=2, max=10))
@@ -91,13 +113,21 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         :type only_local: bool
         """
         for lb in self.loadbalancers:
-            self.octavia_client.load_balancer_delete(lb['id'], cascade=True)
             try:
-                self.wait_for_lb_resource(
-                    self.octavia_client.load_balancer_show, lb['id'],
-                    provisioning_status='DELETED')
-            except osc_lib.exceptions.NotFound:
-                pass
+                self.octavia_client.load_balancer_delete(
+                    lb['id'], cascade=True)
+            except octaviaclient.api.v2.octavia.OctaviaClientException as e:
+                logging.info('Octavia is unable to delete load balancer: "{}"'
+                             .format(e))
+                logging.info('Attempting to forcefully remove amphorae')
+                self._remove_amphorae_instances()
+            else:
+                try:
+                    self.wait_for_lb_resource(
+                        self.octavia_client.load_balancer_show, lb['id'],
+                        provisioning_status='DELETED')
+                except osc_lib.exceptions.NotFound:
+                    pass
         # allow resource cleanup to be run multiple times
         self.loadbalancers = []
         for fip in self.fips:
