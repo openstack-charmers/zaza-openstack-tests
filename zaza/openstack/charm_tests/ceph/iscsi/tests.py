@@ -203,7 +203,7 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
             action_params={
                 'name': self.EC_METADATA_POOL}))
 
-    def run_client_check(self, ctxt):
+    def run_client_checks(self, ctxt):
         """Check access to mulipath device.
 
         Write a filesystem to device, mount it and write data. Then unmount
