@@ -199,7 +199,13 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
             run = await zaza.model.async_run_on_unit(
                 ctxt['client_entity_id'],
                 ls_bdevice_cmd.format(bdevice=device_ctxt['bdevice']))
-            return device_ctxt['bdevice'] in run['Stdout']
+            # Juju have moved to using 'stdout' rather than 'Stdout' so handle
+            # either.
+            try:
+                stdout = run['stdout']
+            except KeyError:
+                stdout = run['Stdout']
+            return device_ctxt['bdevice'] in stdout
 
         logging.info("Checking {} is present on {}".format(
             device_ctxt['bdevice'],
