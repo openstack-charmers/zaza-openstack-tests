@@ -90,7 +90,7 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
         """Run commands on unit.
 
         Iterate over each command and apply the context to the command, then
-        run the command on the suppliend unit.
+        run the command on the supplied unit.
 
         :param unit_name: Name of unit to match
         :type unit: str
