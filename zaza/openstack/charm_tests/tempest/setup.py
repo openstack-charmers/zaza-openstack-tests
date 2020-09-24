@@ -190,6 +190,7 @@ def add_environment_var_config(ctxt, services):
     :rtype: None
     """
     deploy_env = deployment_env.get_deployment_context()
+    missing_vars = []
     for svc, env_vars in SETUP_ENV_VARS.items():
         if svc in services:
             for var in env_vars:
@@ -197,9 +198,11 @@ def add_environment_var_config(ctxt, services):
                 if value:
                     ctxt[var.lower()] = value
                 else:
-                    raise ValueError(
-                        ("Environment variables {} must all be set to run this"
-                         " test").format(', '.join(env_vars)))
+                    missing_vars.append(var)
+    if missing_vars:
+        raise ValueError(
+            ("Environment variables [{}] must all be set to run this"
+             " test").format(', '.join(missing_vars)))
 
 
 def add_auth_config(ctxt):
