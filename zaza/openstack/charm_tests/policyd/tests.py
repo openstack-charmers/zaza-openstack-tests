@@ -244,8 +244,8 @@ class BasePolicydSpecialization(PolicydTest,
     by the policy override in the `_rule` class variable.  The method should
     pass cleanly without the override in place.
 
-    The test_003_test_override_is_observed will then apply the override and then
-    call get_client_and_attempt_operation() again, and this time it should
+    The test_003_test_override_is_observed will then apply the override and
+    then call get_client_and_attempt_operation() again, and this time it should
     detect the failure and raise the PolicydOperationFailedException()
     exception.  This will be detected as the override working and thus the test
     will pass.
