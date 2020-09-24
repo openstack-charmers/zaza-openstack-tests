@@ -690,14 +690,20 @@ def add_interface_to_netplan(server_name, mac_address):
                   "{}\nserver_name: {}".format(body_value, unit_name,
                                                interface, mac_address,
                                                server_name))
-    with tempfile.NamedTemporaryFile(mode="w") as netplan_file:
-        netplan_file.write(body_value)
-        netplan_file.flush()
-        model.scp_to_unit(unit_name, netplan_file.name,
-                          '/home/ubuntu/60-dataport.yaml', user="ubuntu")
-    run_cmd_mv = "sudo mv /home/ubuntu/60-dataport.yaml /etc/netplan/"
-    model.run_on_unit(unit_name, run_cmd_mv)
-    model.run_on_unit(unit_name, "sudo netplan apply")
+    for attempt in tenacity.Retrying(
+            stop=tenacity.stop_after_attempt(3),
+            wait=tenacity.wait_exponential(
+            multiplier=1, min=2, max=10)):
+        with attempt:
+            with tempfile.NamedTemporaryFile(mode="w") as netplan_file:
+                netplan_file.write(body_value)
+                netplan_file.flush()
+                model.scp_to_unit(
+                    unit_name, netplan_file.name,
+                    '/home/ubuntu/60-dataport.yaml', user="ubuntu")
+            run_cmd_mv = "sudo mv /home/ubuntu/60-dataport.yaml /etc/netplan/"
+            model.run_on_unit(unit_name, run_cmd_mv)
+            model.run_on_unit(unit_name, "sudo netplan apply")
 
 
 def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
