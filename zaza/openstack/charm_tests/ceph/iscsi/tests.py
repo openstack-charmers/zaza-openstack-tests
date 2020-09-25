@@ -32,7 +32,13 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
     EC_METADATA_POOL = 'zaza_ec_metadata_pool'
 
     def get_client_initiatorname(self, unit):
-        """Return the initiatorname for the given unit."""
+        """Return the initiatorname for the given unit.
+
+        :param unit_name: Name of unit to match
+        :type unit: str
+        :returns: Initiator name
+        :rtype: str
+        """
         generic_utils.assertRemoteRunOK(zaza.model.run_on_unit(
             unit,
             ('cp /etc/iscsi/initiatorname.iscsi /tmp; '
@@ -52,7 +58,11 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
         return initiatorname
 
     def get_base_ctxt(self):
-        """Generate a context for running gwcli commands to create a target."""
+        """Generate a context for running gwcli commands to create a target.
+
+        :returns: Base gateway context
+        :rtype: Dict
+        """
         gw_units = zaza.model.get_units('ceph-iscsi')
         primary_gw = gw_units[0]
         secondary_gw = gw_units[1]
@@ -79,8 +89,16 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
     def run_commands(self, unit_name, commands, ctxt):
         """Run commands on unit.
 
-        Apply context to commands until all variables have been replaced, then
-        run the command on the given unit.
+        Iterate over each command and apply the context to the command, then
+        run the command on the supplied unit.
+
+        :param unit_name: Name of unit to match
+        :type unit: str
+        :param commands: List of commands to run.
+        :type commands: List[str]
+        :param ctxt: Context to apply to each command.
+        :type ctxt: Dict
+        :raises: AssertionError
         """
         for _cmd in commands:
             cmd = _cmd.format(**ctxt)
@@ -89,7 +107,11 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
                 cmd))
 
     def create_iscsi_target(self, ctxt):
-        """Create target on gateway."""
+        """Create target on gateway.
+
+        :param ctxt: Base gateway context
+        :type ctxt: Dict
+        """
         generic_utils.assertActionRanOK(zaza.model.run_action_on_leader(
             'ceph-iscsi',
             'create-target',
@@ -107,8 +129,13 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
                 'client-password': ctxt['chap_password']
             }))
 
-    def mount_iscsi_target(self, ctxt):
-        """Mount iscsi target on client."""
+    def login_iscsi_target(self, ctxt):
+        """Login to the iscsi target on client.
+
+        :param ctxt: Base gateway context
+        :type ctxt: Dict
+        """
+        logging.info("Logging in to iscsi target")
         base_op_cmd = ('iscsiadm --mode node --targetname {gw_iqn} '
                        '--op=update ').format(**ctxt)
         setup_cmds = [
@@ -119,14 +146,67 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
             'iscsiadm --mode node --targetname {gw_iqn} --login']
         self.run_commands(ctxt['client_entity_id'], setup_cmds, ctxt)
 
-    def check_client_device(self, ctxt):
-        """Wait for multipath device to appear on client."""
+    def logout_iscsi_targets(self, ctxt):
+        """Logout of iscsi target on client.
+
+        :param ctxt: Base gateway context
+        :type ctxt: Dict
+        """
+        logging.info("Logging out of iscsi target")
+        logout_cmds = [
+            'iscsiadm --mode node --logoutall=all']
+        self.run_commands(ctxt['client_entity_id'], logout_cmds, ctxt)
+
+    def check_client_device(self, ctxt, init_client=True):
+        """Wait for multipath device to appear on client and test access.
+
+        :param ctxt: Base gateway context
+        :type ctxt: Dict
+        :param init_client: Initialise client if this is the first time it has
+                            been used.
+        :type init_client: bool
+        """
+        logging.info("Checking multipath device is present.")
+        device_ctxt = {
+            'bdevice': '/dev/dm-0',
+            'mount_point': '/mnt/iscsi',
+            'test_file': '/mnt/iscsi/test.data'}
+        ls_bdevice_cmd = 'ls -l {bdevice}'
+        mkfs_cmd = 'mke2fs {bdevice}'
+        mkdir_cmd = 'mkdir {mount_point}'
+        mount_cmd = 'mount {bdevice} {mount_point}'
+        umount_cmd = 'umount {mount_point}'
+        check_mounted_cmd = 'mountpoint {mount_point}'
+        write_cmd = 'truncate -s 1M {test_file}'
+        check_file = 'ls -l {test_file}'
+        if init_client:
+            commands = [
+                mkfs_cmd,
+                mkdir_cmd,
+                mount_cmd,
+                check_mounted_cmd,
+                write_cmd,
+                check_file,
+                umount_cmd]
+        else:
+            commands = [
+                mount_cmd,
+                check_mounted_cmd,
+                check_file,
+                umount_cmd]
+
         async def check_device_present():
             run = await zaza.model.async_run_on_unit(
                 ctxt['client_entity_id'],
-                'ls -l /dev/dm-0')
-            return '/dev/dm-0' in run['Stdout']
+                ls_bdevice_cmd.format(bdevice=device_ctxt['bdevice']))
+            return device_ctxt['bdevice'] in run['stdout']
+
+        logging.info("Checking {} is present on {}".format(
+            device_ctxt['bdevice'],
+            ctxt['client_entity_id']))
         zaza.model.block_until(check_device_present)
+        logging.info("Checking mounting device and access")
+        self.run_commands(ctxt['client_entity_id'], commands, device_ctxt)
 
     def create_data_pool(self):
         """Create data pool to back iscsi targets."""
@@ -160,6 +240,23 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
             action_params={
                 'name': self.EC_METADATA_POOL}))
 
+    def run_client_checks(self, test_ctxt):
+        """Check access to mulipath device.
+
+        Write a filesystem to device, mount it and write data. Then unmount
+        and logout the iscsi target, finally reconnect and remount checking
+        data is still present.
+
+        :param test_ctxt: Test context.
+        :type test_ctxt: Dict
+        """
+        self.create_iscsi_target(test_ctxt)
+        self.login_iscsi_target(test_ctxt)
+        self.check_client_device(test_ctxt, init_client=True)
+        self.logout_iscsi_targets(test_ctxt)
+        self.login_iscsi_target(test_ctxt)
+        self.check_client_device(test_ctxt, init_client=False)
+
     def test_create_and_mount_volume(self):
         """Test creating a target and mounting it on a client."""
         self.create_data_pool()
@@ -174,9 +271,7 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
             'chap_password': 'myiscsipassword1',
             'img_size': '1G',
             'img_name': 'disk_rep_1'})
-        self.create_iscsi_target(ctxt)
-        self.mount_iscsi_target(ctxt)
-        self.check_client_device(ctxt)
+        self.run_client_checks(ctxt)
 
     def test_create_and_mount_ec_backed_volume(self):
         """Test creating an EC backed target and mounting it on a client."""
@@ -193,9 +288,7 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
             'chap_password': 'myiscsipassword2',
             'img_size': '2G',
             'img_name': 'disk_ec_1'})
-        self.create_iscsi_target(ctxt)
-        self.mount_iscsi_target(ctxt)
-        self.check_client_device(ctxt)
+        self.run_client_checks(ctxt)
 
     def test_create_and_mount_volume_default_pool(self):
         """Test creating a target and mounting it on a client."""
@@ -210,9 +303,7 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
             'chap_password': 'myiscsipassword3',
             'img_size': '3G',
             'img_name': 'disk_default_1'})
-        self.create_iscsi_target(ctxt)
-        self.mount_iscsi_target(ctxt)
-        self.check_client_device(ctxt)
+        self.run_client_checks(ctxt)
 
     def test_pause_resume(self):
         """Test pausing and resuming a unit."""
