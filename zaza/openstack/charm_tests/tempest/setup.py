@@ -26,9 +26,11 @@ import zaza.openstack.charm_tests.glance.setup as glance_setup
 
 SETUP_ENV_VARS = {
     'neutron': ['TEST_GATEWAY', 'TEST_CIDR_EXT', 'TEST_FIP_RANGE',
-                'TEST_NAMESERVER', 'TEST_CIDR_PRIV'],
+                'TEST_NAME_SERVER', 'TEST_CIDR_PRIV'],
     'swift': ['TEST_SWIFT_IP'],
 }
+
+IGNORABLE_VARS = ['TEST_CIDR_PRIV']
 
 TEMPEST_FLAVOR_NAME = 'm1.tempest'
 TEMPEST_ALT_FLAVOR_NAME = 'm2.tempest'
@@ -198,7 +200,8 @@ def add_environment_var_config(ctxt, services):
                 if value:
                     ctxt[var.lower()] = value
                 else:
-                    missing_vars.append(var)
+                    if var not in IGNORABLE_VARS:
+                        missing_vars.append(var)
     if missing_vars:
         raise ValueError(
             ("Environment variables [{}] must all be set to run this"
