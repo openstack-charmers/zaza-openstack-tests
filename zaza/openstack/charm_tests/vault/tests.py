@@ -153,7 +153,8 @@ class VaultTest(BaseVaultTest):
             allowed_domains='openstack.local')
 
         test_config = lifecycle_utils.get_charm_config()
-        del test_config['target_deploy_status']['vault']
+        test_config['target_deploy_status']['vault'][
+            'workload-status-message'] = 'New version of vault installed'
         zaza.model.block_until_file_has_contents(
             'keystone',
             zaza.openstack.utilities.openstack.KEYSTONE_REMOTE_CACERT,
