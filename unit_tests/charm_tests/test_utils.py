@@ -106,6 +106,24 @@ class TestBaseCharmTest(ut_utils.BaseTestCase):
             mock.call(),
             mock.call(),
         ])
+        # confirm operation where both default and alternate config passed in
+        # are the same. This is used to set config and not change it back.
+        self.set_application_config.reset_mock()
+        self.wait_for_agent_status.reset_mock()
+        self.wait_for_application_states.reset_mock()
+        self.reset_application_config.reset_mock()
+        with self.target.config_change(
+                alterna_config, alterna_config, application_name='anApp'):
+            self.set_application_config.assert_called_once_with(
+                'anApp', alterna_config, model_name='aModel')
+            # we want to assert these not to be called after yield
+            self.set_application_config.reset_mock()
+            self.wait_for_agent_status.reset_mock()
+            self.wait_for_application_states.reset_mock()
+        self.assertFalse(self.set_application_config.called)
+        self.assertFalse(self.reset_application_config.called)
+        self.assertFalse(self.wait_for_agent_status.called)
+        self.assertFalse(self.wait_for_application_states.called)
 
 
 class TestOpenStackBaseTest(ut_utils.BaseTestCase):

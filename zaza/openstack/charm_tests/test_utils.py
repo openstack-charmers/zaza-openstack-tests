@@ -259,6 +259,10 @@ class BaseCharmTest(unittest.TestCase):
             model.reset_application_config(application_name,
                                            alternate_config.keys(),
                                            model_name=self.model_name)
+        elif default_config == alternate_config:
+            logging.debug('default_config == alternate_config, not attempting '
+                          ' to restore configuration')
+            return
         else:
             logging.debug('Restoring charm setting to {}'
                           .format(default_config))
