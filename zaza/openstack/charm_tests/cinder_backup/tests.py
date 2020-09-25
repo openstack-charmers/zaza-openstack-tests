@@ -89,29 +89,43 @@ class CinderBackupTest(test_utils.OpenStackBaseTest):
 
         self.assertEqual(pool_name, expected_pool)
 
-        # Create ceph-backed cinder volume
-        cinder_vol = self.cinder_client.volumes.create(
-            name='{}-410-vol'.format(self.RESOURCE_PREFIX),
-            size=1)
-        openstack_utils.resource_reaches_status(
-            self.cinder_client.volumes,
-            cinder_vol.id,
-            wait_iteration_max_time=180,
-            stop_after_attempt=30,
-            expected_status='available',
-            msg='ceph-backed cinder volume')
+        for attempt in tenacity.Retrying(
+                stop=tenacity.stop_after_attempt(3)):
+            with attempt:
+                # Create ceph-backed cinder volume
+                cinder_vol_name = '{}-410-vol-{}'.format(
+                    self.RESOURCE_PREFIX, attempt.retry_state.attempt_number)
+                cinder_vol = self.cinder_client.volumes.create(
+                    name=cinder_vol_name, size=1)
+                openstack_utils.resource_reaches_status(
+                    self.cinder_client.volumes,
+                    cinder_vol.id,
+                    wait_iteration_max_time=180,
+                    stop_after_attempt=15,
+                    expected_status='available',
+                    msg='ceph-backed cinder volume')
 
-        # Backup the volume
-        vol_backup = self.cinder_client.backups.create(
-            cinder_vol.id,
-            name='{}-410-backup-vol'.format(self.RESOURCE_PREFIX))
-        openstack_utils.resource_reaches_status(
-            self.cinder_client.backups,
-            vol_backup.id,
-            wait_iteration_max_time=180,
-            stop_after_attempt=30,
-            expected_status='available',
-            msg='Backup volume')
+                # Back up the volume
+                # NOTE(lourot): sometimes, especially on Mitaka, the backup
+                # remains stuck forever in 'creating' state and the volume in
+                # 'backing-up' state. See lp:1877076
+                # Attempting to create another volume and another backup
+                # usually then succeeds. Release notes and bug trackers show
+                # that many things have been fixed and are still left to be
+                # fixed in this area.
+                # When the backup creation succeeds, it usually does within
+                # 12 minutes.
+                vol_backup_name = cinder_vol_name + '-backup'
+                vol_backup = self.cinder_client.backups.create(
+                    cinder_vol.id, vol_backup_name)
+                openstack_utils.resource_reaches_status(
+                    self.cinder_client.backups,
+                    vol_backup.id,
+                    wait_iteration_max_time=180,
+                    stop_after_attempt=15,
+                    expected_status='available',
+                    msg='Backup volume')
+
         # Delete the volume
         openstack_utils.delete_volume(self.cinder_client, cinder_vol.id)
         # Restore the volume
@@ -143,12 +157,11 @@ class CinderBackupTest(test_utils.OpenStackBaseTest):
         obj_count_samples.append(obj_count)
         pool_size_samples.append(kb_used)
 
-        name = '{}-410-vol'.format(self.RESOURCE_PREFIX)
         vols = self.cinder_client.volumes.list()
         try:
-            cinder_vols = [v for v in vols if v.name == name]
+            cinder_vols = [v for v in vols if v.name == cinder_vol_name]
         except AttributeError:
-            cinder_vols = [v for v in vols if v.display_name == name]
+            cinder_vols = [v for v in vols if v.display_name == cinder_vol_name]
         if not cinder_vols:
             # NOTE(hopem): it appears that at some point cinder-backup stopped
             # restoring volume metadata properly so revert to default name if
