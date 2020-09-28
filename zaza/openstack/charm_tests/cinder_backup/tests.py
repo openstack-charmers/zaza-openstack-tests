@@ -161,7 +161,8 @@ class CinderBackupTest(test_utils.OpenStackBaseTest):
         try:
             cinder_vols = [v for v in vols if v.name == cinder_vol_name]
         except AttributeError:
-            cinder_vols = [v for v in vols if v.display_name == cinder_vol_name]
+            cinder_vols = [v for v in vols if
+                           v.display_name == cinder_vol_name]
         if not cinder_vols:
             # NOTE(hopem): it appears that at some point cinder-backup stopped
             # restoring volume metadata properly so revert to default name if
