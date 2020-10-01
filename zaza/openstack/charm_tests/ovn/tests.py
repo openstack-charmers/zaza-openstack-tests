@@ -72,7 +72,8 @@ class BaseCharmOperationTest(test_utils.BaseCharmTest):
                 'check_{}.cfg'.format(check_name)
             )
         ret = self._retry_check_commands_on_units(cmds, units)
-        logging.info(ret)
+        if ret:
+            logging.info(ret)
         self.assertIsNone(ret, msg=ret)
 
 
