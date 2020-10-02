@@ -66,7 +66,7 @@ class LTSGuestCreateVolumeBackedTest(test_utils.OpenStackBaseTest):
         self.RESOURCE_PREFIX = 'zaza-nova'
         self.launch_guest(
             'volume-backed-ubuntu', instance_key=glance_setup.LTS_IMAGE_NAME,
-            use_boot_volmue=True)
+            use_boot_volume=True)
 
 
 class NovaCompute(test_utils.OpenStackBaseTest):
