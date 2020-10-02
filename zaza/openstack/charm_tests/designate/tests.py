@@ -24,6 +24,7 @@ import designateclient.v1.servers as servers
 
 import zaza.model
 import zaza.openstack.utilities.juju as zaza_juju
+import zaza.openstack.utilities.generic as generic_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.designate.utils as designate_utils
@@ -87,6 +88,14 @@ class BaseDesignateTest(test_utils.OpenStackBaseTest):
             cls.server_list = cls.designate.servers.list
             cls.server_create = cls.designate.servers.create
             cls.server_delete = cls.designate.servers.delete
+
+    @tenacity.retry(
+        retry=tenacity.retry_if_result(lambda ret: ret is not None),
+        # sleep for 2mins to allow 1min cron job to run...
+        wait=tenacity.wait_fixed(120),
+        stop=tenacity.stop_after_attempt(2))
+    def _retry_check_commands_on_units(self, cmds, units):
+        return generic_utils.check_commands_on_units(cmds, units)
 
 
 class DesignateAPITests(BaseDesignateTest):
@@ -257,7 +266,26 @@ class DesignateCharmTests(BaseDesignateTest):
             logging.info("Testing pause resume")
 
 
-class DesignateTests(DesignateAPITests, DesignateCharmTests):
+class DesignateMonitoringTests(BaseDesignateTest):
+    """Designate charm monitoring tests."""
+
+    def test_nrpe_configured(self):
+        """Confirm that the NRPE service check files are created."""
+        units = zaza.model.get_units(self.application_name)
+        cmds = []
+        for check_name in self.designate_svcs:
+            cmds.append(
+                'egrep -oh /usr/local.* /etc/nagios/nrpe.d/'
+                'check_{}.cfg'.format(check_name)
+            )
+        ret = self._retry_check_commands_on_units(cmds, units)
+        if ret:
+            logging.info(ret)
+        self.assertIsNone(ret, msg=ret)
+
+
+class DesignateTests(DesignateAPITests, DesignateCharmTests,
+                     DesignateMonitoringTests):
     """Collection of all Designate test classes."""
 
     pass
