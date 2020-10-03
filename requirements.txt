@@ -29,6 +29,7 @@ python-ceilometerclient
 python-cinderclient
 python-glanceclient
 python-heatclient
+python-ironicclient
 python-keystoneclient
 python-manilaclient
 python-neutronclient
