@@ -550,21 +550,23 @@ class OpenStackBaseTest(BaseCharmTest):
         instance_key = instance_key or glance_setup.LTS_IMAGE_NAME
         instance_name = '{}-{}'.format(self.RESOURCE_PREFIX, guest_name)
 
-        instance = self.retrieve_guest(instance_name)
-        if instance:
-            logging.info('Removing already existing instance ({}) with '
-                         'requested name ({})'
-                         .format(instance.id, instance_name))
-            openstack_utils.delete_resource(
-                self.nova_client.servers,
-                instance.id,
-                msg="server")
-
         for attempt in tenacity.Retrying(
                 stop=tenacity.stop_after_attempt(3),
                 wait=tenacity.wait_exponential(
                     multiplier=1, min=2, max=10)):
             with attempt:
+                old_instance_with_same_name = self.retrieve_guest(
+                    instance_name)
+                if old_instance_with_same_name:
+                    logging.info(
+                        'Removing already existing instance ({}) with '
+                        'requested name ({})'
+                        .format(old_instance_with_same_name.id, instance_name))
+                    openstack_utils.delete_resource(
+                        self.nova_client.servers,
+                        old_instance_with_same_name.id,
+                        msg="server")
+
                 return configure_guest.launch_instance(
                     instance_key,
                     vm_name=instance_name,
