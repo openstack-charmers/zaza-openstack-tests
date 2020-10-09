@@ -2060,7 +2060,8 @@ def delete_volume_backup(cinder, vol_backup_id):
 
 
 def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
-                           visibility='public', container_format='bare'):
+                           visibility='public', container_format='bare',
+                           backend=None):
     """Upload the given image to glance and apply the given label.
 
     :param glance: Authenticated glanceclient
@@ -2086,7 +2087,7 @@ def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
         disk_format=disk_format,
         visibility=visibility,
         container_format=container_format)
-    glance.images.upload(image.id, open(local_path, 'rb'))
+    glance.images.upload(image.id, open(local_path, 'rb'), backend=backend)
 
     resource_reaches_status(
         glance.images,
@@ -2098,7 +2099,8 @@ def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
 
 
 def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[],
-                 properties=None):
+                 properties=None, backend=None, disk_format='qcow2',
+                 visibility='public', container_format='bare'):
     """Download the image and upload it to glance.
 
     Download an image from image_url and upload it to glance labelling
@@ -2132,7 +2134,10 @@ def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[],
     if not os.path.exists(local_path):
         download_image(image_url, local_path)
 
-    image = upload_image_to_glance(glance, local_path, image_name)
+    image = upload_image_to_glance(
+        glance, local_path, image_name, backend=backend,
+        disk_format=disk_format, visibility=visibility,
+        container_format=container_format)
     for tag in tags:
         result = glance.image_tags.update(image.id, tag)
         logging.debug(
