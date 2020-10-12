@@ -127,11 +127,11 @@ class BaseCharmTest(unittest.TestCase):
         else:
             cls.model_name = model.get_juju_model()
         cls.test_config = lifecycle_utils.get_charm_config(fatal=False)
-        charm_under_test_name = cls.test_config['charm_name']
 
         if application_name:
             cls.application_name = application_name
         else:
+            charm_under_test_name = cls.test_config['charm_name']
             deployed_app_names = model.sync_deployed(model_name=cls.model_name)
             if charm_under_test_name in deployed_app_names:
                 # There is an application named like the charm under test.
