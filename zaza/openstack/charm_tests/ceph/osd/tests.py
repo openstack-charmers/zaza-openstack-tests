@@ -66,6 +66,55 @@ class OsdService:
         self.name = 'ceph-osd@{}'.format(id_)
 
 
+async def async_wait_for_service_status(unit_name, services, target_status,
+                                        model_name=None, timeout=2700):
+    """Wait for all services on the unit are in the desired state.
+
+    Note:This function emulates the
+    `zaza.model.async_block_until_service_status` function, but it's using
+    `systemctl is-active` command istead of `pidof/pgrep` of the original
+    function.
+
+    :param unit_name: Name of unit to run action on
+    :type unit_name: str
+    :param services: List of services to check
+    :type services: []
+    :param target_status: State services must be in (stopped or running)
+    :type target_status: str
+    :param model_name: Name of model to query.
+    :type model_name: str
+    :param timeout: Time to wait for status to be achieved
+    :type timeout: int
+    """
+    async def _check_service():
+        for service in services:
+            command = r"systemctl is-active '{}'".format(service)
+            out = await zaza_model.async_run_on_unit(
+                unit_name,
+                command,
+                model_name=model_name,
+                timeout=timeout)
+            response = out['Stdout'].strip()
+
+            if target_status == "running" and response == 'active':
+                return True
+            elif target_status == "stopped" and response == 'inactive':
+                return True
+            else:
+                return False
+    logging.info("Unsing fancy method")
+    accepted_states = ('stopped', 'running')
+    if target_status not in accepted_states:
+        raise RuntimeError('Invalid target state "{}". Accepted states: '
+                           '{}'.format(target_status, accepted_states))
+
+    async with zaza_model.run_in_model(model_name):
+        await zaza_model.async_block_until(_check_service, timeout=timeout)
+
+
+wait_for_service = zaza_model.sync_wrapper(async_wait_for_service_status)
+
+
 class ServiceTest(unittest.TestCase):
     """ceph-osd systemd service tests."""
 
@@ -130,18 +179,17 @@ class ServiceTest(unittest.TestCase):
                      "unit".format(self.TESTED_UNIT))
         zaza_model.run_action_on_units([self.TESTED_UNIT, ], 'service',
                                        action_params={'stop': 'all'})
-        zaza_model.block_until_service_status(unit_name=self.TESTED_UNIT,
-                                              services=service_list,
-                                              target_status='stopped')
+        wait_for_service(unit_name=self.TESTED_UNIT,
+                         services=service_list,
+                         target_status='stopped')
 
         logging.info("Running 'service start=all' action on {} "
                      "unit".format(self.TESTED_UNIT))
         zaza_model.run_action_on_units([self.TESTED_UNIT, ], 'service',
                                        action_params={'start': 'all'})
-        zaza_model.block_until_service_status(unit_name=self.TESTED_UNIT,
-                                              services=service_list,
-                                              target_status='running',
-                                              pgrep_full=True)
+        wait_for_service(unit_name=self.TESTED_UNIT,
+                         services=service_list,
+                         target_status='running')
 
     def test_start_stop_all_by_list(self):
         """Start and Stop all ceph-osd services using explicit list."""
@@ -153,18 +201,17 @@ class ServiceTest(unittest.TestCase):
                      "unit".format(action_params, self.TESTED_UNIT))
         zaza_model.run_action_on_units([self.TESTED_UNIT, ], 'service',
                                        action_params={'stop': action_params})
-        zaza_model.block_until_service_status(unit_name=self.TESTED_UNIT,
-                                              services=service_list,
-                                              target_status='stopped')
+        wait_for_service(unit_name=self.TESTED_UNIT,
+                         services=service_list,
+                         target_status='stopped')
 
         logging.info("Running 'service start={}' action on {} "
                      "unit".format(action_params, self.TESTED_UNIT))
         zaza_model.run_action_on_units([self.TESTED_UNIT, ], 'service',
                                        action_params={'start': action_params})
-        zaza_model.block_until_service_status(unit_name=self.TESTED_UNIT,
-                                              services=service_list,
-                                              target_status='running',
-                                              pgrep_full=True)
+        wait_for_service(unit_name=self.TESTED_UNIT,
+                         services=service_list,
+                         target_status='running')
 
     def test_stop_specific(self):
         """Stop only specified ceph-osd service."""
@@ -183,13 +230,12 @@ class ServiceTest(unittest.TestCase):
         zaza_model.run_action_on_units([self.TESTED_UNIT, ], 'service',
                                        action_params={'stop': to_stop.id})
 
-        zaza_model.block_until_service_status(unit_name=self.TESTED_UNIT,
-                                              services=[to_stop.name, ],
-                                              target_status='stopped')
-        zaza_model.block_until_service_status(unit_name=self.TESTED_UNIT,
-                                              services=should_run,
-                                              target_status='running',
-                                              pgrep_full=True)
+        wait_for_service(unit_name=self.TESTED_UNIT,
+                         services=[to_stop.name, ],
+                         target_status='stopped')
+        wait_for_service(unit_name=self.TESTED_UNIT,
+                         services=should_run,
+                         target_status='running')
 
     def test_start_specific(self):
         """Start only specified ceph-osd service."""
@@ -207,9 +253,9 @@ class ServiceTest(unittest.TestCase):
         service_stop_cmd = 'systemctl stop ceph-osd.target'
         zaza_model.run_on_unit(self.TESTED_UNIT, service_stop_cmd)
 
-        zaza_model.block_until_service_status(unit_name=self.TESTED_UNIT,
-                                              services=service_names,
-                                              target_status='stopped')
+        wait_for_service(unit_name=self.TESTED_UNIT,
+                         services=service_names,
+                         target_status='stopped')
 
         logging.info("Running 'service start={} on {} "
                      "unit".format(to_start.id, self.TESTED_UNIT))
@@ -217,10 +263,10 @@ class ServiceTest(unittest.TestCase):
         zaza_model.run_action_on_units([self.TESTED_UNIT, ], 'service',
                                        action_params={'start': to_start.id})
 
-        zaza_model.block_until_service_status(unit_name=self.TESTED_UNIT,
-                                              services=[to_start.name, ],
-                                              target_status='running',
-                                              pgrep_full=True)
-        zaza_model.block_until_service_status(unit_name=self.TESTED_UNIT,
-                                              services=should_stop,
-                                              target_status='stopped')
+        wait_for_service(unit_name=self.TESTED_UNIT,
+                         services=[to_start.name, ],
+                         target_status='running')
+
+        wait_for_service(unit_name=self.TESTED_UNIT,
+                         services=should_stop,
+                         target_status='stopped')
