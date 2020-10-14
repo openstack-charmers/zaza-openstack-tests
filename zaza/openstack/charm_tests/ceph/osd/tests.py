@@ -68,11 +68,11 @@ class OsdService:
 
 async def async_wait_for_service_status(unit_name, services, target_status,
                                         model_name=None, timeout=2700):
-    """Wait for all services on the unit are in the desired state.
+    """Wait for all services on the unit to be in the desired state.
 
-    Note:This function emulates the
+    Note: This function emulates the
     `zaza.model.async_block_until_service_status` function, but it's using
-    `systemctl is-active` command istead of `pidof/pgrep` of the original
+    `systemctl is-active` command instead of `pidof/pgrep` of the original
     function.
 
     :param unit_name: Name of unit to run action on
@@ -102,7 +102,7 @@ async def async_wait_for_service_status(unit_name, services, target_status,
                 return True
             else:
                 return False
-    logging.info("Unsing fancy method")
+
     accepted_states = ('stopped', 'running')
     if target_status not in accepted_states:
         raise RuntimeError('Invalid target state "{}". Accepted states: '
