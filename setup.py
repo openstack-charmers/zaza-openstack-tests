@@ -44,6 +44,7 @@ install_require = [
     'python-barbicanclient>=4.0.1,<5.0.0',
     'python-designateclient>=1.5,<3.0.0',
     'python-heatclient<2.0.0',
+    'python-ironicclient',
     'python-glanceclient<3.0.0',
     'python-keystoneclient<3.22.0',
     'python-manilaclient<2.0.0',
