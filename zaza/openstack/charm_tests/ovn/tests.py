@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """Encapsulate OVN testing."""
-
+import copy
 import logging
 
 import juju
@@ -138,6 +138,34 @@ class ChassisCharmOperationTest(BaseCharmOperationTest):
                 'ovsdb-server',
                 'ovs-vswitchd',
             ]
+
+    def test_adding_not_valid_port(self):
+        """Confirm that the ovn-chassis end up in a blocked state.
+
+        After attempting to add an invalid bridge interface,
+        confirm that unit ovn-chassis is in a blocked state.
+        """
+        test_config = zaza.charm_lifecycle.utils.get_charm_config(fatal=False)
+        states = test_config.get("target_deploy_status", {})
+        alt_states = copy.deepcopy(states)
+        alt_states['ovn-chassis'] = {
+            'workload-status': 'blocked',
+            'workload-status-message': 'failure to add ports: invalid-port'}
+
+        alternate_conf = {
+            'ovn-bridge-mappings': 'physnet1:br-ex',
+            'bridge-interface-mappings': 'br-ex:invalid-port',
+        }
+        # configure a new  bridge interface
+        zaza.model.set_application_config('ovn-chassis', alternate_conf)
+        logging.info('a new ovn-chassis configuration was used')
+
+        zaza.model.wait_for_application_states(states=alt_states, timeout=120)
+        # cleaning after test
+        logging.info('cleaning after test')
+        zaza.model.reset_application_config(
+            'ovn-chassis', list(alternate_conf.keys()))
+        zaza.model.wait_for_application_states(states=states, timeout=120)
 
 
 class OVSOVNMigrationTest(test_utils.BaseCharmTest):
