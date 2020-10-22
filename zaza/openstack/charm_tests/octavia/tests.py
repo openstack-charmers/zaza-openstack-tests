@@ -22,6 +22,8 @@ from keystoneauth1 import exceptions as keystone_exceptions
 import octaviaclient.api.v2.octavia
 import osc_lib.exceptions
 
+import zaza.model
+
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 
@@ -54,6 +56,33 @@ class CharmOperationTest(test_utils.OpenStackBaseTest):
                      .format(services))
         with self.pause_resume(services, pgrep_full=True):
             pass
+
+    def test_mgmt_port_down_reflected_in_status(self):
+        """Verify that unsuccessful setup of mgmt port reflected in status."""
+        # TODO: This test assumes a OVS-based SDN to be used for the charm,
+        # while this is currently always the case (OVN uses ovs-vswitchd too)
+        # it migth change in the future.
+        stored_target_deploy_status = self.test_config.get(
+            'target_deploy_status', {})
+        new_target_deploy_status = stored_target_deploy_status.copy()
+        new_target_deploy_status[self.application_name] = {
+            'workload-status': 'blocked',
+            'workload-status-message': ('Virtual network for access to '
+                                        'Amphorae is down'),
+        }
+        logging.info('Simulating operational issue on unit "{}" by stopping '
+                     'vswitchd...'.format(self.lead_unit))
+        zaza.run_on_unit(
+            self.lead_unit,
+            command='systemctl stop ovs-vswitchd')
+        with self.config_change({'debug': False}, {'debug': True}):
+            logging.info('Charm went into blocked state as expected, restore '
+                         'configuration')
+            zaza.run_on_unit(
+                self.lead_unit,
+                command='systemctl start ovs-vswitchd')
+            self.test_config[
+                'target_deploy_status'] = stored_target_deploy_status
 
 
 class LBAASv2Test(test_utils.OpenStackBaseTest):
