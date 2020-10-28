@@ -60,7 +60,7 @@ class OsdService:
         """
         Init service using its ID.
 
-        e.g.: id_=1 -> ceph.-osd@1.service
+        e.g.: id_=1 -> ceph-osd@1
         """
         self.id = id_
         self.name = 'ceph-osd@{}'.format(id_)
@@ -87,6 +87,7 @@ async def async_wait_for_service_status(unit_name, services, target_status,
     :type timeout: int
     """
     async def _check_service():
+        services_ok = True
         for service in services:
             command = r"systemctl is-active '{}'".format(service)
             out = await zaza_model.async_run_on_unit(
@@ -97,11 +98,14 @@ async def async_wait_for_service_status(unit_name, services, target_status,
             response = out['Stdout'].strip()
 
             if target_status == "running" and response == 'active':
-                return True
+                continue
             elif target_status == "stopped" and response == 'inactive':
-                return True
+                continue
             else:
-                return False
+                services_ok = False
+                break
+
+        return services_ok
 
     accepted_states = ('stopped', 'running')
     if target_status not in accepted_states:
