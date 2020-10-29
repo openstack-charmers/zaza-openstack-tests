@@ -16,6 +16,7 @@
 
 import copy
 import os
+import tenacity
 
 import zaza.openstack.charm_tests.glance.setup as glance_setup
 import zaza.openstack.utilities.openstack as openstack_utils
@@ -74,6 +75,20 @@ FLAVORS = {
 }
 
 
+def _add_image(url, image_name, backend="swift",
+               disk_format="raw", container_format="bare"):
+    for attempt in tenacity.Retrying(
+            stop=tenacity.stop_after_attempt(3),
+            reraise=True):
+        with attempt:
+            glance_setup.add_image(
+                url,
+                image_name=image_name,
+                backend=backend,
+                disk_format=disk_format,
+                container_format=container_format)
+
+
 def add_ironic_deployment_image(initrd_url=None, kernel_url=None):
     """Add Ironic deploy images to glance.
 
@@ -91,15 +106,17 @@ def add_ironic_deployment_image(initrd_url=None, kernel_url=None):
         kernel_url = os.environ.get('TEST_IRONIC_DEPLOY_VMLINUZ', None)
     if not all([initrd_url, kernel_url]):
         raise ValueError("Missing required deployment image URLs")
-    glance_setup.add_image(
+
+    _add_image(
         initrd_url,
-        image_name=initrd_name,
+        initrd_name,
         backend="swift",
         disk_format="ari",
         container_format="ari")
-    glance_setup.add_image(
+
+    _add_image(
         kernel_url,
-        image_name=vmlinuz_name,
+        vmlinuz_name,
         backend="swift",
         disk_format="aki",
         container_format="aki")
@@ -117,9 +134,9 @@ def add_ironic_os_image(image_url=None):
     if image_url is None:
         raise ValueError("Missing image_url")
 
-    glance_setup.add_image(
+    _add_image(
         image_url,
-        image_name=image_name,
+        image_name,
         backend="swift",
         disk_format="raw",
         container_format="bare")
