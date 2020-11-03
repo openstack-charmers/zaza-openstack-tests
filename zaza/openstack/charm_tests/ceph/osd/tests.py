@@ -19,7 +19,6 @@ import unittest
 import re
 
 from copy import deepcopy
-from typing import List
 
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.model as zaza_model
@@ -56,7 +55,7 @@ class SecurityTest(unittest.TestCase):
 class OsdService:
     """Simple representation of ceph-osd systemd service."""
 
-    def __init__(self, id_: int):
+    def __init__(self, id_):
         """
         Init service using its ID.
 
@@ -78,7 +77,7 @@ async def async_wait_for_service_status(unit_name, services, target_status,
     :param unit_name: Name of unit to run action on
     :type unit_name: str
     :param services: List of services to check
-    :type services: []
+    :type services: List[str]
     :param target_status: State services must be in (stopped or running)
     :type target_status: str
     :param model_name: Name of model to query.
@@ -122,7 +121,7 @@ wait_for_service = zaza_model.sync_wrapper(async_wait_for_service_status)
 class ServiceTest(unittest.TestCase):
     """ceph-osd systemd service tests."""
 
-    TESTED_UNIT = 'ceph-osd/0'
+    TESTED_UNIT = 'ceph-osd/0'  # This can be any ceph-osd unit in the model
     SERVICE_PATTERN = re.compile(r'ceph-osd@(?P<service_id>\d+)\.service')
 
     def __init__(self, methodName='runTest'):
@@ -156,13 +155,13 @@ class ServiceTest(unittest.TestCase):
                                        raise_on_failure=True)
 
     @property
-    def available_services(self) -> List[OsdService]:
+    def available_services(self):
         """Return list of all ceph-osd services present on the TESTED_UNIT."""
         if self._available_services is None:
             self._available_services = self._fetch_osd_services()
         return self._available_services
 
-    def _fetch_osd_services(self) -> List[OsdService]:
+    def _fetch_osd_services(self):
         """Fetch all ceph-osd services present on the TESTED_UNIT."""
         service_list = []
         service_list_cmd = 'systemctl list-units --full --all ' \
@@ -181,7 +180,7 @@ class ServiceTest(unittest.TestCase):
 
         logging.info("Running 'service stop=all' action on {} "
                      "unit".format(self.TESTED_UNIT))
-        zaza_model.run_action_on_units([self.TESTED_UNIT, ], 'service',
+        zaza_model.run_action_on_units([self.TESTED_UNIT], 'service',
                                        action_params={'stop': 'all'})
         wait_for_service(unit_name=self.TESTED_UNIT,
                          services=service_list,
