@@ -15,11 +15,14 @@
 """Encapsulate OVN testing."""
 
 import logging
-import tenacity
 
 import juju
 
+import tenacity
+
 import zaza
+
+import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.generic as generic_utils
 import zaza.openstack.utilities.openstack as openstack_utils
@@ -36,9 +39,18 @@ class BaseCharmOperationTest(test_utils.BaseCharmTest):
         """Run class setup for OVN charm operation tests."""
         super(BaseCharmOperationTest, cls).setUpClass()
         cls.services = ['NotImplemented']  # This must be overridden
+        cls.nrpe_checks = ['NotImplemented']  # This must be overridden
         cls.current_release = openstack_utils.get_os_release(
             openstack_utils.get_current_os_release_pair(
                 cls.release_application or cls.application_name))
+
+    @tenacity.retry(
+        retry=tenacity.retry_if_result(lambda ret: ret is not None),
+        # sleep for 2mins to allow 1min cron job to run...
+        wait=tenacity.wait_fixed(120),
+        stop=tenacity.stop_after_attempt(2))
+    def _retry_check_commands_on_units(self, cmds, units):
+        return generic_utils.check_commands_on_units(cmds, units)
 
     def test_pause_resume(self):
         """Run pause and resume tests.
@@ -49,6 +61,20 @@ class BaseCharmOperationTest(test_utils.BaseCharmTest):
         with self.pause_resume(self.services):
             logging.info('Testing pause resume (services="{}")'
                          .format(self.services))
+
+    def test_nrpe_configured(self):
+        """Confirm that the NRPE service check files are created."""
+        units = zaza.model.get_units(self.application_name)
+        cmds = []
+        for check_name in self.nrpe_checks:
+            cmds.append(
+                'egrep -oh /usr/local.* /etc/nagios/nrpe.d/'
+                'check_{}.cfg'.format(check_name)
+            )
+        ret = self._retry_check_commands_on_units(cmds, units)
+        if ret:
+            logging.info(ret)
+        self.assertIsNone(ret, msg=ret)
 
 
 class CentralCharmOperationTest(BaseCharmOperationTest):
@@ -62,6 +88,22 @@ class CentralCharmOperationTest(BaseCharmOperationTest):
             'ovn-northd',
             'ovsdb-server',
         ]
+        source = zaza.model.get_application_config(
+            cls.application_name)['source']['value']
+        logging.info(source)
+        if 'train' in source:
+            cls.nrpe_checks = [
+                'ovn-northd',
+                'ovn-nb-ovsdb',
+                'ovn-sb-ovsdb',
+            ]
+        else:
+            # Ussuri or later (distro or cloudarchive)
+            cls.nrpe_checks = [
+                'ovn-northd',
+                'ovn-ovsdb-server-sb',
+                'ovn-ovsdb-server-nb',
+            ]
 
 
 class ChassisCharmOperationTest(BaseCharmOperationTest):
@@ -76,6 +118,26 @@ class ChassisCharmOperationTest(BaseCharmOperationTest):
         cls.services = [
             'ovn-controller',
         ]
+        if cls.application_name == 'ovn-chassis':
+            principal_app_name = 'magpie'
+        else:
+            principal_app_name = cls.application_name
+        source = zaza.model.get_application_config(
+            principal_app_name)['source']['value']
+        logging.info(source)
+        if 'train' in source:
+            cls.nrpe_checks = [
+                'ovn-host',
+                'ovs-vswitchd',
+                'ovsdb-server',
+            ]
+        else:
+            # Ussuri or later (distro or cloudarchive)
+            cls.nrpe_checks = [
+                'ovn-controller',
+                'ovsdb-server',
+                'ovs-vswitchd',
+            ]
 
 
 class OVSOVNMigrationTest(test_utils.BaseCharmTest):

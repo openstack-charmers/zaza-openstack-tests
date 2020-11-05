@@ -42,7 +42,7 @@ class TestTempestSetup(unittest.TestCase):
             'TEST_GATEWAY': 'test',
             'TEST_CIDR_EXT': 'test',
             'TEST_FIP_RANGE': 'test',
-            'TEST_NAMESERVER': 'test',
+            'TEST_NAME_SERVER': 'test',
             'TEST_CIDR_PRIV': 'test',
         }
         tempest_setup.add_environment_var_config(ctxt, ['neutron'])
@@ -55,7 +55,7 @@ class TestTempestSetup(unittest.TestCase):
         ctxt = {}
         get_deployment_context.return_value = {
             'TEST_GATEWAY': 'test',
-            'TEST_NAMESERVER': 'test',
+            'TEST_NAME_SERVER': 'test',
             'TEST_CIDR_PRIV': 'test',
         }
         with self.assertRaises(Exception) as context:

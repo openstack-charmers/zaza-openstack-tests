@@ -32,8 +32,37 @@ def basic_setup():
     """
 
 
+def _get_default_glance_client():
+    """Create default Glance client using overcloud credentials."""
+    keystone_session = openstack_utils.get_overcloud_keystone_session()
+    glance_client = openstack_utils.get_glance_session_client(keystone_session)
+    return glance_client
+
+
+def get_stores_info(glance_client=None):
+    """Retrieve glance backing store info.
+
+    :param glance_client: Authenticated glanceclient
+    :type glance_client: glanceclient.Client
+    """
+    glance_client = glance_client or _get_default_glance_client()
+    stores = glance_client.images.get_stores_info().get("stores", [])
+    return stores
+
+
+def get_store_ids(glance_client=None):
+    """Retrieve glance backing store ids.
+
+    :param glance_client: Authenticated glanceclient
+    :type glance_client: glanceclient.Client
+    """
+    stores = get_stores_info(glance_client)
+    return [store["id"] for store in stores]
+
+
 def add_image(image_url, glance_client=None, image_name=None, tags=[],
-              properties=None):
+              properties=None, backend=None, disk_format='qcow2',
+              visibility='public', container_format='bare'):
     """Retrieve image from ``image_url`` and add it to glance.
 
     :param image_url: Retrievable URL with image data
@@ -47,10 +76,14 @@ def add_image(image_url, glance_client=None, image_name=None, tags=[],
     :param properties: Properties to add to image
     :type properties: dict
     """
-    if not glance_client:
-        keystone_session = openstack_utils.get_overcloud_keystone_session()
-        glance_client = openstack_utils.get_glance_session_client(
-            keystone_session)
+    glance_client = glance_client or _get_default_glance_client()
+    if backend is not None:
+        stores = get_store_ids(glance_client)
+        if backend not in stores:
+            raise ValueError("Invalid backend: %(backend)s "
+                             "(available: %(available)s)" % {
+                                 "backend": backend,
+                                 "available": ", ".join(stores)})
     if image_name:
         image = openstack_utils.get_images_by_name(
             glance_client, image_name)
@@ -65,7 +98,11 @@ def add_image(image_url, glance_client=None, image_name=None, tags=[],
             image_url,
             image_name,
             tags=tags,
-            properties=properties)
+            properties=properties,
+            backend=backend,
+            disk_format=disk_format,
+            visibility=visibility,
+            container_format=container_format)
 
 
 def add_cirros_image(glance_client=None, image_name=None):
