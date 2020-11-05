@@ -38,31 +38,34 @@ class BaseGuestCreateTest(unittest.TestCase):
         zaza.openstack.configure.guest.launch_instance(instance_key)
 
 
-class CirrosGuestCreateTest(BaseGuestCreateTest):
+class CirrosGuestCreateTest(test_utils.OpenStackBaseTest):
     """Tests to launch a cirros image."""
 
     def test_launch_small_instance(self):
         """Launch a cirros instance and test connectivity."""
-        zaza.openstack.configure.guest.launch_instance(
-            glance_setup.CIRROS_IMAGE_NAME)
+        self.RESOURCE_PREFIX = 'zaza-nova'
+        self.launch_guest(
+            'cirros', instance_key=glance_setup.CIRROS_IMAGE_NAME)
 
 
-class LTSGuestCreateTest(BaseGuestCreateTest):
+class LTSGuestCreateTest(test_utils.OpenStackBaseTest):
     """Tests to launch a LTS image."""
 
     def test_launch_small_instance(self):
         """Launch a Bionic instance and test connectivity."""
-        zaza.openstack.configure.guest.launch_instance(
-            glance_setup.LTS_IMAGE_NAME)
+        self.RESOURCE_PREFIX = 'zaza-nova'
+        self.launch_guest(
+            'ubuntu', instance_key=glance_setup.LTS_IMAGE_NAME)
 
 
-class LTSGuestCreateVolumeBackedTest(BaseGuestCreateTest):
+class LTSGuestCreateVolumeBackedTest(test_utils.OpenStackBaseTest):
     """Tests to launch a LTS image."""
 
     def test_launch_small_instance(self):
         """Launch a Bionic instance and test connectivity."""
-        zaza.openstack.configure.guest.launch_instance(
-            glance_setup.LTS_IMAGE_NAME,
+        self.RESOURCE_PREFIX = 'zaza-nova'
+        self.launch_guest(
+            'volume-backed-ubuntu', instance_key=glance_setup.LTS_IMAGE_NAME,
             use_boot_volume=True)
 
 

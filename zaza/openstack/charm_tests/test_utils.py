@@ -127,10 +127,28 @@ class BaseCharmTest(unittest.TestCase):
         else:
             cls.model_name = model.get_juju_model()
         cls.test_config = lifecycle_utils.get_charm_config(fatal=False)
+
         if application_name:
             cls.application_name = application_name
         else:
-            cls.application_name = cls.test_config['charm_name']
+            charm_under_test_name = cls.test_config['charm_name']
+            deployed_app_names = model.sync_deployed(model_name=cls.model_name)
+            if charm_under_test_name in deployed_app_names:
+                # There is an application named like the charm under test.
+                # Let's consider it the application under test:
+                cls.application_name = charm_under_test_name
+            else:
+                # Let's search for any application whose name starts with the
+                # name of the charm under test and assume it's the application
+                # under test:
+                for app_name in deployed_app_names:
+                    if app_name.startswith(charm_under_test_name):
+                        cls.application_name = app_name
+                        break
+                else:
+                    logging.warning('Could not find application under test')
+                    return
+
         cls.lead_unit = model.get_lead_unit_name(
             cls.application_name,
             model_name=cls.model_name)
@@ -526,7 +544,8 @@ class OpenStackBaseTest(BaseCharmTest):
             # Test did not define self.RESOURCE_PREFIX, ignore.
             pass
 
-    def launch_guest(self, guest_name, userdata=None):
+    def launch_guest(self, guest_name, userdata=None, use_boot_volume=False,
+                     instance_key=None):
         """Launch two guests to use in tests.
 
         Note that it is up to the caller to have set the RESOURCE_PREFIX class
@@ -539,25 +558,38 @@ class OpenStackBaseTest(BaseCharmTest):
         :type guest_name: str
         :param userdata: Userdata to attach to instance
         :type userdata: Optional[str]
+        :param use_boot_volume: Whether to boot guest from a shared volume.
+        :type use_boot_volume: boolean
+        :param instance_key: Key to collect associated config data with.
+        :type instance_key: Optional[str]
         :returns: Nova instance objects
         :rtype: Server
         """
+        instance_key = instance_key or glance_setup.LTS_IMAGE_NAME
         instance_name = '{}-{}'.format(self.RESOURCE_PREFIX, guest_name)
 
-        instance = self.retrieve_guest(instance_name)
-        if instance:
-            logging.info('Removing already existing instance ({}) with '
-                         'requested name ({})'
-                         .format(instance.id, instance_name))
-            openstack_utils.delete_resource(
-                self.nova_client.servers,
-                instance.id,
-                msg="server")
+        for attempt in tenacity.Retrying(
+                stop=tenacity.stop_after_attempt(3),
+                wait=tenacity.wait_exponential(
+                    multiplier=1, min=2, max=10)):
+            with attempt:
+                old_instance_with_same_name = self.retrieve_guest(
+                    instance_name)
+                if old_instance_with_same_name:
+                    logging.info(
+                        'Removing already existing instance ({}) with '
+                        'requested name ({})'
+                        .format(old_instance_with_same_name.id, instance_name))
+                    openstack_utils.delete_resource(
+                        self.nova_client.servers,
+                        old_instance_with_same_name.id,
+                        msg="server")
 
-        return configure_guest.launch_instance(
-            glance_setup.LTS_IMAGE_NAME,
-            vm_name=instance_name,
-            userdata=userdata)
+                return configure_guest.launch_instance(
+                    instance_key,
+                    vm_name=instance_name,
+                    use_boot_volume=use_boot_volume,
+                    userdata=userdata)
 
     def launch_guests(self, userdata=None):
         """Launch two guests to use in tests.
@@ -572,15 +604,10 @@ class OpenStackBaseTest(BaseCharmTest):
         """
         launched_instances = []
         for guest_number in range(1, 2+1):
-            for attempt in tenacity.Retrying(
-                    stop=tenacity.stop_after_attempt(3),
-                    wait=tenacity.wait_exponential(
-                        multiplier=1, min=2, max=10)):
-                with attempt:
-                    launched_instances.append(
-                        self.launch_guest(
-                            guest_name='ins-{}'.format(guest_number),
-                            userdata=userdata))
+            launched_instances.append(
+                self.launch_guest(
+                    guest_name='ins-{}'.format(guest_number),
+                    userdata=userdata))
         return launched_instances
 
     def retrieve_guest(self, guest_name):

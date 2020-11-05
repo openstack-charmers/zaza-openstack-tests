@@ -504,7 +504,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             glance_mock.images.upload.assert_called_once_with(
                 '9d1125af',
                 f(),
-            )
+                backend=None)
             self.resource_reaches_status.assert_called_once_with(
                 glance_mock.images,
                 '9d1125af',
@@ -529,7 +529,11 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.upload_image_to_glance.assert_called_once_with(
             glance_mock,
             'wibbly/c.img',
-            'bob')
+            'bob',
+            backend=None,
+            disk_format='qcow2',
+            visibility='public',
+            container_format='bare')
 
     def test_create_image_pass_directory(self):
         glance_mock = mock.MagicMock()
@@ -549,7 +553,11 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.upload_image_to_glance.assert_called_once_with(
             glance_mock,
             'tests/c.img',
-            'bob')
+            'bob',
+            backend=None,
+            disk_format='qcow2',
+            visibility='public',
+            container_format='bare')
         self.gettempdir.assert_not_called()
 
     def test_create_ssh_key(self):
