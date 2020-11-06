@@ -455,3 +455,38 @@ class LdapTests(BaseKeystoneTest):
                 self.assertIsNotNone(johndoe, "user 'john doe' was unknown")
                 janedoe = self._find_keystone_v3_user('jane doe', 'userdomain')
                 self.assertIsNotNone(janedoe, "user 'jane doe' was unknown")
+
+
+class LdapExplicitCharmConfigTests(LdapTests):
+    """Keystone ldap tests tests."""
+
+    def _get_ldap_config(self):
+        """Generate ldap config for current model.
+
+        :return: tuple of whether ldap-server is running and if so, config
+            for the keystone-ldap application.
+        :rtype: Tuple[bool, Dict[str,str]]
+        """
+        ldap_ips = zaza.model.get_app_ips("ldap-server")
+        self.assertTrue(ldap_ips, "Should be at least one ldap server")
+        return {
+            'ldap-server': "ldap://{}".format(ldap_ips[0]),
+            'ldap-user': 'cn=admin,dc=test,dc=com',
+            'ldap-password': 'crapper',
+            'ldap-suffix': 'dc=test,dc=com',
+            'domain-name': 'userdomain',
+            'ldap-query-scope': 'one',
+            'ldap-user-objectclass': 'inetOrgPerson',
+            'ldap-user-id-attribute': 'cn',
+            'ldap-user-name-attribute': 'sn',
+            'ldap-user-enabled-attribute': 'enabled',
+            'ldap-user-enabled-invert': False,
+            'ldap-user-enabled-mask': 0,
+            'ldap-user-enabled-default': 'True',
+            'ldap-group-tree-dn': 'ou=groups',
+            'ldap-group-objectclass': 'groupOfNames',
+            'ldap-group-id-attribute': 'cn',
+            'ldap-group-member-attribute': 'memberUid',
+            'ldap-group-members-are-ids': True,
+            'ldap-config-flags': '{group_objectclass: "posixGroup"}',
+        }
