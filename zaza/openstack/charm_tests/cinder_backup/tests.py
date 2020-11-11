@@ -116,7 +116,7 @@ class CinderBackupTest(test_utils.OpenStackBaseTest):
                 # When the backup creation succeeds, it usually does within
                 # 12 minutes.
                 # NOTE(lourot): it seems like we have to stick to the
-                # `<prefix>-backup-vol` naming convention otherwise
+                # `<prefix>-<number>-backup-vol` naming convention otherwise
                 # cinder-backup fails with a ceph/rados error about not being
                 # able to find the pool. See lp:1897587
                 vol_backup_name = '{}-410{}-backup-vol'.format(
