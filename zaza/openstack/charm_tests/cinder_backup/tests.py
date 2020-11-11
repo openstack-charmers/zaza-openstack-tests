@@ -93,7 +93,7 @@ class CinderBackupTest(test_utils.OpenStackBaseTest):
                 stop=tenacity.stop_after_attempt(3)):
             with attempt:
                 # Create ceph-backed cinder volume
-                cinder_vol_name = '{}-410{}-vol'.format(
+                cinder_vol_name = '{}-410-{}-vol'.format(
                     self.RESOURCE_PREFIX, attempt.retry_state.attempt_number)
                 cinder_vol = self.cinder_client.volumes.create(
                     name=cinder_vol_name, size=1)
@@ -115,14 +115,10 @@ class CinderBackupTest(test_utils.OpenStackBaseTest):
                 # fixed in this area.
                 # When the backup creation succeeds, it usually does within
                 # 12 minutes.
-                # NOTE(lourot): it seems like we have to stick to the
-                # `<prefix>-<number>-backup-vol` naming convention otherwise
-                # cinder-backup fails with a ceph/rados error about not being
-                # able to find the pool. See lp:1897587
-                vol_backup_name = '{}-410{}-backup-vol'.format(
+                vol_backup_name = '{}-410-{}-backup-vol'.format(
                     self.RESOURCE_PREFIX, attempt.retry_state.attempt_number)
                 vol_backup = self.cinder_client.backups.create(
-                    cinder_vol.id, vol_backup_name)
+                    cinder_vol.id, name=vol_backup_name)
                 openstack_utils.resource_reaches_status(
                     self.cinder_client.backups,
                     vol_backup.id,
