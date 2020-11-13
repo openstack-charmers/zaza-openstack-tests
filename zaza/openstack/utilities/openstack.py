@@ -1901,14 +1901,13 @@ def _resource_reaches_status(resource, resource_id,
     :param expected_status: status to expect resource to reach
     :type expected_status: str
     :param msg: text to identify purpose in logging
-    :type msy: str
+    :type msg: str
     :raises: AssertionError
     """
     resource_status = resource.get(resource_id).status
-    logging.info(resource_status)
-    assert resource_status == expected_status, (
-        "Resource in {} state, waiting for {}" .format(resource_status,
-                                                       expected_status,))
+    logging.info("{}: resource {} in {} state, waiting for {}".format(
+        msg, resource_id, resource_status, expected_status))
+    assert resource_status == expected_status
 
 
 def resource_reaches_status(resource,
@@ -1970,8 +1969,8 @@ def _resource_removed(resource, resource_id, msg="resource"):
     :raises: AssertionError
     """
     matching = [r for r in resource.list() if r.id == resource_id]
-    logging.debug("Resource {} still present".format(resource_id))
-    assert len(matching) == 0, "Resource {} still present".format(resource_id)
+    logging.debug("{}: resource {} still present".format(msg, resource_id))
+    assert len(matching) == 0
 
 
 def resource_removed(resource,
