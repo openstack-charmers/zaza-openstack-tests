@@ -94,7 +94,7 @@ def app_config(charm_name):
             'pause_non_leader_subordinate': True,
             'post_upgrade_functions': [
                 ('zaza.openstack.charm_tests.vault.setup.'
-                 'async_mojo_unseal_by_unit')]
+                 'async_mojo_or_default_unseal_by_unit')]
         },
         'mongodb': {
             'origin': None,
@@ -336,8 +336,10 @@ async def serial_series_upgrade(
         non_leaders,
         pause_non_leader_subordinate,
         pause_non_leader_primary)
+    logging.info("Finishing pausing application: {}".format(application))
     await series_upgrade_utils.async_set_series(
         application, to_series=to_series)
+    logging.info("Finished set series for application: {}".format(application))
     if not follower_first and leader_machine not in completed_machines:
         await model.async_wait_for_unit_idle(leader, include_subordinates=True)
         await prepare_series_upgrade(leader_machine, to_series=to_series)
@@ -350,6 +352,8 @@ async def serial_series_upgrade(
             files=files, workaround_script=workaround_script,
             post_upgrade_functions=post_upgrade_functions)
         completed_machines.append(leader_machine)
+        logging.info("Finished upgrading of leader for application: {}"
+                     .format(application))
 
     # for machine in machines:
     for unit_name, unit in non_leaders.items():
@@ -368,6 +372,8 @@ async def serial_series_upgrade(
             files=files, workaround_script=workaround_script,
             post_upgrade_functions=post_upgrade_functions)
         completed_machines.append(machine)
+    logging.info("Finished upgrading non leaders for application: {}"
+                 .format(application))
 
     if follower_first and leader_machine not in completed_machines:
         await model.async_wait_for_unit_idle(leader, include_subordinates=True)
@@ -383,6 +389,7 @@ async def serial_series_upgrade(
         completed_machines.append(leader_machine)
     await run_post_application_upgrade_functions(
         post_application_upgrade_functions)
+    logging.info("Done series upgrade for: {}".format(application))
 
 
 async def series_upgrade_machine(
@@ -523,15 +530,20 @@ async def maybe_pause_things(
                         logging.info("Skipping pausing {} - blacklisted"
                                      .format(subordinate))
                     else:
-                        logging.info("Pausing {}".format(subordinate))
-                        subordinate_pauses.append(model.async_run_action(
-                            subordinate, "pause", action_params={}))
+                        subordinate_pauses.append(
+                            _pause_helper("subordinate", subordinate))
         if pause_non_leader_primary:
-            logging.info("Pausing {}".format(unit))
-            leader_pauses.append(
-                model.async_run_action(unit, "pause", action_params={}))
-    await asyncio.gather(*leader_pauses)
-    await asyncio.gather(*subordinate_pauses)
+            leader_pauses.append(_pause_helper("leader", unit))
+    if leader_pauses:
+        await asyncio.gather(*leader_pauses)
+    if subordinate_pauses:
+        await asyncio.gather(*subordinate_pauses)
+
+async def _pause_helper(_type, unit):
+    """Pause helper to ensure that the log happens nearer to the action"""
+    logging.info("Pausing ({}) {}".format(_type, unit))
+    await model.async_run_action(unit, "pause", action_params={})
+    logging.info("Finished Pausing ({}) {}".format(_type, unit))
 
 
 def get_leader_and_non_leaders(status):

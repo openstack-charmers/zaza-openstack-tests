@@ -21,6 +21,7 @@ import logging
 import os
 import sys
 import unittest
+import juju
 
 from zaza import model
 from zaza.openstack.utilities import (
@@ -55,6 +56,12 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Run setup for Series Upgrades."""
+        # NOTE(ajkavanagh): Set the jujulib Connection frame size to 4GB to
+        # cope with all the outputs from series upgrade; long term, don't send
+        # that output back, which will require that the upgrade function in the
+        # charm doesn't capture the output of the upgrade in the action, but
+        # instead puts it somewhere that can by "juju scp"ed.
+        juju.client.connection.Connection.MAX_FRAME_SIZE = 2**32
         cli_utils.setup_logging()
         cls.from_series = None
         cls.to_series = None
@@ -89,24 +96,42 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
                 upgrade_function = \
                     parallel_series_upgrade.parallel_series_upgrade
 
+            # allow up to 3 parallel upgrades at a time.  This is to limit the
+            # amount of data/calls that asyncio is handling as it's gets
+            # unstable if all the applications are done at the same time.
+            sem = asyncio.Semaphore(4)
             for charm_name in apps:
                 charm = applications[charm_name]['charm']
                 name = upgrade_utils.extract_charm_name_from_url(charm)
                 upgrade_config = parallel_series_upgrade.app_config(name)
                 upgrade_functions.append(
-                    upgrade_function(
-                        charm_name,
-                        **upgrade_config,
-                        from_series=from_series,
-                        to_series=to_series,
-                        completed_machines=completed_machines,
-                        workaround_script=workaround_script,
-                        files=files))
+                    wrap_coroutine_with_sem(
+                        sem,
+                        upgrade_function(
+                            charm_name,
+                            **upgrade_config,
+                            from_series=from_series,
+                            to_series=to_series,
+                            completed_machines=completed_machines,
+                            workaround_script=workaround_script,
+                            files=files)))
             asyncio.get_event_loop().run_until_complete(
                 asyncio.gather(*upgrade_functions))
             model.block_until_all_units_idle()
             logging.info("Finished {}".format(group_name))
         logging.info("Done!")
+
+
+async def wrap_coroutine_with_sem(sem, coroutine):
+    """Wrap a coroutine with a semaphore to limit concurrency.
+
+    :param sem: The semaphore to limit concurrency
+    :type sem: asyncio.Semaphore
+    :param coroutine: the corouting to limit concurrency
+    :type coroutine: types.CoroutineType
+    """
+    async with sem:
+        await coroutine
 
 
 class OpenStackParallelSeriesUpgrade(ParallelSeriesUpgradeTest):

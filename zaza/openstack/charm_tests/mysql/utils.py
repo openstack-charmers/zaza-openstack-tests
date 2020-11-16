@@ -19,8 +19,17 @@ import zaza.model as model
 
 async def complete_cluster_series_upgrade():
     """Run the complete-cluster-series-upgrade action on the lead unit."""
-    # TODO: Make this work across either mysql or percona-cluster names
-    await model.async_run_action_on_leader(
-        'mysql',
-        'complete-cluster-series-upgrade',
-        action_params={})
+    # Note that some models use mysql as the application name, and other's use
+    # percona-cluster.  Try mysql first, and if it doesn't exist, then try
+    # percona-cluster instead.
+    try:
+        await model.async_run_action_on_leader(
+            'mysql',
+            'complete-cluster-series-upgrade',
+            action_params={})
+    except KeyError:
+        await model.async_run_action_on_leader(
+            'percona-cluster',
+            'complete-cluster-series-upgrade',
+            action_params={})
+
