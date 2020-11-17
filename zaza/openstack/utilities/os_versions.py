@@ -71,7 +71,6 @@ OPENSTACK_RELEASES_PAIRS = [
     'eoan_train', 'bionic_ussuri', 'focal_ussuri',
     'focal_victoria', 'groovy_victoria']
 
-# The ugly duckling - must list releases oldest to newest
 SWIFT_CODENAMES = OrderedDict([
     ('diablo',
         ['1.4.3']),
@@ -111,6 +110,15 @@ SWIFT_CODENAMES = OrderedDict([
         ['2.24.0', '2.25.0']),
     ('victoria',
         ['2.25.0']),
+])
+
+OVN_CODENAMES = OrderedDict([
+    ('train',
+        ['2.12']),
+    ('ussuri',
+        ['20.03']),
+    ('victoria',
+        ['20.06']),
 ])
 
 # >= Liberty version->codename mapping
@@ -244,10 +252,6 @@ PACKAGE_CODENAMES = {
         ('9', 'train'),
         ('10', 'ussuri'),
         ('11', 'victoria'),
-    ]),
-    'ovn-common': OrderedDict([
-        ('2', 'train'),
-        ('20', 'ussuri'),
     ]),
     'ceph-common': OrderedDict([
         ('10', 'mitaka'),  # jewel
