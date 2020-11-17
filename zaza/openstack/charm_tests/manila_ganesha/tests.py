@@ -16,6 +16,8 @@
 
 """Encapsulate Manila Ganesha testing."""
 
+import logging
+
 from tenacity import Retrying, stop_after_attempt, wait_exponential
 
 from manilaclient import client as manilaclient
@@ -87,6 +89,8 @@ packages:
         # Write a file on instance_1
         def verify_setup(stdin, stdout, stderr):
             status = stdout.channel.recv_exit_status()
+            if status:
+                logging.info("{}".format(stderr.readlines()[0].strip()))
             self.assertEqual(status, 0)
 
         mount_path = share.export_locations[0]
@@ -119,6 +123,8 @@ packages:
 
         def verify(stdin, stdout, stderr):
             status = stdout.channel.recv_exit_status()
+            if status:
+                logging.info("{}".format(stderr.readlines()[0].strip()))
             self.assertEqual(status, 0)
             out = ""
             for line in iter(stdout.readline, ""):
