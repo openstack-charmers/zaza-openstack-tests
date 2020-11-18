@@ -96,7 +96,7 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
                 upgrade_function = \
                     parallel_series_upgrade.parallel_series_upgrade
 
-            # allow up to 3 parallel upgrades at a time.  This is to limit the
+            # allow up to 4 parallel upgrades at a time.  This is to limit the
             # amount of data/calls that asyncio is handling as it's gets
             # unstable if all the applications are done at the same time.
             sem = asyncio.Semaphore(4)
