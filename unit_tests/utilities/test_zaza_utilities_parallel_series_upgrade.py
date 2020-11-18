@@ -182,6 +182,8 @@ class TestParallelSeriesUpgrade(AioTestCase):
         self.model.async_wait_for_unit_idle = mock.AsyncMock()
         self.async_run_on_machine = mock.AsyncMock()
         self.model.async_run_on_machine = self.async_run_on_machine
+        self.model.async_block_until_units_on_machine_are_idle = \
+            mock.AsyncMock()
 
     @mock.patch.object(upgrade_utils.cl_utils, 'get_class')
     async def test_run_post_application_upgrade_functions(

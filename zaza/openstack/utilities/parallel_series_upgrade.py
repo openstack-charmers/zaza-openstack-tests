@@ -58,7 +58,9 @@ def app_config(charm_name):
     }
     exceptions = {
         'rabbitmq-server': {
-            'origin': None,  # NOTE: AJK disable config-changed on rabbitmq-server due to bug: #1896520
+            # NOTE: AJK disable config-changed on rabbitmq-server due to bug:
+            # #1896520
+            'origin': None,
             'pause_non_leader_subordinate': False,
             'post_application_upgrade_functions': [
                 ('zaza.openstack.charm_tests.rabbitmq_server.utils.'
@@ -244,20 +246,6 @@ async def wait_for_idle_then_prepare_series_upgrade(
     :param model_name: Name of model to query.
     :type model_name: str
     """
-    # get all the units on this machine
-    # _status = await model.async_get_status(model_name=model_name)
-    # units = []
-    # for _, app_data in _status["applications"].items():
-        # if app_data["subordinate-to"]:
-            # continue
-        # for unit, unit_data in app_data["units"].items():
-            # if unit_data["machine"] == machine:
-                # units.append(unit)
-    # # TODO: this should be a test on all units being idle at the same time, not
-    # # just eventually!!!
-    # await asyncio.gather(*[
-        # model.async_wait_for_unit_idle(unit, include_subordinates=True)
-        # for unit in units])
     await model.async_block_until_units_on_machine_are_idle(
         machine, model_name=model_name)
     await prepare_series_upgrade(machine, to_series=to_series)
@@ -519,8 +507,7 @@ async def maybe_pause_things(
     :returns: Nothing
     :trype: None
     """
-    subordinate_pauses = []
-    leader_pauses = []
+    unit_pauses = []
     for unit in units:
         if pause_non_leader_subordinate:
             if status["units"][unit].get("subordinates"):
@@ -530,17 +517,16 @@ async def maybe_pause_things(
                         logging.info("Skipping pausing {} - blacklisted"
                                      .format(subordinate))
                     else:
-                        subordinate_pauses.append(
+                        unit_pauses.append(
                             _pause_helper("subordinate", subordinate))
         if pause_non_leader_primary:
-            leader_pauses.append(_pause_helper("leader", unit))
-    if leader_pauses:
-        await asyncio.gather(*leader_pauses)
-    if subordinate_pauses:
-        await asyncio.gather(*subordinate_pauses)
+            unit_pauses.append(_pause_helper("leader", unit))
+    if unit_pauses:
+        await asyncio.gather(*unit_pauses)
+
 
 async def _pause_helper(_type, unit):
-    """Pause helper to ensure that the log happens nearer to the action"""
+    """Pause helper to ensure that the log happens nearer to the action."""
     logging.info("Pausing ({}) {}".format(_type, unit))
     await model.async_run_action(unit, "pause", action_params={})
     logging.info("Finished Pausing ({}) {}".format(_type, unit))

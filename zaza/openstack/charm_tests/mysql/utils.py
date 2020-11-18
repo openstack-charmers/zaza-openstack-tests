@@ -32,4 +32,3 @@ async def complete_cluster_series_upgrade():
             'percona-cluster',
             'complete-cluster-series-upgrade',
             action_params={})
-

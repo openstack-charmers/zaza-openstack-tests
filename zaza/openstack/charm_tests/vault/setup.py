@@ -83,7 +83,7 @@ async def mojo_or_default_unseal_by_unit():
     try:
         await mojo_unseal_by_unit()
     except zaza_exceptions.CACERTNotFound:
-        await unseal_but_unit()
+        await unseal_by_unit()
 
 
 def mojo_unseal_by_unit():
@@ -114,7 +114,7 @@ async def async_mojo_or_default_unseal_by_unit():
     try:
         await async_mojo_unseal_by_unit()
     except zaza_exceptions.CACERTNotFound:
-        await async_unseal_but_unit()
+        await async_unseal_by_unit()
 
 
 async def async_mojo_unseal_by_unit():

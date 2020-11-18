@@ -884,7 +884,8 @@ def dist_upgrade(unit_name):
         """-o "Dpkg::Options::=--force-confdef" """
         """-o "Dpkg::Options::=--force-confold" dist-upgrade""")
     model.run_on_unit(unit_name, dist_upgrade_cmd)
-    rdict = model.run_on_unit(unit_name, "cat /var/run/reboot-required || true")
+    rdict = model.run_on_unit(unit_name,
+                              "cat /var/run/reboot-required || true")
     if "Stdout" in rdict and "restart" in rdict["Stdout"].lower():
         logging.info("dist-upgrade required reboot {}".format(unit_name))
         os_utils.reboot(unit_name)
