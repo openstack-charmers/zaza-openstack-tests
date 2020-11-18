@@ -1495,7 +1495,6 @@ def get_os_code_info(package, pkg_version):
     :returns: Codename for package
     :rtype: string
     """
-    # {'code_num': entry, 'code_name': OPENSTACK_CODENAMES[entry]}
     # Remove epoch if it exists
     if ':' in pkg_version:
         pkg_version = pkg_version.split(':')[1:][0]
