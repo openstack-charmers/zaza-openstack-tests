@@ -289,6 +289,15 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         openstack_utils.get_undercloud_keystone_session()
         self.get_keystone_session.assert_called_once_with(_auth, verify=None)
 
+    def test_get_nova_session_client(self):
+        session_mock = mock.MagicMock()
+        self.patch_object(openstack_utils.novaclient_client, "Client")
+        openstack_utils.get_nova_session_client(session_mock)
+        self.Client.assert_called_once_with(2, session=session_mock)
+        self.Client.reset_mock()
+        openstack_utils.get_nova_session_client(session_mock, version=2.56)
+        self.Client.assert_called_once_with(2.56, session=session_mock)
+
     def test_get_urllib_opener(self):
         self.patch_object(openstack_utils.urllib.request, "ProxyHandler")
         self.patch_object(openstack_utils.urllib.request, "HTTPHandler")

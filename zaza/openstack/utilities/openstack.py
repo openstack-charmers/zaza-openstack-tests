@@ -253,15 +253,18 @@ def get_designate_session_client(**kwargs):
                            **kwargs)
 
 
-def get_nova_session_client(session):
+def get_nova_session_client(session, version=None):
     """Return novaclient authenticated by keystone session.
 
     :param session: Keystone session object
     :type session: keystoneauth1.session.Session object
+    :param version: Version of client to request.
+    :type version: float
     :returns: Authenticated novaclient
     :rtype: novaclient.Client object
     """
-    return novaclient_client.Client(2, session=session)
+    version = version or 2
+    return novaclient_client.Client(version, session=session)
 
 
 def get_neutron_session_client(session):
