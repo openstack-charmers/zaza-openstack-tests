@@ -1886,7 +1886,8 @@ def download_image(image_url, target_file):
 
 def _resource_reaches_status(resource, resource_id,
                              expected_status='available',
-                             msg='resource'):
+                             msg='resource',
+                             resource_attribute='status'):
     """Wait for an openstack resources status to reach an expected status.
 
        Wait for an openstack resources status to reach an expected status
@@ -1902,9 +1903,11 @@ def _resource_reaches_status(resource, resource_id,
     :type expected_status: str
     :param msg: text to identify purpose in logging
     :type msg: str
+    :param resource_attribute: Resource attribute to check against
+    :type resource_attribute: str
     :raises: AssertionError
     """
-    resource_status = resource.get(resource_id).status
+    resource_status = getattr(resource.get(resource_id), resource_attribute)
     logging.info("{}: resource {} in {} state, waiting for {}".format(
         msg, resource_id, resource_status, expected_status))
     assert resource_status == expected_status
@@ -1914,6 +1917,7 @@ def resource_reaches_status(resource,
                             resource_id,
                             expected_status='available',
                             msg='resource',
+                            resource_attribute='status',
                             wait_exponential_multiplier=1,
                             wait_iteration_max_time=60,
                             stop_after_attempt=8,
@@ -1933,6 +1937,8 @@ def resource_reaches_status(resource,
     :type expected_status: str
     :param msg: text to identify purpose in logging
     :type msg: str
+    :param resource_attribute: Resource attribute to check against
+    :type resource_attribute: str
     :param wait_exponential_multiplier: Wait 2^x * wait_exponential_multiplier
                                         seconds between each retry
     :type wait_exponential_multiplier: int
@@ -1954,7 +1960,8 @@ def resource_reaches_status(resource,
         resource,
         resource_id,
         expected_status,
-        msg)
+        msg,
+        resource_attribute)
 
 
 def _resource_removed(resource, resource_id, msg="resource"):

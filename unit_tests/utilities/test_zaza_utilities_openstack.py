@@ -369,12 +369,15 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 'e01df65a')
 
     def test__resource_reaches_status_bespoke(self):
+        client_mock = mock.MagicMock()
         resource_mock = mock.MagicMock()
-        resource_mock.get.return_value = mock.MagicMock(status='readyish')
+        resource_mock.special_status = 'readyish'
+        client_mock.get.return_value = resource_mock
         openstack_utils._resource_reaches_status(
-            resource_mock,
+            client_mock,
             'e01df65a',
-            'readyish')
+            'readyish',
+            resource_attribute='special_status')
 
     def test__resource_reaches_status_bespoke_fail(self):
         resource_mock = mock.MagicMock()
