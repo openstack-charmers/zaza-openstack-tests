@@ -19,6 +19,7 @@ This module contains a number of functions for interacting with OpenStack.
 from .os_versions import (
     OPENSTACK_CODENAMES,
     SWIFT_CODENAMES,
+    OVN_CODENAMES,
     PACKAGE_CODENAMES,
     OPENSTACK_RELEASES_PAIRS,
 )
@@ -1481,8 +1482,23 @@ def get_swift_codename(version):
     :returns: Codename for swift
     :rtype: string
     """
-    codenames = [k for k, v in six.iteritems(SWIFT_CODENAMES) if version in v]
-    return codenames[0]
+    return _get_special_codename(version, SWIFT_CODENAMES)
+
+
+def get_ovn_codename(version):
+    """Determine OpenStack codename that corresponds to OVN version.
+
+    :param version: Version of OVN
+    :type version: string
+    :returns: Codename for OVN
+    :rtype: string
+    """
+    return _get_special_codename(version, OVN_CODENAMES)
+
+
+def _get_special_codename(version, codenames):
+    found = [k for k, v in six.iteritems(codenames) if version in v]
+    return found[0]
 
 
 def get_os_code_info(package, pkg_version):
@@ -1518,6 +1534,8 @@ def get_os_code_info(package, pkg_version):
         # < Liberty co-ordinated project versions
         if 'swift' in package:
             return get_swift_codename(vers)
+        elif 'ovn' in package:
+            return get_ovn_codename(vers)
         else:
             return OPENSTACK_CODENAMES[vers]
 
