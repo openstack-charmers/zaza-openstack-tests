@@ -22,6 +22,7 @@ from .os_versions import (
     OVN_CODENAMES,
     PACKAGE_CODENAMES,
     OPENSTACK_RELEASES_PAIRS,
+    UBUNTU_OPENSTACK_RELEASE,
 )
 
 from openstack import connection
@@ -1501,7 +1502,7 @@ def _get_special_codename(version, codenames):
     return found[0]
 
 
-def get_os_code_info(package, pkg_version):
+def get_os_code_info_from_pkg(package, pkg_version):
     """Determine OpenStack codename that corresponds to package version.
 
     :param package: Package name
@@ -1540,11 +1541,40 @@ def get_os_code_info(package, pkg_version):
             return OPENSTACK_CODENAMES[vers]
 
 
-def get_current_os_versions(deployed_applications, model_name=None):
+def get_os_code_info_from_install_origin(application, origin_setting,
+                                         machine_series):
+    """Determine OpenStack codename that corresponds to the charm's origin.
+
+    :param application: Application name, e.g. 'ceph-mon'.
+    :type application: str
+    :param origin_setting: Name of the setting containing the origin for this
+                           application, e.g. 'source'.
+    :type origin_setting: str
+    :param machine_series: Ubuntu series of the machine on which the
+                           application is deployed, e.g. 'focal'.
+    :type machine_series: str
+    :returns: OpenStack codename
+    :rtype: string
+    """
+    origin = get_application_config_option(application, origin_setting)
+    for series, release in UBUNTU_OPENSTACK_RELEASE.items():
+        if release in origin:
+            return release
+
+    # origin doesn't contain any known OpenStack release, it's probably
+    # 'distro':
+    return UBUNTU_OPENSTACK_RELEASE[machine_series]
+
+
+def get_current_os_versions(deployed_applications, series=None,
+                            model_name=None):
     """Determine OpenStack codename of deployed applications.
 
     :param deployed_applications: List of deployed applications
     :type deployed_applications: list
+    :param series: Ubuntu series. Pass this in order to help the heuristic
+                   for determining the OpenStack codename.
+    :type series: str
     :param model_name: Name of model to query.
     :type model_name: str
     :returns: List of aplication to codenames dictionaries
@@ -1555,11 +1585,26 @@ def get_current_os_versions(deployed_applications, model_name=None):
         if application['name'] not in deployed_applications:
             continue
 
-        version = generic_utils.get_pkg_version(application['name'],
-                                                application['type']['pkg'],
-                                                model_name=model_name)
-        versions[application['name']] = (
-            get_os_code_info(application['type']['pkg'], version))
+        pkg_used_to_determine_os_version = application['type']['pkg']
+        if 'ceph-' in pkg_used_to_determine_os_version:
+            # NOTE(lourot): Since Ussuri/Victoria the version of ceph packages
+            # can't be reliably used to determine the OpenStack version
+            # anymore. We fall back to looking at the charm's install origin.
+            if not series:
+                raise RuntimeError(
+                    'Series needed to determine the OpenStack codename of ' +
+                    application['name'])
+            versions[application['name']] = (
+                get_os_code_info_from_install_origin(
+                    application['name'], application['type']['origin_setting'],
+                    series))
+        else:
+            version = generic_utils.get_pkg_version(
+                application['name'], pkg_used_to_determine_os_version,
+                model_name=model_name)
+            versions[application['name']] = (
+                get_os_code_info_from_pkg(pkg_used_to_determine_os_version,
+                                          version))
     return versions
 
 

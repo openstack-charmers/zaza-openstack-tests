@@ -259,6 +259,9 @@ PACKAGE_CODENAMES = {
         ('13', 'rocky'),   # mimic
         ('14', 'train'),   # nautilus
         ('15', 'ussuri'),  # octopus
+        # NOTE(lourot): victoria has the exact same version as ussuri so this
+        # way of determining the OpenStack release based on the ceph-common
+        # version doesn't work anymore.
     ]),
     'placement-common': OrderedDict([
         ('2', 'train'),
