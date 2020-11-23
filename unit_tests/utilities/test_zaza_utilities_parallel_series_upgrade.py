@@ -494,7 +494,13 @@ class TestParallelSeriesUpgrade(AioTestCase):
         mock_remove_confdef_file.assert_called_once_with('1')
         mock_add_confdef_file.assert_called_once_with('1')
 
-    async def test_maybe_pause_things_primary(self):
+    @mock.patch("asyncio.gather")
+    async def test_maybe_pause_things_primary(self, mock_gather):
+        async def _gather(*args):
+            for f in args:
+                await f
+
+        mock_gather.side_effect = _gather
         await upgrade_utils.maybe_pause_things(
             FAKE_STATUS,
             ['app/1', 'app/2'],
@@ -505,7 +511,13 @@ class TestParallelSeriesUpgrade(AioTestCase):
             mock.call('app/2', "pause", action_params={}),
         ])
 
-    async def test_maybe_pause_things_subordinates(self):
+    @mock.patch("asyncio.gather")
+    async def test_maybe_pause_things_subordinates(self, mock_gather):
+        async def _gather(*args):
+            for f in args:
+                await f
+
+        mock_gather.side_effect = _gather
         await upgrade_utils.maybe_pause_things(
             FAKE_STATUS,
             ['app/1', 'app/2'],
@@ -516,7 +528,13 @@ class TestParallelSeriesUpgrade(AioTestCase):
             mock.call('app-hacluster/2', "pause", action_params={}),
         ])
 
-    async def test_maybe_pause_things_all(self):
+    @mock.patch("asyncio.gather")
+    async def test_maybe_pause_things_all(self, mock_gather):
+        async def _gather(*args):
+            for f in args:
+                await f
+
+        mock_gather.side_effect = _gather
         await upgrade_utils.maybe_pause_things(
             FAKE_STATUS,
             ['app/1', 'app/2'],
