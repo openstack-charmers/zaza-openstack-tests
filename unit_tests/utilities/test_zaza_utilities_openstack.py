@@ -908,6 +908,27 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         release_comp = xenial_queens > xenial_mitaka
         self.assertTrue(release_comp)
 
+    def get_os_code_info_from_install_origin(self):
+        self.patch(
+            'zaza.openstack.utilities.openstack.get_application_config_option',
+            new_callable=mock.MagicMock(),
+            name='_get_app_config'
+        )
+        self._get_app_config.return_value = 'distro'
+        result = openstack_utils.get_os_code_info_from_install_origin(
+            'mycharm', 'openstack-origin', 'focal')
+        self._get_app_config.assert_called_once_with('mycharm',
+                                                     'openstack-origin')
+        self.assertEqual('ussuri', result)
+
+        self._get_app_config.reset_mock()
+        self._get_app_config.return_value = 'cloud:focal-victoria'
+        result = openstack_utils.get_os_code_info_from_install_origin(
+            'mycharm', 'openstack-origin', 'focal')
+        self._get_app_config.assert_called_once_with('mycharm',
+                                                     'openstack-origin')
+        self.assertEqual('victoria', result)
+
     def test_get_keystone_api_version(self):
         self.patch_object(openstack_utils, "get_current_os_versions")
         self.patch_object(openstack_utils, "get_application_config_option")
