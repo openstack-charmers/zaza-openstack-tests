@@ -1640,7 +1640,8 @@ def get_current_os_release_pair(application='keystone'):
     if not series:
         raise exceptions.SeriesNotFound()
 
-    os_version = get_current_os_versions([application]).get(application)
+    os_version = get_current_os_versions(
+        [application], series).get(application)
     if not os_version:
         raise exceptions.OSVersionNotFound()
 
