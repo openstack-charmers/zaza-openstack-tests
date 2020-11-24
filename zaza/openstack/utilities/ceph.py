@@ -2,8 +2,10 @@
 import json
 import logging
 
-import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.model as zaza_model
+import zaza.utilities.juju as zaza_juju
+
+import zaza.openstack.utilities.openstack as openstack_utils
 
 REPLICATED_POOL_TYPE = 'replicated'
 ERASURE_POOL_TYPE = 'erasure-coded'
@@ -204,3 +206,37 @@ def get_rbd_hash(unit_name, pool, image, model_name=None):
     if result.get('Code') != '0':
         raise zaza_model.CommandRunFailed(cmd, result)
     return result.get('Stdout').rstrip()
+
+
+def get_pools_from_broker_req(application_or_unit, model_name=None):
+    """Get pools requested by application or unit.
+
+    By retrieving and parsing broker request from relation data we can get a
+    list of pools a unit has requested.
+
+    :param application_or_unit: Name of application or unit that is at the
+                                other end of a ceph-mon relation.
+    :type application_or_unit: str
+    :param model_name: Name of Juju model to operate on
+    :type model_name: Optional[str]
+    :returns: List of pools requested.
+    :rtype: List[str]
+    :raises: KeyError
+    """
+    # NOTE: we do not pass on a name for the remote_interface_name as that
+    # varies between the Ceph consuming applications.
+    relation_data = zaza_juju.get_relation_from_unit(
+        'ceph-mon', application_or_unit, None, model_name=model_name)
+
+    # NOTE: we probably should consume the Ceph broker code from c-h but c-h is
+    # such a beast of a dependency so let's defer adding it to Zaza if we can.
+    broker_req = json.loads(relation_data['broker_req'])
+
+    # A charm may request modifications to an existing pool by adding multiple
+    # 'create-pool' broker requests so we need to deduplicate the list before
+    # returning it.
+    return list(set([
+        op['name']
+        for op in broker_req['ops']
+        if op['op'] == 'create-pool'
+    ]))

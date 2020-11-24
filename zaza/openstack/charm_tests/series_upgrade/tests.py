@@ -81,7 +81,7 @@ class SeriesUpgradeTest(unittest.TestCase):
                 logging.info(
                     "Running complete-cluster-series-upgrade action on leader")
                 model.run_action_on_leader(
-                    charm_name,
+                    application,
                     'complete-cluster-series-upgrade',
                     action_params={})
                 model.block_until_all_units_idle()
@@ -90,7 +90,7 @@ class SeriesUpgradeTest(unittest.TestCase):
                 logging.info(
                     "Running complete-cluster-series-upgrade action on leader")
                 model.run_action_on_leader(
-                    charm_name,
+                    application,
                     'complete-cluster-series-upgrade',
                     action_params={})
                 model.block_until_all_units_idle()

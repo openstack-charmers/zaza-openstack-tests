@@ -19,6 +19,7 @@ This module contains a number of functions for interacting with OpenStack.
 from .os_versions import (
     OPENSTACK_CODENAMES,
     SWIFT_CODENAMES,
+    OVN_CODENAMES,
     PACKAGE_CODENAMES,
     OPENSTACK_RELEASES_PAIRS,
 )
@@ -62,6 +63,8 @@ import tempfile
 import tenacity
 import textwrap
 import urllib
+
+import zaza
 
 from zaza import model
 from zaza.openstack.utilities import (
@@ -117,6 +120,14 @@ CHARM_TYPES = {
         'pkg': 'ovn-common',
         'origin_setting': 'source'
     },
+    'ceph-mon': {
+        'pkg': 'ceph-common',
+        'origin_setting': 'source'
+    },
+    'placement': {
+        'pkg': 'placement-common',
+        'origin_setting': 'openstack-origin'
+    },
 }
 
 # Older tests use the order the services appear in the list to imply
@@ -136,6 +147,8 @@ UPGRADE_SERVICES = [
     {'name': 'openstack-dashboard',
      'type': CHARM_TYPES['openstack-dashboard']},
     {'name': 'ovn-central', 'type': CHARM_TYPES['ovn-central']},
+    {'name': 'ceph-mon', 'type': CHARM_TYPES['ceph-mon']},
+    {'name': 'placement', 'type': CHARM_TYPES['placement']},
 ]
 
 
@@ -241,15 +254,17 @@ def get_designate_session_client(**kwargs):
                            **kwargs)
 
 
-def get_nova_session_client(session):
+def get_nova_session_client(session, version=2):
     """Return novaclient authenticated by keystone session.
 
     :param session: Keystone session object
     :type session: keystoneauth1.session.Session object
+    :param version: Version of client to request.
+    :type version: float
     :returns: Authenticated novaclient
     :rtype: novaclient.Client object
     """
-    return novaclient_client.Client(2, session=session)
+    return novaclient_client.Client(version, session=session)
 
 
 def get_neutron_session_client(session):
@@ -553,6 +568,20 @@ def dvr_enabled():
     return get_application_config_option('neutron-api', 'enable-dvr')
 
 
+def ngw_present():
+    """Check whether Neutron Gateway is present in deployment.
+
+    :returns: True when Neutron Gateway is present, False otherwise
+    :rtype: bool
+    """
+    try:
+        model.get_application('neutron-gateway')
+        return True
+    except KeyError:
+        pass
+    return False
+
+
 def ovn_present():
     """Check whether OVN is present in deployment.
 
@@ -630,15 +659,20 @@ def add_interface_to_netplan(server_name, mac_address):
     :type mac_address: string
     """
     if dvr_enabled():
-        application_name = 'neutron-openvswitch'
+        application_names = ('neutron-openvswitch',)
     elif ovn_present():
         # OVN chassis is a subordinate to nova-compute
-        application_name = 'nova-compute'
+        application_names = ('nova-compute', 'ovn-dedicated-chassis')
     else:
-        application_name = 'neutron-gateway'
+        application_names = ('neutron-gateway',)
 
-    unit_name = juju_utils.get_unit_name_from_host_name(
-        server_name, application_name)
+    for app_name in application_names:
+        unit_name = juju_utils.get_unit_name_from_host_name(
+            server_name, app_name)
+        if unit_name:
+            break
+    else:
+        raise RuntimeError('Unable to find unit to run commands on.')
     run_cmd_nic = "ip -f link -br -o addr|grep {}".format(mac_address)
     interface = model.run_on_unit(unit_name, run_cmd_nic)
     interface = interface['Stdout'].split(' ')[0]
@@ -669,19 +703,26 @@ def add_interface_to_netplan(server_name, mac_address):
                   "{}\nserver_name: {}".format(body_value, unit_name,
                                                interface, mac_address,
                                                server_name))
-    with tempfile.NamedTemporaryFile(mode="w") as netplan_file:
-        netplan_file.write(body_value)
-        netplan_file.flush()
-        model.scp_to_unit(unit_name, netplan_file.name,
-                          '/home/ubuntu/60-dataport.yaml', user="ubuntu")
-    run_cmd_mv = "sudo mv /home/ubuntu/60-dataport.yaml /etc/netplan/"
-    model.run_on_unit(unit_name, run_cmd_mv)
-    model.run_on_unit(unit_name, "sudo netplan apply")
+    for attempt in tenacity.Retrying(
+            stop=tenacity.stop_after_attempt(3),
+            wait=tenacity.wait_exponential(
+            multiplier=1, min=2, max=10)):
+        with attempt:
+            with tempfile.NamedTemporaryFile(mode="w") as netplan_file:
+                netplan_file.write(body_value)
+                netplan_file.flush()
+                model.scp_to_unit(
+                    unit_name, netplan_file.name,
+                    '/home/ubuntu/60-dataport.yaml', user="ubuntu")
+            run_cmd_mv = "sudo mv /home/ubuntu/60-dataport.yaml /etc/netplan/"
+            model.run_on_unit(unit_name, run_cmd_mv)
+            model.run_on_unit(unit_name, "sudo netplan apply")
 
 
 def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
                                add_dataport_to_netplan=False,
-                               limit_gws=None):
+                               limit_gws=None,
+                               use_juju_wait=True):
     """Configure the neturong-gateway external port.
 
     :param novaclient: Authenticated novaclient
@@ -692,6 +733,9 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
     :type net_id: string
     :param limit_gws: Limit the number of gateways that get a port attached
     :type limit_gws: Optional[int]
+    :param use_juju_wait: Whether to use juju wait to wait for the model to
+        settle once the gateway has been configured. Default is True
+    :type use_juju_wait: boolean
     """
     deprecated_extnet_mode = deprecated_external_networking()
 
@@ -715,6 +759,9 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
         except KeyError:
             # neutron-gateway not in deployment
             pass
+    elif ngw_present():
+        uuids = itertools.islice(get_gateway_uuids(), limit_gws)
+        application_names = ['neutron-gateway']
     elif ovn_present():
         uuids = itertools.islice(get_ovn_uuids(), limit_gws)
         application_names = ['ovn-chassis']
@@ -729,8 +776,7 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
         config.update({'ovn-bridge-mappings': 'physnet1:br-ex'})
         add_dataport_to_netplan = True
     else:
-        uuids = itertools.islice(get_gateway_uuids(), limit_gws)
-        application_names = ['neutron-gateway']
+        raise RuntimeError('Unable to determine charm network topology.')
 
     if not net_id:
         net_id = get_admin_net(neutronclient)['id']
@@ -745,8 +791,9 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
                     'Neutron Gateway already has additional port')
                 break
         else:
-            logging.info('Attaching additional port to instance, '
-                         'connected to net id: {}'.format(net_id))
+            logging.info('Attaching additional port to instance ("{}"), '
+                         'connected to net id: {}'
+                         .format(uuid, net_id))
             body_value = {
                 "port": {
                     "admin_state_up": True,
@@ -796,7 +843,17 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
         # NOTE(fnordahl): We are stuck with juju_wait until we figure out how
         # to deal with all the non ['active', 'idle', 'Unit is ready.']
         # workload/agent states and msgs that our mojo specs are exposed to.
-        juju_wait.wait(wait_for_workload=True)
+        if use_juju_wait:
+            juju_wait.wait(wait_for_workload=True)
+        else:
+            zaza.model.wait_for_agent_status()
+            # TODO: shouldn't access get_charm_config() here as it relies on
+            # ./tests/tests.yaml existing by default (regardless of the
+            # fatal=False) ... it's not great design.
+            test_config = zaza.charm_lifecycle.utils.get_charm_config(
+                fatal=False)
+            zaza.model.wait_for_application_states(
+                states=test_config.get('target_deploy_status', {}))
 
 
 @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
@@ -1425,8 +1482,23 @@ def get_swift_codename(version):
     :returns: Codename for swift
     :rtype: string
     """
-    codenames = [k for k, v in six.iteritems(SWIFT_CODENAMES) if version in v]
-    return codenames[0]
+    return _get_special_codename(version, SWIFT_CODENAMES)
+
+
+def get_ovn_codename(version):
+    """Determine OpenStack codename that corresponds to OVN version.
+
+    :param version: Version of OVN
+    :type version: string
+    :returns: Codename for OVN
+    :rtype: string
+    """
+    return _get_special_codename(version, OVN_CODENAMES)
+
+
+def _get_special_codename(version, codenames):
+    found = [k for k, v in six.iteritems(codenames) if version in v]
+    return found[0]
 
 
 def get_os_code_info(package, pkg_version):
@@ -1439,7 +1511,6 @@ def get_os_code_info(package, pkg_version):
     :returns: Codename for package
     :rtype: string
     """
-    # {'code_num': entry, 'code_name': OPENSTACK_CODENAMES[entry]}
     # Remove epoch if it exists
     if ':' in pkg_version:
         pkg_version = pkg_version.split(':')[1:][0]
@@ -1463,6 +1534,8 @@ def get_os_code_info(package, pkg_version):
         # < Liberty co-ordinated project versions
         if 'swift' in package:
             return get_swift_codename(vers)
+        elif 'ovn' in package:
+            return get_ovn_codename(vers)
         else:
             return OPENSTACK_CODENAMES[vers]
 
@@ -1832,7 +1905,8 @@ def download_image(image_url, target_file):
 
 def _resource_reaches_status(resource, resource_id,
                              expected_status='available',
-                             msg='resource'):
+                             msg='resource',
+                             resource_attribute='status'):
     """Wait for an openstack resources status to reach an expected status.
 
        Wait for an openstack resources status to reach an expected status
@@ -1847,20 +1921,22 @@ def _resource_reaches_status(resource, resource_id,
     :param expected_status: status to expect resource to reach
     :type expected_status: str
     :param msg: text to identify purpose in logging
-    :type msy: str
+    :type msg: str
+    :param resource_attribute: Resource attribute to check against
+    :type resource_attribute: str
     :raises: AssertionError
     """
-    resource_status = resource.get(resource_id).status
-    logging.info(resource_status)
-    assert resource_status == expected_status, (
-        "Resource in {} state, waiting for {}" .format(resource_status,
-                                                       expected_status,))
+    resource_status = getattr(resource.get(resource_id), resource_attribute)
+    logging.info("{}: resource {} in {} state, waiting for {}".format(
+        msg, resource_id, resource_status, expected_status))
+    assert resource_status == expected_status
 
 
 def resource_reaches_status(resource,
                             resource_id,
                             expected_status='available',
                             msg='resource',
+                            resource_attribute='status',
                             wait_exponential_multiplier=1,
                             wait_iteration_max_time=60,
                             stop_after_attempt=8,
@@ -1880,6 +1956,8 @@ def resource_reaches_status(resource,
     :type expected_status: str
     :param msg: text to identify purpose in logging
     :type msg: str
+    :param resource_attribute: Resource attribute to check against
+    :type resource_attribute: str
     :param wait_exponential_multiplier: Wait 2^x * wait_exponential_multiplier
                                         seconds between each retry
     :type wait_exponential_multiplier: int
@@ -1901,7 +1979,8 @@ def resource_reaches_status(resource,
         resource,
         resource_id,
         expected_status,
-        msg)
+        msg,
+        resource_attribute)
 
 
 def _resource_removed(resource, resource_id, msg="resource"):
@@ -1916,8 +1995,8 @@ def _resource_removed(resource, resource_id, msg="resource"):
     :raises: AssertionError
     """
     matching = [r for r in resource.list() if r.id == resource_id]
-    logging.debug("Resource {} still present".format(resource_id))
-    assert len(matching) == 0, "Resource {} still present".format(resource_id)
+    logging.debug("{}: resource {} still present".format(msg, resource_id))
+    assert len(matching) == 0
 
 
 def resource_removed(resource,
@@ -2011,7 +2090,8 @@ def delete_volume_backup(cinder, vol_backup_id):
 
 
 def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
-                           visibility='public', container_format='bare'):
+                           visibility='public', container_format='bare',
+                           backend=None):
     """Upload the given image to glance and apply the given label.
 
     :param glance: Authenticated glanceclient
@@ -2037,7 +2117,7 @@ def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
         disk_format=disk_format,
         visibility=visibility,
         container_format=container_format)
-    glance.images.upload(image.id, open(local_path, 'rb'))
+    glance.images.upload(image.id, open(local_path, 'rb'), backend=backend)
 
     resource_reaches_status(
         glance.images,
@@ -2049,7 +2129,8 @@ def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
 
 
 def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[],
-                 properties=None):
+                 properties=None, backend=None, disk_format='qcow2',
+                 visibility='public', container_format='bare'):
     """Download the image and upload it to glance.
 
     Download an image from image_url and upload it to glance labelling
@@ -2083,7 +2164,10 @@ def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[],
     if not os.path.exists(local_path):
         download_image(image_url, local_path)
 
-    image = upload_image_to_glance(glance, local_path, image_name)
+    image = upload_image_to_glance(
+        glance, local_path, image_name, backend=backend,
+        disk_format=disk_format, visibility=visibility,
+        container_format=container_format)
     for tag in tags:
         result = glance.image_tags.update(image.id, tag)
         logging.debug(

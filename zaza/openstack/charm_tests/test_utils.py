@@ -15,6 +15,7 @@
 import contextlib
 import logging
 import subprocess
+import sys
 import tenacity
 import unittest
 
@@ -126,14 +127,72 @@ class BaseCharmTest(unittest.TestCase):
         else:
             cls.model_name = model.get_juju_model()
         cls.test_config = lifecycle_utils.get_charm_config(fatal=False)
+
         if application_name:
             cls.application_name = application_name
         else:
-            cls.application_name = cls.test_config['charm_name']
+            charm_under_test_name = cls.test_config['charm_name']
+            deployed_app_names = model.sync_deployed(model_name=cls.model_name)
+            if charm_under_test_name in deployed_app_names:
+                # There is an application named like the charm under test.
+                # Let's consider it the application under test:
+                cls.application_name = charm_under_test_name
+            else:
+                # Let's search for any application whose name starts with the
+                # name of the charm under test and assume it's the application
+                # under test:
+                for app_name in deployed_app_names:
+                    if app_name.startswith(charm_under_test_name):
+                        cls.application_name = app_name
+                        break
+                else:
+                    logging.warning('Could not find application under test')
+                    return
+
         cls.lead_unit = model.get_lead_unit_name(
             cls.application_name,
             model_name=cls.model_name)
         logging.debug('Leader unit is {}'.format(cls.lead_unit))
+
+    def config_current_separate_non_string_type_keys(
+            self, non_string_type_keys, config_keys=None,
+            application_name=None):
+        """Obtain current config and the non-string type config separately.
+
+        If the charm config option is not string, it will not accept being
+        reverted back in "config_change()" method if the current value is None.
+        Therefore, obtain the current config and separate those out, so they
+        can be used for a separate invocation of "config_change()" with
+        reset_to_charm_default set to True.
+
+        :param config_keys: iterable of strs to index into the current config.
+                            If None, return all keys from the config
+        :type config_keys:  Optional[Iterable[str]]
+        :param non_string_type_keys: list of non-string type keys to be
+                                     separated out only if their current value
+                                     is None
+        :type non_string_type_keys: list
+        :param application_name: String application name for use when called
+                                 by a charm under test other than the object's
+                                 application.
+        :type application_name:  Optional[str]
+        :return: Dictionary of current charm configs without the
+                 non-string type keys provided, and dictionary of the
+                 non-string keys found in the supplied config_keys list.
+        :rtype: Dict[str, Any], Dict[str, None]
+        """
+        current_config = self.config_current(application_name, config_keys)
+        non_string_type_config = {}
+        if config_keys is None:
+            config_keys = list(current_config.keys())
+        for key in config_keys:
+            # We only care if the current value is None, otherwise it will
+            # not face issues being reverted by "config_change()"
+            if key in non_string_type_keys and current_config[key] is None:
+                non_string_type_config[key] = None
+                current_config.pop(key)
+
+        return current_config, non_string_type_config
 
     def config_current(self, application_name=None, keys=None):
         """Get Current Config of an application normalized into key-values.
@@ -181,7 +240,7 @@ class BaseCharmTest(unittest.TestCase):
 
     @contextlib.contextmanager
     def config_change(self, default_config, alternate_config,
-                      application_name=None):
+                      application_name=None, reset_to_charm_default=False):
         """Run change config tests.
 
         Change config to `alternate_config`, wait for idle workload status,
@@ -201,6 +260,12 @@ class BaseCharmTest(unittest.TestCase):
                                  by a charm under test other than the object's
                                  application.
         :type application_name: str
+        :param reset_to_charm_default: When True we will ask Juju to reset each
+                                       configuration option mentioned in the
+                                       `alternate_config` dictionary back to
+                                       the charm default and ignore the
+                                       `default_config` dictionary.
+        :type reset_to_charm_default: bool
         """
         if not application_name:
             application_name = self.application_name
@@ -245,12 +310,28 @@ class BaseCharmTest(unittest.TestCase):
 
             yield
 
-        logging.debug('Restoring charm setting to {}'.format(default_config))
-        model.set_application_config(
-            application_name,
-            self._stringed_value_config(default_config),
-            model_name=self.model_name)
+        if reset_to_charm_default:
+            logging.debug('Resetting these charm configuration options to the '
+                          'charm default: "{}"'
+                          .format(alternate_config.keys()))
+            model.reset_application_config(application_name,
+                                           list(alternate_config.keys()),
+                                           model_name=self.model_name)
+        elif default_config == alternate_config:
+            logging.debug('default_config == alternate_config, not attempting '
+                          ' to restore configuration')
+            return
+        else:
+            logging.debug('Restoring charm setting to {}'
+                          .format(default_config))
+            model.set_application_config(
+                application_name,
+                self._stringed_value_config(default_config),
+                model_name=self.model_name)
 
+        logging.debug(
+            'Waiting for units to execute config-changed hook')
+        model.wait_for_agent_status(model_name=self.model_name)
         logging.debug(
             'Waiting for units to reach target states')
         model.wait_for_application_states(
@@ -425,6 +506,50 @@ class BaseCharmTest(unittest.TestCase):
             model_name=self.model_name,
             pgrep_full=pgrep_full)
 
+    def get_my_tests_options(self, key, default=None):
+        """Retrieve tests_options for specific test.
+
+        Prefix for key is built from dot-notated absolute path to calling
+        method or function.
+
+        Example:
+           # In tests.yaml:
+           tests_options:
+             zaza.charm_tests.noop.tests.NoopTest.test_foo.key: true
+           # called from zaza.charm_tests.noop.tests.NoopTest.test_foo()
+           >>> get_my_tests_options('key')
+           True
+
+        :param key: Suffix for tests_options key.
+        :type key: str
+        :param default: Default value to return if key is not found.
+        :type default: any
+        :returns: Value associated with key in tests_options.
+        :rtype: any
+        """
+        # note that we need to do this in-line otherwise we would get the path
+        # to ourself. I guess we could create a common method that would go two
+        # frames back, but that would be kind of useless for anyone else than
+        # this method.
+        caller_path = []
+
+        # get path to module
+        caller_path.append(sys.modules[
+            sys._getframe().f_back.f_globals['__name__']].__name__)
+
+        # attempt to get class name
+        try:
+            caller_path.append(
+                sys._getframe().f_back.f_locals['self'].__class__.__name__)
+        except KeyError:
+            pass
+
+        # get method or function name
+        caller_path.append(sys._getframe().f_back.f_code.co_name)
+
+        return self.test_config.get('tests_options', {}).get(
+            '.'.join(caller_path + [key]), default)
+
 
 class OpenStackBaseTest(BaseCharmTest):
     """Generic helpers for testing OpenStack API charms."""
@@ -450,11 +575,17 @@ class OpenStackBaseTest(BaseCharmTest):
                         self.nova_client.servers,
                         server.id,
                         msg="server")
+        except AssertionError as e:
+            # Resource failed to be removed within the expected time frame,
+            # log this fact and carry on.
+            logging.warning('Gave up waiting for resource cleanup: "{}"'
+                            .format(str(e)))
         except AttributeError:
             # Test did not define self.RESOURCE_PREFIX, ignore.
             pass
 
-    def launch_guest(self, guest_name, userdata=None):
+    def launch_guest(self, guest_name, userdata=None, use_boot_volume=False,
+                     instance_key=None):
         """Launch two guests to use in tests.
 
         Note that it is up to the caller to have set the RESOURCE_PREFIX class
@@ -467,25 +598,38 @@ class OpenStackBaseTest(BaseCharmTest):
         :type guest_name: str
         :param userdata: Userdata to attach to instance
         :type userdata: Optional[str]
+        :param use_boot_volume: Whether to boot guest from a shared volume.
+        :type use_boot_volume: boolean
+        :param instance_key: Key to collect associated config data with.
+        :type instance_key: Optional[str]
         :returns: Nova instance objects
         :rtype: Server
         """
+        instance_key = instance_key or glance_setup.LTS_IMAGE_NAME
         instance_name = '{}-{}'.format(self.RESOURCE_PREFIX, guest_name)
 
-        instance = self.retrieve_guest(instance_name)
-        if instance:
-            logging.info('Removing already existing instance ({}) with '
-                         'requested name ({})'
-                         .format(instance.id, instance_name))
-            openstack_utils.delete_resource(
-                self.nova_client.servers,
-                instance.id,
-                msg="server")
+        for attempt in tenacity.Retrying(
+                stop=tenacity.stop_after_attempt(3),
+                wait=tenacity.wait_exponential(
+                    multiplier=1, min=2, max=10)):
+            with attempt:
+                old_instance_with_same_name = self.retrieve_guest(
+                    instance_name)
+                if old_instance_with_same_name:
+                    logging.info(
+                        'Removing already existing instance ({}) with '
+                        'requested name ({})'
+                        .format(old_instance_with_same_name.id, instance_name))
+                    openstack_utils.delete_resource(
+                        self.nova_client.servers,
+                        old_instance_with_same_name.id,
+                        msg="server")
 
-        return configure_guest.launch_instance(
-            glance_setup.LTS_IMAGE_NAME,
-            vm_name=instance_name,
-            userdata=userdata)
+                return configure_guest.launch_instance(
+                    instance_key,
+                    vm_name=instance_name,
+                    use_boot_volume=use_boot_volume,
+                    userdata=userdata)
 
     def launch_guests(self, userdata=None):
         """Launch two guests to use in tests.
@@ -500,15 +644,10 @@ class OpenStackBaseTest(BaseCharmTest):
         """
         launched_instances = []
         for guest_number in range(1, 2+1):
-            for attempt in tenacity.Retrying(
-                    stop=tenacity.stop_after_attempt(3),
-                    wait=tenacity.wait_exponential(
-                        multiplier=1, min=2, max=10)):
-                with attempt:
-                    launched_instances.append(
-                        self.launch_guest(
-                            guest_name='ins-{}'.format(guest_number),
-                            userdata=userdata))
+            launched_instances.append(
+                self.launch_guest(
+                    guest_name='ins-{}'.format(guest_number),
+                    userdata=userdata))
         return launched_instances
 
     def retrieve_guest(self, guest_name):

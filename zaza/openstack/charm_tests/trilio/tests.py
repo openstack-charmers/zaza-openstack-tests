@@ -25,6 +25,7 @@ import zaza.openstack.charm_tests.glance.setup as glance_setup
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.configure.guest as guest_utils
 import zaza.openstack.utilities.openstack as openstack_utils
+import zaza.openstack.utilities.generic as generic_utils
 from zaza.utilities import juju as juju_utils
 
 
@@ -424,7 +425,22 @@ class TrilioBaseTest(test_utils.OpenStackBaseTest):
         workloadmgrcli.oneclick_restore(snapshot_id)
 
 
-class TrilioWLMTest(TrilioBaseTest):
+class TrilioGhostNFSShareTest(TrilioBaseTest):
+    """Tests for Trilio charms providing the ghost-share action."""
+
+    def test_ghost_nfs_share(self):
+        """Ensure ghost-share action bind mounts NFS share."""
+        generic_utils.assertActionRanOK(zaza_model.run_action(
+            self.lead_unit,
+            'ghost-share',
+            action_params={
+                'nfs-shares': '10.20.0.1:/srv/testing'
+            },
+            model_name=self.model_name)
+        )
+
+
+class TrilioWLMTest(TrilioGhostNFSShareTest):
     """Tests for Trilio Workload Manager charm."""
 
     conf_file = "/etc/workloadmgr/workloadmgr.conf"
@@ -447,7 +463,7 @@ class TrilioDMAPITest(TrilioBaseTest):
     services = ["dmapi-api"]
 
 
-class TrilioDataMoverTest(TrilioBaseTest):
+class TrilioDataMoverTest(TrilioGhostNFSShareTest):
     """Tests for Trilio Data Mover charm."""
 
     conf_file = "/etc/tvault-contego/tvault-contego.conf"

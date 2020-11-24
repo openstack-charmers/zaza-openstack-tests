@@ -289,6 +289,15 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         openstack_utils.get_undercloud_keystone_session()
         self.get_keystone_session.assert_called_once_with(_auth, verify=None)
 
+    def test_get_nova_session_client(self):
+        session_mock = mock.MagicMock()
+        self.patch_object(openstack_utils.novaclient_client, "Client")
+        openstack_utils.get_nova_session_client(session_mock)
+        self.Client.assert_called_once_with(2, session=session_mock)
+        self.Client.reset_mock()
+        openstack_utils.get_nova_session_client(session_mock, version=2.56)
+        self.Client.assert_called_once_with(2.56, session=session_mock)
+
     def test_get_urllib_opener(self):
         self.patch_object(openstack_utils.urllib.request, "ProxyHandler")
         self.patch_object(openstack_utils.urllib.request, "HTTPHandler")
@@ -369,12 +378,15 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 'e01df65a')
 
     def test__resource_reaches_status_bespoke(self):
+        client_mock = mock.MagicMock()
         resource_mock = mock.MagicMock()
-        resource_mock.get.return_value = mock.MagicMock(status='readyish')
+        resource_mock.special_status = 'readyish'
+        client_mock.get.return_value = resource_mock
         openstack_utils._resource_reaches_status(
-            resource_mock,
+            client_mock,
             'e01df65a',
-            'readyish')
+            'readyish',
+            resource_attribute='special_status')
 
     def test__resource_reaches_status_bespoke_fail(self):
         resource_mock = mock.MagicMock()
@@ -504,7 +516,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             glance_mock.images.upload.assert_called_once_with(
                 '9d1125af',
                 f(),
-            )
+                backend=None)
             self.resource_reaches_status.assert_called_once_with(
                 glance_mock.images,
                 '9d1125af',
@@ -529,7 +541,11 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.upload_image_to_glance.assert_called_once_with(
             glance_mock,
             'wibbly/c.img',
-            'bob')
+            'bob',
+            backend=None,
+            disk_format='qcow2',
+            visibility='public',
+            container_format='bare')
 
     def test_create_image_pass_directory(self):
         glance_mock = mock.MagicMock()
@@ -549,7 +565,11 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.upload_image_to_glance.assert_called_once_with(
             glance_mock,
             'tests/c.img',
-            'bob')
+            'bob',
+            backend=None,
+            disk_format='qcow2',
+            visibility='public',
+            container_format='bare')
         self.gettempdir.assert_not_called()
 
     def test_create_ssh_key(self):
@@ -1227,6 +1247,13 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.get_application.side_effect = [KeyError, KeyError]
         self.assertFalse(openstack_utils.ovn_present())
 
+    def test_ngw_present(self):
+        self.patch_object(openstack_utils.model, 'get_application')
+        self.get_application.side_effect = None
+        self.assertTrue(openstack_utils.ngw_present())
+        self.get_application.side_effect = KeyError
+        self.assertFalse(openstack_utils.ngw_present())
+
     def test_configure_gateway_ext_port(self):
         # FIXME: this is not a complete unit test for the function as one did
         # not exist at all I'm adding this to test one bit and we'll add more
@@ -1234,10 +1261,12 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.patch_object(openstack_utils, 'deprecated_external_networking')
         self.patch_object(openstack_utils, 'dvr_enabled')
         self.patch_object(openstack_utils, 'ovn_present')
+        self.patch_object(openstack_utils, 'ngw_present')
         self.patch_object(openstack_utils, 'get_gateway_uuids')
         self.patch_object(openstack_utils, 'get_admin_net')
-        self.dvr_enabled = False
-        self.ovn_present = False
+        self.dvr_enabled.return_value = False
+        self.ovn_present.return_value = False
+        self.ngw_present.return_value = True
         self.get_admin_net.return_value = {'id': 'fakeid'}
 
         novaclient = mock.MagicMock()

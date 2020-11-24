@@ -20,7 +20,6 @@ from tenacity import Retrying, stop_after_attempt, wait_exponential
 
 from manilaclient import client as manilaclient
 
-import zaza.openstack.charm_tests.glance.setup as glance_setup
 import zaza.openstack.charm_tests.neutron.tests as neutron_tests
 import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
@@ -62,13 +61,7 @@ packages:
             share_proto="nfs", size=1)
 
         # Spawn Servers
-        instance_1 = guest.launch_instance(
-            glance_setup.LTS_IMAGE_NAME,
-            vm_name='{}-ins-1'.format(self.RESOURCE_PREFIX),
-            userdata=self.INSTANCE_USERDATA)
-        instance_2 = guest.launch_instance(
-            glance_setup.LTS_IMAGE_NAME,
-            vm_name='{}-ins-2'.format(self.RESOURCE_PREFIX),
+        instance_1, instance_2 = self.launch_guests(
             userdata=self.INSTANCE_USERDATA)
 
         fip_1 = neutron_tests.floating_ips_from_instance(instance_1)[0]

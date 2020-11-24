@@ -380,7 +380,12 @@ class SecurityTests(BaseKeystoneTest):
 
 
 class LdapTests(BaseKeystoneTest):
-    """Keystone ldap tests tests."""
+    """Keystone ldap tests."""
+
+    non_string_type_keys = ('ldap-user-enabled-mask',
+                            'ldap-user-enabled-invert',
+                            'ldap-group-members-are-ids',
+                            'ldap-use-pool')
 
     @classmethod
     def setUpClass(cls):
@@ -434,24 +439,124 @@ class LdapTests(BaseKeystoneTest):
     def test_100_keystone_ldap_users(self):
         """Validate basic functionality of keystone API with ldap."""
         application_name = 'keystone-ldap'
-        config = self._get_ldap_config()
+        intended_cfg = self._get_ldap_config()
+        current_cfg, non_string_cfg = (
+            self.config_current_separate_non_string_type_keys(
+                self.non_string_type_keys, intended_cfg, application_name)
+        )
 
         with self.config_change(
-                self.config_current(application_name, config.keys()),
-                config,
-                application_name=application_name):
-            logging.info(
-                'Waiting for users to become available in keystone...'
-            )
-            test_config = lifecycle_utils.get_charm_config(fatal=False)
-            zaza.model.wait_for_application_states(
-                states=test_config.get("target_deploy_status", {})
-            )
+                {},
+                non_string_cfg,
+                application_name=application_name,
+                reset_to_charm_default=True):
+            with self.config_change(
+                    current_cfg,
+                    intended_cfg,
+                    application_name=application_name):
+                logging.info(
+                    'Waiting for users to become available in keystone...'
+                )
+                test_config = lifecycle_utils.get_charm_config(fatal=False)
+                zaza.model.wait_for_application_states(
+                    states=test_config.get("target_deploy_status", {})
+                )
 
-            with self.v3_keystone_preferred():
-                # NOTE(jamespage): Test fixture should have johndoe and janedoe
-                #                  accounts
-                johndoe = self._find_keystone_v3_user('john doe', 'userdomain')
-                self.assertIsNotNone(johndoe, "user 'john doe' was unknown")
-                janedoe = self._find_keystone_v3_user('jane doe', 'userdomain')
-                self.assertIsNotNone(janedoe, "user 'jane doe' was unknown")
+                with self.v3_keystone_preferred():
+                    # NOTE(jamespage): Test fixture should have
+                    #                  johndoe and janedoe accounts
+                    johndoe = self._find_keystone_v3_user(
+                        'john doe', 'userdomain')
+                    self.assertIsNotNone(
+                        johndoe, "user 'john doe' was unknown")
+                    janedoe = self._find_keystone_v3_user(
+                        'jane doe', 'userdomain')
+                    self.assertIsNotNone(
+                        janedoe, "user 'jane doe' was unknown")
+
+
+class LdapExplicitCharmConfigTests(LdapTests):
+    """Keystone ldap tests."""
+
+    def _get_ldap_config(self):
+        """Generate ldap config for current model.
+
+        :return: tuple of whether ldap-server is running and if so, config
+            for the keystone-ldap application.
+        :rtype: Tuple[bool, Dict[str,str]]
+        """
+        ldap_ips = zaza.model.get_app_ips("ldap-server")
+        self.assertTrue(ldap_ips, "Should be at least one ldap server")
+        return {
+            'ldap-server': "ldap://{}".format(ldap_ips[0]),
+            'ldap-user': 'cn=admin,dc=test,dc=com',
+            'ldap-password': 'crapper',
+            'ldap-suffix': 'dc=test,dc=com',
+            'domain-name': 'userdomain',
+            'ldap-query-scope': 'one',
+            'ldap-user-objectclass': 'inetOrgPerson',
+            'ldap-user-id-attribute': 'cn',
+            'ldap-user-name-attribute': 'sn',
+            'ldap-user-enabled-attribute': 'enabled',
+            'ldap-user-enabled-invert': False,
+            'ldap-user-enabled-mask': 0,
+            'ldap-user-enabled-default': 'True',
+            'ldap-group-tree-dn': 'ou=groups',
+            'ldap-group-objectclass': '',
+            'ldap-group-id-attribute': 'cn',
+            'ldap-group-member-attribute': 'memberUid',
+            'ldap-group-members-are-ids': True,
+            'ldap-config-flags': '{group_objectclass: "posixGroup",'
+                                 ' use_pool: True,'
+                                 ' group_tree_dn: "group_tree_dn_foobar"}',
+        }
+
+    def test_200_config_flags_precedence(self):
+        """Validates precedence when the same config options are used."""
+        application_name = 'keystone-ldap'
+        intended_cfg = self._get_ldap_config()
+        current_cfg, non_string_cfg = (
+            self.config_current_separate_non_string_type_keys(
+                self.non_string_type_keys, intended_cfg, application_name)
+        )
+
+        with self.config_change(
+                {},
+                non_string_cfg,
+                application_name=application_name,
+                reset_to_charm_default=True):
+            with self.config_change(
+                    current_cfg,
+                    intended_cfg,
+                    application_name=application_name):
+                logging.info(
+                    'Performing LDAP settings validation in keystone.conf...'
+                )
+                test_config = lifecycle_utils.get_charm_config(fatal=False)
+                zaza.model.wait_for_application_states(
+                    states=test_config.get("target_deploy_status", {})
+                )
+                units = zaza.model.get_units("keystone-ldap",
+                                             model_name=self.model_name)
+                result = zaza.model.run_on_unit(
+                    units[0].name,
+                    "cat /etc/keystone/domains/keystone.userdomain.conf")
+                # not present in charm config, but present in config flags
+                self.assertIn("use_pool = True", result['stdout'],
+                              "use_pool value is expected to be present and "
+                              "set to True in the config file")
+                # ldap-config-flags overriding empty charm config value
+                self.assertIn("group_objectclass = posixGroup",
+                              result['stdout'],
+                              "group_objectclass is expected to be present and"
+                              " set to posixGroup in the config file")
+                # overridden by charm config, not written to file
+                self.assertNotIn(
+                    "group_tree_dn_foobar",
+                    result['stdout'],
+                    "user_tree_dn ldap-config-flags value needs to be "
+                    "overridden by ldap-user-tree-dn in config file")
+                # complementing the above, value used is from charm setting
+                self.assertIn("group_tree_dn = ou=groups", result['stdout'],
+                              "user_tree_dn value is expected to be present "
+                              "and set to dc=test,dc=com in the config file")

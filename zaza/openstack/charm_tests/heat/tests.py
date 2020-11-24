@@ -74,13 +74,9 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
     def test_400_heat_resource_types_list(self):
         """Check default resource list behavior and confirm functionality."""
         logging.info('Checking default heat resource list...')
-        try:
-            types = self.heat_client.resource_types.list()
-            self.assertIsInstance(types, list, "Resource type is not a list!")
-            self.assertGreater(len(types), 0, "Resource type list len is zero")
-        except Exception as e:
-            msg = 'Resource type list failed: {}'.format(e)
-            self.fail(msg)
+        types = self.heat_client.resource_types.list()
+        self.assertIsInstance(types, list, "Resource type is not a list!")
+        self.assertGreater(len(types), 0, "Resource type list len is zero")
 
     def test_410_heat_stack_create_delete(self):
         """Create stack, confirm nova compute resource, delete stack."""

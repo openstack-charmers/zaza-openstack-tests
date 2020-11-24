@@ -276,15 +276,23 @@ class RmqTests(test_utils.OpenStackBaseTest):
         """The services can be paused and resumed."""
         logging.info('Checking pause and resume actions...')
 
+        logging.info('Waiting for the cluster to be ready')
+        rmq_utils.wait_for_cluster()
         unit = zaza.model.get_units(self.application_name)[0]
         assert unit.workload_status == "active"
 
+        logging.info('Pausing unit {}'.format(unit))
         zaza.model.run_action(unit.entity_id, "pause")
+        logging.info('Waiting until unit {} reaches "maintenance" state'
+                     ''.format(unit))
         zaza.model.block_until_unit_wl_status(unit.entity_id, "maintenance")
         unit = zaza.model.get_unit_from_name(unit.entity_id)
         assert unit.workload_status == "maintenance"
 
+        logging.info('Resuming unit {}'.format(unit))
         zaza.model.run_action(unit.entity_id, "resume")
+        logging.info('Waiting until unit {} reaches "active" state'
+                     ''.format(unit))
         zaza.model.block_until_unit_wl_status(unit.entity_id, "active")
         unit = zaza.model.get_unit_from_name(unit.entity_id)
         assert unit.workload_status == "active"
@@ -356,7 +364,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
         return rmq_utils.check_unit_cluster_nodes(u, unit_node_names)
 
     @unittest.skip(
-        "Skipping as a significant rework is required, see"
+        "Skipping as a significant rework is required, see "
         "https://github.com/openstack-charmers/zaza-openstack-tests/issues/290"
     )
     def test_921_remove_and_add_unit(self):
