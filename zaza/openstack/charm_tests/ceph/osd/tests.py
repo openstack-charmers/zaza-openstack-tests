@@ -136,8 +136,14 @@ class ServiceTest(unittest.TestCase):
 
     def setUp(self):
         """Run test setup."""
-        # Note: This counter reset is needed because ceph-osd service is
-        #       limited to 3 restarts per 30 mins which is insufficient
+        # Skip 'service' action tests on systems without systemd
+        result = zaza_model.run_on_unit(self.TESTED_UNIT, 'which systemctl')
+        if not result['Stdout']:
+            raise unittest.SkipTest("'service' action is not supported on "
+                                    "systems without 'systemd'. Skipping "
+                                    "tests.")
+        # Note(mkalcok): This counter reset is needed because ceph-osd service
+        #       is limited to 3 restarts per 30 mins which is insufficient
         #       when running functional tests for 'service' action. This
         #       limitation is defined in /lib/systemd/system/ceph-osd@.service
         #       in section [Service] with options 'StartLimitInterval' and
