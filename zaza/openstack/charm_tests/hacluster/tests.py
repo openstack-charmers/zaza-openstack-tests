@@ -141,8 +141,8 @@ class HaclusterScaleBackAndForthTest(HaclusterBaseTest):
 
     @classmethod
     def setUpClass(cls):
-        """Run class setup for running hacluster scaleback tests."""
-        super(HaclusterScalebackTest, cls).setUpClass()
+        """Run class setup for running hacluster tests."""
+        super(HaclusterScaleBackAndForthTest, cls).setUpClass()
         test_config = cls.test_config['tests_options']['hacluster']
         cls._principle_app_name = test_config['principle-app-name']
         cls._hacluster_charm_name = test_config['hacluster-charm-name']
