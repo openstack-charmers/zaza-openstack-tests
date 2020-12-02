@@ -35,6 +35,7 @@ class FullCloudCharmUpgradeTest(unittest.TestCase):
         """Run setup for Charm Upgrades."""
         cli_utils.setup_logging()
         cls.lts = LTSGuestCreateTest()
+        cls.lts.setUpClass()
         cls.target_charm_namespace = '~openstack-charmers-next'
 
     def get_upgrade_url(self, charm_url):
