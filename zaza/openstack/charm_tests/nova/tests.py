@@ -155,7 +155,7 @@ class NovaCompute(test_utils.OpenStackBaseTest):
             self.assertFalse(int(run['Code']) == 0)
 
     def test_940_enable_disable_actions(self):
-        """Test disable/enable actions on nova-compute units"""
+        """Test disable/enable actions on nova-compute units."""
         nova_units = zaza.model.get_units('nova-compute',
                                           model_name=self.model_name)
 
@@ -178,6 +178,7 @@ class NovaCompute(test_utils.OpenStackBaseTest):
         # Check action results via nova API
         for service in self.nova_client.services.list(binary='nova-compute'):
             self.assertEqual(service.status, 'enabled')
+
 
 class NovaCloudController(test_utils.OpenStackBaseTest):
     """Run nova-cloud-controller specific tests."""
