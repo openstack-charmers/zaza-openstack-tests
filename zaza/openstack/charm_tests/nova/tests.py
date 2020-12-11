@@ -69,6 +69,35 @@ class LTSGuestCreateVolumeBackedTest(test_utils.OpenStackBaseTest):
             use_boot_volume=True)
 
 
+class ActionsEnableDisable(test_utils.OpenStackBaseTest):
+    """Test 'enable' and 'disable' actions."""
+
+    def test_940_enable_disable_actions(self):
+        """Test disable/enable actions on nova-compute units."""
+        nova_units = zaza.model.get_units('nova-compute',
+                                          model_name=self.model_name)
+
+        # Check that nova-compute services are enabled before testing
+        for service in self.nova_client.services.list(binary='nova-compute'):
+            self.assertEqual(service.status, 'enabled')
+
+        # Run 'disable' action on units
+        zaza.model.run_action_on_units([unit.name for unit in nova_units],
+                                       'disable')
+
+        # Check action results via nova API
+        for service in self.nova_client.services.list(binary='nova-compute'):
+            self.assertEqual(service.status, 'disabled')
+
+        # Run 'enable' action on units
+        zaza.model.run_action_on_units([unit.name for unit in nova_units],
+                                       'enable')
+
+        # Check action results via nova API
+        for service in self.nova_client.services.list(binary='nova-compute'):
+            self.assertEqual(service.status, 'enabled')
+
+
 class NovaCompute(test_utils.OpenStackBaseTest):
     """Run nova-compute specific tests."""
 
@@ -153,31 +182,6 @@ class NovaCompute(test_utils.OpenStackBaseTest):
                 'virsh net-dumpxml default',
                 model_name=self.model_name)
             self.assertFalse(int(run['Code']) == 0)
-
-    def test_940_enable_disable_actions(self):
-        """Test disable/enable actions on nova-compute units."""
-        nova_units = zaza.model.get_units('nova-compute',
-                                          model_name=self.model_name)
-
-        # Check that nova-compute services are enabled before testing
-        for service in self.nova_client.services.list(binary='nova-compute'):
-            self.assertEqual(service.status, 'enabled')
-
-        # Run 'disable' action on units
-        zaza.model.run_action_on_units([unit.name for unit in nova_units],
-                                       'disable')
-
-        # Check action results via nova API
-        for service in self.nova_client.services.list(binary='nova-compute'):
-            self.assertEqual(service.status, 'disabled')
-
-        # Run 'enable' action on units
-        zaza.model.run_action_on_units([unit.name for unit in nova_units],
-                                       'enable')
-
-        # Check action results via nova API
-        for service in self.nova_client.services.list(binary='nova-compute'):
-            self.assertEqual(service.status, 'enabled')
 
 
 class NovaCloudController(test_utils.OpenStackBaseTest):
