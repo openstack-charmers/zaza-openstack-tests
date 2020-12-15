@@ -156,8 +156,8 @@ class ServiceTest(unittest.TestCase):
 
         This ensures that the environment is ready for the next tests.
         """
-        zaza_model.run_action_on_units([self.TESTED_UNIT, ], 'service',
-                                       action_params={'start': 'all'},
+        zaza_model.run_action_on_units([self.TESTED_UNIT, ], 'start',
+                                       action_params={'osds': 'all'},
                                        raise_on_failure=True)
 
     @property
@@ -186,16 +186,16 @@ class ServiceTest(unittest.TestCase):
 
         logging.info("Running 'service stop=all' action on {} "
                      "unit".format(self.TESTED_UNIT))
-        zaza_model.run_action_on_units([self.TESTED_UNIT], 'service',
-                                       action_params={'stop': 'all'})
+        zaza_model.run_action_on_units([self.TESTED_UNIT], 'stop',
+                                       action_params={'osds': 'all'})
         wait_for_service(unit_name=self.TESTED_UNIT,
                          services=service_list,
                          target_status='stopped')
 
         logging.info("Running 'service start=all' action on {} "
                      "unit".format(self.TESTED_UNIT))
-        zaza_model.run_action_on_units([self.TESTED_UNIT, ], 'service',
-                                       action_params={'start': 'all'})
+        zaza_model.run_action_on_units([self.TESTED_UNIT, ], 'start',
+                                       action_params={'osds': 'all'})
         wait_for_service(unit_name=self.TESTED_UNIT,
                          services=service_list,
                          target_status='running')
@@ -208,16 +208,16 @@ class ServiceTest(unittest.TestCase):
 
         logging.info("Running 'service stop={}' action on {} "
                      "unit".format(action_params, self.TESTED_UNIT))
-        zaza_model.run_action_on_units([self.TESTED_UNIT, ], 'service',
-                                       action_params={'stop': action_params})
+        zaza_model.run_action_on_units([self.TESTED_UNIT, ], 'stop',
+                                       action_params={'osds': action_params})
         wait_for_service(unit_name=self.TESTED_UNIT,
                          services=service_list,
                          target_status='stopped')
 
         logging.info("Running 'service start={}' action on {} "
                      "unit".format(action_params, self.TESTED_UNIT))
-        zaza_model.run_action_on_units([self.TESTED_UNIT, ], 'service',
-                                       action_params={'start': action_params})
+        zaza_model.run_action_on_units([self.TESTED_UNIT, ], 'start',
+                                       action_params={'osds': action_params})
         wait_for_service(unit_name=self.TESTED_UNIT,
                          services=service_list,
                          target_status='running')
@@ -236,8 +236,8 @@ class ServiceTest(unittest.TestCase):
         logging.info("Running 'service stop={} on {} "
                      "unit".format(to_stop.id, self.TESTED_UNIT))
 
-        zaza_model.run_action_on_units([self.TESTED_UNIT, ], 'service',
-                                       action_params={'stop': to_stop.id})
+        zaza_model.run_action_on_units([self.TESTED_UNIT, ], 'stop',
+                                       action_params={'osds': to_stop.id})
 
         wait_for_service(unit_name=self.TESTED_UNIT,
                          services=[to_stop.name, ],
@@ -269,8 +269,8 @@ class ServiceTest(unittest.TestCase):
         logging.info("Running 'service start={} on {} "
                      "unit".format(to_start.id, self.TESTED_UNIT))
 
-        zaza_model.run_action_on_units([self.TESTED_UNIT, ], 'service',
-                                       action_params={'start': to_start.id})
+        zaza_model.run_action_on_units([self.TESTED_UNIT, ], 'start',
+                                       action_params={'osds': to_start.id})
 
         wait_for_service(unit_name=self.TESTED_UNIT,
                          services=[to_start.name, ],
