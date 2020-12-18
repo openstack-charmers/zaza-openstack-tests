@@ -881,19 +881,31 @@ class BlueStoreCompressionCharmOperation(test_utils.BaseCharmTest):
     def setUpClass(cls):
         """Perform class one time initialization."""
         super(BlueStoreCompressionCharmOperation, cls).setUpClass()
-        cls.current_release = zaza_openstack.get_os_release()
+        try:
+            # This uses the keystone application to determine the deployed
+            # OpenStack release:
+            cls.current_release = zaza_openstack.get_os_release()
+        except zaza_exceptions.ApplicationNotFound:
+            # The charm-ceph-iscsi bundles for example don't deploy the
+            # keystone application or any application having the concept
+            # of OpenStack releases:
+            cls.current_release = None
         cls.bionic_rocky = zaza_openstack.get_os_release('bionic_rocky')
 
     def setUp(self):
         """Perform common per test initialization steps."""
         super(BlueStoreCompressionCharmOperation, self).setUp()
 
-        # determine if the tests should be run or not
-        logging.debug('os_release: {} >= {} = {}'
-                      .format(self.current_release,
-                              self.bionic_rocky,
-                              self.current_release >= self.bionic_rocky))
-        self.mimic_or_newer = self.current_release >= self.bionic_rocky
+        # Determine if the tests should be run or not. If we couldn't determine
+        # the current OpenStack release, assume yes.
+        if self.current_release is None:
+            self.mimic_or_newer = True
+        else:
+            logging.debug('os_release: {} >= {} = {}'
+                          .format(self.current_release,
+                                  self.bionic_rocky,
+                                  self.current_release >= self.bionic_rocky))
+            self.mimic_or_newer = self.current_release >= self.bionic_rocky
 
     def _assert_pools_properties(self, pools, pools_detail,
                                  expected_properties, log_func=logging.info):
