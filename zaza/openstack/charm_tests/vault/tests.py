@@ -258,6 +258,27 @@ class VaultTest(BaseVaultTest):
         lead_client = vault_utils.extract_lead_unit_client(self.clients)
         self.assertTrue(lead_client.hvac_client.seal_status['sealed'])
 
+    def test_vault_status(self):
+        """Run vault status action."""
+        vault_actions = zaza.model.get_actions(
+            'vault')
+        if 'status' not in vault_actions:
+            logging.info("The version of charm-vault does "
+                         "not have status actions")
+            return
+        for unit in zaza.model.get_units('vault',
+                                         model_name=self.model_name):
+            logging.info('Running `status` action'
+                         ' on  unit {}'.format(unit.entity_id))
+            action = zaza.model.run_action(
+                unit.entity_id,
+                'status',
+                model_name=self.model_name,
+                action_params={})
+            if "failed" in action.data["status"]:
+                raise Exception(
+                    "The action failed: {}".format(action.data["message"]))
+
 
 if __name__ == '__main__':
     unittest.main()
