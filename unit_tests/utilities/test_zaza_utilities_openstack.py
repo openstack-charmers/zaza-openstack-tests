@@ -908,6 +908,46 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         release_comp = xenial_queens > xenial_mitaka
         self.assertTrue(release_comp)
 
+    def test_get_current_os_version(self):
+        self.patch(
+            'zaza.openstack.utilities.openstack.get_current_os_versions',
+            new_callable=mock.MagicMock(),
+            name='_get_os_version'
+        )
+
+        # None of the default applications were there to determine the OS
+        # version:
+        self._get_os_version.return_value = {}
+        with self.assertRaises(exceptions.OSVersionNotFound):
+            openstack_utils.get_current_os_version()
+
+        # No keystone application, but ceph-mon is present:
+        self._get_os_version.return_value = {'ceph-mon': 'rocky'}
+        expected = 'rocky'
+        result = openstack_utils.get_current_os_version()
+        self.assertEqual(expected, result)
+
+        # Both applications are present:
+        self._get_os_version.return_value = {
+            # NOTE(lourot): this discrepency between the version determined on
+            # keystone and the one on ceph-mon is realistic because both
+            # Victoria and Ussuri have the same default Ceph release (Octopus).
+            'keystone': 'victoria',
+            'ceph-mon': 'ussuri'}
+        expected = 'victoria'
+        result = openstack_utils.get_current_os_version()
+        self.assertEqual(expected, result)
+
+    def test_compare_os_versions(self):
+        self.assertGreater(openstack_utils.compare_os_versions(
+            'ussuri', 'rocky'), 0)
+        self.assertLess(openstack_utils.compare_os_versions(
+            'pike', 'queens'), 0)
+        self.assertEqual(openstack_utils.compare_os_versions(
+            'victoria', 'victoria'), 0)
+        with self.assertRaises(exceptions.OSVersionNotFound):
+            openstack_utils.compare_os_versions('victoria', 'unknown')
+
     def test_get_keystone_api_version(self):
         self.patch_object(openstack_utils, "get_current_os_versions")
         self.patch_object(openstack_utils, "get_application_config_option")

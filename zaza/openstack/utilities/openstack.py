@@ -1547,7 +1547,7 @@ def get_current_os_versions(deployed_applications, model_name=None):
     :type deployed_applications: list
     :param model_name: Name of model to query.
     :type model_name: str
-    :returns: List of aplication to codenames dictionaries
+    :returns: List of application to codenames dictionaries
     :rtype: list
     """
     versions = {}
@@ -1563,12 +1563,50 @@ def get_current_os_versions(deployed_applications, model_name=None):
     return versions
 
 
+def get_current_os_version():
+    """Determine OpenStack codename of deployed applications.
+
+    :returns: OpenStack codename, e.g. 'rocky'.
+    :rtype: str
+    :raises: exceptions.OSVersionNotFound
+    """
+    apps_for_determining_os_codename = ['keystone', 'ceph-mon']
+    os_codenames = get_current_os_versions(apps_for_determining_os_codename)
+    for app in apps_for_determining_os_codename:
+        if app in os_codenames:
+            return os_codenames[app]
+    raise exceptions.OSVersionNotFound()
+
+
+def compare_os_versions(codename_a, codename_b):
+    """Compare OpenStack codenames.
+
+    :param codename_a: OpenStack codename, e.g. 'rocky'.
+    :type codename_a: str
+    :param codename_b: OpenStack codename, e.g. 'ussuri'.
+    :type codename_b: str
+    :returns: 0 if codenames are equal, negative integer if codename_a is older
+              than codename_b, positive integer otherwise.
+    :rtype: int
+    :raises: exceptions.OSVersionNotFound
+    """
+    def first_release_pair_index(codename):
+        for index in range(0, len(OPENSTACK_RELEASES_PAIRS)):
+            release_pair = OPENSTACK_RELEASES_PAIRS[index]
+            if '_{}'.format(codename) in release_pair:
+                return index
+        raise exceptions.OSVersionNotFound()
+
+    return (first_release_pair_index(codename_a) -
+            first_release_pair_index(codename_b))
+
+
 def get_application_config_keys(application):
     """Return application configuration keys.
 
     :param application: Name of application
     :type application: string
-    :returns: List of aplication configuration keys
+    :returns: List of application configuration keys
     :rtype: list
     """
     application_config = model.get_application_config(application)
