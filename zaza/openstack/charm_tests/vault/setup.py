@@ -174,7 +174,8 @@ def auto_initialize(cacert=None, validation_application='keystone', wait=True):
         zaza.model.wait_for_agent_status()
         test_config = lifecycle_utils.get_charm_config(fatal=False)
         zaza.model.wait_for_application_states(
-            states=test_config.get('target_deploy_status', {}))
+            states=test_config.get('target_deploy_status', {}),
+            timeout=7200)
 
     if validation_application:
         validate_ca(cacertificate, application=validation_application)
