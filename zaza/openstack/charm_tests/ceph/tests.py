@@ -881,7 +881,13 @@ class BlueStoreCompressionCharmOperation(test_utils.BaseCharmTest):
     def setUpClass(cls):
         """Perform class one time initialization."""
         super(BlueStoreCompressionCharmOperation, cls).setUpClass()
-        cls.current_release = zaza_openstack.get_os_release()
+        release_application = 'keystone'
+        try:
+            zaza_model.get_application(release_application)
+        except KeyError:
+            release_application = 'ceph-mon'
+        cls.current_release = zaza_openstack.get_os_release(
+            application=release_application)
         cls.bionic_rocky = zaza_openstack.get_os_release('bionic_rocky')
 
     def setUp(self):
