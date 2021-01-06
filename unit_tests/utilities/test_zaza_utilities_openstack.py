@@ -908,6 +908,14 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         release_comp = xenial_queens > xenial_mitaka
         self.assertTrue(release_comp)
 
+        # Check specifying an application
+        self._get_os_rel_pair.reset_mock()
+        self._get_os_rel_pair.return_value = 'xenial_mitaka'
+        expected = 4
+        result = openstack_utils.get_os_release(application='myapp')
+        self.assertEqual(expected, result)
+        self._get_os_rel_pair.assert_called_once_with(application='myapp')
+
     def test_get_current_os_version(self):
         self.patch(
             'zaza.openstack.utilities.openstack.get_current_os_versions',
