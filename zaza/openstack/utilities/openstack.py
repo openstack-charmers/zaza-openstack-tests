@@ -1605,7 +1605,7 @@ def get_current_os_release_pair(application='keystone'):
     return '{}_{}'.format(series, os_version)
 
 
-def get_os_release(release_pair=None, application=None):
+def get_os_release(release_pair=None, application='keystone'):
     """Return index of release in OPENSTACK_RELEASES_PAIRS.
 
     :param release_pair: OpenStack release pair eg 'focal_ussuri'
