@@ -96,7 +96,7 @@ action_unit_upgrade = sync_wrapper(async_action_unit_upgrade)
 
 
 def action_upgrade_apps(applications, model_name=None):
-    """Upgrade units in the applciations using action managed upgrades.
+    """Upgrade units in the applications using action managed upgrades.
 
     Upgrade all units of the given applications using action managed upgrades.
     This involves the following process:
