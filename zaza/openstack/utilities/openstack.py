@@ -16,6 +16,23 @@
 
 This module contains a number of functions for interacting with OpenStack.
 """
+import datetime
+import io
+import itertools
+import juju_wait
+import logging
+import os
+import paramiko
+import re
+import six
+import subprocess
+import sys
+import tempfile
+import tenacity
+import textwrap
+import urllib
+
+
 from .os_versions import (
     OPENSTACK_CODENAMES,
     SWIFT_CODENAMES,
@@ -48,21 +65,6 @@ from neutronclient.common import exceptions as neutronexceptions
 from octaviaclient.api.v2 import octavia as octaviaclient
 from swiftclient import client as swiftclient
 
-import datetime
-import io
-import itertools
-import juju_wait
-import logging
-import os
-import paramiko
-import re
-import six
-import subprocess
-import sys
-import tempfile
-import tenacity
-import textwrap
-import urllib
 
 import zaza
 
@@ -1554,6 +1556,7 @@ def get_current_os_versions(deployed_applications, model_name=None):
     for application in UPGRADE_SERVICES:
         if application['name'] not in deployed_applications:
             continue
+        logging.info("looking at application: {}".format(application))
 
         version = generic_utils.get_pkg_version(application['name'],
                                                 application['type']['pkg'],
@@ -1640,7 +1643,7 @@ def get_current_os_release_pair(application='keystone'):
     return '{}_{}'.format(series, os_version)
 
 
-def get_os_release(release_pair=None, application=None):
+def get_os_release(release_pair=None, application='keystone'):
     """Return index of release in OPENSTACK_RELEASES_PAIRS.
 
     :param release_pair: OpenStack release pair eg 'focal_ussuri'
