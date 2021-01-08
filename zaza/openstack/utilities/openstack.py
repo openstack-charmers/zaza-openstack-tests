@@ -1558,9 +1558,12 @@ def get_current_os_versions(deployed_applications, model_name=None):
             continue
         logging.info("looking at application: {}".format(application))
 
-        version = generic_utils.get_pkg_version(application['name'],
-                                                application['type']['pkg'],
-                                                model_name=model_name)
+        try:
+            version = generic_utils.get_pkg_version(application['name'],
+                                                    application['type']['pkg'],
+                                                    model_name=model_name)
+        except KeyError:
+            continue  # application not found in the model
         versions[application['name']] = (
             get_os_code_info(application['type']['pkg'], version))
     return versions
