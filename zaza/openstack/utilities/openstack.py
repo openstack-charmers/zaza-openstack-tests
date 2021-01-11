@@ -16,9 +16,27 @@
 
 This module contains a number of functions for interacting with OpenStack.
 """
+import datetime
+import io
+import itertools
+import juju_wait
+import logging
+import os
+import paramiko
+import re
+import six
+import subprocess
+import sys
+import tempfile
+import tenacity
+import textwrap
+import urllib
+
+
 from .os_versions import (
     OPENSTACK_CODENAMES,
     SWIFT_CODENAMES,
+    OVN_CODENAMES,
     PACKAGE_CODENAMES,
     OPENSTACK_RELEASES_PAIRS,
 )
@@ -47,21 +65,6 @@ from neutronclient.common import exceptions as neutronexceptions
 from octaviaclient.api.v2 import octavia as octaviaclient
 from swiftclient import client as swiftclient
 
-import datetime
-import io
-import itertools
-import juju_wait
-import logging
-import os
-import paramiko
-import re
-import six
-import subprocess
-import sys
-import tempfile
-import tenacity
-import textwrap
-import urllib
 
 import zaza
 
@@ -253,15 +256,17 @@ def get_designate_session_client(**kwargs):
                            **kwargs)
 
 
-def get_nova_session_client(session):
+def get_nova_session_client(session, version=2):
     """Return novaclient authenticated by keystone session.
 
     :param session: Keystone session object
     :type session: keystoneauth1.session.Session object
+    :param version: Version of client to request.
+    :type version: float
     :returns: Authenticated novaclient
     :rtype: novaclient.Client object
     """
-    return novaclient_client.Client(2, session=session)
+    return novaclient_client.Client(version, session=session)
 
 
 def get_neutron_session_client(session):
@@ -1479,8 +1484,23 @@ def get_swift_codename(version):
     :returns: Codename for swift
     :rtype: string
     """
-    codenames = [k for k, v in six.iteritems(SWIFT_CODENAMES) if version in v]
-    return codenames[0]
+    return _get_special_codename(version, SWIFT_CODENAMES)
+
+
+def get_ovn_codename(version):
+    """Determine OpenStack codename that corresponds to OVN version.
+
+    :param version: Version of OVN
+    :type version: string
+    :returns: Codename for OVN
+    :rtype: string
+    """
+    return _get_special_codename(version, OVN_CODENAMES)
+
+
+def _get_special_codename(version, codenames):
+    found = [k for k, v in six.iteritems(codenames) if version in v]
+    return found[0]
 
 
 def get_os_code_info(package, pkg_version):
@@ -1493,7 +1513,6 @@ def get_os_code_info(package, pkg_version):
     :returns: Codename for package
     :rtype: string
     """
-    # {'code_num': entry, 'code_name': OPENSTACK_CODENAMES[entry]}
     # Remove epoch if it exists
     if ':' in pkg_version:
         pkg_version = pkg_version.split(':')[1:][0]
@@ -1517,6 +1536,8 @@ def get_os_code_info(package, pkg_version):
         # < Liberty co-ordinated project versions
         if 'swift' in package:
             return get_swift_codename(vers)
+        elif 'ovn' in package:
+            return get_ovn_codename(vers)
         else:
             return OPENSTACK_CODENAMES[vers]
 
@@ -1535,6 +1556,7 @@ def get_current_os_versions(deployed_applications, model_name=None):
     for application in UPGRADE_SERVICES:
         if application['name'] not in deployed_applications:
             continue
+        logging.info("looking at application: {}".format(application))
 
         version = generic_utils.get_pkg_version(application['name'],
                                                 application['type']['pkg'],
@@ -1583,15 +1605,19 @@ def get_current_os_release_pair(application='keystone'):
     return '{}_{}'.format(series, os_version)
 
 
-def get_os_release(release_pair=None):
+def get_os_release(release_pair=None, application='keystone'):
     """Return index of release in OPENSTACK_RELEASES_PAIRS.
 
+    :param release_pair: OpenStack release pair eg 'focal_ussuri'
+    :type release_pair: string
+    :param application: Name of application to derive release pair from.
+    :type application: string
     :returns: Index of the release
     :rtype: int
     :raises: exceptions.ReleasePairNotFound
     """
     if release_pair is None:
-        release_pair = get_current_os_release_pair()
+        release_pair = get_current_os_release_pair(application=application)
     try:
         index = OPENSTACK_RELEASES_PAIRS.index(release_pair)
     except ValueError:
@@ -1886,7 +1912,8 @@ def download_image(image_url, target_file):
 
 def _resource_reaches_status(resource, resource_id,
                              expected_status='available',
-                             msg='resource'):
+                             msg='resource',
+                             resource_attribute='status'):
     """Wait for an openstack resources status to reach an expected status.
 
        Wait for an openstack resources status to reach an expected status
@@ -1901,20 +1928,22 @@ def _resource_reaches_status(resource, resource_id,
     :param expected_status: status to expect resource to reach
     :type expected_status: str
     :param msg: text to identify purpose in logging
-    :type msy: str
+    :type msg: str
+    :param resource_attribute: Resource attribute to check against
+    :type resource_attribute: str
     :raises: AssertionError
     """
-    resource_status = resource.get(resource_id).status
-    logging.info(resource_status)
-    assert resource_status == expected_status, (
-        "Resource in {} state, waiting for {}" .format(resource_status,
-                                                       expected_status,))
+    resource_status = getattr(resource.get(resource_id), resource_attribute)
+    logging.info("{}: resource {} in {} state, waiting for {}".format(
+        msg, resource_id, resource_status, expected_status))
+    assert resource_status == expected_status
 
 
 def resource_reaches_status(resource,
                             resource_id,
                             expected_status='available',
                             msg='resource',
+                            resource_attribute='status',
                             wait_exponential_multiplier=1,
                             wait_iteration_max_time=60,
                             stop_after_attempt=8,
@@ -1934,6 +1963,8 @@ def resource_reaches_status(resource,
     :type expected_status: str
     :param msg: text to identify purpose in logging
     :type msg: str
+    :param resource_attribute: Resource attribute to check against
+    :type resource_attribute: str
     :param wait_exponential_multiplier: Wait 2^x * wait_exponential_multiplier
                                         seconds between each retry
     :type wait_exponential_multiplier: int
@@ -1955,7 +1986,8 @@ def resource_reaches_status(resource,
         resource,
         resource_id,
         expected_status,
-        msg)
+        msg,
+        resource_attribute)
 
 
 def _resource_removed(resource, resource_id, msg="resource"):
@@ -1970,8 +2002,8 @@ def _resource_removed(resource, resource_id, msg="resource"):
     :raises: AssertionError
     """
     matching = [r for r in resource.list() if r.id == resource_id]
-    logging.debug("Resource {} still present".format(resource_id))
-    assert len(matching) == 0, "Resource {} still present".format(resource_id)
+    logging.debug("{}: resource {} still present".format(msg, resource_id))
+    assert len(matching) == 0
 
 
 def resource_removed(resource,

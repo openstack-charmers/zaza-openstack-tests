@@ -289,6 +289,15 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         openstack_utils.get_undercloud_keystone_session()
         self.get_keystone_session.assert_called_once_with(_auth, verify=None)
 
+    def test_get_nova_session_client(self):
+        session_mock = mock.MagicMock()
+        self.patch_object(openstack_utils.novaclient_client, "Client")
+        openstack_utils.get_nova_session_client(session_mock)
+        self.Client.assert_called_once_with(2, session=session_mock)
+        self.Client.reset_mock()
+        openstack_utils.get_nova_session_client(session_mock, version=2.56)
+        self.Client.assert_called_once_with(2.56, session=session_mock)
+
     def test_get_urllib_opener(self):
         self.patch_object(openstack_utils.urllib.request, "ProxyHandler")
         self.patch_object(openstack_utils.urllib.request, "HTTPHandler")
@@ -369,12 +378,15 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 'e01df65a')
 
     def test__resource_reaches_status_bespoke(self):
+        client_mock = mock.MagicMock()
         resource_mock = mock.MagicMock()
-        resource_mock.get.return_value = mock.MagicMock(status='readyish')
+        resource_mock.special_status = 'readyish'
+        client_mock.get.return_value = resource_mock
         openstack_utils._resource_reaches_status(
-            resource_mock,
+            client_mock,
             'e01df65a',
-            'readyish')
+            'readyish',
+            resource_attribute='special_status')
 
     def test__resource_reaches_status_bespoke_fail(self):
         resource_mock = mock.MagicMock()
@@ -895,6 +907,14 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         xenial_mitaka = openstack_utils.get_os_release('xenial_mitaka')
         release_comp = xenial_queens > xenial_mitaka
         self.assertTrue(release_comp)
+
+        # Check specifying an application
+        self._get_os_rel_pair.reset_mock()
+        self._get_os_rel_pair.return_value = 'xenial_mitaka'
+        expected = 4
+        result = openstack_utils.get_os_release(application='myapp')
+        self.assertEqual(expected, result)
+        self._get_os_rel_pair.assert_called_once_with(application='myapp')
 
     def test_get_keystone_api_version(self):
         self.patch_object(openstack_utils, "get_current_os_versions")

@@ -120,7 +120,23 @@ class BaseCharmTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls, application_name=None, model_alias=None):
-        """Run setup for test class to create common resources."""
+        """Run setup for test class to create common resources.
+
+        Note: the derived class may not use the application_name; if it's set
+        to None then this setUpClass() method will attempt to extract the
+        application name from the charm_config (essentially the test.yaml)
+        using the key 'charm_name' in the test_config.  If that isn't present,
+        then there will be no application_name set, and this is considered a
+        generic scenario of a whole model rather than a particular charm under
+        test.
+
+        :param application_name: the name of the applications that the derived
+            class is testing.  If None, then it's a generic test not connected
+            to any single charm.
+        :type application_name: Optional[str]
+        :param model_alias: the alias to use if needed.
+        :type model_alias: Optional[str]
+        """
         cls.model_aliases = model.get_juju_model_aliases()
         if model_alias:
             cls.model_name = cls.model_aliases[model_alias]
@@ -131,7 +147,13 @@ class BaseCharmTest(unittest.TestCase):
         if application_name:
             cls.application_name = application_name
         else:
-            charm_under_test_name = cls.test_config['charm_name']
+            try:
+                charm_under_test_name = cls.test_config['charm_name']
+            except KeyError:
+                logging.warning("No application_name and no charm config so "
+                                "not setting the application_name. Likely a "
+                                "scenario test.")
+                return
             deployed_app_names = model.sync_deployed(model_name=cls.model_name)
             if charm_under_test_name in deployed_app_names:
                 # There is an application named like the charm under test.
@@ -153,6 +175,46 @@ class BaseCharmTest(unittest.TestCase):
             cls.application_name,
             model_name=cls.model_name)
         logging.debug('Leader unit is {}'.format(cls.lead_unit))
+
+    def config_current_separate_non_string_type_keys(
+            self, non_string_type_keys, config_keys=None,
+            application_name=None):
+        """Obtain current config and the non-string type config separately.
+
+        If the charm config option is not string, it will not accept being
+        reverted back in "config_change()" method if the current value is None.
+        Therefore, obtain the current config and separate those out, so they
+        can be used for a separate invocation of "config_change()" with
+        reset_to_charm_default set to True.
+
+        :param config_keys: iterable of strs to index into the current config.
+                            If None, return all keys from the config
+        :type config_keys:  Optional[Iterable[str]]
+        :param non_string_type_keys: list of non-string type keys to be
+                                     separated out only if their current value
+                                     is None
+        :type non_string_type_keys: list
+        :param application_name: String application name for use when called
+                                 by a charm under test other than the object's
+                                 application.
+        :type application_name:  Optional[str]
+        :return: Dictionary of current charm configs without the
+                 non-string type keys provided, and dictionary of the
+                 non-string keys found in the supplied config_keys list.
+        :rtype: Dict[str, Any], Dict[str, None]
+        """
+        current_config = self.config_current(application_name, config_keys)
+        non_string_type_config = {}
+        if config_keys is None:
+            config_keys = list(current_config.keys())
+        for key in config_keys:
+            # We only care if the current value is None, otherwise it will
+            # not face issues being reverted by "config_change()"
+            if key in non_string_type_keys and current_config[key] is None:
+                non_string_type_config[key] = None
+                current_config.pop(key)
+
+        return current_config, non_string_type_config
 
     def config_current(self, application_name=None, keys=None):
         """Get Current Config of an application normalized into key-values.
@@ -275,7 +337,7 @@ class BaseCharmTest(unittest.TestCase):
                           'charm default: "{}"'
                           .format(alternate_config.keys()))
             model.reset_application_config(application_name,
-                                           alternate_config.keys(),
+                                           list(alternate_config.keys()),
                                            model_name=self.model_name)
         elif default_config == alternate_config:
             logging.debug('default_config == alternate_config, not attempting '

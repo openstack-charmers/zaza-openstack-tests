@@ -155,6 +155,29 @@ class NovaCompute(test_utils.OpenStackBaseTest):
             self.assertFalse(int(run['Code']) == 0)
 
 
+class NovaComputeActionTest(test_utils.OpenStackBaseTest):
+    """Run nova-compute specific tests.
+
+    Add this test class for new nova-compute action
+    to avoid breaking older version
+    """
+
+    def test_virsh_audit_action(self):
+        """Test virsh-audit action."""
+        for unit in zaza.model.get_units('nova-compute',
+                                         model_name=self.model_name):
+            logging.info('Running `virsh-audit` action'
+                         ' on  unit {}'.format(unit.entity_id))
+            action = zaza.model.run_action(
+                unit.entity_id,
+                'virsh-audit',
+                model_name=self.model_name,
+                action_params={})
+            if "failed" in action.data["status"]:
+                raise Exception(
+                    "The action failed: {}".format(action.data["message"]))
+
+
 class NovaCloudController(test_utils.OpenStackBaseTest):
     """Run nova-cloud-controller specific tests."""
 
