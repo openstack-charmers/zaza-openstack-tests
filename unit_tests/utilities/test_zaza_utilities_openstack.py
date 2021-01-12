@@ -1262,34 +1262,68 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.get_application.side_effect = KeyError
         self.assertFalse(openstack_utils.ngw_present())
 
-    def test_configure_gateway_ext_port(self):
-        # FIXME: this is not a complete unit test for the function as one did
-        # not exist at all I'm adding this to test one bit and we'll add more
-        # as we go.
+    def test_get_charm_networking_data(self):
         self.patch_object(openstack_utils, 'deprecated_external_networking')
         self.patch_object(openstack_utils, 'dvr_enabled')
         self.patch_object(openstack_utils, 'ovn_present')
         self.patch_object(openstack_utils, 'ngw_present')
+        self.patch_object(openstack_utils, 'get_ovs_uuids')
         self.patch_object(openstack_utils, 'get_gateway_uuids')
-        self.patch_object(openstack_utils, 'get_admin_net')
+        self.patch_object(openstack_utils, 'get_ovn_uuids')
+        self.patch_object(openstack_utils.model, 'get_application')
         self.dvr_enabled.return_value = False
         self.ovn_present.return_value = False
-        self.ngw_present.return_value = True
-        self.get_admin_net.return_value = {'id': 'fakeid'}
+        self.ngw_present.return_value = False
+        self.get_ovs_uuids.return_value = []
+        self.get_gateway_uuids.return_value = []
+        self.get_ovn_uuids.return_value = []
+        self.get_application.side_effect = KeyError
 
-        novaclient = mock.MagicMock()
-        neutronclient = mock.MagicMock()
-
-        def _fake_empty_generator(empty=True):
-            if empty:
-                return
-            yield
-
-        self.get_gateway_uuids.side_effect = _fake_empty_generator
         with self.assertRaises(RuntimeError):
-            openstack_utils.configure_gateway_ext_port(
-                novaclient, neutronclient)
-        # provide a uuid and check that we don't raise RuntimeError
-        self.get_gateway_uuids.side_effect = ['fake-uuid']
-        openstack_utils.configure_gateway_ext_port(
-            novaclient, neutronclient)
+            openstack_utils.get_charm_networking_data()
+        self.ngw_present.return_value = True
+        self.assertEquals(
+            openstack_utils.get_charm_networking_data(),
+            openstack_utils.CharmedOpenStackNetworkingData(
+                openstack_utils.OpenStackNetworkingTopology.ML2_OVS,
+                ['neutron-gateway'],
+                mock.ANY,
+                'data-port',
+                {}))
+        self.dvr_enabled.return_value = True
+        self.assertEquals(
+            openstack_utils.get_charm_networking_data(),
+            openstack_utils.CharmedOpenStackNetworkingData(
+                openstack_utils.OpenStackNetworkingTopology.ML2_OVS_DVR,
+                ['neutron-gateway', 'neutron-openvswitch'],
+                mock.ANY,
+                'data-port',
+                {}))
+        self.ngw_present.return_value = False
+        self.assertEquals(
+            openstack_utils.get_charm_networking_data(),
+            openstack_utils.CharmedOpenStackNetworkingData(
+                openstack_utils.OpenStackNetworkingTopology.ML2_OVS_DVR_SNAT,
+                ['neutron-openvswitch'],
+                mock.ANY,
+                'data-port',
+                {}))
+        self.dvr_enabled.return_value = False
+        self.ovn_present.return_value = True
+        self.assertEquals(
+            openstack_utils.get_charm_networking_data(),
+            openstack_utils.CharmedOpenStackNetworkingData(
+                openstack_utils.OpenStackNetworkingTopology.ML2_OVN,
+                ['ovn-chassis'],
+                mock.ANY,
+                'bridge-interface-mappings',
+                {'ovn-bridge-mappings': 'physnet1:br-ex'}))
+        self.get_application.side_effect = None
+        self.assertEquals(
+            openstack_utils.get_charm_networking_data(),
+            openstack_utils.CharmedOpenStackNetworkingData(
+                openstack_utils.OpenStackNetworkingTopology.ML2_OVN,
+                ['ovn-chassis', 'ovn-dedicated-chassis'],
+                mock.ANY,
+                'bridge-interface-mappings',
+                {'ovn-bridge-mappings': 'physnet1:br-ex'}))
