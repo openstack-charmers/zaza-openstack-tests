@@ -17,6 +17,7 @@
 import jinja2
 import urllib.parse
 import os
+import subprocess
 
 import zaza.utilities.deployment_env as deployment_env
 import zaza.openstack.utilities.juju as juju_utils
@@ -170,6 +171,23 @@ def add_keystone_config(ctxt, keystone_session):
     ctxt['default_domain_id'] = domain.id
 
 
+def add_octavia_config(ctxt):
+    """Add octavia config to context.
+
+    :param ctxt: Context dictionary
+    :type ctxt: dict
+    :returns: None
+    :rtype: None
+    :raises: subprocess.CalledProcessError
+    """
+    subprocess.check_call([
+        'curl',
+        "{}:80/swift/v1/fixtures/test_server.bin".format(
+            ctxt['test_swift_ip']),
+        '-o', "{}test_server.bin".format(ctxt['workspace_path'])
+    ])
+
+
 def get_service_list(keystone_session):
     """Retrieve list of services from keystone.
 
@@ -227,7 +245,7 @@ def add_auth_config(ctxt):
             overcloud_auth['OS_PROJECT_DOMAIN_NAME'])
 
 
-def get_tempest_context():
+def get_tempest_context(workspace_path):
     """Generate the tempest config context.
 
     :returns: Context dictionary
@@ -235,6 +253,7 @@ def get_tempest_context():
     """
     keystone_session = openstack_utils.get_overcloud_keystone_session()
     ctxt = {}
+    ctxt['workspace_path'] = workspace_path
     ctxt_funcs = {
         'nova': add_nova_config,
         'neutron': add_neutron_config,
@@ -253,6 +272,7 @@ def get_tempest_context():
             ctxt_func(ctxt, keystone_session)
     add_environment_var_config(ctxt, ctxt['enabled_services'])
     add_auth_config(ctxt)
+    add_octavia_config(ctxt)
     return ctxt
 
 
@@ -289,13 +309,14 @@ def setup_tempest(tempest_template, accounts_template):
     workspace_name, workspace_path = tempest_utils.get_workspace()
     tempest_utils.destroy_workspace(workspace_name, workspace_path)
     tempest_utils.init_workspace(workspace_path)
+    context = get_tempest_context(workspace_path)
     render_tempest_config(
         os.path.join(workspace_path, 'etc/tempest.conf'),
-        get_tempest_context(),
+        context,
         tempest_template)
     render_tempest_config(
         os.path.join(workspace_path, 'etc/accounts.yaml'),
-        get_tempest_context(),
+        context,
         accounts_template)
 
 

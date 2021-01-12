@@ -65,6 +65,7 @@ floating_network_name = {{ ext_net }}
 [network-feature-enabled]
 ipv6 = false
 api_extensions = {{ neutron_api_extensions }}
+port_security = True
 {% endif %}
 
 {% if 'heat' in enabled_services %}
@@ -103,4 +104,11 @@ catalog_type = {{ catalog_type }}
 
 [volume-feature-enabled]
 backup = false
+{% endif %}
+
+{% if 'octavia' in enabled_services %}
+[load_balancer]
+enable_security_groups = true
+test_with_ipv6 = False
+test_server_path = {{ workspace_path }}test_server.bin
 {% endif %}
