@@ -62,6 +62,7 @@ from keystoneauth1.identity import (
 import zaza.openstack.utilities.cert as cert
 import zaza.utilities.deployment_env as deployment_env
 import zaza.utilities.juju as juju_utils
+import zaza.utilities.maas
 from novaclient import client as novaclient_client
 from neutronclient.v2_0 import client as neutronclient
 from neutronclient.common import exceptions as neutronexceptions
@@ -965,6 +966,28 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
     if macs:
         configure_networking_charms(
             networking_data, macs, use_juju_wait=use_juju_wait)
+
+
+def configure_charmed_openstack_on_maas(network_config, limit_gws=None):
+    """Configure networking charms for charm-based OVS config on MAAS provider.
+
+    :param network_config: Network configuration as provided in environment.
+    :type network_config: Dict[str]
+    :param limit_gws: Limit the number of gateways that get a port attached
+    :type limit_gws: Optional[int]
+    """
+    networking_data = get_charm_networking_data(limit_gws=limit_gws)
+    macs = [
+        mim.mac
+        for mim in zaza.utilities.maas.get_macs_from_cidr(
+            zaza.utilities.maas.get_maas_client_from_juju_cloud_data(
+                zaza.model.get_cloud_data()),
+            network_config['external_net_cidr'],
+            link_mode=zaza.utilities.maas.LinkMode.LINK_UP)
+    ]
+    if macs:
+        configure_networking_charms(
+            networking_data, macs, use_juju_wait=False)
 
 
 @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
