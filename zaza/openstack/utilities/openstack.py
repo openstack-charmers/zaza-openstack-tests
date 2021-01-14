@@ -16,7 +16,10 @@
 
 This module contains a number of functions for interacting with OpenStack.
 """
+import collections
+import copy
 import datetime
+import enum
 import io
 import itertools
 import juju_wait
@@ -59,6 +62,7 @@ from keystoneauth1.identity import (
 import zaza.openstack.utilities.cert as cert
 import zaza.utilities.deployment_env as deployment_env
 import zaza.utilities.juju as juju_utils
+import zaza.utilities.maas
 from novaclient import client as novaclient_client
 from neutronclient.v2_0 import client as neutronclient
 from neutronclient.common import exceptions as neutronexceptions
@@ -721,6 +725,211 @@ def add_interface_to_netplan(server_name, mac_address):
             model.run_on_unit(unit_name, "sudo netplan apply")
 
 
+class OpenStackNetworkingTopology(enum.Enum):
+    """OpenStack Charms Network Topologies."""
+
+    ML2_OVS = 'ML2+OVS'
+    ML2_OVS_DVR = 'ML2+OVS+DVR'
+    ML2_OVS_DVR_SNAT = 'ML2+OVS+DVR, no dedicated GWs'
+    ML2_OVN = 'ML2+OVN'
+
+
+CharmedOpenStackNetworkingData = collections.namedtuple(
+    'CharmedOpenStackNetworkingData',
+    [
+        'topology',
+        'application_names',
+        'unit_machine_ids',
+        'port_config_key',
+        'other_config',
+    ])
+
+
+def get_charm_networking_data(limit_gws=None):
+    """Inspect Juju model, determine networking topology and return data.
+
+    :param limit_gws: Limit the number of gateways that get a port attached
+    :type limit_gws: Optional[int]
+    :rtype: CharmedOpenStackNetworkingData[
+                OpenStackNetworkingTopology,
+                List[str],
+                Iterator[str],
+                str,
+                Dict[str,str]]
+    :returns: Named Tuple with networking data, example:
+        CharmedOpenStackNetworkingData(
+            OpenStackNetworkingTopology.ML2_OVN,
+            ['ovn-chassis', 'ovn-dedicated-chassis'],
+            ['machine-id-1', 'machine-id-2'],         # generator object
+            'bridge-interface-mappings',
+            {'ovn-bridge-mappings': 'physnet1:br-ex'})
+    :raises: RuntimeError
+    """
+    # Initialize defaults, these will be amended to fit the reality of the
+    # model in the checks below.
+    topology = OpenStackNetworkingTopology.ML2_OVS
+    other_config = {}
+    port_config_key = (
+        'data-port' if not deprecated_external_networking() else 'ext-port')
+    unit_machine_ids = []
+    application_names = []
+
+    if dvr_enabled():
+        if ngw_present():
+            application_names = ['neutron-gateway', 'neutron-openvswitch']
+            topology = OpenStackNetworkingTopology.ML2_OVS_DVR
+        else:
+            application_names = ['neutron-openvswitch']
+            topology = OpenStackNetworkingTopology.ML2_OVS_DVR_SNAT
+        unit_machine_ids = itertools.islice(
+            itertools.chain(
+                get_ovs_uuids(),
+                get_gateway_uuids()),
+            limit_gws)
+    elif ngw_present():
+        unit_machine_ids = itertools.islice(
+            get_gateway_uuids(), limit_gws)
+        application_names = ['neutron-gateway']
+    elif ovn_present():
+        topology = OpenStackNetworkingTopology.ML2_OVN
+        unit_machine_ids = itertools.islice(get_ovn_uuids(), limit_gws)
+        application_names = ['ovn-chassis']
+        try:
+            ovn_dc_name = 'ovn-dedicated-chassis'
+            model.get_application(ovn_dc_name)
+            application_names.append(ovn_dc_name)
+        except KeyError:
+            # ovn-dedicated-chassis not in deployment
+            pass
+        port_config_key = 'bridge-interface-mappings'
+        other_config.update({'ovn-bridge-mappings': 'physnet1:br-ex'})
+    else:
+        raise RuntimeError('Unable to determine charm network topology.')
+
+    return CharmedOpenStackNetworkingData(
+        topology,
+        application_names,
+        unit_machine_ids,
+        port_config_key,
+        other_config)
+
+
+def create_additional_port_for_machines(novaclient, neutronclient, net_id,
+                                        unit_machine_ids,
+                                        add_dataport_to_netplan=False):
+    """Create additional port for machines for use with external networking.
+
+    :param novaclient: Undercloud Authenticated novaclient.
+    :type novaclient: novaclient.Client object
+    :param neutronclient: Undercloud Authenticated neutronclient.
+    :type neutronclient: neutronclient.Client object
+    :param net_id: Network ID to create ports on.
+    :type net_id: string
+    :param unit_machine_ids: Juju provider specific machine IDs for which we
+                             should add ports on.
+    :type unit_machine_ids: Iterator[str]
+    :param add_dataport_to_netplan: Whether the newly created port should be
+                                    added to instance system configuration so
+                                    that it is brought up on instance reboot.
+    :type add_dataport_to_netplan: Optional[bool]
+    :returns: List of MAC addresses for created ports.
+    :rtype: List[str]
+    :raises: RuntimeError
+    """
+    eligible_machines = 0
+    for uuid in unit_machine_ids:
+        eligible_machines += 1
+        server = novaclient.servers.get(uuid)
+        ext_port_name = "{}_ext-port".format(server.name)
+        for port in neutronclient.list_ports(device_id=server.id)['ports']:
+            if port['name'] == ext_port_name:
+                logging.warning(
+                    'Instance {} already has additional port, skipping.'
+                    .format(server.id))
+                break
+        else:
+            logging.info('Attaching additional port to instance ("{}"), '
+                         'connected to net id: {}'
+                         .format(uuid, net_id))
+            body_value = {
+                "port": {
+                    "admin_state_up": True,
+                    "name": ext_port_name,
+                    "network_id": net_id,
+                    "port_security_enabled": False,
+                }
+            }
+            port = neutronclient.create_port(body=body_value)
+            server.interface_attach(port_id=port['port']['id'],
+                                    net_id=None, fixed_ip=None)
+            if add_dataport_to_netplan:
+                mac_address = get_mac_from_port(port, neutronclient)
+                add_interface_to_netplan(server.name,
+                                         mac_address=mac_address)
+    if not eligible_machines:
+        # NOTE: unit_machine_ids may be an iterator so testing it for contents
+        # or length prior to iterating over it is futile.
+        raise RuntimeError('Unable to determine UUIDs for machines to attach '
+                           'external networking to.')
+
+    # Retrieve the just created ports from Neutron so that we can provide our
+    # caller with their MAC addresses.
+    return [
+        port['mac_address']
+        for port in neutronclient.list_ports(network_id=net_id)['ports']
+        if 'ext-port' in port['name']
+    ]
+
+
+def configure_networking_charms(networking_data, macs, use_juju_wait=True):
+    """Configure external networking for networking charms.
+
+    :param networking_data: Data on networking charm topology.
+    :type networking_data: CharmedOpenStackNetworkingData
+    :param macs: MAC addresses of ports for use with external networking.
+    :type macs: Iterator[str]
+    :param use_juju_wait: Whether to use juju wait to wait for the model to
+        settle once the gateway has been configured. Default is True
+    :type use_juju_wait: Optional[bool]
+    """
+    br_mac_fmt = 'br-ex:{}' if not deprecated_external_networking() else '{}'
+    br_mac = [
+        br_mac_fmt.format(mac)
+        for mac in macs
+    ]
+
+    config = copy.deepcopy(networking_data.other_config)
+    config.update({networking_data.port_config_key: ' '.join(sorted(br_mac))})
+
+    for application_name in networking_data.application_names:
+        logging.info('Setting {} on {}'.format(
+            config, application_name))
+        current_data_port = get_application_config_option(
+            application_name,
+            networking_data.port_config_key)
+        if current_data_port == config[networking_data.port_config_key]:
+            logging.info('Config already set to value')
+            return
+
+        model.set_application_config(
+            application_name,
+            configuration=config)
+    # NOTE(fnordahl): We are stuck with juju_wait until we figure out how
+    # to deal with all the non ['active', 'idle', 'Unit is ready.']
+    # workload/agent states and msgs that our mojo specs are exposed to.
+    if use_juju_wait:
+        juju_wait.wait(wait_for_workload=True)
+    else:
+        zaza.model.wait_for_agent_status()
+        # TODO: shouldn't access get_charm_config() here as it relies on
+        # ./tests/tests.yaml existing by default (regardless of the
+        # fatal=False) ... it's not great design.
+        test_config = zaza.charm_lifecycle.utils.get_charm_config(
+            fatal=False)
+        zaza.model.wait_for_application_states(
+            states=test_config.get('target_deploy_status', {}))
+
+
 def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
                                add_dataport_to_netplan=False,
                                limit_gws=None,
@@ -739,123 +948,46 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
         settle once the gateway has been configured. Default is True
     :type use_juju_wait: boolean
     """
-    deprecated_extnet_mode = deprecated_external_networking()
-
-    port_config_key = 'data-port'
-    if deprecated_extnet_mode:
-        port_config_key = 'ext-port'
-
-    config = {}
-    if dvr_enabled():
-        uuids = itertools.islice(itertools.chain(get_ovs_uuids(),
-                                                 get_gateway_uuids()),
-                                 limit_gws)
+    networking_data = get_charm_networking_data(limit_gws=limit_gws)
+    if networking_data.topology in (
+            OpenStackNetworkingTopology.ML2_OVS_DVR,
+            OpenStackNetworkingTopology.ML2_OVS_DVR_SNAT):
         # If dvr, do not attempt to persist nic in netplan
         # https://github.com/openstack-charmers/zaza-openstack-tests/issues/78
         add_dataport_to_netplan = False
-        application_names = ['neutron-openvswitch']
-        try:
-            ngw = 'neutron-gateway'
-            model.get_application(ngw)
-            application_names.append(ngw)
-        except KeyError:
-            # neutron-gateway not in deployment
-            pass
-    elif ngw_present():
-        uuids = itertools.islice(get_gateway_uuids(), limit_gws)
-        application_names = ['neutron-gateway']
-    elif ovn_present():
-        uuids = itertools.islice(get_ovn_uuids(), limit_gws)
-        application_names = ['ovn-chassis']
-        try:
-            ovn_dc_name = 'ovn-dedicated-chassis'
-            model.get_application(ovn_dc_name)
-            application_names.append(ovn_dc_name)
-        except KeyError:
-            # ovn-dedicated-chassis not in deployment
-            pass
-        port_config_key = 'bridge-interface-mappings'
-        config.update({'ovn-bridge-mappings': 'physnet1:br-ex'})
-        add_dataport_to_netplan = True
-    else:
-        raise RuntimeError('Unable to determine charm network topology.')
 
     if not net_id:
         net_id = get_admin_net(neutronclient)['id']
 
-    ports_created = 0
-    for uuid in uuids:
-        server = novaclient.servers.get(uuid)
-        ext_port_name = "{}_ext-port".format(server.name)
-        for port in neutronclient.list_ports(device_id=server.id)['ports']:
-            if port['name'] == ext_port_name:
-                logging.warning(
-                    'Neutron Gateway already has additional port')
-                break
-        else:
-            logging.info('Attaching additional port to instance ("{}"), '
-                         'connected to net id: {}'
-                         .format(uuid, net_id))
-            body_value = {
-                "port": {
-                    "admin_state_up": True,
-                    "name": ext_port_name,
-                    "network_id": net_id,
-                    "port_security_enabled": False,
-                }
-            }
-            port = neutronclient.create_port(body=body_value)
-            ports_created += 1
-            server.interface_attach(port_id=port['port']['id'],
-                                    net_id=None, fixed_ip=None)
-            if add_dataport_to_netplan:
-                mac_address = get_mac_from_port(port, neutronclient)
-                add_interface_to_netplan(server.name,
-                                         mac_address=mac_address)
-    if not ports_created:
-        # NOTE: uuids is an iterator so testing it for contents or length prior
-        # to iterating over it is futile.
-        raise RuntimeError('Unable to determine UUIDs for machines to attach '
-                           'external networking to.')
+    macs = create_additional_port_for_machines(
+        novaclient, neutronclient, net_id, networking_data.unit_machine_ids,
+        add_dataport_to_netplan)
 
-    ext_br_macs = []
-    for port in neutronclient.list_ports(network_id=net_id)['ports']:
-        if 'ext-port' in port['name']:
-            if deprecated_extnet_mode:
-                ext_br_macs.append(port['mac_address'])
-            else:
-                ext_br_macs.append('br-ex:{}'.format(port['mac_address']))
-    ext_br_macs.sort()
-    ext_br_macs_str = ' '.join(ext_br_macs)
+    if macs:
+        configure_networking_charms(
+            networking_data, macs, use_juju_wait=use_juju_wait)
 
-    if ext_br_macs:
-        config.update({port_config_key: ext_br_macs_str})
-        for application_name in application_names:
-            logging.info('Setting {} on {}'.format(
-                config, application_name))
-            current_data_port = get_application_config_option(application_name,
-                                                              port_config_key)
-            if current_data_port == ext_br_macs_str:
-                logging.info('Config already set to value')
-                return
 
-            model.set_application_config(
-                application_name,
-                configuration=config)
-        # NOTE(fnordahl): We are stuck with juju_wait until we figure out how
-        # to deal with all the non ['active', 'idle', 'Unit is ready.']
-        # workload/agent states and msgs that our mojo specs are exposed to.
-        if use_juju_wait:
-            juju_wait.wait(wait_for_workload=True)
-        else:
-            zaza.model.wait_for_agent_status()
-            # TODO: shouldn't access get_charm_config() here as it relies on
-            # ./tests/tests.yaml existing by default (regardless of the
-            # fatal=False) ... it's not great design.
-            test_config = zaza.charm_lifecycle.utils.get_charm_config(
-                fatal=False)
-            zaza.model.wait_for_application_states(
-                states=test_config.get('target_deploy_status', {}))
+def configure_charmed_openstack_on_maas(network_config, limit_gws=None):
+    """Configure networking charms for charm-based OVS config on MAAS provider.
+
+    :param network_config: Network configuration as provided in environment.
+    :type network_config: Dict[str]
+    :param limit_gws: Limit the number of gateways that get a port attached
+    :type limit_gws: Optional[int]
+    """
+    networking_data = get_charm_networking_data(limit_gws=limit_gws)
+    macs = [
+        mim.mac
+        for mim in zaza.utilities.maas.get_macs_from_cidr(
+            zaza.utilities.maas.get_maas_client_from_juju_cloud_data(
+                zaza.model.get_cloud_data()),
+            network_config['external_net_cidr'],
+            link_mode=zaza.utilities.maas.LinkMode.LINK_UP)
+    ]
+    if macs:
+        configure_networking_charms(
+            networking_data, macs, use_juju_wait=False)
 
 
 @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
