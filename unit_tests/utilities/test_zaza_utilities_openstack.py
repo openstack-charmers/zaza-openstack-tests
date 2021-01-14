@@ -1333,25 +1333,34 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 'bridge-interface-mappings',
                 {'ovn-bridge-mappings': 'physnet1:br-ex'}))
 
+    def test_get_cacert_absolute_path(self):
+        self.patch_object(openstack_utils.deployment_env, 'get_tmpdir')
+        self.get_tmpdir.return_value = '/tmp/default'
+        self.assertEqual(
+            openstack_utils.get_cacert_absolute_path('filename'),
+            '/tmp/default/filename')
+
     def test_get_cacert(self):
+        self.patch_object(openstack_utils.deployment_env, 'get_tmpdir')
+        self.get_tmpdir.return_value = '/tmp/default'
         self.patch_object(openstack_utils.os.path, 'exists')
         results = {
-            'tests/vault_juju_ca_cert.crt': True}
+            '/tmp/default/vault_juju_ca_cert.crt': True}
         self.exists.side_effect = lambda x: results[x]
         self.assertEqual(
             openstack_utils.get_cacert(),
-            'tests/vault_juju_ca_cert.crt')
+            '/tmp/default/vault_juju_ca_cert.crt')
 
         results = {
-            'tests/vault_juju_ca_cert.crt': False,
-            'tests/keystone_juju_ca_cert.crt': True}
+            '/tmp/default/vault_juju_ca_cert.crt': False,
+            '/tmp/default/keystone_juju_ca_cert.crt': True}
         self.assertEqual(
             openstack_utils.get_cacert(),
-            'tests/keystone_juju_ca_cert.crt')
+            '/tmp/default/keystone_juju_ca_cert.crt')
 
         results = {
-            'tests/vault_juju_ca_cert.crt': False,
-            'tests/keystone_juju_ca_cert.crt': False}
+            '/tmp/default/vault_juju_ca_cert.crt': False,
+            '/tmp/default/keystone_juju_ca_cert.crt': False}
         self.assertIsNone(openstack_utils.get_cacert())
 
     def test_get_remote_ca_cert_file(self):
@@ -1364,6 +1373,8 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.patch_object(openstack_utils.shutil, 'move')
         self.patch_object(openstack_utils.os, 'chmod')
         self.patch_object(openstack_utils.tempfile, 'NamedTemporaryFile')
+        self.patch_object(openstack_utils.deployment_env, 'get_tmpdir')
+        self.get_tmpdir.return_value = '/tmp/default'
         enter_mock = mock.MagicMock()
         enter_mock.__enter__.return_value.name = 'tempfilename'
         self.NamedTemporaryFile.return_value = enter_mock
@@ -1377,8 +1388,9 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             'neutron-api/0',
             '/tmp/ca1.cert',
             'tempfilename')
-        self.chmod.assert_called_once_with('tests/ca1.cert', 0o644)
-        self.move.assert_called_once_with('tempfilename', 'tests/ca1.cert')
+        self.chmod.assert_called_once_with('/tmp/default/ca1.cert', 0o644)
+        self.move.assert_called_once_with(
+            'tempfilename', '/tmp/default/ca1.cert')
 
 
 class TestAsyncOpenstackUtils(ut_utils.AioTestCase):

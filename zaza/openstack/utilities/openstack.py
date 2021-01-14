@@ -185,12 +185,10 @@ WORKLOAD_STATUS_EXCEPTIONS = {
 # For vault TLS certificates
 CACERT_FILENAME_FORMAT = "{}_juju_ca_cert.crt"
 CERT_PROVIDERS = ['vault']
-LOCAL_CERT_DIR = "tests"
 REMOTE_CERT_DIR = "/usr/local/share/ca-certificates"
 KEYSTONE_CACERT = "keystone_juju_ca_cert.crt"
 KEYSTONE_REMOTE_CACERT = (
     "/usr/local/share/ca-certificates/{}".format(KEYSTONE_CACERT))
-KEYSTONE_LOCAL_CACERT = ("{}/{}".format(LOCAL_CERT_DIR, KEYSTONE_CACERT))
 
 
 async def async_block_until_ca_exists(application_name, ca_cert,
@@ -236,6 +234,18 @@ async def async_block_until_ca_exists(application_name, ca_cert,
 block_until_ca_exists = zaza.model.sync_wrapper(async_block_until_ca_exists)
 
 
+def get_cacert_absolute_path(filename):
+    """Build string containing location of the CA Certificate file.
+
+    :param filename: Expected filename for CA Certificate file.
+    :type filename: str
+    :returns: Absolute path to file containing CA Certificate
+    :rtype: str
+    """
+    return os.path.join(
+        deployment_env.get_tmpdir(), filename)
+
+
 def get_cacert():
     """Return path to CA Certificate bundle for verification during test.
 
@@ -243,12 +253,13 @@ def get_cacert():
     :rtype: Union[str, None]
     """
     for _provider in CERT_PROVIDERS:
-        _cert = LOCAL_CERT_DIR + '/' + CACERT_FILENAME_FORMAT.format(
-            _provider)
+        _cert = get_cacert_absolute_path(
+            CACERT_FILENAME_FORMAT.format(_provider))
         if os.path.exists(_cert):
             return _cert
-    if os.path.exists(KEYSTONE_LOCAL_CACERT):
-        return KEYSTONE_LOCAL_CACERT
+    _keystone_local_cacert = get_cacert_absolute_path(KEYSTONE_CACERT)
+    if os.path.exists(_keystone_local_cacert):
+        return _keystone_local_cacert
 
 
 # OpenStack Client helpers
@@ -2056,8 +2067,7 @@ def get_remote_ca_cert_file(application, model_name=None):
         application,
         model_name=model_name)
     for cert_file in cert_files:
-        _local_cert_file = "{}/{}".format(
-            LOCAL_CERT_DIR,
+        _local_cert_file = get_cacert_absolute_path(
             os.path.basename(cert_file))
         with tempfile.NamedTemporaryFile(mode="w", delete=False) as _tmp_ca:
             try:
