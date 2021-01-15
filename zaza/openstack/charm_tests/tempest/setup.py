@@ -184,7 +184,7 @@ def add_octavia_config(ctxt):
         'curl',
         "{}:80/swift/v1/fixtures/test_server.bin".format(
             ctxt['test_swift_ip']),
-        '-o', "{}test_server.bin".format(ctxt['workspace_path'])
+        '-o', "{}/test_server.bin".format(ctxt['workspace_path'])
     ])
 
 
