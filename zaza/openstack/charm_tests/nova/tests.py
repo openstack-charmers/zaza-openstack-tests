@@ -157,9 +157,11 @@ class CloudActions(test_utils.OpenStackBaseTest):
         zaza.model.run_action_on_units([unit_to_remove.name],
                                        'remove-from-cloud')
 
+        # Wait for nova-compute service to be removed from the
+        # nova-cloud-controller
         sleep_timeout = 1  # don't waste 10 seconds on the first run
 
-        for _ in range(7):
+        for _ in range(31):
             sleep(sleep_timeout)
             service_list = self.nova_client.services.list(
                 host=service_name, binary='nova-compute')
@@ -175,9 +177,11 @@ class CloudActions(test_utils.OpenStackBaseTest):
         zaza.model.run_action_on_units([unit_to_remove.name],
                                        'register-to-cloud')
 
+        # Wait for nova-compute service to be registered to the
+        # nova-cloud-controller
         sleep_timeout = 1  # don't waste 10 seconds on the first run
 
-        for _ in range(7):
+        for _ in range(31):
             sleep(sleep_timeout)
             service_list = self.nova_client.services.list(
                 host=service_name, binary='nova-compute')
