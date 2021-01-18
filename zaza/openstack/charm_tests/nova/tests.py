@@ -165,7 +165,8 @@ class CloudActions(test_utils.OpenStackBaseTest):
         # nova-cloud-controller
         logging.info('Removing service from cloud')
         zaza.model.run_action_on_units([unit_to_remove.name],
-                                       'remove-from-cloud')
+                                       'remove-from-cloud',
+                                       raise_on_failure=True)
 
         # Wait for nova-compute service to be removed from the
         # nova-cloud-controller
@@ -187,7 +188,8 @@ class CloudActions(test_utils.OpenStackBaseTest):
         # and wait for the results in nova-cloud-controller
         logging.info('Registering to cloud')
         zaza.model.run_action_on_units([unit_to_remove.name],
-                                       'register-to-cloud')
+                                       'register-to-cloud',
+                                       raise_on_failure=True)
 
         # Wait for nova-compute service to be registered to the
         # nova-cloud-controller
