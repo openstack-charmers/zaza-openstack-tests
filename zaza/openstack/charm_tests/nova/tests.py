@@ -133,13 +133,8 @@ class CloudActions(test_utils.OpenStackBaseTest):
 
     def test_950_remove_from_cloud_actions(self):
         """Test actions remove-from-cloud and register-to-cloud."""
-        def dump_nova_service_list(services):
-            logging.info('Dumping nova service list')
-            for service in services:
-                logging.info("Host: {}; Binary: {}; "
-                             "Status: {}".format(service.host,
-                                                 service.binary,
-                                                 service.status))
+        # Remove any instances launched by previous tests
+        self.resource_cleanup()
         all_units = zaza.model.get_units('nova-compute',
                                          model_name=self.model_name)
 
@@ -150,8 +145,6 @@ class CloudActions(test_utils.OpenStackBaseTest):
         registered_nova_services = self.nova_client.services.list(
             host=service_name, binary='nova-compute')
 
-        logging.info("Checking pre-test conditions.")
-        dump_nova_service_list(registered_nova_services)
         service_count = len(registered_nova_services)
         if service_count < 1:
             self.fail("Unit '{}' has no nova-compute services registered in"
@@ -163,7 +156,6 @@ class CloudActions(test_utils.OpenStackBaseTest):
 
         # run action remove-from-cloud and wait for the results in
         # nova-cloud-controller
-        logging.info('Removing service from cloud')
         zaza.model.run_action_on_units([unit_to_remove.name],
                                        'remove-from-cloud',
                                        raise_on_failure=True)
@@ -176,7 +168,6 @@ class CloudActions(test_utils.OpenStackBaseTest):
             sleep(sleep_timeout)
             service_list = self.nova_client.services.list(
                 host=service_name, binary='nova-compute')
-            dump_nova_service_list(service_list)
             if len(service_list) == 0:
                 break
             sleep_timeout = 10
@@ -186,7 +177,6 @@ class CloudActions(test_utils.OpenStackBaseTest):
 
         # run action register-to-cloud to revert previous action
         # and wait for the results in nova-cloud-controller
-        logging.info('Registering to cloud')
         zaza.model.run_action_on_units([unit_to_remove.name],
                                        'register-to-cloud',
                                        raise_on_failure=True)
@@ -199,7 +189,6 @@ class CloudActions(test_utils.OpenStackBaseTest):
             sleep(sleep_timeout)
             service_list = self.nova_client.services.list(
                 host=service_name, binary='nova-compute')
-            dump_nova_service_list(service_list)
             if len(service_list) == 1:
                 break
             sleep_timeout = 10
