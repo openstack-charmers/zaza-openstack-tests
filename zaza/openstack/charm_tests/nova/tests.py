@@ -49,6 +49,10 @@ class CirrosGuestCreateTest(test_utils.OpenStackBaseTest):
         self.launch_guest(
             'cirros', instance_key=glance_setup.CIRROS_IMAGE_NAME)
 
+    def tearDown(self):
+        """Cleanup of VM guests."""
+        self.resource_cleanup()
+
 
 class LTSGuestCreateTest(test_utils.OpenStackBaseTest):
     """Tests to launch a LTS image."""
@@ -58,6 +62,10 @@ class LTSGuestCreateTest(test_utils.OpenStackBaseTest):
         self.RESOURCE_PREFIX = 'zaza-nova'
         self.launch_guest(
             'ubuntu', instance_key=glance_setup.LTS_IMAGE_NAME)
+
+    def tearDown(self):
+        """Cleanup of VM guests."""
+        self.resource_cleanup()
 
 
 class LTSGuestCreateVolumeBackedTest(test_utils.OpenStackBaseTest):
@@ -69,6 +77,10 @@ class LTSGuestCreateVolumeBackedTest(test_utils.OpenStackBaseTest):
         self.launch_guest(
             'volume-backed-ubuntu', instance_key=glance_setup.LTS_IMAGE_NAME,
             use_boot_volume=True)
+
+    def tearDown(self):
+        """Cleanup of VM guests."""
+        self.resource_cleanup()
 
 
 class CloudActions(test_utils.OpenStackBaseTest):
@@ -132,9 +144,12 @@ class CloudActions(test_utils.OpenStackBaseTest):
             self.assertEqual(service.status, 'enabled')
 
     def test_950_remove_from_cloud_actions(self):
-        """Test actions remove-from-cloud and register-to-cloud."""
-        # Remove any instances launched by previous tests
-        self.resource_cleanup()
+        """Test actions remove-from-cloud and register-to-cloud.
+
+        Note (martin-kalcok): This test requires that nova-compute unit is not
+        running any VMs. If there are any leftover VMs from previous tests,
+        action `remove-from-cloud` will fail.
+        """
         all_units = zaza.model.get_units('nova-compute',
                                          model_name=self.model_name)
 
