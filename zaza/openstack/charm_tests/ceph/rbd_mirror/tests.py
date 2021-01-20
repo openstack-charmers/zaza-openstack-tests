@@ -16,6 +16,9 @@
 import json
 import logging
 import re
+import time
+
+import cinderclient.exceptions as cinder_exceptions
 
 import zaza.openstack.charm_tests.test_utils as test_utils
 
@@ -39,16 +42,20 @@ class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
         cls.site_a_model = cls.site_b_model = zaza.model.get_juju_model()
         cls.site_b_app_suffix = '-b'
 
-    def run_status_action(self, application_name=None, model_name=None):
+    def run_status_action(self, application_name=None, model_name=None,
+                          pools=[]):
         """Run status action, decode and return response."""
+        action_params = {
+            'verbose': True,
+            'format': 'json',
+        }
+        if len(pools) > 0:
+            action_params['pools'] = ','.join(pools)
         result = zaza.model.run_action_on_leader(
             application_name or self.application_name,
             'status',
             model_name=model_name,
-            action_params={
-                'verbose': True,
-                'format': 'json',
-            })
+            action_params=action_params)
         return json.loads(result.results['output'])
 
     def get_pools(self):
@@ -71,7 +78,8 @@ class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
     def wait_for_mirror_state(self, state, application_name=None,
                               model_name=None,
                               check_entries_behind_master=False,
-                              require_images_in=[]):
+                              require_images_in=[],
+                              pools=[]):
         """Wait until all images reach requested state.
 
         This function runs the ``status`` action and examines the data it
@@ -90,6 +98,9 @@ class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
         :type check_entries_behind_master: bool
         :param require_images_in: List of pools to require images in
         :type require_images_in: list of str
+        :param pools: List of pools to run status on. If this is empty, the
+                      status action will run on all the pools.
+        :type pools: list of str
         :returns: True on success, never returns on failure
         """
         rep = re.compile(r'.*entries_behind_master=(\d+)')
@@ -97,7 +108,8 @@ class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
             try:
                 # encapsulate in try except to work around LP: #1820976
                 pool_status = self.run_status_action(
-                    application_name=application_name, model_name=model_name)
+                    application_name=application_name, model_name=model_name,
+                    pools=pools)
             except KeyError:
                 continue
             for pool, status in pool_status.items():
@@ -123,6 +135,119 @@ class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
             else:
                 # all images with state has expected state
                 return True
+
+    def get_cinder_rbd_mirroring_mode(self,
+                                      cinder_ceph_app_name='cinder-ceph'):
+        """Get the RBD mirroring mode for the Cinder Ceph pool.
+
+        :returns: A string representing the RBD mirroring mode. It can be
+                  either 'pool' or 'image'.
+        """
+        DEFAULT_RBD_MIRRORING_MODE = 'pool'
+
+        rbd_mirroring_mode_config = zaza.model.get_application_config(
+            cinder_ceph_app_name).get('rbd-mirroring-mode')
+        if rbd_mirroring_mode_config:
+            rbd_mirroring_mode = rbd_mirroring_mode_config.get(
+                'value', DEFAULT_RBD_MIRRORING_MODE).lower()
+        else:
+            rbd_mirroring_mode = DEFAULT_RBD_MIRRORING_MODE
+
+        return rbd_mirroring_mode
+
+    def create_cinder_volume(self, session, from_image=False):
+        """Create Cinder Volume from image.
+
+        :rtype: :class:`Volume`.
+        """
+        def get_glance_image(session):
+            glance = openstack.get_glance_session_client(session)
+            images = openstack.get_images_by_name(glance, CIRROS_IMAGE_NAME)
+            if images:
+                return images[0]
+            logging.info("Failed to find {} image, falling back to {}".format(
+                CIRROS_IMAGE_NAME,
+                LTS_IMAGE_NAME))
+            return openstack.get_images_by_name(glance, LTS_IMAGE_NAME)[0]
+
+        def create_volume_type(cinder):
+            try:
+                vol_type = cinder.volume_types.find(name='repl')
+            except cinder_exceptions.NotFound:
+                vol_type = cinder.volume_types.create('repl')
+                vol_type.set_keys(metadata={
+                    'volume_backend_name': 'cinder-ceph',
+                    'replication_enabled': '<is> True',
+                })
+            return vol_type
+
+        # NOTE(fnordahl): for some reason create volume from image often fails
+        # when run just after deployment is finished.  We should figure out
+        # why, resolve the underlying issue and then remove this.
+        #
+        # We do not use tenacity here as it will interfere with tenacity used
+        # in ``resource_reaches_status``
+        def create_volume(cinder, volume_params, retry=20):
+            if retry < 1:
+                return
+            volume = cinder.volumes.create(**volume_params)
+            try:
+                # Note(coreycb): stop_after_attempt is increased because using
+                # juju storage for ceph-osd backed by cinder on undercloud
+                # takes longer than the prior method of directory-backed OSD
+                # devices.
+                openstack.resource_reaches_status(
+                    cinder.volumes, volume.id, msg='volume',
+                    stop_after_attempt=20)
+                return volume
+            except AssertionError:
+                logging.info('retrying')
+                volume.delete()
+                return create_volume(cinder, volume_params, retry=retry - 1)
+
+        volume_params = {
+            'size': 8,
+            'name': 'zaza',
+        }
+        if from_image:
+            volume_params['imageRef'] = get_glance_image(session).id
+        cinder = openstack.get_cinder_session_client(session)
+        if self.get_cinder_rbd_mirroring_mode() == 'image':
+            volume_params['volume_type'] = create_volume_type(cinder).id
+
+        return create_volume(cinder, volume_params)
+
+    def failover_cinder_volume_host(self, cinder_client,
+                                    backend_name='cinder-ceph',
+                                    target_backend_id='ceph',
+                                    target_status='disabled',
+                                    target_replication_status='failed-over',
+                                    timeout=300):
+        """Failover Cinder volume host."""
+        host = 'cinder@{}'.format(backend_name)
+        logging.info(
+            'Failover Cinder host %s to backend_id %s',
+            host, target_backend_id)
+        cinder_client.services.failover_host(
+            host=host,
+            backend_id=target_backend_id)
+        start = time.time()
+        while True:
+            elapsed = time.time() - start
+            if elapsed > timeout:
+                raise cinder_exceptions.TimeoutException(
+                    obj=cinder_client.services,
+                    action='failover_host')
+            service = cinder_client.services.list(
+                host=host,
+                binary='cinder-volume')[0]
+            if (service.status == target_status and
+                    service.replication_status == target_replication_status):
+                break
+            time.sleep(5)
+        logging.info(
+            'Successfully failed-over Cinder host %s to backend_id %s',
+            host, target_backend_id)
 
 
 class CephRBDMirrorTest(CephRBDMirrorBase):
@@ -196,43 +321,7 @@ class CephRBDMirrorTest(CephRBDMirrorBase):
         test.
         """
         session = openstack.get_overcloud_keystone_session()
-        glance = openstack.get_glance_session_client(session)
-        cinder = openstack.get_cinder_session_client(session)
-
-        images = openstack.get_images_by_name(glance, CIRROS_IMAGE_NAME)
-        if images:
-            image = images[0]
-        else:
-            logging.info("Failed to find {} image, falling back to {}".format(
-                CIRROS_IMAGE_NAME,
-                LTS_IMAGE_NAME))
-            image = openstack.get_images_by_name(glance, LTS_IMAGE_NAME)[0]
-
-        # NOTE(fnordahl): for some reason create volume from image often fails
-        # when run just after deployment is finished.  We should figure out
-        # why, resolve the underlying issue and then remove this.
-        #
-        # We do not use tenacity here as it will interfere with tenacity used
-        # in ``resource_reaches_status``
-        def create_volume_from_image(cinder, image, retry=20):
-            if retry < 1:
-                return
-            volume = cinder.volumes.create(8, name='zaza', imageRef=image.id)
-            try:
-                # Note(coreycb): stop_after_attempt is increased because using
-                # juju storage for ceph-osd backed by cinder on undercloud
-                # takes longer than the prior method of directory-backed OSD
-                # devices.
-                openstack.resource_reaches_status(
-                    cinder.volumes, volume.id, msg='volume',
-                    stop_after_attempt=20)
-                return volume
-            except AssertionError:
-                logging.info('retrying')
-                volume.delete()
-                return create_volume_from_image(cinder, image, retry=retry - 1)
-        volume = create_volume_from_image(cinder, image)
-
+        volume = self.create_cinder_volume(session, from_image=True)
         site_a_hash = zaza.openstack.utilities.ceph.get_rbd_hash(
             zaza.model.get_lead_unit_name('ceph-mon',
                                           model_name=self.site_a_model),
@@ -258,85 +347,170 @@ class CephRBDMirrorTest(CephRBDMirrorBase):
 class CephRBDMirrorControlledFailoverTest(CephRBDMirrorBase):
     """Encapsulate ``ceph-rbd-mirror`` controlled failover tests."""
 
+    def cinder_fail_over_fall_back(self):
+        """Validate controlled fail over and fall back via the Cinder API."""
+        session = openstack.get_overcloud_keystone_session()
+        cinder = openstack.get_cinder_session_client(session)
+        volume = self.create_cinder_volume(session, from_image=True)
+        self.wait_for_mirror_state(
+            'up+replaying',
+            check_entries_behind_master=True,
+            application_name=self.application_name + self.site_b_app_suffix,
+            model_name=self.site_b_model,
+            pools=['cinder-ceph'])
+        self.failover_cinder_volume_host(
+            cinder_client=cinder)
+        self.assertEqual(cinder.volumes.get(volume.id).status, 'available')
+        self.failover_cinder_volume_host(
+            cinder_client=cinder,
+            target_backend_id='default',
+            target_status='enabled',
+            target_replication_status='enabled')
+        self.assertEqual(cinder.volumes.get(volume.id).status, 'available')
+
     def test_fail_over_fall_back(self):
         """Validate controlled fail over and fall back."""
         site_a_pools, site_b_pools = self.get_pools()
+        site_a_action_params = {}
+        site_b_action_params = {}
+        if self.get_cinder_rbd_mirroring_mode() == 'image':
+            site_a_pools.remove('cinder-ceph')
+            site_a_action_params['pools'] = ','.join(site_a_pools)
+            site_b_pools.remove('cinder-ceph')
+            site_b_action_params['pools'] = ','.join(site_b_pools)
         result = zaza.model.run_action_on_leader(
             'ceph-rbd-mirror',
             'demote',
             model_name=self.site_a_model,
-            action_params={})
+            action_params=site_a_action_params)
         logging.info(result.results)
         n_pools_demoted = len(result.results['output'].split('\n'))
         self.assertEqual(len(site_a_pools), n_pools_demoted)
-        self.wait_for_mirror_state('up+unknown', model_name=self.site_a_model)
+        self.wait_for_mirror_state(
+            'up+unknown',
+            model_name=self.site_a_model,
+            pools=site_a_pools)
         self.wait_for_mirror_state(
             'up+unknown',
             application_name=self.application_name + self.site_b_app_suffix,
-            model_name=self.site_b_model)
+            model_name=self.site_b_model,
+            pools=site_b_pools)
         result = zaza.model.run_action_on_leader(
             'ceph-rbd-mirror' + self.site_b_app_suffix,
             'promote',
             model_name=self.site_b_model,
-            action_params={})
+            action_params=site_b_action_params)
         logging.info(result.results)
         n_pools_promoted = len(result.results['output'].split('\n'))
         self.assertEqual(len(site_b_pools), n_pools_promoted)
         self.wait_for_mirror_state(
             'up+replaying',
-            model_name=self.site_a_model)
+            model_name=self.site_a_model,
+            pools=site_a_pools)
         self.wait_for_mirror_state(
             'up+stopped',
             application_name=self.application_name + self.site_b_app_suffix,
-            model_name=self.site_b_model)
+            model_name=self.site_b_model,
+            pools=site_b_pools)
         result = zaza.model.run_action_on_leader(
             'ceph-rbd-mirror' + self.site_b_app_suffix,
             'demote',
             model_name=self.site_b_model,
-            action_params={
-            })
+            action_params=site_b_action_params)
         logging.info(result.results)
         n_pools_demoted = len(result.results['output'].split('\n'))
         self.assertEqual(len(site_a_pools), n_pools_demoted)
         self.wait_for_mirror_state(
             'up+unknown',
-            model_name=self.site_a_model)
+            model_name=self.site_a_model,
+            pools=site_a_pools)
         self.wait_for_mirror_state(
             'up+unknown',
             application_name=self.application_name + self.site_b_app_suffix,
-            model_name=self.site_b_model)
+            model_name=self.site_b_model,
+            pools=site_b_pools)
         result = zaza.model.run_action_on_leader(
             'ceph-rbd-mirror',
             'promote',
             model_name=self.site_a_model,
-            action_params={
-            })
+            action_params=site_a_action_params)
         logging.info(result.results)
         n_pools_promoted = len(result.results['output'].split('\n'))
         self.assertEqual(len(site_b_pools), n_pools_promoted)
         self.wait_for_mirror_state(
             'up+stopped',
-            model_name=self.site_a_model)
+            model_name=self.site_a_model,
+            pools=site_a_pools)
+        action_params = {
+            'i-really-mean-it': True,
+        }
+        if self.get_cinder_rbd_mirroring_mode() == 'image':
+            action_params['pools'] = site_b_action_params['pools']
         result = zaza.model.run_action_on_leader(
             'ceph-rbd-mirror' + self.site_b_app_suffix,
             'resync-pools',
             model_name=self.site_b_model,
-            action_params={
-                'i-really-mean-it': True,
-            })
+            action_params=action_params)
         logging.info(result.results)
         self.wait_for_mirror_state(
             'up+replaying',
             application_name=self.application_name + self.site_b_app_suffix,
             model_name=self.site_b_model,
-            require_images_in=['cinder-ceph', 'glance'])
+            require_images_in=['cinder-ceph', 'glance'],
+            pools=site_a_pools)
+        if self.get_cinder_rbd_mirroring_mode() == 'image':
+            self.cinder_fail_over_fall_back()
 
 
 class CephRBDMirrorDisasterFailoverTest(CephRBDMirrorBase):
     """Encapsulate ``ceph-rbd-mirror`` destructive tests."""
 
+    def forced_failover_cinder_volume_host(self, cinder_client):
+        """Validate forced Cinder volume host fail over."""
+        def apply_cinder_workaround():
+            """Set minimal timeouts / retries to the Cinder Ceph backend.
+
+            This is needed because the failover via Cinder will try to do a
+            demotion of the site-a, and with the default timeouts / retries,
+            the operation takes an unreasonably amount of time.
+            """
+            cinder_configs = {
+                'rados_connect_timeout': '1',
+                'rados_connection_retries': '1',
+                'rados_connection_interval': '0',
+                'replication_connect_timeout': '1',
+            }
+            update_cinder_conf_cmd = (
+                "import configparser; "
+                "config = configparser.ConfigParser(); "
+                "config.read('/etc/cinder/cinder.conf'); "
+                "{}"
+                "f = open('/etc/cinder/cinder.conf', 'w'); "
+                "config.write(f); "
+                "f.close()")
+            cmd = ''
+            for config in cinder_configs:
+                cmd += "config.set('cinder-ceph', '{0}', '{1}'); ".format(
+                    config, cinder_configs[config])
+            cmd = update_cinder_conf_cmd.format(cmd)
+            zaza.model.run_on_leader(
+                'cinder-ceph',
+                'python3 -c "{}"; systemctl restart cinder-volume'.format(cmd))
+
+        apply_cinder_workaround()
+        self.failover_cinder_volume_host(cinder_client)
+
+        for volume in cinder_client.volumes.list():
+            self.assertEqual(volume.status, 'available')
+
     def test_kill_site_a_fail_over(self):
         """Validate fail over after uncontrolled shutdown of primary."""
+        action_params = {}
+        if self.get_cinder_rbd_mirroring_mode() == 'image':
+            _, site_b_pools = self.get_pools()
+            site_b_pools.remove('cinder-ceph')
+            action_params['pools'] = ','.join(site_b_pools)
+
         for application in 'ceph-rbd-mirror', 'ceph-mon', 'ceph-osd':
             zaza.model.remove_application(
                 application,
@@ -346,14 +520,16 @@ class CephRBDMirrorDisasterFailoverTest(CephRBDMirrorBase):
             'ceph-rbd-mirror' + self.site_b_app_suffix,
             'promote',
             model_name=self.site_b_model,
-            action_params={
-            })
+            action_params=action_params)
         self.assertEqual(result.status, 'failed')
+        action_params['force'] = True
         result = zaza.model.run_action_on_leader(
             'ceph-rbd-mirror' + self.site_b_app_suffix,
             'promote',
             model_name=self.site_b_model,
-            action_params={
-                'force': True,
-            })
+            action_params=action_params)
         self.assertEqual(result.status, 'completed')
+        if self.get_cinder_rbd_mirroring_mode() == 'image':
+            session = openstack.get_overcloud_keystone_session()
+            cinder = openstack.get_cinder_session_client(session)
+            self.forced_failover_cinder_volume_host(cinder)
