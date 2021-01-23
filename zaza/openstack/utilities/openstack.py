@@ -69,6 +69,7 @@ from neutronclient.common import exceptions as neutronexceptions
 from octaviaclient.api.v2 import octavia as octaviaclient
 from swiftclient import client as swiftclient
 
+from juju.errors import JujuError
 
 import zaza
 
@@ -181,10 +182,68 @@ WORKLOAD_STATUS_EXCEPTIONS = {
              'ceilometer and gnocchi')}}
 
 # For vault TLS certificates
+LOCAL_CERT_DIR = "tests"
 KEYSTONE_CACERT = "keystone_juju_ca_cert.crt"
 KEYSTONE_REMOTE_CACERT = (
     "/usr/local/share/ca-certificates/{}".format(KEYSTONE_CACERT))
-KEYSTONE_LOCAL_CACERT = ("tests/{}".format(KEYSTONE_CACERT))
+KEYSTONE_LOCAL_CACERT = ("{}/{}".format(LOCAL_CERT_DIR, KEYSTONE_CACERT))
+
+VAULT_CACERT = "vault_juju_ca_cert.crt"
+VAULT_REMOTE_CACERT = (
+    "/usr/local/share/ca-certificates/{}".format(VAULT_CACERT))
+VAULT_LOCAL_CACERT = ("{}/{}".format(LOCAL_CERT_DIR, VAULT_CACERT))
+
+REMOTE_CERTIFICATES = [VAULT_REMOTE_CACERT, KEYSTONE_REMOTE_CACERT]
+LOCAL_CERTIFICATES = [VAULT_LOCAL_CACERT, KEYSTONE_LOCAL_CACERT]
+
+
+async def async_get_cert_file_name(app, cert_files=None, block=True,
+                                   model_name=None, timeout=2700):
+    """Get the name of the CA cert file thats on all units of an application.
+
+    :param app: Name of application
+    :type capp: str
+    :param cert_files: List of cert files to search for.
+    :type cert_files: List[str]
+    :param block: Whether to block until a consistent cert file is found.
+    :type block: bool
+    :param model_name: Name of model to run check in
+    :type model_name: str
+    :param timeout: Time to wait for consistent file
+    :type timeout: int
+    :returns: Credentials dictionary
+    :rtype: dict
+    """
+    async def _check_for_file(model, cert_files):
+        units = model.applications[app].units
+        results = {u.entity_id: [] for u in units}
+        for unit in units:
+            try:
+                for cf in cert_files:
+                    output = await unit.run('test -e "{}"; echo $?'.format(cf))
+                    contents = output.data.get('results')['Stdout']
+                    if "0" in contents:
+                        results[unit.entity_id].append(cf)
+            except JujuError:
+                pass
+        for cert_file in cert_files:
+            # Check that the certificate file exists on all the units.
+            if all(cert_file in files for files in results.values()):
+                return cert_file
+        else:
+            return None
+
+    if not cert_files:
+        cert_files = REMOTE_CERTIFICATES
+    cert_file = None
+    async with zaza.model.run_in_model(model_name) as model:
+        if block:
+            await zaza.model.async_block_until(
+                lambda: _check_for_file(model, cert_files), timeout=timeout)
+        cert_file = await _check_for_file(model, cert_files)
+    return cert_file
+
+get_cert_file_name = zaza.model.sync_wrapper(async_get_cert_file_name)
 
 
 def get_cacert():
@@ -193,8 +252,9 @@ def get_cacert():
     :returns: Path to CA Certificate bundle or None.
     :rtype: Optional[str]
     """
-    if os.path.exists(KEYSTONE_LOCAL_CACERT):
-        return KEYSTONE_LOCAL_CACERT
+    for _cert in LOCAL_CERTIFICATES:
+        if os.path.exists(_cert):
+            return _cert
 
 
 # OpenStack Client helpers
@@ -1951,24 +2011,28 @@ def get_overcloud_auth(address=None, model_name=None):
             'API_VERSION': 3,
         }
     if tls_rid:
+        cert_file = get_cert_file_name('keystone', model_name=model_name)
         unit = model.get_first_unit_name('keystone', model_name=model_name)
 
         # ensure that the path to put the local cacert in actually exists.  The
         # assumption that 'tests/' exists for, say, mojo is false.
         # Needed due to:
         # commit: 537473ad3addeaa3d1e4e2d0fd556aeaa4018eb2
-        _dir = os.path.dirname(KEYSTONE_LOCAL_CACERT)
+        _dir = os.path.dirname(cert_file)
         if not os.path.exists(_dir):
             os.makedirs(_dir)
 
+        _local_cert_file = "{}/{}".format(
+            LOCAL_CERT_DIR,
+            os.path.basename(cert_file))
         model.scp_from_unit(
             unit,
-            KEYSTONE_REMOTE_CACERT,
-            KEYSTONE_LOCAL_CACERT)
+            cert_file,
+            _local_cert_file)
 
-        if os.path.exists(KEYSTONE_LOCAL_CACERT):
-            os.chmod(KEYSTONE_LOCAL_CACERT, 0o644)
-            auth_settings['OS_CACERT'] = KEYSTONE_LOCAL_CACERT
+        if os.path.exists(_local_cert_file):
+            os.chmod(_local_cert_file, 0o644)
+            auth_settings['OS_CACERT'] = _local_cert_file
 
     return auth_settings
 
