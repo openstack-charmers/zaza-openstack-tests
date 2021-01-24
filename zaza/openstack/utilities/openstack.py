@@ -2053,7 +2053,7 @@ def get_overcloud_auth(address=None, model_name=None):
             'API_VERSION': 3,
         }
     local_ca_cert = get_remote_ca_cert_file('keystone', model_name=model_name)
-    if ca_cert:
+    if local_ca_cert:
         auth_settings['OS_CACERT'] = local_ca_cert
 
     return auth_settings
