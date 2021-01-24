@@ -222,9 +222,7 @@ def validate_ca(cacertificate, application="keystone", port=5000):
     :returns: None
     :rtype: None
     """
-    cert_file = zaza.openstack.utilities.openstack.get_cert_file_name(
-        application)
-    zaza.model.block_until_file_has_contents(
+    zaza.openstack.utilities.openstack.block_until_ca_exists(
         application,
         cert_file,
         cacertificate.decode().strip())
@@ -238,3 +236,6 @@ def validate_ca(cacertificate, application="keystone", port=5000):
         fp.write(cacertificate.decode())
         fp.flush()
         requests.get('https://{}:{}'.format(ip, str(port)), verify=fp.name)
+
+def get_cert():
+    print(zaza.openstack.utilities.openstack.get_remote_ca_cert_file('masakari'))
