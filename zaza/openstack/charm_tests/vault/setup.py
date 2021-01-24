@@ -235,6 +235,3 @@ def validate_ca(cacertificate, application="keystone", port=5000):
         fp.write(cacertificate.decode())
         fp.flush()
         requests.get('https://{}:{}'.format(ip, str(port)), verify=fp.name)
-
-def get_cert():
-    print(zaza.openstack.utilities.openstack.get_remote_ca_cert_file('masakari'))
