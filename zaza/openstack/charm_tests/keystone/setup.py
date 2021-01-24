@@ -43,7 +43,6 @@ def wait_for_cacert(model_name=None):
     logging.info("Waiting for cacert")
     zaza.openstack.utilities.openstack.block_until_ca_exists(
         'keystone',
-        cert_file,
         'CERTIFICATE',
         model_name=model_name)
     zaza.model.block_until_all_units_idle(model_name=model_name)

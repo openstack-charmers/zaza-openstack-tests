@@ -224,7 +224,6 @@ def validate_ca(cacertificate, application="keystone", port=5000):
     """
     zaza.openstack.utilities.openstack.block_until_ca_exists(
         application,
-        cert_file,
         cacertificate.decode().strip())
     vip = (zaza.model.get_application_config(application)
            .get("vip").get("value"))
