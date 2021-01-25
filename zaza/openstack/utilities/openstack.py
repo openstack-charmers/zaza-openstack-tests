@@ -199,7 +199,7 @@ async def async_block_until_ca_exists(application_name, ca_cert,
 
     :param application_name: Name of application to check
     :type application_name: str
-    :param ca_cert: The certificate to look for.
+    :param ca_cert: The certificate content.
     :type ca_cert: str
     :param model_name: Name of model to query.
     :type model_name: str
@@ -220,7 +220,7 @@ async def async_block_until_ca_exists(application_name, ca_cert,
                 # target file not existing error. For now just assume the
                 # latter.
                 except JujuError:
-                    continue
+                    break
             else:
                 # The CA was found in `ca_file` on all units.
                 return True
