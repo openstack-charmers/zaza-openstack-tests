@@ -27,6 +27,7 @@ import logging
 import os
 import paramiko
 import re
+import shutil
 import six
 import subprocess
 import sys
@@ -69,6 +70,7 @@ from neutronclient.common import exceptions as neutronexceptions
 from octaviaclient.api.v2 import octavia as octaviaclient
 from swiftclient import client as swiftclient
 
+from juju.errors import JujuError
 
 import zaza
 
@@ -181,18 +183,70 @@ WORKLOAD_STATUS_EXCEPTIONS = {
              'ceilometer and gnocchi')}}
 
 # For vault TLS certificates
+CACERT_FILENAME_FORMAT = "{}_juju_ca_cert.crt"
+CERT_PROVIDERS = ['vault']
+LOCAL_CERT_DIR = "tests"
+REMOTE_CERT_DIR = "/usr/local/share/ca-certificates"
 KEYSTONE_CACERT = "keystone_juju_ca_cert.crt"
 KEYSTONE_REMOTE_CACERT = (
     "/usr/local/share/ca-certificates/{}".format(KEYSTONE_CACERT))
-KEYSTONE_LOCAL_CACERT = ("tests/{}".format(KEYSTONE_CACERT))
+KEYSTONE_LOCAL_CACERT = ("{}/{}".format(LOCAL_CERT_DIR, KEYSTONE_CACERT))
+
+
+async def async_block_until_ca_exists(application_name, ca_cert,
+                                      model_name=None, timeout=2700):
+    """Block until a CA cert is on all units of application_name.
+
+    :param application_name: Name of application to check
+    :type application_name: str
+    :param ca_cert: The certificate content.
+    :type ca_cert: str
+    :param model_name: Name of model to query.
+    :type model_name: str
+    :param timeout: How long in seconds to wait
+    :type timeout: int
+    """
+    async def _check_ca_present(model, ca_files):
+        units = model.applications[application_name].units
+        for ca_file in ca_files:
+            for unit in units:
+                try:
+                    output = await unit.run('cat {}'.format(ca_file))
+                    contents = output.data.get('results').get('Stdout', '')
+                    if ca_cert not in contents:
+                        break
+                # libjuju throws a generic error for connection failure. So we
+                # cannot differentiate between a connectivity issue and a
+                # target file not existing error. For now just assume the
+                # latter.
+                except JujuError:
+                    break
+            else:
+                # The CA was found in `ca_file` on all units.
+                return True
+        else:
+            return False
+    ca_files = await _async_get_remote_ca_cert_file_candidates(
+        application_name,
+        model_name=model_name)
+    async with zaza.model.run_in_model(model_name) as model:
+        await zaza.model.async_block_until(
+            lambda: _check_ca_present(model, ca_files), timeout=timeout)
+
+block_until_ca_exists = zaza.model.sync_wrapper(async_block_until_ca_exists)
 
 
 def get_cacert():
     """Return path to CA Certificate bundle for verification during test.
 
     :returns: Path to CA Certificate bundle or None.
-    :rtype: Optional[str]
+    :rtype: Union[str, None]
     """
+    for _provider in CERT_PROVIDERS:
+        _cert = LOCAL_CERT_DIR + '/' + CACERT_FILENAME_FORMAT.format(
+            _provider)
+        if os.path.exists(_cert):
+            return _cert
     if os.path.exists(KEYSTONE_LOCAL_CACERT):
         return KEYSTONE_LOCAL_CACERT
 
@@ -1950,27 +2004,81 @@ def get_overcloud_auth(address=None, model_name=None):
             'OS_PROJECT_DOMAIN_NAME': 'admin_domain',
             'API_VERSION': 3,
         }
-    if tls_rid:
-        unit = model.get_first_unit_name('keystone', model_name=model_name)
-
-        # ensure that the path to put the local cacert in actually exists.  The
-        # assumption that 'tests/' exists for, say, mojo is false.
-        # Needed due to:
-        # commit: 537473ad3addeaa3d1e4e2d0fd556aeaa4018eb2
-        _dir = os.path.dirname(KEYSTONE_LOCAL_CACERT)
-        if not os.path.exists(_dir):
-            os.makedirs(_dir)
-
-        model.scp_from_unit(
-            unit,
-            KEYSTONE_REMOTE_CACERT,
-            KEYSTONE_LOCAL_CACERT)
-
-        if os.path.exists(KEYSTONE_LOCAL_CACERT):
-            os.chmod(KEYSTONE_LOCAL_CACERT, 0o644)
-            auth_settings['OS_CACERT'] = KEYSTONE_LOCAL_CACERT
+    local_ca_cert = get_remote_ca_cert_file('keystone', model_name=model_name)
+    if local_ca_cert:
+        auth_settings['OS_CACERT'] = local_ca_cert
 
     return auth_settings
+
+
+async def _async_get_remote_ca_cert_file_candidates(application,
+                                                    model_name=None):
+    """Return a list of possible remote CA file names.
+
+    :param application: Name of application to examine.
+    :type application: str
+    :param model_name: Name of model to query.
+    :type model_name: str
+    :returns: List of paths to possible ca files.
+    :rtype: List[str]
+    """
+    cert_files = []
+    for _provider in CERT_PROVIDERS:
+        tls_rid = await model.async_get_relation_id(
+            application,
+            _provider,
+            model_name=model_name,
+            remote_interface_name='certificates')
+        if tls_rid:
+            cert_files.append(
+                REMOTE_CERT_DIR + '/' + CACERT_FILENAME_FORMAT.format(
+                    _provider))
+    cert_files.append(KEYSTONE_REMOTE_CACERT)
+    return cert_files
+
+_get_remote_ca_cert_file_candidates = zaza.model.sync_wrapper(
+    _async_get_remote_ca_cert_file_candidates)
+
+
+def get_remote_ca_cert_file(application, model_name=None):
+    """Collect CA certificate from application.
+
+    :param application: Name of application to collect file from.
+    :type application: str
+    :param model_name: Name of model to query.
+    :type model_name: str
+    :returns: Path to cafile
+    :rtype: str
+    """
+    unit = model.get_first_unit_name(application, model_name=model_name)
+    local_cert_file = None
+    cert_files = _get_remote_ca_cert_file_candidates(
+        application,
+        model_name=model_name)
+    for cert_file in cert_files:
+        _local_cert_file = "{}/{}".format(
+            LOCAL_CERT_DIR,
+            os.path.basename(cert_file))
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as _tmp_ca:
+            try:
+                model.scp_from_unit(
+                    unit,
+                    cert_file,
+                    _tmp_ca.name)
+            except JujuError:
+                continue
+            # ensure that the path to put the local cacert in actually exists.
+            # The assumption that 'tests/' exists for, say, mojo is false.
+            # Needed due to:
+            # commit: 537473ad3addeaa3d1e4e2d0fd556aeaa4018eb2
+            _dir = os.path.dirname(_local_cert_file)
+            if not os.path.exists(_dir):
+                os.makedirs(_dir)
+            shutil.move(_tmp_ca.name, _local_cert_file)
+            os.chmod(_local_cert_file, 0o644)
+            local_cert_file = _local_cert_file
+            break
+    return local_cert_file
 
 
 def get_urllib_opener():
