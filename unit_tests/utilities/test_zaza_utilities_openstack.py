@@ -1392,7 +1392,7 @@ class TestAsyncOpenstackUtils(ut_utils.AioTestCase):
 
         class AsyncContextManagerMock(test_mock):
             async def __aenter__(self):
-                yield model_mock
+                return self
 
             async def __aexit__(self, *args):
                 pass
