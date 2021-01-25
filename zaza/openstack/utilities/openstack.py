@@ -222,6 +222,7 @@ async def async_block_until_ca_exists(application_name, ca_cert,
                 except JujuError:
                     continue
             else:
+                # The CA was found in `ca_file` on all units.
                 return True
         else:
             return False
@@ -2012,6 +2013,15 @@ def get_overcloud_auth(address=None, model_name=None):
 
 async def _async_get_remote_ca_cert_file_candidates(application,
                                                     model_name=None):
+    """Return a list of possible remote CA file names.
+
+    :param application: Name of application to examine.
+    :type application: str
+    :param model_name: Name of model to query.
+    :type model_name: str
+    :returns: List of paths to possible ca files.
+    :rtype: List[str]
+    """
     cert_files = []
     for _provider in CERT_PROVIDERS:
         tls_rid = await model.async_get_relation_id(
@@ -2023,7 +2033,7 @@ async def _async_get_remote_ca_cert_file_candidates(application,
             cert_files.append(
                 REMOTE_CERT_DIR + '/' + CACERT_FILENAME_FORMAT.format(
                     _provider))
-    cert_files.append(KEYSTONE_LOCAL_CACERT)
+    cert_files.append(KEYSTONE_REMOTE_CACERT)
     return cert_files
 
 _get_remote_ca_cert_file_candidates = zaza.model.sync_wrapper(
