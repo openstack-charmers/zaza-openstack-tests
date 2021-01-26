@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Code for configureing nova."""
+"""Code for configuring nova."""
+
+import tenacity
 
 import zaza.openstack.utilities.openstack as openstack_utils
 from zaza.openstack.utilities import (
@@ -21,6 +23,9 @@ from zaza.openstack.utilities import (
 import zaza.openstack.charm_tests.nova.utils as nova_utils
 
 
+@tenacity.retry(stop=tenacity.stop_after_attempt(3),
+                wait=tenacity.wait_exponential(
+                multiplier=1, min=2, max=10))
 def create_flavors(nova_client=None):
     """Create basic flavors.
 
@@ -43,6 +48,9 @@ def create_flavors(nova_client=None):
                 flavorid=nova_utils.FLAVORS[flavor]['flavorid'])
 
 
+@tenacity.retry(stop=tenacity.stop_after_attempt(3),
+                wait=tenacity.wait_exponential(
+                multiplier=1, min=2, max=10))
 def manage_ssh_key(nova_client=None):
     """Create basic flavors.
 

@@ -41,9 +41,8 @@ def wait_for_cacert(model_name=None):
     :type model_name: str
     """
     logging.info("Waiting for cacert")
-    zaza.model.block_until_file_has_contents(
+    zaza.openstack.utilities.openstack.block_until_ca_exists(
         'keystone',
-        openstack_utils.KEYSTONE_REMOTE_CACERT,
         'CERTIFICATE',
         model_name=model_name)
     zaza.model.block_until_all_units_idle(model_name=model_name)

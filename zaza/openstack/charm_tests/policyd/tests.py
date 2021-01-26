@@ -337,8 +337,7 @@ class BasePolicydSpecialization(PolicydTest,
         logging.info('Authentication for {} on keystone IP {}'
                      .format(openrc['OS_USERNAME'], ip))
         if self.tls_rid:
-            openrc['OS_CACERT'] = \
-                openstack_utils.KEYSTONE_LOCAL_CACERT
+            openrc['OS_CACERT'] = openstack_utils.get_cacert()
             openrc['OS_AUTH_URL'] = (
                 openrc['OS_AUTH_URL'].replace('http', 'https'))
         logging.info('keystone IP {}'.format(ip))

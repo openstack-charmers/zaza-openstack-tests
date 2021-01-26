@@ -125,8 +125,8 @@ class HaclusterScalebackTest(HaclusterBaseTest):
 
         logging.info('Waiting for model to settle')
         zaza.model.block_until_unit_wl_status(other_hacluster_unit, 'active')
-        # NOTE(lourot): the principle application remains blocked after scaling
-        # back up until lp:1400481 is solved.
-        zaza.model.block_until_unit_wl_status(other_principle_unit, 'blocked')
+        # NOTE(lourot): the principle application sometimes remain blocked
+        # after scaling back up until lp:1400481 is solved.
+        # zaza.model.block_until_unit_wl_status(other_principle_unit, 'active')
         zaza.model.block_until_all_units_idle()
         logging.debug('OK')
