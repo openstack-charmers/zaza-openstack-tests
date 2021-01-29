@@ -2061,6 +2061,19 @@ def get_remote_ca_cert_file(application, model_name=None):
             os.path.basename(cert_file))
         with tempfile.NamedTemporaryFile(mode="w", delete=False) as _tmp_ca:
             try:
+                # This check before scp is not strictly needed but without it
+                # scp errors are outputed and it wrongly appears to be an
+                # error.
+                output = model.run_on_unit(
+                    unit,
+                    "ls -l {}".format(cert_file),
+                    model_name=model_name)
+                if output.get("Code", "0") != "0":
+                    logging.debug(
+                        'File {} not found on {}. Trying next cert.'.format(
+                            cert_file,
+                            unit))
+                    continue
                 model.scp_from_unit(
                     unit,
                     cert_file,
