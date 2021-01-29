@@ -143,6 +143,13 @@ class ChassisCharmOperationTest(BaseCharmOperationTest):
 class OVSOVNMigrationTest(test_utils.BaseCharmTest):
     """OVS to OVN migration tests."""
 
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for OVN migration tests."""
+        super(OVSOVNMigrationTest, cls).setUpClass()
+        cls.current_release = openstack_utils.get_os_release(
+            openstack_utils.get_current_os_release_pair())
+
     def setUp(self):
         """Perform migration steps prior to validation."""
         super(OVSOVNMigrationTest, self).setUp()
@@ -410,3 +417,17 @@ class OVSOVNMigrationTest(test_utils.BaseCharmTest):
         zaza.model.wait_for_agent_status()
         zaza.model.wait_for_application_states(
             states=self.target_deploy_status)
+        # Workaround for our old friend LP: #1852221 which hit us again on
+        # Groovy. We make the os_release check explicit so that we can
+        # re-evaluate the need for the workaround at the next release.
+        if self.current_release == openstack_utils.get_os_release(
+                'groovy_victoria'):
+            try:
+                for application in ('ovn-chassis', 'ovn-dedicated-chassis'):
+                    for unit in zaza.model.get_units(application):
+                        zaza.model.run_on_unit(
+                            unit.entity_id,
+                            'systemctl restart ovs-vswitchd')
+            except KeyError:
+                # One of the applications is not in the model, which is fine
+                pass
