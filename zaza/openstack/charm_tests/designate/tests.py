@@ -23,7 +23,7 @@ import designateclient.v1.records as records
 import designateclient.v1.servers as servers
 
 import zaza.model
-import zaza.openstack.utilities.juju as zaza_juju
+import zaza.utilities.juju as juju_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.designate.utils as designate_utils
@@ -170,7 +170,7 @@ class DesignateAPITests(BaseDesignateTest):
         reraise=True
     )
     def _wait_to_resolve_test_record(self):
-        dns_ip = zaza_juju.get_relation_from_unit(
+        dns_ip = juju_utils.get_relation_from_unit(
             'designate/0',
             'designate-bind/0',
             'dns-backend'
