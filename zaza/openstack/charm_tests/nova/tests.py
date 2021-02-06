@@ -178,6 +178,52 @@ class NovaComputeActionTest(test_utils.OpenStackBaseTest):
                     "The action failed: {}".format(action.data["message"]))
 
 
+class NovaCloudControllerActionTest(test_utils.OpenStackBaseTest):
+    """Run nova-cloud-controller specific tests.
+
+    Add this test class for new nova-cloud-controller action
+    to avoid breaking older version.
+    """
+
+    def test_sync_compute_az_action(self):
+        """Test sync-compute-availability-zones action."""
+        juju_units_az_map = {}
+        for unit in zaza.model.get_units('nova-compute',
+                                         model_name=self.model_name):
+            result = zaza.model.run_on_unit(unit.name,
+                                            'echo $JUJU_AVAILABILITY_ZONE',
+                                            model_name=self.model_name,
+                                            timeout=60)
+            self.assertEqual(int(result['Code']), 0)
+            juju_units_az_map[unit.public_address] = result['Stdout'].strip()
+            continue
+
+        session = openstack_utils.get_overcloud_keystone_session()
+        nova = openstack_utils.get_nova_session_client(session)
+        expected_output = ''
+        for hypervisor in nova.hypervisors.list():
+            az = juju_units_az_map.get(hypervisor.host_ip, None)
+            expected_output += ('Hypervisor {} added to '
+                                'availability zone {}\n'.format(
+                                    hypervisor.hypervisor_hostname, az))
+
+        result = zaza.model.run_action_on_leader(
+            'nova-cloud-controller',
+            'sync-compute-availability-zones',
+            model_name=self.model_name)
+        self.assertEqual(result.results['output'], expected_output)
+
+        unique_az_list = list(set(juju_units_az_map.values()))
+        aggregates = nova.aggregates.list()
+        self.assertEqual(len(aggregates), len(unique_az_list))
+        for unit_address in juju_units_az_map:
+            az = juju_units_az_map[unit_address]
+            aggregate = nova.aggregates.find(
+                name='{}_az'.format(az), availability_zone=az)
+            hypervisor = nova.hypervisors.find(host_ip=unit_address)
+            self.assertIn(hypervisor.hypervisor_hostname, aggregate.hosts)
+
+
 class NovaCloudController(test_utils.OpenStackBaseTest):
     """Run nova-cloud-controller specific tests."""
 
