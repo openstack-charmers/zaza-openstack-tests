@@ -753,13 +753,19 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
         logging.info("Scale in test: remove leader")
         leader, nons = self.get_leaders_and_non_leaders()
         leader_unit = zaza.model.get_unit_from_name(leader)
-        zaza.model.destroy_unit(self.application_name, leader)
 
-        logging.info("Wait until unit is in waiting state ...")
-        zaza.model.block_until_unit_wl_status(nons[0], "waiting")
-
+        # Wait until we are idle in the hopes clients are not running
+        # update-status hooks
         logging.info("Wait till model is idle ...")
         zaza.model.block_until_all_units_idle()
+        zaza.model.destroy_unit(self.application_name, leader)
+
+        logging.info("Wait until all only 2 units ...")
+        zaza.model.block_until_unit_count(self.application, 2)
+
+        logging.info("Wait until all units are cluster incomplete ...")
+        zaza.model.block_until_wl_status_info_starts_with(
+            self.application, "'cluster' incomplete")
 
         logging.info(
             "Removing old unit from cluster: {} "
@@ -786,6 +792,9 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
         logging.info("Adding unit after removed unit ...")
         zaza.model.add_unit(self.application_name)
 
+        logging.info("Wait until 3 units ...")
+        zaza.model.block_until_unit_count(self.application, 3)
+
         logging.info("Wait for application states ...")
         zaza.model.wait_for_application_states(states=self.states)
 
@@ -801,6 +810,9 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
         logging.info("Adding unit after full cluster ...")
         zaza.model.add_unit(self.application_name)
 
+        logging.info("Wait until 4 units ...")
+        zaza.model.block_until_unit_count(self.application, 4)
+
         logging.info("Wait for application states ...")
         zaza.model.wait_for_application_states(states=self.states)
 
@@ -810,17 +822,21 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
         We start with a four node full cluster, remove one, down to a three
         node full cluster.
         """
-        logging.info("Wait till model is idle ...")
-        zaza.model.block_until_all_units_idle()
-
         leader, nons = self.get_leaders_and_non_leaders()
         non_leader_unit = zaza.model.get_unit_from_name(nons[0])
-        zaza.model.destroy_unit(self.application_name, nons[0])
 
+        # Wait until we are idle in the hopes clients are not running
+        # update-status hooks
         logging.info("Wait till model is idle ...")
         zaza.model.block_until_all_units_idle()
 
+        zaza.model.destroy_unit(self.application_name, nons[0])
+
         logging.info("Scale in test: back down to three")
+        logging.info("Wait until 3 units ...")
+        zaza.model.block_until_unit_count(self.application, 3)
+
+        logging.info("Wait for status ready ...")
         zaza.model.wait_for_application_states(states=self.states)
 
         logging.info(
