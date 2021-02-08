@@ -155,6 +155,29 @@ class NovaCompute(test_utils.OpenStackBaseTest):
             self.assertFalse(int(run['Code']) == 0)
 
 
+class NovaComputeActionTest(test_utils.OpenStackBaseTest):
+    """Run nova-compute specific tests.
+
+    Add this test class for new nova-compute action
+    to avoid breaking older version
+    """
+
+    def test_virsh_audit_action(self):
+        """Test virsh-audit action."""
+        for unit in zaza.model.get_units('nova-compute',
+                                         model_name=self.model_name):
+            logging.info('Running `virsh-audit` action'
+                         ' on  unit {}'.format(unit.entity_id))
+            action = zaza.model.run_action(
+                unit.entity_id,
+                'virsh-audit',
+                model_name=self.model_name,
+                action_params={})
+            if "failed" in action.data["status"]:
+                raise Exception(
+                    "The action failed: {}".format(action.data["message"]))
+
+
 class NovaCloudController(test_utils.OpenStackBaseTest):
     """Run nova-cloud-controller specific tests."""
 
@@ -472,17 +495,24 @@ class SecurityTests(test_utils.OpenStackBaseTest):
         # Changes fixing the below expected failures will be made following
         # this initial work to get validation in. There will be bugs targeted
         # to each one and resolved independently where possible.
-
         expected_failures = [
-            'is-volume-encryption-enabled',
-            'validate-uses-tls-for-glance',
-            'validate-uses-tls-for-keystone',
         ]
         expected_passes = [
             'validate-file-ownership',
             'validate-file-permissions',
             'validate-uses-keystone',
         ]
+        tls_checks = [
+            'validate-uses-tls-for-glance',
+            'validate-uses-tls-for-keystone',
+        ]
+        if zaza.model.get_relation_id(
+                'nova-cloud-controller',
+                'vault',
+                remote_interface_name='certificates'):
+            expected_passes.extend(tls_checks)
+        else:
+            expected_failures.extend(tls_checks)
 
         for unit in zaza.model.get_units(self.application_name,
                                          model_name=self.model_name):
@@ -496,4 +526,4 @@ class SecurityTests(test_utils.OpenStackBaseTest):
                     action_params={}),
                 expected_passes,
                 expected_failures,
-                expected_to_pass=False)
+                expected_to_pass=not len(expected_failures))

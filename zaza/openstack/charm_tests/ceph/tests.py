@@ -33,7 +33,7 @@ import zaza.model as zaza_model
 import zaza.openstack.utilities.ceph as zaza_ceph
 import zaza.openstack.utilities.exceptions as zaza_exceptions
 import zaza.openstack.utilities.generic as zaza_utils
-import zaza.openstack.utilities.juju as zaza_juju
+import zaza.utilities.juju as juju_utils
 import zaza.openstack.utilities.openstack as zaza_openstack
 
 
@@ -124,7 +124,7 @@ class CephRelationTest(test_utils.OpenStackBaseTest):
         relation_name = 'osd'
         remote_unit = zaza_model.get_unit_from_name(remote_unit_name)
         remote_ip = remote_unit.public_address
-        relation = zaza_juju.get_relation_from_unit(
+        relation = juju_utils.get_relation_from_unit(
             unit_name,
             remote_unit_name,
             relation_name
@@ -153,7 +153,7 @@ class CephRelationTest(test_utils.OpenStackBaseTest):
             'ceph-public-address': remote_ip,
             'fsid': fsid,
         }
-        relation = zaza_juju.get_relation_from_unit(
+        relation = juju_utils.get_relation_from_unit(
             unit_name,
             remote_unit_name,
             relation_name
@@ -881,9 +881,13 @@ class BlueStoreCompressionCharmOperation(test_utils.BaseCharmTest):
     def setUpClass(cls):
         """Perform class one time initialization."""
         super(BlueStoreCompressionCharmOperation, cls).setUpClass()
+        release_application = 'keystone'
+        try:
+            zaza_model.get_application(release_application)
+        except KeyError:
+            release_application = 'ceph-mon'
         cls.current_release = zaza_openstack.get_os_release(
-            zaza_openstack.get_current_os_release_pair(
-                application='ceph-mon'))
+            application=release_application)
         cls.bionic_rocky = zaza_openstack.get_os_release('bionic_rocky')
 
     def setUp(self):
@@ -976,7 +980,7 @@ class BlueStoreCompressionCharmOperation(test_utils.BaseCharmTest):
         ceph_pools_detail = zaza_ceph.get_ceph_pool_details(
             model_name=self.model_name)
         logging.debug('AFTER: {}'.format(ceph_pools_detail))
-        logging.debug(zaza_juju.get_relation_from_unit(
+        logging.debug(juju_utils.get_relation_from_unit(
             'ceph-mon', self.application_name, None,
             model_name=self.model_name))
         logging.info('Checking Ceph pool compression_mode after restoring '

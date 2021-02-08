@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
 import mock
 import sys
 import unittest
@@ -139,28 +138,7 @@ class Test_ParallelSeriesUpgradeSync(ut_utils.BaseTestCase):
         self.assertEqual(expected, config)
 
 
-class AioTestCase(ut_utils.BaseTestCase):
-    def __init__(self, methodName='runTest', loop=None):
-        self.loop = loop or asyncio.get_event_loop()
-        self._function_cache = {}
-        super(AioTestCase, self).__init__(methodName=methodName)
-
-    def coroutine_function_decorator(self, func):
-        def wrapper(*args, **kw):
-            return self.loop.run_until_complete(func(*args, **kw))
-        return wrapper
-
-    def __getattribute__(self, item):
-        attr = object.__getattribute__(self, item)
-        if asyncio.iscoroutinefunction(attr) and item.startswith('test_'):
-            if item not in self._function_cache:
-                self._function_cache[item] = (
-                    self.coroutine_function_decorator(attr))
-            return self._function_cache[item]
-        return attr
-
-
-class TestParallelSeriesUpgrade(AioTestCase):
+class TestParallelSeriesUpgrade(ut_utils.AioTestCase):
     def setUp(self):
         super(TestParallelSeriesUpgrade, self).setUp()
         if sys.version_info < (3, 6, 0):
@@ -182,6 +160,8 @@ class TestParallelSeriesUpgrade(AioTestCase):
         self.model.async_wait_for_unit_idle = mock.AsyncMock()
         self.async_run_on_machine = mock.AsyncMock()
         self.model.async_run_on_machine = self.async_run_on_machine
+        self.model.async_block_until_units_on_machine_are_idle = \
+            mock.AsyncMock()
 
     @mock.patch.object(upgrade_utils.cl_utils, 'get_class')
     async def test_run_post_application_upgrade_functions(
@@ -492,7 +472,13 @@ class TestParallelSeriesUpgrade(AioTestCase):
         mock_remove_confdef_file.assert_called_once_with('1')
         mock_add_confdef_file.assert_called_once_with('1')
 
-    async def test_maybe_pause_things_primary(self):
+    @mock.patch("asyncio.gather")
+    async def test_maybe_pause_things_primary(self, mock_gather):
+        async def _gather(*args):
+            for f in args:
+                await f
+
+        mock_gather.side_effect = _gather
         await upgrade_utils.maybe_pause_things(
             FAKE_STATUS,
             ['app/1', 'app/2'],
@@ -503,7 +489,13 @@ class TestParallelSeriesUpgrade(AioTestCase):
             mock.call('app/2', "pause", action_params={}),
         ])
 
-    async def test_maybe_pause_things_subordinates(self):
+    @mock.patch("asyncio.gather")
+    async def test_maybe_pause_things_subordinates(self, mock_gather):
+        async def _gather(*args):
+            for f in args:
+                await f
+
+        mock_gather.side_effect = _gather
         await upgrade_utils.maybe_pause_things(
             FAKE_STATUS,
             ['app/1', 'app/2'],
@@ -514,7 +506,13 @@ class TestParallelSeriesUpgrade(AioTestCase):
             mock.call('app-hacluster/2', "pause", action_params={}),
         ])
 
-    async def test_maybe_pause_things_all(self):
+    @mock.patch("asyncio.gather")
+    async def test_maybe_pause_things_all(self, mock_gather):
+        async def _gather(*args):
+            for f in args:
+                await f
+
+        mock_gather.side_effect = _gather
         await upgrade_utils.maybe_pause_things(
             FAKE_STATUS,
             ['app/1', 'app/2'],

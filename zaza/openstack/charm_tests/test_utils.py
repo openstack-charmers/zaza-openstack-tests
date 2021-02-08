@@ -120,7 +120,23 @@ class BaseCharmTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls, application_name=None, model_alias=None):
-        """Run setup for test class to create common resources."""
+        """Run setup for test class to create common resources.
+
+        Note: the derived class may not use the application_name; if it's set
+        to None then this setUpClass() method will attempt to extract the
+        application name from the charm_config (essentially the test.yaml)
+        using the key 'charm_name' in the test_config.  If that isn't present,
+        then there will be no application_name set, and this is considered a
+        generic scenario of a whole model rather than a particular charm under
+        test.
+
+        :param application_name: the name of the applications that the derived
+            class is testing.  If None, then it's a generic test not connected
+            to any single charm.
+        :type application_name: Optional[str]
+        :param model_alias: the alias to use if needed.
+        :type model_alias: Optional[str]
+        """
         cls.model_aliases = model.get_juju_model_aliases()
         if model_alias:
             cls.model_name = cls.model_aliases[model_alias]
@@ -131,7 +147,13 @@ class BaseCharmTest(unittest.TestCase):
         if application_name:
             cls.application_name = application_name
         else:
-            charm_under_test_name = cls.test_config['charm_name']
+            try:
+                charm_under_test_name = cls.test_config['charm_name']
+            except KeyError:
+                logging.warning("No application_name and no charm config so "
+                                "not setting the application_name. Likely a "
+                                "scenario test.")
+                return
             deployed_app_names = model.sync_deployed(model_name=cls.model_name)
             if charm_under_test_name in deployed_app_names:
                 # There is an application named like the charm under test.

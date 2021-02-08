@@ -20,6 +20,7 @@ import tenacity
 
 from manilaclient import client as manilaclient
 
+import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
 
 
@@ -35,6 +36,12 @@ class ManilaTests(test_utils.OpenStackBaseTest):
 
     def test_manila_api(self):
         """Test that the Manila API is working."""
+        # The manila charm contains a 'band-aid' for Bug #1706699 which relies
+        # on update-status to bring up services if needed. When the tests run
+        # an update-status hook might not have run so services may still be
+        # stopped so force a hook execution.
+        for unit in zaza.model.get_units('manila'):
+            zaza.model.run_on_unit(unit.entity_id, "hooks/update-status")
         self.assertEqual([], self._list_shares())
 
     @tenacity.retry(

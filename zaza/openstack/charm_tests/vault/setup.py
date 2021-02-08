@@ -26,6 +26,7 @@ import zaza.model
 import zaza.openstack.utilities.cert
 import zaza.openstack.utilities.openstack
 import zaza.openstack.utilities.generic
+import zaza.openstack.utilities.exceptions as zaza_exceptions
 import zaza.utilities.juju as juju_utils
 
 
@@ -73,9 +74,27 @@ def basic_setup_and_unseal(cacert=None):
         zaza.model.run_on_unit(unit.name, './hooks/update-status')
 
 
+async def mojo_or_default_unseal_by_unit():
+    """Unseal any units reported as sealed using a cacert.
+
+    The mojo cacert is tried first, and if that doesn't exist, then the default
+    zaza located cacert is used.
+    """
+    try:
+        await mojo_unseal_by_unit()
+    except zaza_exceptions.CACERTNotFound:
+        await unseal_by_unit()
+
+
 def mojo_unseal_by_unit():
     """Unseal any units reported as sealed using mojo cacert."""
     cacert = zaza.openstack.utilities.generic.get_mojo_cacert_path()
+    unseal_by_unit(cacert)
+
+
+def unseal_by_unit(cacert=None):
+    """Unseal any units reported as sealed using mojo cacert."""
+    cacert = cacert or get_cacert_file()
     vault_creds = vault_utils.get_credentails()
     for client in vault_utils.get_clients(cacert=cacert):
         if client.hvac_client.is_sealed():
@@ -86,9 +105,27 @@ def mojo_unseal_by_unit():
             zaza.model.run_on_unit(unit_name, './hooks/update-status')
 
 
+async def async_mojo_or_default_unseal_by_unit():
+    """Unseal any units reported as sealed using a cacert.
+
+    The mojo cacert is tried first, and if that doesn't exist, then the default
+    zaza located cacert is used.
+    """
+    try:
+        await async_mojo_unseal_by_unit()
+    except zaza_exceptions.CACERTNotFound:
+        await async_unseal_by_unit()
+
+
 async def async_mojo_unseal_by_unit():
     """Unseal any units reported as sealed using mojo cacert."""
     cacert = zaza.openstack.utilities.generic.get_mojo_cacert_path()
+    await async_unseal_by_unit(cacert)
+
+
+async def async_unseal_by_unit(cacert=None):
+    """Unseal any units reported as sealed using vault cacert."""
+    cacert = cacert or get_cacert_file()
     vault_creds = vault_utils.get_credentails()
     for client in vault_utils.get_clients(cacert=cacert):
         if client.hvac_client.is_sealed():
@@ -137,7 +174,8 @@ def auto_initialize(cacert=None, validation_application='keystone', wait=True):
         zaza.model.wait_for_agent_status()
         test_config = lifecycle_utils.get_charm_config(fatal=False)
         zaza.model.wait_for_application_states(
-            states=test_config.get('target_deploy_status', {}))
+            states=test_config.get('target_deploy_status', {}),
+            timeout=7200)
 
     if validation_application:
         validate_ca(cacertificate, application=validation_application)
@@ -184,9 +222,8 @@ def validate_ca(cacertificate, application="keystone", port=5000):
     :returns: None
     :rtype: None
     """
-    zaza.model.block_until_file_has_contents(
+    zaza.openstack.utilities.openstack.block_until_ca_exists(
         application,
-        zaza.openstack.utilities.openstack.KEYSTONE_REMOTE_CACERT,
         cacertificate.decode().strip())
     vip = (zaza.model.get_application_config(application)
            .get("vip").get("value"))
