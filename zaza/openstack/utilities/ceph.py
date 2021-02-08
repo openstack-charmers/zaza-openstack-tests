@@ -3,7 +3,7 @@ import json
 import logging
 
 import zaza.model as zaza_model
-import zaza.utilities.juju as zaza_juju
+import zaza.utilities.juju as juju_utils
 
 import zaza.openstack.utilities.openstack as openstack_utils
 
@@ -225,7 +225,7 @@ def get_pools_from_broker_req(application_or_unit, model_name=None):
     """
     # NOTE: we do not pass on a name for the remote_interface_name as that
     # varies between the Ceph consuming applications.
-    relation_data = zaza_juju.get_relation_from_unit(
+    relation_data = juju_utils.get_relation_from_unit(
         'ceph-mon', application_or_unit, None, model_name=model_name)
 
     # NOTE: we probably should consume the Ceph broker code from c-h but c-h is
