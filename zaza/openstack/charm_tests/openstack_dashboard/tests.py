@@ -512,7 +512,7 @@ class OpenStackDashboardPolicydTests(policyd.BasePolicydSpecialization,
 
 
 class SecurityTests(test_utils.OpenStackBaseTest,
-                              OpenStackDashboardBase):
+                    OpenStackDashboardBase):
     """Openstack-dashboard security tests."""
 
     @classmethod
@@ -541,9 +541,9 @@ class SecurityTests(test_utils.OpenStackBaseTest,
         ]
 
         logging.info('Running `security-checklist` action'
-                ' on {} leader'.format(self.application_name))
+                     ' on {} leader'.format(self.application_name))
         test_utils.audit_assertions(
-                zaza_model.run_action_on_leader(
+            zaza_model.run_action_on_leader(
                 self.application_name,
                 'security-checklist',
                 model_name=self.model_name,
