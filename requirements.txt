@@ -30,6 +30,7 @@ python-cinderclient
 python-glanceclient
 python-heatclient
 python-ironicclient
+keystoneauth1
 python-keystoneclient
 python-manilaclient
 python-neutronclient
