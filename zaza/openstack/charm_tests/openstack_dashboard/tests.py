@@ -535,15 +535,10 @@ class SecurityTests(test_utils.OpenStackBaseTest,
         ]
         expected_passes = [
             'disable_password_autocomplete',
+            'enforce-password-check',
             'validate-file-ownership',
             'validate-file-permissions'
         ]
-        if (openstack_utils.get_os_release() <=
-                openstack_utils.get_os_release('xenial_mitaka')):
-            logging.info("Test expected to fail until bug #1915293 is fixed")
-            expected_failures.append('enforce-password-check')
-        else:
-            expected_passes.append('enforce-password-check')
 
         logging.info('Running `security-checklist` action'
                      ' on {} leader'.format(self.application_name))
