@@ -407,17 +407,6 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest,
                 self.assertEqual(e.code, 404, msg)
         logging.info('OK')
 
-    def test_501_security_checklist_action(self):
-        """Verify expected result on a default install.
-
-        Ported from amulet tests.
-        """
-        logging.info("Testing security-checklist")
-        unit_name = zaza_model.get_lead_unit_name('openstack-dashboard')
-        action = zaza_model.run_action(unit_name, 'security-checklist')
-        assert action.data.get(u"status") == "failed", \
-            "Security check is expected to not pass by default"
-
     def test_900_restart_on_config_change(self):
         """Verify that the specified services are restarted on config changed.
 
@@ -520,3 +509,45 @@ class OpenStackDashboardPolicydTests(policyd.BasePolicydSpecialization,
         result = client.get(_url)
         if result.status_code == 403:
             raise policyd.PolicydOperationFailedException("Not authenticated")
+
+
+class SecurityTests(test_utils.OpenStackBaseTest,
+                    OpenStackDashboardBase):
+    """Openstack-dashboard security tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running openstack-dashboard SecurityTests."""
+        super(SecurityTests, cls).setUpClass()
+
+    def test_security_checklist(self):
+        """Verify expected state with security checklist."""
+        logging.info("Testing security checklist.")
+
+        expected_failures = [
+            'csrf_cookie_set',
+            'disable_password_reveal',
+            'disallow-iframe-embed',
+            'password-validator-is-not-default',
+            'securie_proxy_ssl_header_is_set',
+            'session_cookie-httponly',
+            'session-cookie-store',
+        ]
+        expected_passes = [
+            'disable_password_autocomplete',
+            'enforce-password-check',
+            'validate-file-ownership',
+            'validate-file-permissions'
+        ]
+
+        logging.info('Running `security-checklist` action'
+                     ' on {} leader'.format(self.application_name))
+        test_utils.audit_assertions(
+            zaza_model.run_action_on_leader(
+                self.application_name,
+                'security-checklist',
+                model_name=self.model_name,
+                action_params={}),
+            expected_passes,
+            expected_failures,
+            expected_to_pass=False)
