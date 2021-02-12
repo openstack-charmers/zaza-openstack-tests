@@ -178,14 +178,6 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
             for provider in octavia_client.provider_list().get('providers', [])
             if provider['name'] != 'octavia'  # alias for `amphora`, skip
         }
-        if (openstack_utils.get_os_release() in [
-                openstack_utils.get_os_release('focal_victoria'),
-                openstack_utils.get_os_release('groovy_victoria')]):
-            logging.info("Skipping tests of ovn backed lb (Bug #1896603)")
-            try:
-                del providers['ovn']
-            except KeyError:
-                pass
         return providers
 
     def _create_lb_resources(self, octavia_client, provider, vip_subnet_id,
@@ -341,6 +333,7 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
             vip_subnet_id = resp['networks'][0]['subnets'][0]
         else:
             vip_subnet_id = subnet_id
+        logging.info('Providers {}'.format(self.get_lb_providers(self.octavia_client).keys()))
         for provider in self.get_lb_providers(self.octavia_client).keys():
             logging.info('Creating loadbalancer with provider {}'
                          .format(provider))
