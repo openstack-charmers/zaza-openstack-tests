@@ -185,14 +185,14 @@ class HaclusterScaleBackAndForthTest(HaclusterBaseTest):
         logging.info('Waiting for model to settle')
         zaza.model.block_until_unit_wl_status(other_hacluster_unit, 'blocked')
         # NOTE(lourot): the principle unit (usually a keystone unit) isn't
-        # guaranteed to be blocked, so we don't validate that.
+        # guaranteed to be blocked, so we don't validate that here.
         zaza.model.block_until_all_units_idle()
 
         logging.info('Updating corosync ring')
-        # NOTE(lourot): with Juju >= 2.8 this isn't actually necessary as it
-        # has already been done in hacluster's hanode departing hook:
         hacluster_app_name = zaza.model.get_unit_from_name(
             other_hacluster_unit).application
+        # NOTE(lourot): with Juju >= 2.8 this isn't actually necessary as it
+        # has already been done in hacluster's hanode departing hook:
         zaza.model.run_action_on_leader(
             hacluster_app_name,
             'update-ring',
