@@ -153,20 +153,22 @@ class HaclusterScaleBackAndForthTest(HaclusterBaseTest):
     def test_930_scaleback(self):
         """Remove two units, recalculate quorum and re-add two units.
 
-        NOTE(lourot): before lp:1400481 was fixed, quorum wasn't recalculated
-        when removing units. Within a cluster of 3 units, removing two units
-        and re-adding them led to a situation where the expected quorum became
-        5 and was still considered unreached.
+        NOTE(lourot): before lp:1400481 was fixed, the corosync ring wasn't
+        recalculated when removing units. So within a cluster of 3 units,
+        removing two units and re-adding them led to a situation where corosync
+        considers having 3 nodes online out of 5, instead of just 3 out of 3.
+        This test covers this scenario.
         """
         principle_units = sorted(zaza.model.get_status().applications[
             self._principle_app_name]['units'].keys())
         self.assertEqual(len(principle_units), 3)
         doomed_principle_units = principle_units[:2]
-        other_principle_unit = principle_units[2]
+        surviving_principle_unit = principle_units[2]
         doomed_hacluster_units = juju_utils.get_subordinate_units(
             doomed_principle_units, charm_name=self._hacluster_charm_name)
-        other_hacluster_unit = juju_utils.get_subordinate_units(
-            [other_principle_unit], charm_name=self._hacluster_charm_name)[0]
+        surviving_hacluster_unit = juju_utils.get_subordinate_units(
+            [surviving_principle_unit],
+            charm_name=self._hacluster_charm_name)[0]
 
         for doomed_hacluster_unit in doomed_hacluster_units:
             logging.info('Pausing unit {}'.format(doomed_hacluster_unit))
@@ -183,14 +185,15 @@ class HaclusterScaleBackAndForthTest(HaclusterBaseTest):
                 wait_disappear=True)
 
         logging.info('Waiting for model to settle')
-        zaza.model.block_until_unit_wl_status(other_hacluster_unit, 'blocked')
+        zaza.model.block_until_unit_wl_status(surviving_hacluster_unit,
+                                              'blocked')
         # NOTE(lourot): the principle unit (usually a keystone unit) isn't
         # guaranteed to be blocked, so we don't validate that here.
         zaza.model.block_until_all_units_idle()
 
         logging.info('Updating corosync ring')
         hacluster_app_name = zaza.model.get_unit_from_name(
-            other_hacluster_unit).application
+            surviving_hacluster_unit).application
         # NOTE(lourot): with Juju >= 2.8 this isn't actually necessary as it
         # has already been done in hacluster's hanode departing hook:
         zaza.model.run_action_on_leader(
@@ -200,7 +203,7 @@ class HaclusterScaleBackAndForthTest(HaclusterBaseTest):
             raise_on_failure=True)
 
         for article in ('an', 'another'):
-            logging.info('Adding {} hacluster unit'.format(article))
+            logging.info('Re-adding {} hacluster unit'.format(article))
             zaza.model.add_unit(self._principle_app_name, wait_appear=True)
 
         logging.info('Waiting for model to settle')
@@ -208,4 +211,16 @@ class HaclusterScaleBackAndForthTest(HaclusterBaseTest):
             "workload-status": "active",
             "workload-status-message": "Unit is ready and clustered"}}
         zaza.model.wait_for_application_states(states=expected_states)
-        logging.debug('OK')
+
+        # At this point if the corosync ring has been properly updated, there
+        # shouldn't be any trace of the deleted units anymore:
+        logging.info('Checking that corosync considers all nodes to be online')
+        cmd = 'sudo crm status'
+        result = zaza.model.run_on_unit(surviving_hacluster_unit, cmd)
+        code = result.get('Code')
+        if code != '0':
+            raise zaza.model.CommandRunFailed(cmd, result)
+        output = result.get('Stdout').strip()
+        logging.debug('Output received: {}'.format(output))
+        self.assertNotIn('OFFLINE', output,
+                         "corosync shouldn't list any offline node")
