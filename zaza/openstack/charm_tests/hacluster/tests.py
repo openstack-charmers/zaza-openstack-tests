@@ -130,8 +130,7 @@ class HaclusterScalebackTest(HaclusterBaseTest):
         logging.info('Waiting for model to settle')
         zaza.model.block_until_unit_wl_status(other_hacluster_unit, 'active')
         # NOTE(lourot): the principle application sometimes remain blocked
-        # after scaling back up until lp:1400481 is solved.
-        # zaza.model.block_until_unit_wl_status(other_principle_unit, 'active')
+        # after scaling back up.
         zaza.model.block_until_all_units_idle()
         logging.debug('OK')
 
@@ -207,10 +206,15 @@ class HaclusterScaleBackAndForthTest(HaclusterBaseTest):
             zaza.model.add_unit(self._principle_app_name, wait_appear=True)
 
         logging.info('Waiting for model to settle')
-        expected_states = {hacluster_app_name: {
-            "workload-status": "active",
-            "workload-status-message": "Unit is ready and clustered"}}
-        zaza.model.wait_for_application_states(states=expected_states)
+        # NOTE(lourot): the principle charm may remain blocked here. This seems
+        # to happen often when it is keystone and has a mysql-router as other
+        # subordinate charm. The keystone units seems to often remain blocked
+        # with 'Database not initialised'. This is not the hacluster charm's
+        # fault and this is why we don't validate here that the entire model
+        # goes back to active/idle.
+        zaza.model.block_until_unit_wl_status(surviving_hacluster_unit,
+                                              'active')
+        zaza.model.block_until_all_units_idle()
 
         # At this point if the corosync ring has been properly updated, there
         # shouldn't be any trace of the deleted units anymore:
