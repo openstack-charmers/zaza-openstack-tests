@@ -137,7 +137,10 @@ class HaclusterScalebackTest(HaclusterBaseTest):
 
 
 class HaclusterScaleBackAndForthTest(HaclusterBaseTest):
-    """hacluster tests scaling back and forth."""
+    """hacluster tests scaling back and forth.
+
+    Supersedes HaclusterScalebackTest.
+    """
 
     @classmethod
     def setUpClass(cls):
@@ -148,38 +151,46 @@ class HaclusterScaleBackAndForthTest(HaclusterBaseTest):
         cls._hacluster_charm_name = test_config['hacluster-charm-name']
 
     def test_930_scaleback(self):
-        """Remove a unit, recalculate quorum and add a new one."""
+        """Remove two units, recalculate quorum and re-add two units.
+
+        NOTE(lourot): before lp:1400481 was fixed, quorum wasn't recalculated
+        when removing units. Within a cluster of 3 units, removing two units
+        and re-adding them led to a situation where the expected quorum became
+        5 and was still considered unreached.
+        """
         principle_units = sorted(zaza.model.get_status().applications[
             self._principle_app_name]['units'].keys())
         self.assertEqual(len(principle_units), 3)
-        doomed_principle_unit = principle_units[0]
-        other_principle_unit = principle_units[1]
-        doomed_hacluster_unit = juju_utils.get_subordinate_units(
-            [doomed_principle_unit], charm_name=self._hacluster_charm_name)[0]
+        doomed_principle_units = principle_units[:2]
+        other_principle_unit = principle_units[2]
+        doomed_hacluster_units = juju_utils.get_subordinate_units(
+            doomed_principle_units, charm_name=self._hacluster_charm_name)
         other_hacluster_unit = juju_utils.get_subordinate_units(
             [other_principle_unit], charm_name=self._hacluster_charm_name)[0]
 
-        logging.info('Pausing unit {}'.format(doomed_hacluster_unit))
-        zaza.model.run_action(
-            doomed_hacluster_unit,
-            'pause',
-            raise_on_failure=True)
-        logging.info('OK')
+        for doomed_hacluster_unit in doomed_hacluster_units:
+            logging.info('Pausing unit {}'.format(doomed_hacluster_unit))
+            zaza.model.run_action(
+                doomed_hacluster_unit,
+                'pause',
+                raise_on_failure=True)
 
-        logging.info('Removing {}'.format(doomed_principle_unit))
-        zaza.model.destroy_unit(
-            self._principle_app_name,
-            doomed_principle_unit,
-            wait_disappear=True)
-        logging.info('OK')
+        for doomed_principle_unit in doomed_principle_units:
+            logging.info('Removing {}'.format(doomed_principle_unit))
+            zaza.model.destroy_unit(
+                self._principle_app_name,
+                doomed_principle_unit,
+                wait_disappear=True)
 
         logging.info('Waiting for model to settle')
         zaza.model.block_until_unit_wl_status(other_hacluster_unit, 'blocked')
-        zaza.model.block_until_unit_wl_status(other_principle_unit, 'blocked')
+        # NOTE(lourot): the principle unit (usually a keystone unit) isn't
+        # guaranteed to be blocked, so we don't validate that.
         zaza.model.block_until_all_units_idle()
-        logging.info('OK')
 
         logging.info('Updating corosync ring')
+        # NOTE(lourot): with Juju >= 2.8 this isn't actually necessary as it
+        # has already been done in hacluster's hanode departing hook:
         hacluster_app_name = zaza.model.get_unit_from_name(
             other_hacluster_unit).application
         zaza.model.run_action_on_leader(
@@ -188,9 +199,9 @@ class HaclusterScaleBackAndForthTest(HaclusterBaseTest):
             action_params={'i-really-mean-it': True},
             raise_on_failure=True)
 
-        logging.info('Adding an hacluster unit')
-        zaza.model.add_unit(self._principle_app_name, wait_appear=True)
-        logging.info('OK')
+        for article in ('an', 'another'):
+            logging.info('Adding {} hacluster unit'.format(article))
+            zaza.model.add_unit(self._principle_app_name, wait_appear=True)
 
         logging.info('Waiting for model to settle')
         expected_states = {hacluster_app_name: {
