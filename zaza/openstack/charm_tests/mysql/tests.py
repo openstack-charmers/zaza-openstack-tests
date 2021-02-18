@@ -589,6 +589,10 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
                 unit.entity_id,
                 'blocked')
 
+        # Wait until update-status hooks have completed
+        logging.info("Wait till model is idle ...")
+        zaza.model.block_until_all_units_idle()
+
         logging.info("Execute reboot-cluster-from-complete-outage "
                      "action after cold boot ...")
         # We do not know which unit has the most up to date data
