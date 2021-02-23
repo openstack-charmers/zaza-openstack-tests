@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
 import mock
 import sys
 import unittest
@@ -139,28 +138,7 @@ class Test_ParallelSeriesUpgradeSync(ut_utils.BaseTestCase):
         self.assertEqual(expected, config)
 
 
-class AioTestCase(ut_utils.BaseTestCase):
-    def __init__(self, methodName='runTest', loop=None):
-        self.loop = loop or asyncio.get_event_loop()
-        self._function_cache = {}
-        super(AioTestCase, self).__init__(methodName=methodName)
-
-    def coroutine_function_decorator(self, func):
-        def wrapper(*args, **kw):
-            return self.loop.run_until_complete(func(*args, **kw))
-        return wrapper
-
-    def __getattribute__(self, item):
-        attr = object.__getattribute__(self, item)
-        if asyncio.iscoroutinefunction(attr) and item.startswith('test_'):
-            if item not in self._function_cache:
-                self._function_cache[item] = (
-                    self.coroutine_function_decorator(attr))
-            return self._function_cache[item]
-        return attr
-
-
-class TestParallelSeriesUpgrade(AioTestCase):
+class TestParallelSeriesUpgrade(ut_utils.AioTestCase):
     def setUp(self):
         super(TestParallelSeriesUpgrade, self).setUp()
         if sys.version_info < (3, 6, 0):

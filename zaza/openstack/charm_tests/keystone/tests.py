@@ -229,7 +229,7 @@ class AuthenticationAuthorizationTest(BaseKeystoneTest):
                     'OS_DOMAIN_NAME': DEMO_DOMAIN,
                 }
                 if self.tls_rid:
-                    openrc['OS_CACERT'] = openstack_utils.KEYSTONE_LOCAL_CACERT
+                    openrc['OS_CACERT'] = openstack_utils.get_cacert()
                     openrc['OS_AUTH_URL'] = (
                         openrc['OS_AUTH_URL'].replace('http', 'https'))
                 logging.info('keystone IP {}'.format(ip))
@@ -259,7 +259,7 @@ class AuthenticationAuthorizationTest(BaseKeystoneTest):
         """
         def _validate_token_data(openrc):
             if self.tls_rid:
-                openrc['OS_CACERT'] = openstack_utils.KEYSTONE_LOCAL_CACERT
+                openrc['OS_CACERT'] = openstack_utils.get_cacert()
                 openrc['OS_AUTH_URL'] = (
                     openrc['OS_AUTH_URL'].replace('http', 'https'))
             logging.info('keystone IP {}'.format(ip))

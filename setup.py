@@ -28,7 +28,12 @@ install_require = [
     'futurist<2.0.0',
     'async_generator',
     'boto3',
-    'cryptography',
+
+    # Newer versions require a Rust compiler to build, see
+    # * https://github.com/openstack-charmers/zaza/issues/421
+    # * https://mail.python.org/pipermail/cryptography-dev/2021-January/001003.html
+    'cryptography<3.4',
+
     'dnspython',
     'hvac<0.7.0',
     'jinja2',

@@ -154,9 +154,8 @@ class VaultTest(BaseVaultTest):
 
         test_config = lifecycle_utils.get_charm_config()
         del test_config['target_deploy_status']['vault']
-        zaza.model.block_until_file_has_contents(
+        zaza.openstack.utilities.openstack.block_until_ca_exists(
             'keystone',
-            zaza.openstack.utilities.openstack.KEYSTONE_REMOTE_CACERT,
             cacert.decode().strip())
         zaza.model.wait_for_application_states(
             states=test_config.get('target_deploy_status', {}))

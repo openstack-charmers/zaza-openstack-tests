@@ -222,9 +222,8 @@ def validate_ca(cacertificate, application="keystone", port=5000):
     :returns: None
     :rtype: None
     """
-    zaza.model.block_until_file_has_contents(
+    zaza.openstack.utilities.openstack.block_until_ca_exists(
         application,
-        zaza.openstack.utilities.openstack.KEYSTONE_REMOTE_CACERT,
         cacertificate.decode().strip())
     vip = (zaza.model.get_application_config(application)
            .get("vip").get("value"))

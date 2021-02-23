@@ -81,3 +81,17 @@ def basic_setup():
 
     else:
         logging.error("Unable to find Trilio License file")
+
+
+def python2_workaround():
+    """Workaround for Bug #1915914.
+
+    Trilio code currently has a bug which assumes an executable called 'python'
+    will be on the path. To workaround this install a package which adds a
+    symlink to python
+    """
+    for unit in zaza_model.get_units('trilio-wlm'):
+        zaza_model.run_on_unit(
+            unit.entity_id,
+            ("apt install --yes python-is-python3; "
+             "systemctl restart wlm\\*.service"))
