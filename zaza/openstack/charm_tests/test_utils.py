@@ -875,6 +875,8 @@ class BaseDeferredRestartTest(OpenStackBaseTest):
         self.check_show_deferred_restarts_action(
             self.test_service,
             self.restart_config_file)
+        # Rerunning to flip config option back to previous value.
+        self.trigger_deferred_restart_via_charm()
         logging.info("Running restart action to clear deferred restarts")
         self.check_clear_restarts()
 
