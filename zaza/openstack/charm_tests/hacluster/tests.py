@@ -193,8 +193,6 @@ class HaclusterScaleBackAndForthTest(HaclusterBaseTest):
         logging.info('Updating corosync ring')
         hacluster_app_name = zaza.model.get_unit_from_name(
             surviving_hacluster_unit).application
-        # NOTE(lourot): with Juju >= 2.8 this isn't actually necessary as it
-        # has already been done in hacluster's hanode departing hook:
         zaza.model.run_action_on_leader(
             hacluster_app_name,
             'update-ring',
