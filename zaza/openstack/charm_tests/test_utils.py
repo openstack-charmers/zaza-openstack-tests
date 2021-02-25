@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tenacity
 import unittest
+import yaml
 
 import novaclient
 
@@ -701,3 +702,238 @@ class OpenStackBaseTest(BaseCharmTest):
         instance_2 = self.retrieve_guest(
             '{}-ins-1'.format(self.RESOURCE_PREFIX))
         return instance_1, instance_2
+
+
+class BaseDeferredRestartTest(OpenStackBaseTest):
+    """Check deferred restarts.
+
+    Example of adding a deferred restart test::
+
+        class NeutronOVSDeferredRestartTest(
+            test_utils.BaseDeferredRestartTest):
+
+            @classmethod
+            def setUpClass(cls):
+                super(NeutronOVSDeferredRestartTest, cls).setUpClass(
+                    restart_config_file = '/etc/neutron/neutron.conf',
+                    test_service = 'neutron-openvswitch-agent',
+                    restart_package = 'openvswitch-switch',
+                    restart_package_service = 'openvswitch-switch',
+                    application_name = 'neutron-openvswitch')
+
+    NOTE: The test has been broken into various class methods which may require
+          specialisation if the charm being tested is not a standard OpenStack
+          charm e.g. `trigger_deferred_restart_via_charm` if the charm is not
+          an oslo config or does not have a debug option.
+    """
+
+    @classmethod
+    def setUpClass(cls, restart_config_file, test_service, restart_package,
+                   restart_package_service, application_name):
+        """Run test setup.
+
+        :param restart_config_file: Config file that will be changed to trigger
+                                    a service restart.
+        :type restart_config_file: str
+        :param test_service: Service that will require a restart after
+                             restart_config_file has changed.
+        :type test_service: str
+        :param restart_package: Package that will be changed to trigger a
+                                service restart.
+        :type restart_package: str
+        :param restart_package_service: Service that will require a restart
+                                        after restart_package has changed.
+        :type restart_package_service: str
+        :param application_name: Name of application to run tests against.
+        :type application_name: str
+        """
+        cls.restart_config_file = restart_config_file
+        cls.test_service = test_service
+        cls.restart_package = restart_package
+        cls.restart_package_service = restart_package_service
+        cls.application_name = application_name
+        super(BaseDeferredRestartTest, cls).setUpClass(
+            application_name=cls.application_name)
+
+    def check_clear_restarts(self):
+        """Clear and deferred restarts and check status.
+
+        Clear and deferred restarts and then check the workload status message
+        for each unit.
+        """
+        # Use action to run any deferred restarts
+        for unit in model.get_units(self.application_name):
+            model.run_action(
+                unit.entity_id,
+                'restart-services',
+                action_params={'deferred': True})
+
+        # Check workload status no longer shows deferred restarts.
+        for unit in model.get_units(self.application_name):
+            assert unit.workload_status_message == 'Unit is ready'
+
+    def check_show_deferred_restarts_action(self, test_service,
+                                            restart_reason):
+        """Check the output from the action to list deferred restarts.
+
+        Run the action to list any deferred restarts and check it has entry for
+        the given service and reason.
+
+        :param test_service: Service that should need a restart
+        :type test_service: str
+        :param restart_reason: The reason the action should list for the
+                               service needing to be restarted. This can be a
+                               substring.
+        :type restart_reason: str
+        """
+        # Ensure that the deferred restart and cause are listed via action
+        for unit in model.get_units(self.application_name):
+            action = model.run_action(
+                unit.entity_id,
+                'show-deferred-restarts')
+            logging.info(
+                ("Checking {} is marked as needing restart in "
+                 "show-deferred-restarts action on {}").format(
+                    test_service,
+                    unit.entity_id))
+            for event in yaml.safe_load(action.data['results']['output']):
+                if test_service in event and restart_reason in event:
+                    break
+            else:
+                msg = 'No entry for restart of {} for reason {} found'.format(
+                    test_service,
+                    restart_reason)
+                raise Exception(msg)
+
+    def check_show_deferred_restarts_wlm(self, test_service):
+        """Check the workload status message lists deferred restart.
+
+        :param test_service: Service that should need a restart
+        :type test_service: str
+        """
+        # Ensure that the deferred restarts are visible in Juju status
+        for unit in model.get_units(self.application_name):
+            # Just checking one example service should we be checking all?
+            logging.info(
+                ("Checking {} is marked as needing restart in workload "
+                 "message of {}".format(test_service, unit.entity_id)))
+            assert test_service in unit.workload_status_message
+
+    def trigger_deferred_restart_via_charm(self):
+        """Set charm config option which requires a service start.
+
+        Set the charm debug option and wait for that change to be renderred in
+        applications config file.
+
+        NOTE: The implementation assumes the charm has a `debug` option and
+              self.restart_config_file in an oslo config file where that
+              debug option is renderred. If that is not true the specaliasation
+              class should override this method.
+        """
+        app_config = model.get_application_config(self.application_name)
+        logging.info("Triggering deferred restart via config change")
+        new_debug_value = str(not app_config['debug']['value'])
+        logging.info("Setting debug: {}".format(new_debug_value))
+        model.set_application_config(
+            self.application_name,
+            {'debug': new_debug_value})
+        expected_contents = {
+            'DEFAULT': {
+                'debug': [new_debug_value]}}
+        logging.info("Waiting for debug to be {} in {}".format(
+            new_debug_value,
+            self.restart_config_file))
+        model.block_until_oslo_config_entries_match(
+            self.application_name,
+            self.restart_config_file,
+            expected_contents)
+        logging.info("Waiting for units to be idle")
+        model.block_until_all_units_idle()
+
+    def trigger_deferred_restart_via_package(self):
+        """Update a package which requires a service restart."""
+        logging.info("Triggering deferred restart via package change")
+        # Test restart requested by package
+        for unit in model.get_units(self.application_name):
+            model.run_on_unit(
+                unit.entity_id,
+                'dpkg-reconfigure {}; ./hooks/update-status'.format(
+                    self.restart_package))
+
+    def run_charm_change_test(self):
+        """Trigger a deferred restart by updating a config file via the charm.
+
+        Trigger a config-changed hook in the charm which will update a config
+        file and add a deferred restart.
+
+        NOTE: If this test is not relevant for the target charm then override
+              this method and raise unittest.SkipTest
+        """
+        self.trigger_deferred_restart_via_charm()
+
+        self.check_show_deferred_restarts_wlm(self.test_service)
+        self.check_show_deferred_restarts_action(
+            self.test_service,
+            self.restart_config_file)
+        logging.info("Running restart action to clear deferred restarts")
+        self.check_clear_restarts()
+
+    def run_package_change_test(self):
+        """Trigger a deferred restart by updating a package.
+
+        Update a package which requires will add a deferred restart.
+
+        NOTE: If this test is not relevant for the target charm then override
+              this method and raise unittest.SkipTest
+        """
+        self.trigger_deferred_restart_via_package()
+
+        self.check_show_deferred_restarts_wlm(self.restart_package_service)
+        self.check_show_deferred_restarts_action(
+            self.restart_package_service,
+            'Pkg Update')
+        logging.info("Running restart action to clear deferred restarts")
+        self.check_clear_restarts()
+
+    def test_deferred_restarts(self):
+        """Run deferred restart tests."""
+        app_config = model.get_application_config(self.application_name)
+        auto_restart_config_key = 'enable-auto-restarts'
+        if auto_restart_config_key not in app_config:
+            raise unittest.SkipTest("Deferred restarts not implemented")
+
+        # Ensure auto restarts are off.
+        policy_file = '/etc/policy-rc.d/charm-{}.policy'.format(
+            self.application_name)
+        if app_config[auto_restart_config_key]['value']:
+            logging.info("Turning off auto restarts")
+            model.set_application_config(
+                self.application_name, {auto_restart_config_key: 'False'})
+            logging.info("Waiting for {} to appear on units of {}".format(
+                policy_file,
+                self.application_name))
+            model.block_until_file_has_contents(
+                self.application_name,
+                policy_file,
+                'policy_requestor_name')
+            # The block_until_file_has_contents ensures the change we waiting
+            # for has happened, now just wait for any hooks to finish.
+            logging.info("Waiting for units to be idle")
+            model.block_until_all_units_idle()
+        else:
+            logging.info("Auto restarts already disabled")
+
+        # Trigger a config change which requires a restart
+        self.run_charm_change_test()
+
+        # Trigger a package change which requires a restart
+        self.run_package_change_test()
+
+        # Finished so turn auto-restarts back on.
+        logging.info("Turning on auto restarts")
+        model.set_application_config(
+            self.application_name, {auto_restart_config_key: 'True'})
+        model.block_until_file_missing(
+            self.application_name,
+            policy_file)
+        model.block_until_all_units_idle()
