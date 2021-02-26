@@ -20,6 +20,7 @@ import os
 import socket
 import subprocess
 import telnetlib
+import tempfile
 import yaml
 
 from zaza import model
@@ -680,3 +681,28 @@ def get_mojo_cacert_path():
         return cacert
     else:
         raise zaza_exceptions.CACERTNotFound("Could not find cacert.pem")
+
+
+def attach_file_resource(application_name, resource_name,
+                         file_content, file_suffix=".txt"):
+    """Attaches a file as a Juju resource given the file content and suffix.
+
+    The file content will be written into a temporary file with the given
+    suffix, and it will be attached to the Juju application.
+
+    :param application_name: Juju application name.
+    :type application_name: string
+    :param resource_name: Juju resource name.
+    :type resource_name: string
+    :param file_content: The content of the file that will be attached
+    :type file_content: string
+    :param file_suffix: File suffix. This should be used to set the file
+        extension for applications that are sensitive to this.
+    :type file_suffix: string
+    :returns: None
+    """
+    with tempfile.NamedTemporaryFile(mode='w', suffix=file_suffix) as fp:
+        fp.write(file_content)
+        fp.flush()
+        model.attach_resource(
+            application_name, resource_name, fp.name)
