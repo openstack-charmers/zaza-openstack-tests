@@ -301,6 +301,14 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
 
     def test_create_loadbalancer(self):
         """Create load balancer."""
+        import zaza.model
+        _run = zaza.model.run_on_unit(
+            'octavia/0',
+            'apt-cache policy python3-ovn-octavia-provider')
+        output = _run['Stdout']
+        logging.info('apt-cache policy ovn-octavia-provider :')
+        logging.info(_run)
+
         # Prepare payload instances
         # First we allow communication to port 80 by adding a security group
         # rule
