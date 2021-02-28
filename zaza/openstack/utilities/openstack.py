@@ -69,6 +69,7 @@ from neutronclient.v2_0 import client as neutronclient
 from neutronclient.common import exceptions as neutronexceptions
 from octaviaclient.api.v2 import octavia as octaviaclient
 from swiftclient import client as swiftclient
+from manilaclient import client as manilaclient
 
 from juju.errors import JujuError
 
@@ -447,6 +448,19 @@ def get_aodh_session_client(session):
     :rtype: openstack.instance_ha.v1._proxy.Proxy
     """
     return aodh_client.Client(session=session)
+
+
+def get_manila_session_client(session, version='2'):
+    """Return Manila client authenticated by keystone session.
+
+    :param session: Keystone session object
+    :type session: keystoneauth1.session.Session object
+    :param version: Manila API version
+    :type version: str
+    :returns: Authenticated manilaclient
+    :rtype: manilaclient.Client
+    """
+    return manilaclient.Client(session=session, client_version=version)
 
 
 def get_keystone_scope(model_name=None):
