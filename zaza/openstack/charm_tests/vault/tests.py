@@ -31,6 +31,8 @@ import zaza.openstack.charm_tests.vault.utils as vault_utils
 import zaza.openstack.utilities.cert
 import zaza.openstack.utilities.openstack
 import zaza.model
+import zaza.utilities.juju as juju_utils
+
 
 
 class BaseVaultTest(test_utils.OpenStackBaseTest):
@@ -268,7 +270,7 @@ class VaultTest(BaseVaultTest):
             raise unittest.SkipTest("The version of charm-vault tested does "
                                     "not have reload action")
 
-        lead_client = vault_utils.extract_lead_unit_client(self.clients)
+        lead_client = vault_utils.get_cluster_leader(self.clients)
         running_config = vault_utils.get_running_config(lead_client)
         value_to_set = not running_config['data']['disable_mlock']
 
@@ -277,15 +279,18 @@ class VaultTest(BaseVaultTest):
             {'disable-mlock': str(value_to_set)})
 
         logging.info("Testing reload")
-        zaza.model.run_action_on_leader(
-            'vault',
+        zaza.model.run_action(
+            juju_utils.get_unit_name_from_ip_address(
+                lead_client.addr, 'vault'),
             'reload',
-            action_params={})
+            model_name=self.model_name)
 
+        new_value = vault_utils.get_running_config(lead_client)[
+            'data']['disable_mlock']
+        logging.info(new_value)
         self.assertEqual(
             value_to_set,
-            vault_utils.get_running_config(lead_client)[
-                'data']['disable_mlock'])
+            new_value)
         self.assertFalse(lead_client.hvac_client.seal_status['sealed'])
 
     def test_vault_restart(self):
