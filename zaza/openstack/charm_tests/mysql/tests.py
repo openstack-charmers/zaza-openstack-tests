@@ -771,6 +771,9 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
         zaza.model.block_until_wl_status_info_starts_with(
             self.application, "'cluster' incomplete")
 
+        # Show status
+        logging.info(self.get_cluster_status())
+
         logging.info(
             "Removing old unit from cluster: {} "
             .format(leader_unit.public_address))
@@ -842,6 +845,9 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
 
         logging.info("Wait for status ready ...")
         zaza.model.wait_for_application_states(states=self.states)
+
+        # Show status
+        logging.info(self.get_cluster_status())
 
         logging.info(
             "Removing old unit from cluster: {} "
