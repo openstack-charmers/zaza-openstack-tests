@@ -2489,6 +2489,40 @@ def attach_volume(nova, volume_id, instance_id):
                                              device='/dev/vdx')
 
 
+def failover_cinder_volume_host(cinder, backend_name='cinder-ceph',
+                                target_backend_id='ceph',
+                                target_status='disabled',
+                                target_replication_status='failed-over'):
+    """Failover Cinder volume host with replication enabled.
+
+    :param cinder: Authenticated cinderclient
+    :type cinder: cinder.Client
+    :param backend_name: Cinder volume backend name with
+                         replication enabled.
+    :type backend_name: str
+    :param target_backend_id: Failover target Cinder backend id.
+    :type target_backend_id: str
+    :param target_status: Target Cinder volume status after failover.
+    :type target_status: str
+    :param target_replication_status: Target Cinder volume replication
+                                      status after failover.
+    :type target_replication_status: str
+    :raises: AssertionError
+    """
+    host = 'cinder@{}'.format(backend_name)
+    logging.info('Failover Cinder volume host %s to backend_id %s',
+                 host, target_backend_id)
+    cinder.services.failover_host(host=host, backend_id=target_backend_id)
+    for attempt in tenacity.Retrying(
+            retry=tenacity.retry_if_exception_type(AssertionError),
+            stop=tenacity.stop_after_attempt(10),
+            wait=tenacity.wait_exponential(multiplier=1, min=2, max=10)):
+        with attempt:
+            svc = cinder.services.list(host=host, binary='cinder-volume')[0]
+            assert svc.status == target_status
+            assert svc.replication_status == target_replication_status
+
+
 def create_volume_backup(cinder, volume_id, name=None):
     """Create cinder volume backup.
 
