@@ -186,6 +186,7 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
         cls.to_series = None
         cls.workaround_script = None
         cls.files = []
+        cls.extra_filters = []
 
     def test_200_run_series_upgrade(self):
         """Run series upgrade."""
@@ -193,7 +194,9 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
         os.environ["JUJU_DEV_FEATURE_FLAGS"] = "upgrade-series"
         upgrade_groups = upgrade_utils.get_series_upgrade_groups(
             extra_filters=[upgrade_utils._filter_etcd,
-                           upgrade_utils._filter_easyrsa])
+                           upgrade_utils._filter_easyrsa] + self.extra_filters)
+        print("upgrade_groups are:", upgrade_groups)
+        return
         applications = model.get_status().applications
         completed_machines = []
         for group_name, group in upgrade_groups:
@@ -247,7 +250,7 @@ class ParallelTrustyXenialSeriesUpgrade(ParallelSeriesUpgradeTest):
     @classmethod
     def setUpClass(cls):
         """Run setup for Trusty to Xenial Series Upgrades."""
-        super(ParallelTrustyXenialSeriesUpgrade, cls).setUpClass()
+        super().setUpClass()
         cls.from_series = "trusty"
         cls.to_series = "xenial"
 
@@ -261,9 +264,24 @@ class ParallelXenialBionicSeriesUpgrade(ParallelSeriesUpgradeTest):
     @classmethod
     def setUpClass(cls):
         """Run setup for Xenial to Bionic Series Upgrades."""
-        super(ParallelXenialBionicSeriesUpgrade, cls).setUpClass()
+        super().setUpClass()
         cls.from_series = "xenial"
         cls.to_series = "bionic"
+
+
+class ParallelBionicFocalSeriesUpgrade(ParallelSeriesUpgradeTest):
+    """Bionic-ussuri to Focal-ussuri Series Upgrade.
+
+    Makes no assumptions about what is in the deployment.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """Run setup for Bionic to Focal Series Upgrades."""
+        super().setUpClass()
+        cls.from_series = "bionic"
+        cls.to_series = "focal"
+        cls.extra_filters = [upgrade_utils._filter_percona_cluster]
 
 
 if __name__ == "__main__":
