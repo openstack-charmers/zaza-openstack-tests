@@ -150,7 +150,7 @@ class HaclusterScaleBackAndForthTest(HaclusterBaseTest):
         cls._hacluster_charm_name = test_config['hacluster-charm-name']
 
     def test_930_scaleback(self):
-        """Remove two units, recalculate quorum and re-add two units.
+        """Remove one unit, recalculate quorum and re-add one unit.
 
         NOTE(lourot): before lp:1400481 was fixed, the corosync ring wasn't
         recalculated when removing units. So within a cluster of 3 units,
