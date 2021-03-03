@@ -154,40 +154,39 @@ class HaclusterScaleBackAndForthTest(HaclusterBaseTest):
 
         NOTE(lourot): before lp:1400481 was fixed, the corosync ring wasn't
         recalculated when removing units. So within a cluster of 3 units,
-        removing two units and re-adding them led to a situation where corosync
-        considers having 3 nodes online out of 5, instead of just 3 out of 3.
+        removing a unit and re-adding one led to a situation where corosync
+        considers having 3 nodes online out of 4, instead of just 3 out of 3.
         This test covers this scenario.
         """
         principle_units = sorted(zaza.model.get_status().applications[
             self._principle_app_name]['units'].keys())
         self.assertEqual(len(principle_units), 3)
-        doomed_principle_units = principle_units[:2]
-        surviving_principle_unit = principle_units[2]
-        doomed_hacluster_units = juju_utils.get_subordinate_units(
-            doomed_principle_units, charm_name=self._hacluster_charm_name)
+        surviving_principle_unit = principle_units[0]
+        doomed_principle_unit = principle_units[1]
         surviving_hacluster_unit = juju_utils.get_subordinate_units(
             [surviving_principle_unit],
             charm_name=self._hacluster_charm_name)[0]
+        doomed_hacluster_unit = juju_utils.get_subordinate_units(
+            [doomed_principle_unit],
+            charm_name=self._hacluster_charm_name)[0]
 
-        for doomed_hacluster_unit in doomed_hacluster_units:
-            logging.info('Pausing unit {}'.format(doomed_hacluster_unit))
-            zaza.model.run_action(
-                doomed_hacluster_unit,
-                'pause',
-                raise_on_failure=True)
+        logging.info('Pausing unit {}'.format(doomed_hacluster_unit))
+        zaza.model.run_action(
+            doomed_hacluster_unit,
+            'pause',
+            raise_on_failure=True)
 
-        for doomed_principle_unit in doomed_principle_units:
-            logging.info('Removing {}'.format(doomed_principle_unit))
-            zaza.model.destroy_unit(
-                self._principle_app_name,
-                doomed_principle_unit,
-                wait_disappear=True)
+        logging.info('Removing {}'.format(doomed_principle_unit))
+        zaza.model.destroy_unit(
+            self._principle_app_name,
+            doomed_principle_unit,
+            wait_disappear=True)
 
         logging.info('Waiting for model to settle')
         zaza.model.block_until_unit_wl_status(surviving_hacluster_unit,
                                               'blocked')
-        # NOTE(lourot): the principle unit (usually a keystone unit) isn't
-        # guaranteed to be blocked, so we don't validate that here.
+        # NOTE(lourot): the surviving principle units (usually keystone units)
+        # aren't guaranteed to be blocked, so we don't validate that here.
         zaza.model.block_until_all_units_idle()
 
         logging.info('Updating corosync ring')
@@ -199,9 +198,8 @@ class HaclusterScaleBackAndForthTest(HaclusterBaseTest):
             action_params={'i-really-mean-it': True},
             raise_on_failure=True)
 
-        for article in ('an', 'another'):
-            logging.info('Re-adding {} hacluster unit'.format(article))
-            zaza.model.add_unit(self._principle_app_name, wait_appear=True)
+        logging.info('Re-adding an hacluster unit')
+        zaza.model.add_unit(self._principle_app_name, wait_appear=True)
 
         logging.info('Waiting for model to settle')
         # NOTE(lourot): the principle charm may remain blocked here. This seems
@@ -215,7 +213,7 @@ class HaclusterScaleBackAndForthTest(HaclusterBaseTest):
         zaza.model.block_until_all_units_idle()
 
         # At this point if the corosync ring has been properly updated, there
-        # shouldn't be any trace of the deleted units anymore:
+        # shouldn't be any trace of the deleted unit anymore:
         logging.info('Checking that corosync considers all nodes to be online')
         cmd = 'sudo crm status'
         result = zaza.model.run_on_unit(surviving_hacluster_unit, cmd)
