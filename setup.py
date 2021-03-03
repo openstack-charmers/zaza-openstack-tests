@@ -111,6 +111,11 @@ if sys.argv[-1] == 'tag':
 
 
 setup(
+    entry_points={
+        'console_scripts': [
+            'zot-upgrade-tool = zaza.openstack.utilities.upgrade_tool:main',
+        ]
+    },
     license='Apache-2.0: http://www.apache.org/licenses/LICENSE-2.0',
     packages=find_packages(exclude=["unit_tests"]),
     zip_safe=False,
