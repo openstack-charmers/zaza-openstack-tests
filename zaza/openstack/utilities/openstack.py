@@ -50,6 +50,7 @@ from openstack import connection
 from aodhclient.v2 import client as aodh_client
 from cinderclient import client as cinderclient
 from heatclient import client as heatclient
+from magnumclient import client as magnumclient
 from glanceclient import Client as GlanceClient
 from designateclient.client import Client as DesignateClient
 
@@ -405,6 +406,19 @@ def get_heat_session_client(session, version=1):
     :rtype: heatclient.Client object
     """
     return heatclient.Client(session=session, version=version)
+
+
+def get_magnum_session_client(session, version='1'):
+    """Return magnumclient authenticated by keystone session.
+
+    :param session: Keystone session object
+    :type session: keystoneauth1.session.Session object
+    :param version: Magnum API version
+    :type version: string
+    :returns: Authenticated magnumclient
+    :rtype: magnumclient.Client object
+    """
+    return magnumclient.Client(version, session=session)
 
 
 def get_cinder_session_client(session, version=3):

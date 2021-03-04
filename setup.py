@@ -53,6 +53,7 @@ install_require = [
     'python-ironicclient',
     'python-glanceclient<3.0.0',
     'python-keystoneclient<3.22.0',
+    'python-magnumclient',
     'python-manilaclient<2.0.0',
     'python-novaclient<16.0.0',
     'python-neutronclient<7.0.0',
