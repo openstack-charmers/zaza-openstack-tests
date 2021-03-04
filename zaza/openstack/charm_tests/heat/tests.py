@@ -62,6 +62,8 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
         services = ['heat-api', 'heat-api-cfn', 'heat-engine']
         return services
 
+    # TODO: Deprecate this function
+    # domain-setup action has been added as a setup configuration option
     def test_100_domain_setup(self):
         """Run required action for a working Heat unit."""
         # Action is REQUIRED to run for a functioning heat deployment
