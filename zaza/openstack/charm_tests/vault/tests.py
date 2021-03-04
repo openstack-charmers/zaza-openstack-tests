@@ -244,8 +244,6 @@ class VaultTest(BaseVaultTest):
         Pause service and check services are stopped, then resume and check
         they are started.
         """
-        # Restarting vault process will set it as sealed so it's
-        # important to have the test executed at the end.
         vault_actions = zaza.model.get_actions(
             'vault')
         if 'pause' not in vault_actions or 'resume' not in vault_actions:
@@ -254,6 +252,58 @@ class VaultTest(BaseVaultTest):
         # this pauses and resumes the LEAD unit
         with self.pause_resume(['vault']):
             logging.info("Testing pause resume")
+        lead_client = vault_utils.extract_lead_unit_client(self.clients)
+        self.assertTrue(lead_client.hvac_client.seal_status['sealed'])
+
+    def test_vault_reload(self):
+        """Run reload tests.
+
+        Reload service and check services were restarted
+        by doing simple change in the running config by API.
+        Then confirm that service is not sealed
+        """
+        vault_actions = zaza.model.get_actions(
+            'vault')
+        if 'reload' not in vault_actions:
+            raise unittest.SkipTest("The version of charm-vault tested does "
+                                    "not have reload action")
+
+        lead_client = vault_utils.extract_lead_unit_client(self.clients)
+        running_config = vault_utils.get_running_config(lead_client)
+        value_to_set = not running_config['data']['disable_mlock']
+
+        zaza.model.set_application_config(
+            'vault',
+            {'disable-mlock': str(value_to_set)})
+
+        logging.info("Testing reload")
+        zaza.model.run_action_on_leader(
+            'vault',
+            'reload',
+            action_params={})
+
+        self.assertEqual(
+            value_to_set,
+            vault_utils.get_running_config(lead_client)[
+                'data']['disable_mlock'])
+        self.assertFalse(lead_client.hvac_client.seal_status['sealed'])
+
+    def test_vault_restart(self):
+        """Run pause and resume tests.
+
+        Restart service and check services are started.
+        """
+        vault_actions = zaza.model.get_actions(
+            'vault')
+        if 'restart' not in vault_actions:
+            raise unittest.SkipTest("The version of charm-vault tested does "
+                                    "not have restart action")
+        logging.info("Testing restart")
+        zaza.model.run_action_on_leader(
+            'vault',
+            'restart',
+            action_params={})
+
         lead_client = vault_utils.extract_lead_unit_client(self.clients)
         self.assertTrue(lead_client.hvac_client.seal_status['sealed'])
 

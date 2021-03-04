@@ -137,6 +137,20 @@ def get_vip_client(cacert=None):
     return client
 
 
+def get_running_config(client):
+    """Get Vault running config.
+
+    :param client: Client to use for initiliasation
+    :type client: CharmVaultClient
+    The hvac library does not support getting info
+    from endpoint /v1/sys/config/state/sanitized
+    Therefore we implement it here
+    """
+    return requests.get(
+        client.hvac_client.adapter.base_uri + '/v1/sys/config/state/sanitized',
+        headers={'X-Vault-Token': client.hvac_client.token}).json()
+
+
 def init_vault(client, shares=1, threshold=1):
     """Initialise vault.
 
