@@ -189,6 +189,10 @@ class HaclusterScaleBackAndForthTest(HaclusterBaseTest):
         # aren't guaranteed to be blocked, so we don't validate that here.
         zaza.model.block_until_all_units_idle()
 
+        # At this point the corosync ring hasn't been updated yet, so it should
+        # still remember the deleted unit:
+        self.__assert_some_corosync_nodes_are_offline(surviving_hacluster_unit)
+
         logging.info('Updating corosync ring')
         hacluster_app_name = zaza.model.get_unit_from_name(
             surviving_hacluster_unit).application
@@ -197,6 +201,10 @@ class HaclusterScaleBackAndForthTest(HaclusterBaseTest):
             'update-ring',
             action_params={'i-really-mean-it': True},
             raise_on_failure=True)
+
+        # At this point if the corosync ring has been properly updated, there
+        # shouldn't be any trace of the deleted unit anymore:
+        self.__assert_all_corosync_nodes_are_online(surviving_hacluster_unit)
 
         logging.info('Re-adding an hacluster unit')
         zaza.model.add_unit(self._principle_app_name, wait_appear=True)
@@ -212,15 +220,30 @@ class HaclusterScaleBackAndForthTest(HaclusterBaseTest):
                                               'active')
         zaza.model.block_until_all_units_idle()
 
-        # At this point if the corosync ring has been properly updated, there
-        # shouldn't be any trace of the deleted unit anymore:
+        # At this point the corosync ring should still not contain any offline
+        # node:
+        self.__assert_all_corosync_nodes_are_online(surviving_hacluster_unit)
+
+    def __assert_some_corosync_nodes_are_offline(self, hacluster_unit):
+        logging.info('Checking that corosync considers at least one node to '
+                     'be offline')
+        output = self._get_crm_status(hacluster_unit)
+        self.assertIn('OFFLINE', output,
+                      "corosync should list at least one offline node")
+
+    def __assert_all_corosync_nodes_are_online(self, hacluster_unit):
         logging.info('Checking that corosync considers all nodes to be online')
+        output = self._get_crm_status(hacluster_unit)
+        self.assertNotIn('OFFLINE', output,
+                         "corosync shouldn't list any offline node")
+
+    @staticmethod
+    def _get_crm_status(hacluster_unit):
         cmd = 'sudo crm status'
-        result = zaza.model.run_on_unit(surviving_hacluster_unit, cmd)
+        result = zaza.model.run_on_unit(hacluster_unit, cmd)
         code = result.get('Code')
         if code != '0':
             raise zaza.model.CommandRunFailed(cmd, result)
         output = result.get('Stdout').strip()
-        logging.debug('Output received: {}'.format(output))
-        self.assertNotIn('OFFLINE', output,
-                         "corosync shouldn't list any offline node")
+        logging.debug('crm output received: {}'.format(output))
+        return output
