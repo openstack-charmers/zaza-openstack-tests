@@ -220,8 +220,17 @@ class HaclusterScaleBackAndForthTest(HaclusterBaseTest):
                                               'active')
         zaza.model.block_until_all_units_idle()
 
-        # At this point the corosync ring should still not contain any offline
-        # node:
+        # Because of lp:1874719 the corosync ring may show a mysterious offline
+        # 'node1' node. We clean up the ring by re-running the 'update-ring'
+        # action:
+        logging.info('Updating corosync ring - workaround for lp:1874719')
+        zaza.model.run_action_on_leader(
+            hacluster_app_name,
+            'update-ring',
+            action_params={'i-really-mean-it': True},
+            raise_on_failure=True)
+
+        # At this point the corosync ring should not contain any offline node:
         self.__assert_all_corosync_nodes_are_online(surviving_hacluster_unit)
 
     def __assert_some_corosync_nodes_are_offline(self, hacluster_unit):
