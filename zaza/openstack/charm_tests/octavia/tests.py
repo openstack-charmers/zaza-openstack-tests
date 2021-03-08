@@ -25,7 +25,7 @@ import osc_lib.exceptions
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 
-from zaza.openstack import ObjectRetrier
+from zaza.openstack.utilities import ObjectRetrier
 
 
 class CharmOperationTest(test_utils.OpenStackBaseTest):

@@ -17,6 +17,8 @@
 
 import time
 
+from keystoneauth1.exceptions.connection import ConnectFailure
+
 
 class ObjectRetrier(object):
     """An automatic retrier for an object.
@@ -141,3 +143,24 @@ class ObjectRetrier(object):
                 wait = wait * backoff
                 if wait > max_interval:
                     wait = max_interval
+
+
+def retry_on_connect_failure(client, **kwargs):
+    """Retry an object that eventually gets resolved to a call.
+
+    Specifically, this uses ObjectRetrier but only against the
+    keystoneauth1.exceptions.connection.ConnectFailure exeception.
+
+    :params client: the object that may throw and exception when called.
+    :type client: Any
+    :params **kwargs: the arguments supplied to the ObjectRetrier init method
+    :type **kwargs: Dict[Any]
+    :returns: client wrapped in an ObjectRetrier instance
+    :rtype: ObjectRetrier[client]
+    """
+    kwcopy = kwargs.copy()
+    if 'retry_exceptions' not in kwcopy:
+        kwcopy['retry_exceptions'] = []
+    if ConnectFailure not in kwcopy['retry_exceptions']:
+        kwcopy['retry_exceptions'].append(ConnectFailure)
+    return ObjectRetrier(client, **kwcopy)

@@ -164,3 +164,23 @@ class TestObjectRetrier(ut_utils.BaseTestCase):
         # that.
         mock_sleep.assert_has_calls([mock.call(5),
                                      mock.call(5)])
+
+    @mock.patch("time.sleep")
+    def test_retry_on_connect_failure(self, mock_sleep):
+
+        class A:
+
+            def func1(self):
+                raise SomeException()
+
+            def func2(self):
+                raise utilities.ConnectFailure()
+
+        a = A()
+        wrapped_a = utilities.retry_on_connect_failure(a, num_retries=2)
+        with self.assertRaises(SomeException):
+            wrapped_a.func1()
+        mock_sleep.assert_not_called()
+        with self.assertRaises(utilities.ConnectFailure):
+            wrapped_a.func2()
+        mock_sleep.assert_has_calls([mock.call(5)])
