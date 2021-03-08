@@ -137,10 +137,26 @@ def get_vip_client(cacert=None):
     return client
 
 
+def get_cluster_leader(clients):
+    """Get Vault cluster leader
+    :param clients: Clients list to get leader
+    :type clients: List of CharmVaultClient
+    We have to make sure we run api calls
+    against the actual leader
+    """
+    if len(clients) == 1:
+        return clients[0]
+
+    for client in clients:
+        if client.hvac_client.ha_status['is_self']:
+            return client
+    return None
+
+
 def get_running_config(client):
     """Get Vault running config.
 
-    :param client: Client to use for initiliasation
+    :param client: Client used to get config
     :type client: CharmVaultClient
     The hvac library does not support getting info
     from endpoint /v1/sys/config/state/sanitized
