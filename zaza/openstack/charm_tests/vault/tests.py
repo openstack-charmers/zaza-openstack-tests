@@ -34,7 +34,6 @@ import zaza.model
 import zaza.utilities.juju as juju_utils
 
 
-
 class BaseVaultTest(test_utils.OpenStackBaseTest):
     """Base class for vault tests."""
 
