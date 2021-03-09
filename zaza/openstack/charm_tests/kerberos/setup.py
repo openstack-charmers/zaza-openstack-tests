@@ -113,7 +113,15 @@ def retrieve_and_attach_keytab():
                                    'keystone_keytab',
                                    tmp_file)
 
-    zaza.model.wait_for_application_states()
+    # cs:ubuntu charm has changed behaviour and we can't rely on the workload
+    # staus message.  Thus, ignore it.
+    states = {
+        "ubuntu-test-host": {
+            "workload-status": "active",
+            "workload-status-message": "",
+        }
+    }
+    zaza.model.wait_for_application_states(states=states)
     zaza.model.block_until_all_units_idle()
 
 
