@@ -208,9 +208,9 @@ packages:
                                         ssh_private_key):
         """Write a file on a Manila share mounted into a Nova instance.
 
-        Mount the Manila share in the given Nova instance, and write a testing
-        file on it (which is meant to be validated from another instance).
-        These commands are executed via SSH.
+        Write a testing file into the already mounted Manila share from the
+        given Nova instance (which is meant to be validated from another
+        instance). These commands are executed via SSH.
 
         :param instance_ip: IP of the Nova instance.
         :type instance_ip: string
