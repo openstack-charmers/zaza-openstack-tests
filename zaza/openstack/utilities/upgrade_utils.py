@@ -26,7 +26,13 @@ from zaza.openstack.utilities.os_versions import (
     OPENSTACK_RELEASES_PAIRS,
 )
 
-
+"""
+The below upgrade order is surfaced in end-user documentation. Any change to it
+should be accompanied by an update to the OpenStack Charms Deployment Guide for
+both charm upgrades and payload upgrades:
+- source/upgrade-charms.rst#upgrade-order
+- source/upgrade-openstack.rst#openstack_upgrade_order
+"""
 SERVICE_GROUPS = (
     ('Database Services', ['percona-cluster', 'mysql-innodb-cluster']),
     ('Stateful Services', ['rabbitmq-server', 'ceph-mon']),
