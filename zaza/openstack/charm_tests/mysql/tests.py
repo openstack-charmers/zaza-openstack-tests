@@ -861,3 +861,38 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
         assert action.data.get("results") is not None, (
             "Remove instance action failed: No results: {}"
             .format(action.data))
+
+
+class MySQLRouterTests(test_utils.OpenStackBaseTest):
+    """MySQL Router Tests."""
+
+    @classmethod
+    def setUpClass(cls, application_name="keystone-mysql-router"):
+        """Run class setup for running mysql-router tests."""
+        super().setUpClass(application_name=application_name)
+        cls.application = application_name
+        cls.services = ["mysqlrouter"]
+        # Config file affected by juju set config change
+        cls.conf_file = (
+            "/var/lib/mysql/{}-mysql-router/mysqlrouter.conf"
+            .format(application_name))
+
+    def test_910_restart_on_config_change(self):
+        """Checking restart happens on config change.
+
+        Change max connections and assert that change propagates to the correct
+        file and that services are restarted as a result
+        """
+        # Expected default and alternate values
+        set_default = {"ttl": ".5"}
+        set_alternate = {"ttl": "7"}
+
+        # Make config change, check for service restarts
+        logging.info("Setting TTL ...")
+        self.restart_on_changed(
+            self.conf_file,
+            set_default,
+            set_alternate,
+            {}, {},
+            self.services)
+        logging.info("Passed restart on changed test.")
