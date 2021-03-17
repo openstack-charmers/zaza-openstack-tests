@@ -592,6 +592,58 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
             logging.info('Testing pause resume')
 
 
+class NeutronBridgePortMappingTest(NeutronPluginApiSharedTests):
+    """Test correct handling of network-bridge-port mapping functionality."""
+
+    def test_600_conflict_data_ext_ports(self):
+        """Verify proper handling of conflict between data-port and ext-port.
+
+        Configuring ext-port and data-port at the same time should make the
+        charm to enter "blocked" state. After unsetting ext-port charm should
+        be active again.
+        """
+        if self.application_name not in ["neutron-gateway",
+                                         "neutron-openvswitch"]:
+            logging.debug("Skipping test, charm under test is not "
+                          "neutron-gateway or neutron-openvswitch")
+            return
+
+        current_data_port = zaza.model.get_application_config(
+            self.application_name).get("data-port").get("value", "")
+        current_ext_port = zaza.model.get_application_config(
+            self.application_name).get("ext-port").get("value", "")
+        logging.debug("Current data-port: '{}'".format(current_data_port))
+        logging.debug("Current data-port: '{}'".format(current_ext_port))
+
+        test_config = zaza.charm_lifecycle.utils.get_charm_config(
+            fatal=False)
+        current_state = test_config.get("target_deploy_status", {})
+        blocked_state = copy.deepcopy(current_state)
+        blocked_state[self.application_name] = {
+            "workload-status": "blocked",
+            "workload-status-message":
+                "ext-port set when data-port set: see config.yaml"}
+
+        logging.info("Setting conflicting ext-port and data-port options")
+        zaza.model.set_application_config(
+            self.application_name, {"data-port": "br-phynet43:eth43",
+                                    "ext-port": "br-phynet43:eth43"})
+        zaza.model.wait_for_application_states(states=blocked_state)
+
+        # unset ext-port and wait for app state to return to active
+        logging.info("Unsetting conflicting ext-port option")
+        zaza.model.set_application_config(
+            self.application_name, {"ext-port": ""})
+        zaza.model.wait_for_application_states(states=current_state)
+
+        # restore original config
+        zaza.model.set_application_config(
+            self.application_name, {'data-port': current_data_port,
+                                    'ext-port': current_ext_port})
+        zaza.model.wait_for_application_states(states=current_state)
+        logging.info('OK')
+
+
 class NeutronOvsVsctlTest(NeutronPluginApiSharedTests):
     """Test 'ovs-vsctl'-related functionality on Neutron charms."""
 
@@ -610,7 +662,8 @@ class NeutronOvsVsctlTest(NeutronPluginApiSharedTests):
                         unit.name, bridge_name
                     ) + ' is marked as managed by us'
                 )
-                expected_external_id = 'charm-neutron-gateway=managed'
+                expected_external_id = 'charm-{}=managed'.format(
+                    self.application_name)
                 actual_external_id = zaza.model.run_on_unit(
                     unit.entity_id,
                     'ovs-vsctl br-get-external-id {}'.format(bridge_name),
