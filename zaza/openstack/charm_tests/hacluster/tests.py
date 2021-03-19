@@ -76,70 +76,8 @@ class HaclusterTest(HaclusterBaseTest):
         self._toggle_maintenance_and_wait('false')
 
 
-class HaclusterScalebackTest(HaclusterBaseTest):
-    """hacluster scaleback tests.
-
-    Use for testing older releases where lp:1400481 wasn't fixed yet.
-    Superseded by HaclusterScaleBackAndForthTest.
-    """
-
-    @classmethod
-    def setUpClass(cls):
-        """Run class setup for running hacluster scaleback tests."""
-        super(HaclusterScalebackTest, cls).setUpClass()
-        test_config = cls.test_config['tests_options']['hacluster']
-        cls._principle_app_name = test_config['principle-app-name']
-        cls._hacluster_charm_name = test_config['hacluster-charm-name']
-
-    def test_930_scaleback(self):
-        """Remove a unit and add a new one."""
-        principle_units = sorted(zaza.model.get_status().applications[
-            self._principle_app_name]['units'].keys())
-        self.assertEqual(len(principle_units), 3)
-        doomed_principle_unit = principle_units[0]
-        other_principle_unit = principle_units[1]
-        doomed_hacluster_unit = juju_utils.get_subordinate_units(
-            [doomed_principle_unit], charm_name=self._hacluster_charm_name)[0]
-        other_hacluster_unit = juju_utils.get_subordinate_units(
-            [other_principle_unit], charm_name=self._hacluster_charm_name)[0]
-
-        logging.info('Pausing unit {}'.format(doomed_hacluster_unit))
-        zaza.model.run_action(
-            doomed_hacluster_unit,
-            'pause',
-            raise_on_failure=True)
-        logging.info('OK')
-
-        logging.info('Removing {}'.format(doomed_principle_unit))
-        zaza.model.destroy_unit(
-            self._principle_app_name,
-            doomed_principle_unit,
-            wait_disappear=True)
-        logging.info('OK')
-
-        logging.info('Waiting for model to settle')
-        zaza.model.block_until_unit_wl_status(other_hacluster_unit, 'blocked')
-        zaza.model.block_until_unit_wl_status(other_principle_unit, 'blocked')
-        zaza.model.block_until_all_units_idle()
-        logging.info('OK')
-
-        logging.info('Adding an hacluster unit')
-        zaza.model.add_unit(self._principle_app_name, wait_appear=True)
-        logging.info('OK')
-
-        logging.info('Waiting for model to settle')
-        zaza.model.block_until_unit_wl_status(other_hacluster_unit, 'active')
-        # NOTE(lourot): the principle application sometimes remain blocked
-        # after scaling back up.
-        zaza.model.block_until_all_units_idle()
-        logging.debug('OK')
-
-
 class HaclusterScaleBackAndForthTest(HaclusterBaseTest):
-    """hacluster tests scaling back and forth.
-
-    Supersedes HaclusterScalebackTest.
-    """
+    """hacluster tests scaling back and forth."""
 
     @classmethod
     def setUpClass(cls):
