@@ -893,7 +893,7 @@ class BaseDeferredRestartTest(OpenStackBaseTest):
         self.check_show_deferred_restarts_wlm(self.restart_package_service)
         self.check_show_deferred_restarts_action(
             self.restart_package_service,
-            'Pkg Update')
+            'Package update')
         logging.info("Running restart action to clear deferred restarts")
         self.check_clear_restarts()
 
