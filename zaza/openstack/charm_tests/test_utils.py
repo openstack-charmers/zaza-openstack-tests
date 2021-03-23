@@ -770,7 +770,7 @@ class BaseDeferredRestartTest(OpenStackBaseTest):
 
         # Check workload status no longer shows deferred restarts.
         for unit in model.get_units(self.application_name):
-            assert unit.workload_status_message == 'Unit is ready'
+            assert 'Services queued' not in unit.workload_status_message
 
     def check_show_deferred_restarts_action(self, test_service,
                                             restart_reason):
@@ -796,6 +796,7 @@ class BaseDeferredRestartTest(OpenStackBaseTest):
                  "show-deferred-restarts action on {}").format(
                     test_service,
                     unit.entity_id))
+            assert action.data['status'] == 'completed'
             for event in yaml.safe_load(action.data['results']['output']):
                 if test_service in event and restart_reason in event:
                     break

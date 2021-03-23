@@ -428,3 +428,45 @@ class RmqTests(test_utils.OpenStackBaseTest):
         check_units(all_units)
 
         logging.info('OK')
+
+
+class RabbitMQDeferredRestartTest(test_utils.BaseDeferredRestartTest):
+    """Deferred restart tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run setup for deferred restart tests."""
+        super().setUpClass(
+            restart_config_file='/etc/rabbitmq/rabbitmq.config',
+            test_service='rabbitmq-server',
+            restart_package='rabbitmq-server',
+            restart_package_service='rabbitmq-server',
+            application_name='rabbitmq-server')
+
+    def trigger_deferred_restart_via_charm(self):
+        """Set charm config option which requires a service start.
+
+        Set the charm debug option and wait for that change to be renderred in
+        applications config file.
+
+        NOTE: The implementation assumes the charm has a `debug` option and
+              self.restart_config_file in an oslo config file where that
+              debug option is renderred. If that is not true the specaliasation
+              class should override this method.
+        """
+        app_config = zaza.model.get_application_config(self.application_name)
+        logging.info("Triggering deferred restart via config change")
+        new_debug_value = str(int(app_config['connection-backlog'].get('value', 100) + 1))
+        logging.info("Setting connection-backlog: {}".format(new_debug_value))
+        zaza.model.set_application_config(
+            self.application_name,
+            {'connection-backlog': new_debug_value})
+        logging.info("Waiting for connection-backlog to be {} in {}".format(
+            new_debug_value,
+            self.restart_config_file))
+        zaza.model.block_until_file_matches_re(
+            self.application_name,
+            self.restart_config_file,
+            '{{backlog, {}}}'.format(new_debug_value))
+        logging.info("Waiting for units to be idle")
+        zaza.model.block_until_all_units_idle()
