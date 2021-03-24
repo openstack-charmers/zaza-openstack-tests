@@ -92,3 +92,53 @@ class GlanceTest(test_utils.OpenStackBaseTest):
         they are started
         """
         self.pause_resume(['glance-api'])
+
+
+class GlanceCephRGWBackendTest(test_utils.OpenStackBaseTest):
+    """Encapsulate glance tests using the Ceph RGW backend.
+
+    It validates the Ceph RGW backend in glance, which uses the Swift API.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running glance tests."""
+        super(GlanceCephRGWBackendTest, cls).setUpClass()
+
+        swift_session = openstack_utils.get_keystone_session_from_relation(
+            'ceph-radosgw')
+        cls.swift = openstack_utils.get_swift_session_client(
+            swift_session)
+        cls.glance_client = openstack_utils.get_glance_session_client(
+            cls.keystone_session)
+
+    def test_100_create_image(self):
+        """Create an image and do a simple validation of it.
+
+        The OpenStack Swift API is used to do the validation, since the Ceph
+        Rados Gateway serves an API which is compatible with that.
+        """
+        image_name = 'zaza-ceph-rgw-image'
+        openstack_utils.create_image(
+            glance=self.glance_client,
+            image_url=openstack_utils.find_cirros_image(arch='x86_64'),
+            image_name=image_name,
+            backend='swift')
+        headers, containers = self.swift.get_account()
+        self.assertEqual(len(containers), 1)
+        container_name = containers[0].get('name')
+        headers, objects = self.swift.get_container(container_name)
+        images = openstack_utils.get_images_by_name(
+            self.glance_client,
+            image_name)
+        self.assertEqual(len(images), 1)
+        image = images[0]
+        total_bytes = 0
+        for ob in objects:
+            if '{}-'.format(image['id']) in ob['name']:
+                total_bytes = total_bytes + int(ob['bytes'])
+        logging.info(
+            'Checking glance image size {} matches swift '
+            'image size {}'.format(image['size'], total_bytes))
+        self.assertEqual(image['size'], total_bytes)
+        openstack_utils.delete_image(self.glance_client, image['id'])
