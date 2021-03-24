@@ -449,14 +449,13 @@ class RabbitMQDeferredRestartTest(test_utils.BaseDeferredRestartTest):
         Set the charm debug option and wait for that change to be renderred in
         applications config file.
 
-        NOTE: The implementation assumes the charm has a `debug` option and
-              self.restart_config_file in an oslo config file where that
-              debug option is renderred. If that is not true the specaliasation
-              class should override this method.
+        This overrides the base class version as the rabbit charm does not
+        have a debug option and the config file is not in oslo config format.
         """
         app_config = zaza.model.get_application_config(self.application_name)
         logging.info("Triggering deferred restart via config change")
-        new_debug_value = str(int(app_config['connection-backlog'].get('value', 100) + 1))
+        new_debug_value = str(
+            int(app_config['connection-backlog'].get('value', 100) + 1))
         logging.info("Setting connection-backlog: {}".format(new_debug_value))
         zaza.model.set_application_config(
             self.application_name,
