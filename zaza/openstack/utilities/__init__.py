@@ -20,7 +20,7 @@ import time
 from keystoneauth1.exceptions.connection import ConnectFailure
 
 
-class ObjectRetrier(object):
+class ObjectRetrierWraps(object):
     """An automatic retrier for an object.
 
     This is designed to be used with an instance of an object.  Basically, it
@@ -35,7 +35,7 @@ class ObjectRetrier(object):
 
         # get a client that does 3 retries, waits 5 seconds between retries and
         # retries on any error.
-        some_client = ObjectRetrier(get_some_client)
+        some_client = ObjectRetrierWraps(get_some_client)
         # this gets retried up to 3 times.
         things = some_client.list_things()
 
@@ -96,7 +96,7 @@ class ObjectRetrier(object):
         # will fail with an attribute error.
         attr = getattr(self.__obj, name)
         if callable(attr) or hasattr(attr, "__getattr__"):
-            return ObjectRetrier(attr, **self.__kwargs)
+            return ObjectRetrierWraps(attr, **self.__kwargs)
         else:
             return attr
         # TODO(ajkavanagh): Note detecting a property is a bit trickier.  we
@@ -122,8 +122,8 @@ class ObjectRetrier(object):
             try:
                 return obj(*args, **kwargs)
             except Exception as e:
-                # if retry_exceptions is None, or the type of the exception is
-                # not in the list of retries, then raise an exception
+                # if retry_exceptions is not None, or the type of the exception
+                # is not in the list of retries, then raise an exception
                 # immediately.  This means that if retry_exceptions is None,
                 # then the method is always retried.
                 if (retry_exceptions is not None and
@@ -148,19 +148,20 @@ class ObjectRetrier(object):
 def retry_on_connect_failure(client, **kwargs):
     """Retry an object that eventually gets resolved to a call.
 
-    Specifically, this uses ObjectRetrier but only against the
+    Specifically, this uses ObjectRetrierWraps but only against the
     keystoneauth1.exceptions.connection.ConnectFailure exeception.
 
     :params client: the object that may throw and exception when called.
     :type client: Any
-    :params **kwargs: the arguments supplied to the ObjectRetrier init method
+    :params **kwargs: the arguments supplied to the ObjectRetrierWraps init
+                      method
     :type **kwargs: Dict[Any]
-    :returns: client wrapped in an ObjectRetrier instance
-    :rtype: ObjectRetrier[client]
+    :returns: client wrapped in an ObjectRetrierWraps instance
+    :rtype: ObjectRetrierWraps[client]
     """
     kwcopy = kwargs.copy()
     if 'retry_exceptions' not in kwcopy:
         kwcopy['retry_exceptions'] = []
     if ConnectFailure not in kwcopy['retry_exceptions']:
         kwcopy['retry_exceptions'].append(ConnectFailure)
-    return ObjectRetrier(client, **kwcopy)
+    return ObjectRetrierWraps(client, **kwcopy)

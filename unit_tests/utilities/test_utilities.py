@@ -31,7 +31,7 @@ class SomeException3(Exception):
     pass
 
 
-class TestObjectRetrier(ut_utils.BaseTestCase):
+class TestObjectRetrierWraps(ut_utils.BaseTestCase):
 
     def test_object_wrap(self):
 
@@ -41,7 +41,7 @@ class TestObjectRetrier(ut_utils.BaseTestCase):
                 return a + b
 
         a = A()
-        wrapped_a = utilities.ObjectRetrier(a)
+        wrapped_a = utilities.ObjectRetrierWraps(a)
         self.assertEqual(wrapped_a.func(3), 4)
 
     def test_object_multilevel_wrap(self):
@@ -59,7 +59,7 @@ class TestObjectRetrier(ut_utils.BaseTestCase):
                 return A()
 
         b = B()
-        wrapped_b = utilities.ObjectRetrier(b)
+        wrapped_b = utilities.ObjectRetrierWraps(b)
         self.assertEqual(wrapped_b.f2.f1(5, 6), 30)
 
     def test_object_wrap_number(self):
@@ -75,7 +75,7 @@ class TestObjectRetrier(ut_utils.BaseTestCase):
                 return a * b
 
         a = A()
-        wrapped_a = utilities.ObjectRetrier(a)
+        wrapped_a = utilities.ObjectRetrierWraps(a)
         self.assertEqual(wrapped_a.class_a, 5)
         self.assertEqual(wrapped_a.instance_a, 10)
 
@@ -89,15 +89,15 @@ class TestObjectRetrier(ut_utils.BaseTestCase):
 
         a = A()
         # retry on a specific exception
-        wrapped_a = utilities.ObjectRetrier(a, num_retries=1,
-                                            retry_exceptions=[SomeException])
+        wrapped_a = utilities.ObjectRetrierWraps(
+            a, num_retries=1, retry_exceptions=[SomeException])
         with self.assertRaises(SomeException):
             wrapped_a.func()
 
         mock_sleep.assert_called_once_with(5)
 
         # also retry on any exception if none specified
-        wrapped_a = utilities.ObjectRetrier(a, num_retries=1)
+        wrapped_a = utilities.ObjectRetrierWraps(a, num_retries=1)
         mock_sleep.reset_mock()
         with self.assertRaises(SomeException):
             wrapped_a.func()
@@ -105,8 +105,8 @@ class TestObjectRetrier(ut_utils.BaseTestCase):
         mock_sleep.assert_called_once_with(5)
 
         # no retry if exception isn't listed.
-        wrapped_a = utilities.ObjectRetrier(a, num_retries=1,
-                                            retry_exceptions=[SomeException2])
+        wrapped_a = utilities.ObjectRetrierWraps(
+            a, num_retries=1, retry_exceptions=[SomeException2])
         mock_sleep.reset_mock()
         with self.assertRaises(SomeException):
             wrapped_a.func()
@@ -123,7 +123,8 @@ class TestObjectRetrier(ut_utils.BaseTestCase):
 
         a = A()
         mock_log = mock.Mock()
-        wrapped_a = utilities.ObjectRetrier(a, num_retries=1, log=mock_log)
+        wrapped_a = utilities.ObjectRetrierWraps(
+            a, num_retries=1, log=mock_log)
         with self.assertRaises(SomeException):
             wrapped_a.func()
 
@@ -140,7 +141,7 @@ class TestObjectRetrier(ut_utils.BaseTestCase):
                 raise SomeException()
 
         a = A()
-        wrapped_a = utilities.ObjectRetrier(a, num_retries=3, backoff=2)
+        wrapped_a = utilities.ObjectRetrierWraps(a, num_retries=3, backoff=2)
         with self.assertRaises(SomeException):
             wrapped_a.func()
         # Note third call hits maximum wait time of 15.
@@ -157,7 +158,8 @@ class TestObjectRetrier(ut_utils.BaseTestCase):
                 raise SomeException()
 
         a = A()
-        wrapped_a = utilities.ObjectRetrier(a, num_retries=3, total_wait=9)
+        wrapped_a = utilities.ObjectRetrierWraps(
+            a, num_retries=3, total_wait=9)
         with self.assertRaises(SomeException):
             wrapped_a.func()
         # Note only two calls, as total wait is 9, so a 3rd retry would exceed

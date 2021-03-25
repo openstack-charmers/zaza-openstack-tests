@@ -25,7 +25,7 @@ import osc_lib.exceptions
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 
-from zaza.openstack.utilities import ObjectRetrier
+from zaza.openstack.utilities import ObjectRetrierWraps
 
 
 class CharmOperationTest(test_utils.OpenStackBaseTest):
@@ -65,11 +65,11 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
     def setUpClass(cls):
         """Run class setup for running LBaaSv2 service tests."""
         super(LBAASv2Test, cls).setUpClass()
-        cls.keystone_client = ObjectRetrier(
+        cls.keystone_client = ObjectRetrierWraps(
             openstack_utils.get_keystone_session_client(cls.keystone_session))
-        cls.neutron_client = ObjectRetrier(
+        cls.neutron_client = ObjectRetrierWraps(
             openstack_utils.get_neutron_session_client(cls.keystone_session))
-        cls.octavia_client = ObjectRetrier(
+        cls.octavia_client = ObjectRetrierWraps(
             openstack_utils.get_octavia_session_client(cls.keystone_session))
         cls.RESOURCE_PREFIX = 'zaza-octavia'
 
