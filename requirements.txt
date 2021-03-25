@@ -1,3 +1,7 @@
+# pin lxml < 4.6.3 for py35 as no wheels exist for 4.6.3 (deprecated platform)
+# This is necessary for Xenial builders
+# BUG: https://github.com/openstack-charmers/zaza-openstack-tests/issues/530
+lxml<4.6.3
 aiounittest
 async_generator
 boto3
