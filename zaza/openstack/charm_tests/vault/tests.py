@@ -273,23 +273,33 @@ class VaultTest(BaseVaultTest):
         running_config = vault_utils.get_running_config(lead_client)
         value_to_set = not running_config['data']['disable_mlock']
 
+        logging.info("Setting disable-mlock to {}".format(str(value_to_set)))
         zaza.model.set_application_config(
             'vault',
             {'disable-mlock': str(value_to_set)})
 
-        logging.info("Testing reload")
+        logging.info("Waiting for modle to be idle ...")
+        zaza.model.block_until_all_units_idle(model_name=self.model_name)
+
+        logging.info("Testing action reload on {}".format(lead_client))
         zaza.model.run_action(
             juju_utils.get_unit_name_from_ip_address(
                 lead_client.addr, 'vault'),
             'reload',
             model_name=self.model_name)
 
+        logging.info("Getting new value ...")
         new_value = vault_utils.get_running_config(lead_client)[
             'data']['disable_mlock']
-        logging.info(new_value)
+
+        logging.info(
+            "Asserting new value {} is equal to set value {}"
+            .format(new_value, value_to_set))
         self.assertEqual(
             value_to_set,
             new_value)
+
+        logging.info("Asserting not sealed")
         self.assertFalse(lead_client.hvac_client.seal_status['sealed'])
 
     def test_vault_restart(self):
