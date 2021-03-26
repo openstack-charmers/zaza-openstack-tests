@@ -16,8 +16,12 @@
 
 """Encapsulate glance testing."""
 
+import json
+import boto3
 import logging
 
+import zaza.model as model
+import zaza.utilities.juju as juju
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 
@@ -92,3 +96,45 @@ class GlanceTest(test_utils.OpenStackBaseTest):
         they are started
         """
         self.pause_resume(['glance-api'])
+
+
+class S3GlanceTest(test_utils.OpenStackBaseTest):
+    """Encapsulate glance S3 tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running glance tests with S3 backend."""
+        super(S3GlanceTest, cls).setUpClass()
+        cls.glance_client = openstack_utils.get_glance_session_client(
+            cls.keystone_session)
+
+
+    def test_s3_image_store(self):
+        # Find existing user
+        logging.info('Getting credentials')
+        username = "'glance-s3-testuser'"
+        cmd = "radosgw-admin user info --uid='glance-s3-testuser'"
+        results = model.run_on_leader('ceph-mon', cmd)
+
+        # Get access and secret keys
+        stdout = json.loads(results['stdout'])
+        keys = stdout['keys'][0]
+        access_key = keys['access_key']
+        secret_key = keys['secret_key']
+
+        # Get S3 endpoint
+        ip = juju.get_application_ip('ceph-radosgw')
+        status = juju.get_application_status('ceph-radosgw')
+        port = status.units['ceph-radosgw/0'].opened_ports[0].split('/')[0]
+        endpoint = 'http://' + ip + ':' + port
+
+        # Create boto client and verify image exists
+        logging.info('Verifying image exists in S3 bucket')
+        s3_client = boto3.client(
+            's3',
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            endpoint_url=endpoint)
+        objects = s3_client.list_objects(Bucket='glance-s3-test-bucket')
+        self.assertTrue('Contents' in objects.keys())
+

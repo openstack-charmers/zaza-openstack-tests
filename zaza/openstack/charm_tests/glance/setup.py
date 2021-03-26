@@ -14,9 +14,14 @@
 
 """Code for configuring glance."""
 
+import json
+import boto3
 import logging
+
+import zaza.model as model
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.utilities.deployment_env as deployment_env
+import zaza.utilities.juju as juju
 
 CIRROS_IMAGE_NAME = "cirros"
 CIRROS_ALT_IMAGE_NAME = "cirros_alt"
@@ -161,3 +166,85 @@ def add_lts_image(glance_client=None, image_name=None, release=None,
               glance_client=glance_client,
               image_name=image_name,
               properties=properties)
+
+def add_lts_image_to_s3():
+    glance_client = _get_default_glance_client()
+
+    # Delete any existing image
+    image_list = openstack_utils.get_images_by_name(
+            glance_client, LTS_IMAGE_NAME)
+    if image_list:
+        logging.info(image_list)
+        logging.info('Deleting existing {} image'.format(LTS_IMAGE_NAME))
+        openstack_utils.delete_image(glance_client, image_list[0]['id'])
+
+    # Add new image
+    add_lts_image()
+
+def configure_s3_backend():
+    """Inject S3 parameters from Ceph-Radosgw for Glance config."""
+
+    # Create a new user
+    logging.info('Creating new S3 user')
+    username = "'glance-s3-testuser'"
+    displayname = "'Glance S3 Test User'"
+    cmd = 'radosgw-admin user create --uid={} --display-name={}'.format(
+          username,
+          displayname)
+    results = model.run_on_leader('ceph-mon', cmd)
+
+    # Get access and secret keys
+    logging.info('Getting user keys')
+    stdout = json.loads(results['stdout'])
+    keys = stdout['keys'][0]
+    access_key = keys['access_key']
+    secret_key = keys['secret_key']
+
+    # Get S3 endpoint
+    logging.info('Getting S3 endpoint')
+    ip = juju.get_application_ip('ceph-radosgw')
+    status = juju.get_application_status('ceph-radosgw')
+    port = status.units['ceph-radosgw/0'].opened_ports[0].split('/')[0]
+    endpoint = 'http://' + ip + ':' + port
+
+    # Create a bucket
+    logging.info('Creating S3 bucket')
+    bucket_name = 'glance-s3-test-bucket'
+    s3_client = boto3.client(
+            's3',
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            endpoint_url=endpoint)
+    s3_client.create_bucket(Bucket=bucket_name)
+
+    # Update Glance configs
+    logging.info('Updating Glance configs')
+    model.set_application_config(
+        'glance',
+        {'s3-store-host': endpoint,
+         's3-store-access-key': access_key,
+         's3-store-secret-key': secret_key,
+         's3-store-bucket': 'glance-s3-test-bucket'})
+    model.wait_for_agent_status()
+    model.wait_for_application_states(
+        states={
+            'glance': {
+                'workload-status': 'active',
+                'workload-status-message': 'Unit is ready'}})
+
+    # Install python3-boto3
+    result = model.run_on_leader('glance', 'dpkg --list | grep python3-boto3')
+    if result['stdout']:
+        logging.info('Python3-boto3 already installed')
+        return
+    logging.info('Installing python3-boto3')
+    model.run_on_leader('glance', 'apt-get install -y python3-boto3')
+    model.run_on_leader('glance', 'systemctl restart glance-api.service')
+
+    # Wait for idle
+    model.wait_for_application_states(
+        states={
+            'glance': {
+                'workload-status': 'active',
+                'workload-status-message': 'Unit is ready'}})
+
