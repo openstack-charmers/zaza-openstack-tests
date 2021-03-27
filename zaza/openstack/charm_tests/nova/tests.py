@@ -19,6 +19,8 @@
 import json
 import logging
 import unittest
+from configparser import ConfigParser
+from time import sleep
 
 import zaza.model
 import zaza.openstack.charm_tests.glance.setup as glance_setup
@@ -47,6 +49,10 @@ class CirrosGuestCreateTest(test_utils.OpenStackBaseTest):
         self.launch_guest(
             'cirros', instance_key=glance_setup.CIRROS_IMAGE_NAME)
 
+    def tearDown(self):
+        """Cleanup of VM guests."""
+        self.resource_cleanup()
+
 
 class LTSGuestCreateTest(test_utils.OpenStackBaseTest):
     """Tests to launch a LTS image."""
@@ -56,6 +62,10 @@ class LTSGuestCreateTest(test_utils.OpenStackBaseTest):
         self.RESOURCE_PREFIX = 'zaza-nova'
         self.launch_guest(
             'ubuntu', instance_key=glance_setup.LTS_IMAGE_NAME)
+
+    def tearDown(self):
+        """Cleanup of VM guests."""
+        self.resource_cleanup()
 
 
 class LTSGuestCreateVolumeBackedTest(test_utils.OpenStackBaseTest):
@@ -67,6 +77,139 @@ class LTSGuestCreateVolumeBackedTest(test_utils.OpenStackBaseTest):
         self.launch_guest(
             'volume-backed-ubuntu', instance_key=glance_setup.LTS_IMAGE_NAME,
             use_boot_volume=True)
+
+    def tearDown(self):
+        """Cleanup of VM guests."""
+        self.resource_cleanup()
+
+
+class CloudActions(test_utils.OpenStackBaseTest):
+    """Test actions from actions/cloud.py."""
+
+    def fetch_nova_service_hostname(self, unit_name):
+        """
+        Fetch hostname used to register with nova-cloud-controller.
+
+        When nova-compute registers with nova-cloud-controller it uses either
+        config variable from '/etc/nova/nova.conf` or host's hostname to
+        identify itself. We need to fetch this value directly from the unit,
+        otherwise it's not possible to correlate entries from
+        `nova service-list` with nova-compute units.
+
+        :param unit_name: nova-compute unit name.
+        :return: hostname used when registering to cloud-controller
+        """
+        nova_cfg = ConfigParser()
+
+        result = zaza.model.run_on_unit(unit_name,
+                                        'cat /etc/nova/nova.conf')
+        nova_cfg.read_string(result['Stdout'])
+
+        try:
+            nova_service_name = nova_cfg['DEFAULT']['host']
+        except KeyError:
+            # Fallback to hostname if 'host' variable is not present in the
+            # config
+            result = zaza.model.run_on_unit(unit_name, 'hostname')
+            nova_service_name = result['Stdout'].rstrip('\n')
+
+        if not nova_service_name:
+            self.fail("Failed to fetch nova service name from"
+                      " nova-compute unit.")
+        return nova_service_name
+
+    def test_940_enable_disable_actions(self):
+        """Test disable/enable actions on nova-compute units."""
+        nova_units = zaza.model.get_units('nova-compute',
+                                          model_name=self.model_name)
+
+        # Check that nova-compute services are enabled before testing
+        for service in self.nova_client.services.list(binary='nova-compute'):
+            self.assertEqual(service.status, 'enabled')
+
+        # Run 'disable' action on units
+        zaza.model.run_action_on_units([unit.name for unit in nova_units],
+                                       'disable')
+
+        # Check action results via nova API
+        for service in self.nova_client.services.list(binary='nova-compute'):
+            self.assertEqual(service.status, 'disabled')
+
+        # Run 'enable' action on units
+        zaza.model.run_action_on_units([unit.name for unit in nova_units],
+                                       'enable')
+
+        # Check action results via nova API
+        for service in self.nova_client.services.list(binary='nova-compute'):
+            self.assertEqual(service.status, 'enabled')
+
+    def test_950_remove_from_cloud_actions(self):
+        """Test actions remove-from-cloud and register-to-cloud.
+
+        Note (martin-kalcok): This test requires that nova-compute unit is not
+        running any VMs. If there are any leftover VMs from previous tests,
+        action `remove-from-cloud` will fail.
+        """
+        all_units = zaza.model.get_units('nova-compute',
+                                         model_name=self.model_name)
+
+        unit_to_remove = all_units[0]
+
+        service_name = self.fetch_nova_service_hostname(unit_to_remove.name)
+
+        registered_nova_services = self.nova_client.services.list(
+            host=service_name, binary='nova-compute')
+
+        service_count = len(registered_nova_services)
+        if service_count < 1:
+            self.fail("Unit '{}' has no nova-compute services registered in"
+                      " nova-cloud-controller".format(unit_to_remove.name))
+        elif service_count > 1:
+            self.fail("Unexpected number of nova-compute services registered"
+                      " in nova-cloud controller. Expecting: 1, found: "
+                      "{}".format(service_count))
+
+        # run action remove-from-cloud and wait for the results in
+        # nova-cloud-controller
+        zaza.model.run_action_on_units([unit_to_remove.name],
+                                       'remove-from-cloud',
+                                       raise_on_failure=True)
+
+        # Wait for nova-compute service to be removed from the
+        # nova-cloud-controller
+        sleep_timeout = 1  # don't waste 10 seconds on the first run
+
+        for _ in range(31):
+            sleep(sleep_timeout)
+            service_list = self.nova_client.services.list(
+                host=service_name, binary='nova-compute')
+            if len(service_list) == 0:
+                break
+            sleep_timeout = 10
+        else:
+            self.fail("nova-compute service was not unregistered from the "
+                      "nova-cloud-controller as expected.")
+
+        # run action register-to-cloud to revert previous action
+        # and wait for the results in nova-cloud-controller
+        zaza.model.run_action_on_units([unit_to_remove.name],
+                                       'register-to-cloud',
+                                       raise_on_failure=True)
+
+        # Wait for nova-compute service to be registered to the
+        # nova-cloud-controller
+        sleep_timeout = 1  # don't waste 10 seconds on the first run
+
+        for _ in range(31):
+            sleep(sleep_timeout)
+            service_list = self.nova_client.services.list(
+                host=service_name, binary='nova-compute')
+            if len(service_list) == 1:
+                break
+            sleep_timeout = 10
+        else:
+            self.fail("nova-compute service was not re-registered to the "
+                      "nova-cloud-controller as expected.")
 
 
 class NovaCompute(test_utils.OpenStackBaseTest):
