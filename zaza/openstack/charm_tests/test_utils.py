@@ -723,7 +723,7 @@ class BaseDeferredRestartTest(OpenStackBaseTest):
 
     NOTE: The test has been broken into various class methods which may require
           specialisation if the charm being tested is not a standard OpenStack
-          charm e.g. `trigger_deferred_restart_via_charm` if the charm is not
+          charm e.g. `trigger_deferred_hook_via_charm` if the charm is not
           an oslo config or does not have a debug option.
     """
 
@@ -770,10 +770,36 @@ class BaseDeferredRestartTest(OpenStackBaseTest):
 
         # Check workload status no longer shows deferred restarts.
         for unit in model.get_units(self.application_name):
-            assert 'Services queued' not in unit.workload_status_message
+            assert unit.workload_status_message == 'Unit is ready'
 
-    def check_show_deferred_restarts_action(self, test_service,
-                                            restart_reason):
+    def check_clear_hooks(self):
+        """Clear and deferred restarts and check status.
+
+        Clear and deferred restarts and then check the workload status message
+        for each unit.
+        """
+        # Use action to run any deferred restarts
+        for unit in model.get_units(self.application_name):
+            model.run_action(
+                unit.entity_id,
+                'run-deferred-hooks')
+
+        # Check workload status no longer shows deferred restarts.
+        for unit in model.get_units(self.application_name):
+            assert unit.workload_status_message == 'Unit is ready'
+
+    def run_show_deferred_events_action(self):
+        """Run show-deferred-events and return results.
+
+        :returns: Data from action run
+        :rtype: Dict
+        """
+        unit = model.get_units(self.application_name)[0]
+        action = model.run_action(unit.entity_id, 'show-deferred-events')
+        return yaml.safe_load(action.data['results']['output'])
+
+    def check_show_deferred_events_action_restart(self, test_service,
+                                                  restart_reason):
         """Check the output from the action to list deferred restarts.
 
         Run the action to list any deferred restarts and check it has entry for
@@ -787,24 +813,44 @@ class BaseDeferredRestartTest(OpenStackBaseTest):
         :type restart_reason: str
         """
         # Ensure that the deferred restart and cause are listed via action
-        for unit in model.get_units(self.application_name):
-            action = model.run_action(
-                unit.entity_id,
-                'show-deferred-restarts')
-            logging.info(
-                ("Checking {} is marked as needing restart in "
-                 "show-deferred-restarts action on {}").format(
-                    test_service,
-                    unit.entity_id))
-            assert action.data['status'] == 'completed'
-            for event in yaml.safe_load(action.data['results']['output']):
-                if test_service in event and restart_reason in event:
-                    break
-            else:
-                msg = 'No entry for restart of {} for reason {} found'.format(
-                    test_service,
-                    restart_reason)
-                raise Exception(msg)
+        logging.info(
+            ("Checking {} is marked as needing restart in "
+             "show-deferred-events action").format(
+                test_service))
+        for event in self.run_show_deferred_events_action()['restarts']:
+            logging.info("{} in {} and {} in {}".format(
+                test_service,
+                event,
+                restart_reason,
+                event))
+            if test_service in event and restart_reason in event:
+                break
+        else:
+            msg = 'No entry for restart of {} for reason {} found'.format(
+                test_service,
+                restart_reason)
+            raise Exception(msg)
+
+    def check_show_deferred_events_action_hook(self, hook):
+        """Check the output from the action to list deferred eveents.
+
+        Run the action to list any deferred events and check it has entry for
+        the given hook.
+
+        :param hook: Hook name
+        :type hook: str
+        """
+        # Ensure that the deferred restart and cause are listed via action
+        logging.info(
+            ("Checking {} is marked as skipped in "
+             "show-deferred-events action").format(hook))
+        for event in self.run_show_deferred_events_action()['hooks']:
+            logging.info("{} in {}".format(hook, event))
+            if hook in event:
+                break
+        else:
+            msg = '{} not found in {}'.format(hook, event)
+            raise Exception(msg)
 
     def check_show_deferred_restarts_wlm(self, test_service):
         """Check the workload status message lists deferred restart.
@@ -820,7 +866,16 @@ class BaseDeferredRestartTest(OpenStackBaseTest):
                  "message of {}".format(test_service, unit.entity_id)))
             assert test_service in unit.workload_status_message
 
-    def trigger_deferred_restart_via_charm(self):
+    def check_deferred_hook_wlm(self):
+        """Check the workload status message lists deferred event."""
+        # Ensure that the deferred restarts are visible in Juju status
+        for unit in model.get_units(self.application_name):
+            logging.info(
+                ("Checking {} is marked as having deferred hook in workload "
+                 "message".format(unit.entity_id)))
+            assert 'config-changed' in unit.workload_status_message
+
+    def trigger_deferred_hook_via_charm(self):
         """Set charm config option which requires a service start.
 
         Set the charm debug option and wait for that change to be renderred in
@@ -838,17 +893,11 @@ class BaseDeferredRestartTest(OpenStackBaseTest):
         model.set_application_config(
             self.application_name,
             {'debug': new_debug_value})
-        expected_contents = {
-            'DEFAULT': {
-                'debug': [new_debug_value]}}
-        logging.info("Waiting for debug to be {} in {}".format(
-            new_debug_value,
-            self.restart_config_file))
-        model.block_until_oslo_config_entries_match(
-            self.application_name,
-            self.restart_config_file,
-            expected_contents)
         logging.info("Waiting for units to be idle")
+        test_unit = model.get_units(self.application_name)[0]
+        model.block_until_unit_wl_message_match(
+            test_unit.entity_id,
+            status_pattern='.*config-changed.*')
         model.block_until_all_units_idle()
 
     def trigger_deferred_restart_via_package(self):
@@ -870,16 +919,14 @@ class BaseDeferredRestartTest(OpenStackBaseTest):
         NOTE: If this test is not relevant for the target charm then override
               this method and raise unittest.SkipTest
         """
-        self.trigger_deferred_restart_via_charm()
+        self.trigger_deferred_hook_via_charm()
 
-        self.check_show_deferred_restarts_wlm(self.test_service)
-        self.check_show_deferred_restarts_action(
-            self.test_service,
-            self.restart_config_file)
+        self.check_deferred_hook_wlm()
+        self.check_show_deferred_events_action_hook('config-changed')
         # Rerunning to flip config option back to previous value.
-        self.trigger_deferred_restart_via_charm()
+        self.trigger_deferred_hook_via_charm()
         logging.info("Running restart action to clear deferred restarts")
-        self.check_clear_restarts()
+        self.check_clear_hooks()
 
     def run_package_change_test(self):
         """Trigger a deferred restart by updating a package.
@@ -892,7 +939,7 @@ class BaseDeferredRestartTest(OpenStackBaseTest):
         self.trigger_deferred_restart_via_package()
 
         self.check_show_deferred_restarts_wlm(self.restart_package_service)
-        self.check_show_deferred_restarts_action(
+        self.check_show_deferred_events_action_restart(
             self.restart_package_service,
             'Package update')
         logging.info("Running restart action to clear deferred restarts")

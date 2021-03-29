@@ -443,7 +443,7 @@ class RabbitMQDeferredRestartTest(test_utils.BaseDeferredRestartTest):
             restart_package_service='rabbitmq-server',
             application_name='rabbitmq-server')
 
-    def trigger_deferred_restart_via_charm(self):
+    def trigger_deferred_hook_via_charm(self):
         """Set charm config option which requires a service start.
 
         Set the charm debug option and wait for that change to be renderred in
@@ -460,12 +460,9 @@ class RabbitMQDeferredRestartTest(test_utils.BaseDeferredRestartTest):
         zaza.model.set_application_config(
             self.application_name,
             {'connection-backlog': new_debug_value})
-        logging.info("Waiting for connection-backlog to be {} in {}".format(
-            new_debug_value,
-            self.restart_config_file))
-        zaza.model.block_until_file_matches_re(
-            self.application_name,
-            self.restart_config_file,
-            '{{backlog, {}}}'.format(new_debug_value))
         logging.info("Waiting for units to be idle")
+        test_unit = zaza.model.get_units(self.application_name)[0]
+        zaza.model.block_until_unit_wl_message_match(
+            test_unit.entity_id,
+            status_pattern='.*config-changed.*')
         zaza.model.block_until_all_units_idle()
