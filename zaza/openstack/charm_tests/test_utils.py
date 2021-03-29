@@ -755,6 +755,12 @@ class BaseDeferredRestartTest(OpenStackBaseTest):
         super(BaseDeferredRestartTest, cls).setUpClass(
             application_name=cls.application_name)
 
+    def check_status_message_is_clear(self):
+        """Check each units status message show no defeerred events."""
+        # Check workload status no longer shows deferred restarts.
+        for unit in model.get_units(self.application_name):
+            assert unit.workload_status_message == 'Unit is ready'
+
     def check_clear_restarts(self):
         """Clear and deferred restarts and check status.
 
@@ -769,8 +775,7 @@ class BaseDeferredRestartTest(OpenStackBaseTest):
                 action_params={'deferred': True})
 
         # Check workload status no longer shows deferred restarts.
-        for unit in model.get_units(self.application_name):
-            assert unit.workload_status_message == 'Unit is ready'
+        self.check_status_message_is_clear()
 
     def check_clear_hooks(self):
         """Clear and deferred restarts and check status.
@@ -785,8 +790,7 @@ class BaseDeferredRestartTest(OpenStackBaseTest):
                 'run-deferred-hooks')
 
         # Check workload status no longer shows deferred restarts.
-        for unit in model.get_units(self.application_name):
-            assert unit.workload_status_message == 'Unit is ready'
+        self.check_status_message_is_clear()
 
     def run_show_deferred_events_action(self):
         """Run show-deferred-events and return results.

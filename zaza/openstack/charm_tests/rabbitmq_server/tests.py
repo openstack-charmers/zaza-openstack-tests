@@ -443,6 +443,13 @@ class RabbitMQDeferredRestartTest(test_utils.BaseDeferredRestartTest):
             restart_package_service='rabbitmq-server',
             application_name='rabbitmq-server')
 
+    def check_status_message_is_clear(self):
+        """Check each units status message show no defeerred events."""
+        for unit in zaza.model.get_units(self.application_name):
+            assert unit.workload_status_message in [
+                'Unit is ready',
+                'Unit is ready and clustered']
+
     def trigger_deferred_hook_via_charm(self):
         """Set charm config option which requires a service start.
 
