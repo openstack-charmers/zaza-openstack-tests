@@ -428,3 +428,48 @@ class RmqTests(test_utils.OpenStackBaseTest):
         check_units(all_units)
 
         logging.info('OK')
+
+
+class RabbitMQDeferredRestartTest(test_utils.BaseDeferredRestartTest):
+    """Deferred restart tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run setup for deferred restart tests."""
+        super().setUpClass(
+            restart_config_file='/etc/rabbitmq/rabbitmq.config',
+            test_service='rabbitmq-server',
+            restart_package='rabbitmq-server',
+            restart_package_service='rabbitmq-server',
+            application_name='rabbitmq-server')
+
+    def check_status_message_is_clear(self):
+        """Check each units status message show no defeerred events."""
+        for unit in zaza.model.get_units(self.application_name):
+            assert unit.workload_status_message in [
+                'Unit is ready',
+                'Unit is ready and clustered']
+
+    def trigger_deferred_hook_via_charm(self):
+        """Set charm config option which requires a service start.
+
+        Set the charm debug option and wait for that change to be renderred in
+        applications config file.
+
+        This overrides the base class version as the rabbit charm does not
+        have a debug option and the config file is not in oslo config format.
+        """
+        app_config = zaza.model.get_application_config(self.application_name)
+        logging.info("Triggering deferred restart via config change")
+        new_debug_value = str(
+            int(app_config['connection-backlog'].get('value', 100) + 1))
+        logging.info("Setting connection-backlog: {}".format(new_debug_value))
+        zaza.model.set_application_config(
+            self.application_name,
+            {'connection-backlog': new_debug_value})
+        logging.info("Waiting for units to be idle")
+        test_unit = zaza.model.get_units(self.application_name)[0]
+        zaza.model.block_until_unit_wl_message_match(
+            test_unit.entity_id,
+            status_pattern='.*config-changed.*')
+        zaza.model.block_until_all_units_idle()
