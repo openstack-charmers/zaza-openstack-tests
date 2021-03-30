@@ -150,6 +150,24 @@ class CloudActions(test_utils.OpenStackBaseTest):
         running any VMs. If there are any leftover VMs from previous tests,
         action `remove-from-cloud` will fail.
         """
+        def wait_for_nova_compute_count(expected_count):
+            """Wait for expected number of nova compute services to be present.
+
+            Returns True or False based on whether the expected number of nova
+            compute services was reached within the timeout. Checks are
+            performed every 10 second in the span of maximum 5 minutes.
+            """
+            sleep_timeout = 1  # don't waste 10 seconds on the first run
+
+            for _ in range(31):
+                sleep(sleep_timeout)
+                service_list = self.nova_client.services.list(
+                    host=service_name, binary='nova-compute')
+                if len(service_list) == expected_count:
+                    return True
+                sleep_timeout = 10
+            return False
+
         all_units = zaza.model.get_units('nova-compute',
                                          model_name=self.model_name)
 
@@ -177,16 +195,7 @@ class CloudActions(test_utils.OpenStackBaseTest):
 
         # Wait for nova-compute service to be removed from the
         # nova-cloud-controller
-        sleep_timeout = 1  # don't waste 10 seconds on the first run
-
-        for _ in range(31):
-            sleep(sleep_timeout)
-            service_list = self.nova_client.services.list(
-                host=service_name, binary='nova-compute')
-            if len(service_list) == 0:
-                break
-            sleep_timeout = 10
-        else:
+        if not wait_for_nova_compute_count(0):
             self.fail("nova-compute service was not unregistered from the "
                       "nova-cloud-controller as expected.")
 
@@ -196,18 +205,7 @@ class CloudActions(test_utils.OpenStackBaseTest):
                                        'register-to-cloud',
                                        raise_on_failure=True)
 
-        # Wait for nova-compute service to be registered to the
-        # nova-cloud-controller
-        sleep_timeout = 1  # don't waste 10 seconds on the first run
-
-        for _ in range(31):
-            sleep(sleep_timeout)
-            service_list = self.nova_client.services.list(
-                host=service_name, binary='nova-compute')
-            if len(service_list) == 1:
-                break
-            sleep_timeout = 10
-        else:
+        if not wait_for_nova_compute_count(1):
             self.fail("nova-compute service was not re-registered to the "
                       "nova-cloud-controller as expected.")
 
