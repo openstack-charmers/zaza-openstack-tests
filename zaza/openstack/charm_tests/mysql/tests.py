@@ -617,6 +617,77 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
         zaza.model.wait_for_application_states(
             states=test_config.get("target_deploy_status", {}))
 
+    def test_110_force_quorum_using_partition_of(self):
+        """Force quorum using partition of given address.
+
+        After outage, cluster can end up without quorum. Force it.
+        """
+        _machines = sorted(
+            juju_utils.get_machine_uuids_for_application(self.application))
+        # Wait until update-status hooks have completed
+        logging.info("Wait till model is idle ...")
+        zaza.model.block_until_all_units_idle()
+
+        # Block all traffic across mysql instances: 0<-1, 1<-2 and 2<-0
+        mysql_units = [unit for unit in zaza.model.get_units(self.application)]
+        no_of_units = len(mysql_units)
+        for index, unit in enumerate(mysql_units):
+            next_unit = mysql_units[(index+1)%no_of_units]
+            ip_address = next_unit.public_address
+            cmd = "sudo iptables -A INPUT -s {} -j DROP".format(ip_address)
+            zaza.model.async_run_on_unit(unit, cmd)
+
+        logging.info(
+            "Wait till all {} units are in state 'blocked' ..."
+            .format(self.application))
+        for unit in zaza.model.get_units(self.application):
+            zaza.model.block_until_unit_wl_status(
+                unit.entity_id,
+                'blocked',
+                negate_match=True)
+
+        logging.info("Wait till model is idle ...")
+        try:
+            zaza.model.block_until_all_units_idle()
+        except zaza.model.UnitError:
+            self.resolve_update_status_errors()
+            zaza.model.block_until_all_units_idle()
+
+        # Unblock all traffic across mysql instances
+        for unit in zaza.model.get_units(self.application):
+            cmd = "sudo iptables -F"
+            zaza.model.async_run_on_unit(unit, cmd)
+
+        logging.info("Wait till model is idle ...")
+        try:
+            zaza.model.block_until_all_units_idle()
+        except zaza.model.UnitError:
+            self.resolve_update_status_errors()
+            zaza.model.block_until_all_units_idle()
+
+        logging.info("Execute force-quorum-using-partition-of action ...")
+
+        # Select "quorum leader" unit
+        leader_unit, other_units = mysql_units[0], mysq_units[1:]
+        action = zaza.model.run_action(
+            leader_unit.entity_id,
+            "force-quorum-using-partition-of",
+            action_params={"address": leader_unit.public_ip})
+
+        assert "Success" in action.data["results"]["outcome"], (
+            "Force quorum using partition of action failed: {}"
+            .format(action.data))
+
+        # Rejoin other units to cluster
+        for unit in other_units:
+            zaza.model.run_action(
+                leader_unit.entity_id,
+                "rejoin-instance",
+                action_params={"address": unit.public_ip})
+
+        for unit in zaza.model.get_units(self.application):
+            zaza.model.run_on_unit(unit.entity_id, "hooks/update-status")
+
 
 class MySQL8MigrationTests(MySQLBaseTest):
     """Percona Cluster to MySQL InnoDB Cluster Tests."""
