@@ -618,7 +618,7 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
             states=test_config.get("target_deploy_status", {}))
 
     def test_110_force_quorum_using_partition_of(self):
-        """Force quorum using partition of given address.
+        """Force quorum using partition of instance with given address.
 
         After outage, cluster can end up without quorum. Force it.
         """
@@ -653,18 +653,6 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
             self.resolve_update_status_errors()
             zaza.model.block_until_all_units_idle()
 
-        # Unblock all traffic across mysql instances
-        for unit in zaza.model.get_units(self.application):
-            cmd = "sudo iptables -F"
-            zaza.model.async_run_on_unit(unit, cmd)
-
-        logging.info("Wait till model is idle ...")
-        try:
-            zaza.model.block_until_all_units_idle()
-        except zaza.model.UnitError:
-            self.resolve_update_status_errors()
-            zaza.model.block_until_all_units_idle()
-
         logging.info("Execute force-quorum-using-partition-of action ...")
 
         # Select "quorum leader" unit
@@ -672,18 +660,19 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
         action = zaza.model.run_action(
             leader_unit.entity_id,
             "force-quorum-using-partition-of",
-            action_params={"address": leader_unit.public_ip})
+            action_params={
+                "address": leader_unit.public_ip,
+                'i-really-mean-it': True
+            })
 
         assert "Success" in action.data["results"]["outcome"], (
             "Force quorum using partition of action failed: {}"
             .format(action.data))
 
-        # Rejoin other units to cluster
-        for unit in other_units:
-            zaza.model.run_action(
-                leader_unit.entity_id,
-                "rejoin-instance",
-                action_params={"address": unit.public_ip})
+        # Unblock all traffic across mysql instances
+        for unit in zaza.model.get_units(self.application):
+            cmd = "sudo iptables -F"
+            zaza.model.async_run_on_unit(unit, cmd)
 
         for unit in zaza.model.get_units(self.application):
             zaza.model.run_on_unit(unit.entity_id, "hooks/update-status")
