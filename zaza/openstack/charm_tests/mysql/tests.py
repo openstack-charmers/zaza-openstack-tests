@@ -665,6 +665,13 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
             "Results from running 'force-quorum' command ...\n{}".format(
                 action.data))
 
+        logging.info("Wait till model is idle ...")
+        try:
+            zaza.model.block_until_all_units_idle()
+        except zaza.model.UnitError:
+            self.resolve_update_status_errors()
+            zaza.model.block_until_all_units_idle()
+
         # Unblock all traffic across mysql instances
         for unit in zaza.model.get_units(self.application):
             cmd = "sudo iptables -F"
@@ -676,13 +683,6 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
         test_config = lifecycle_utils.get_charm_config(fatal=False)
         zaza.model.wait_for_application_states(
             states=test_config.get("target_deploy_status", {}))
-
-        logging.info("Wait till model is idle ...")
-        try:
-            zaza.model.block_until_all_units_idle()
-        except zaza.model.UnitError:
-            self.resolve_update_status_errors()
-            zaza.model.block_until_all_units_idle()
 
 
 class MySQL8MigrationTests(MySQLBaseTest):
