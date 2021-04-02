@@ -644,11 +644,7 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
                 negate_match=True)
 
         logging.info("Wait till model is idle ...")
-        try:
-            zaza.model.block_until_all_units_idle()
-        except zaza.model.UnitError:
-            self.resolve_update_status_errors()
-            zaza.model.block_until_all_units_idle()
+        zaza.model.block_until_all_units_idle()
 
         logging.info("Execute force-quorum-using-partition-of action ...")
 
@@ -665,6 +661,9 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
         assert action.data.get("results") is not None, (
             "Force quorum using partition of action failed: {}"
             .format(action.data))
+        logging.debug(
+            "Results from running 'force-quorum' command ...\n{}".format(
+                action.data)
 
         # Unblock all traffic across mysql instances
         for unit in zaza.model.get_units(self.application):
@@ -677,6 +676,13 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
         test_config = lifecycle_utils.get_charm_config(fatal=False)
         zaza.model.wait_for_application_states(
             states=test_config.get("target_deploy_status", {}))
+
+        logging.info("Wait till model is idle ...")
+        try:
+            zaza.model.block_until_all_units_idle()
+        except zaza.model.UnitError:
+            self.resolve_update_status_errors()
+            zaza.model.block_until_all_units_idle()
 
 
 class MySQL8MigrationTests(MySQLBaseTest):
