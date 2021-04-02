@@ -662,7 +662,7 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
                 'i-really-mean-it': True
             })
 
-        assert action.data.get("results")["outcome"] is not Noe, (
+        assert action.data.get("results") is not None, (
             "Force quorum using partition of action failed: {}"
             .format(action.data))
 
