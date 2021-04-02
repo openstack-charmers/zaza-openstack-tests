@@ -622,9 +622,6 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
 
         After outage, cluster can end up without quorum. Force it.
         """
-        _machines = sorted(
-            juju_utils.get_machine_uuids_for_application(self.application))
-        # Wait until update-status hooks have completed
         logging.info("Wait till model is idle ...")
         zaza.model.block_until_all_units_idle()
 
@@ -632,7 +629,7 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
         mysql_units = [unit for unit in zaza.model.get_units(self.application)]
         no_of_units = len(mysql_units)
         for index, unit in enumerate(mysql_units):
-            next_unit = mysql_units[(index+1)%no_of_units]
+            next_unit = mysql_units[(index+1) % no_of_units]
             ip_address = next_unit.public_address
             cmd = "sudo iptables -A INPUT -s {} -j DROP".format(ip_address)
             zaza.model.async_run_on_unit(unit, cmd)
@@ -656,7 +653,7 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
         logging.info("Execute force-quorum-using-partition-of action ...")
 
         # Select "quorum leader" unit
-        leader_unit, other_units = mysql_units[0], mysq_units[1:]
+        leader_unit = mysql_units[0]
         action = zaza.model.run_action(
             leader_unit.entity_id,
             "force-quorum-using-partition-of",
