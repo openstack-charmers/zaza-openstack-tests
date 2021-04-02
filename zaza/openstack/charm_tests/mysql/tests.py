@@ -663,7 +663,7 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
             .format(action.data))
         logging.debug(
             "Results from running 'force-quorum' command ...\n{}".format(
-                action.data)
+                action.data))
 
         # Unblock all traffic across mysql instances
         for unit in zaza.model.get_units(self.application):
