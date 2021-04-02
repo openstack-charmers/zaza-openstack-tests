@@ -658,7 +658,7 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
             leader_unit.entity_id,
             "force-quorum-using-partition-of",
             action_params={
-                "address": leader_unit.public_ip,
+                "address": leader_unit.public_address,
                 'i-really-mean-it': True
             })
 
