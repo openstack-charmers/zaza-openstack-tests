@@ -772,7 +772,7 @@ class BaseDeferredRestartTest(OpenStackBaseTest):
             model.run_action(
                 unit.entity_id,
                 'restart-services',
-                action_params={'deferred': True})
+                action_params={'deferred-only': True})
 
         # Check workload status no longer shows deferred restarts.
         self.check_status_message_is_clear()
@@ -897,11 +897,13 @@ class BaseDeferredRestartTest(OpenStackBaseTest):
         model.set_application_config(
             self.application_name,
             {'debug': new_debug_value})
+        for unit in model.get_units(self.application_name):
+            logging.info('Waiting for {} to show deferred hook'.format(
+                unit.entity_id))
+            model.block_until_unit_wl_message_match(
+                unit.entity_id,
+                status_pattern='.*config-changed.*')
         logging.info("Waiting for units to be idle")
-        test_unit = model.get_units(self.application_name)[0]
-        model.block_until_unit_wl_message_match(
-            test_unit.entity_id,
-            status_pattern='.*config-changed.*')
         model.block_until_all_units_idle()
 
     def trigger_deferred_restart_via_package(self):
@@ -929,7 +931,7 @@ class BaseDeferredRestartTest(OpenStackBaseTest):
         self.check_show_deferred_events_action_hook('config-changed')
         # Rerunning to flip config option back to previous value.
         self.trigger_deferred_hook_via_charm()
-        logging.info("Running restart action to clear deferred restarts")
+        logging.info("Running restart action to clear deferred hooks")
         self.check_clear_hooks()
 
     def run_package_change_test(self):
