@@ -437,8 +437,6 @@ class RabbitMQDeferredRestartTest(test_utils.BaseDeferredRestartTest):
     def setUpClass(cls):
         """Run setup for deferred restart tests."""
         super().setUpClass(
-            restart_config_file='/etc/rabbitmq/rabbitmq.config',
-            test_service='rabbitmq-server',
             restart_package='rabbitmq-server',
             restart_package_service='rabbitmq-server',
             application_name='rabbitmq-server')
@@ -450,26 +448,12 @@ class RabbitMQDeferredRestartTest(test_utils.BaseDeferredRestartTest):
                 'Unit is ready',
                 'Unit is ready and clustered']
 
-    def trigger_deferred_hook_via_charm(self):
-        """Set charm config option which requires a service start.
+    def get_new_config(self):
+        """Return the config key and new value to trigger a hook execution.
 
-        Set the charm debug option and wait for that change to be renderred in
-        applications config file.
-
-        This overrides the base class version as the rabbit charm does not
-        have a debug option and the config file is not in oslo config format.
+        :returns: Config key and new value
+        :rtype: (str, bool)
         """
         app_config = zaza.model.get_application_config(self.application_name)
-        logging.info("Triggering deferred restart via config change")
-        new_debug_value = str(
-            int(app_config['connection-backlog'].get('value', 100) + 1))
-        logging.info("Setting connection-backlog: {}".format(new_debug_value))
-        zaza.model.set_application_config(
-            self.application_name,
-            {'connection-backlog': new_debug_value})
-        logging.info("Waiting for units to be idle")
-        test_unit = zaza.model.get_units(self.application_name)[0]
-        zaza.model.block_until_unit_wl_message_match(
-            test_unit.entity_id,
-            status_pattern='.*config-changed.*')
-        zaza.model.block_until_all_units_idle()
+        new_value = int(app_config['connection-backlog'].get('value', 100) + 1)
+        return 'connection-backlog', new_value

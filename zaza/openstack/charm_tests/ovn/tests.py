@@ -431,3 +431,25 @@ class OVSOVNMigrationTest(test_utils.BaseCharmTest):
             except KeyError:
                 # One of the applications is not in the model, which is fine
                 pass
+
+
+class OVNChassisDeferredRestartTest(test_utils.BaseDeferredRestartTest):
+    """Deferred restart tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run setup for deferred restart tests."""
+        super().setUpClass(
+            restart_package='openvswitch-switch',
+            restart_package_service='openvswitch-switch',
+            application_name='ovn-chassis',
+            deferred_hook='configure_ovs')
+
+    def get_new_config(self):
+        """Return the config key and new value to trigger a hook execution.
+
+        :returns: Config key and new value
+        :rtype: (str, bool)
+        """
+        app_config = zaza.model.get_application_config(self.application_name)
+        return 'enable-sriov', str(not app_config['enable-sriov']['value'])

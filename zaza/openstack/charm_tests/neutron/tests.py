@@ -1014,8 +1014,6 @@ class NeutronOVSDeferredRestartTest(test_utils.BaseDeferredRestartTest):
     def setUpClass(cls):
         """Run setup for deferred restart tests."""
         super(NeutronOVSDeferredRestartTest, cls).setUpClass(
-            restart_config_file='/etc/neutron/neutron.conf',
-            test_service='neutron-openvswitch-agent',
             restart_package='openvswitch-switch',
             restart_package_service='openvswitch-switch',
             application_name='neutron-openvswitch')
