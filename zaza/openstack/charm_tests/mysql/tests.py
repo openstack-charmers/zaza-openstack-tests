@@ -617,10 +617,14 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
         zaza.model.wait_for_application_states(
             states=test_config.get("target_deploy_status", {}))
 
-    def test_110_force_quorum_using_partition_of(self):
+    def disabled_test_110_force_quorum_using_partition_of(self):
         """Force quorum using partition of instance with given address.
 
         After outage, cluster can end up without quorum. Force it.
+
+        NOTE(lourot): temporarily disabling this test in stable/21.04 because
+        the charm feature hasn't landed yet:
+        https://review.opendev.org/c/openstack/charm-mysql-innodb-cluster/+/779427
         """
         logging.info("Wait till model is idle ...")
         zaza.model.block_until_all_units_idle()
