@@ -436,10 +436,7 @@ class RabbitMQDeferredRestartTest(test_utils.BaseDeferredRestartTest):
     @classmethod
     def setUpClass(cls):
         """Run setup for deferred restart tests."""
-        super().setUpClass(
-            restart_package='rabbitmq-server',
-            restart_package_service='rabbitmq-server',
-            application_name='rabbitmq-server')
+        super().setUpClass(application_name='rabbitmq-server')
 
     def check_status_message_is_clear(self):
         """Check each units status message show no defeerred events."""
@@ -455,5 +452,16 @@ class RabbitMQDeferredRestartTest(test_utils.BaseDeferredRestartTest):
         :rtype: (str, bool)
         """
         app_config = zaza.model.get_application_config(self.application_name)
-        new_value = int(app_config['connection-backlog'].get('value', 100) + 1)
+        new_value = str(int(
+            app_config['connection-backlog'].get('value', 100) + 1))
         return 'connection-backlog', new_value
+
+    def run_tests(self):
+        """Run deferred restart tests."""
+        # Trigger a config change which triggers a deferred hook.
+        self.run_charm_change_hook_test('config-changed')
+
+        # Trigger a package change which requires a restart
+        self.run_package_change_test(
+            'rabbitmq-server',
+            'rabbitmq-server')

@@ -714,12 +714,17 @@ class BaseDeferredRestartTest(BaseCharmTest):
 
             @classmethod
             def setUpClass(cls):
-                super(NeutronOVSDeferredRestartTest, cls).setUpClass(
-                    restart_config_file = '/etc/neutron/neutron.conf',
-                    test_service = 'neutron-openvswitch-agent',
-                    restart_package = 'openvswitch-switch',
-                    restart_package_service = 'openvswitch-switch',
-                    application_name = 'neutron-openvswitch')
+                super().setUpClass(application_name='neutron-openvswitch')
+
+            def run_tests(self):
+                # Trigger a config change which triggers a deferred hook.
+                self.run_charm_change_hook_test('config-changed')
+
+                # Trigger a package change which requires a restart
+                self.run_package_change_test(
+                    'openvswitch-switch',
+                    'openvswitch-switch')
+
 
     NOTE: The test has been broken into various class methods which may require
           specialisation if the charm being tested is not a standard OpenStack
@@ -728,25 +733,14 @@ class BaseDeferredRestartTest(BaseCharmTest):
     """
 
     @classmethod
-    def setUpClass(cls, restart_package, restart_package_service,
-                   application_name, deferred_hook='config-changed'):
+    def setUpClass(cls, application_name):
         """Run test setup.
 
-        :param restart_package: Package that will be changed to trigger a
-                                service restart.
-        :type restart_package: str
-        :param restart_package_service: Service that will require a restart
-                                        after restart_package has changed.
-        :type restart_package_service: str
         :param application_name: Name of application to run tests against.
         :type application_name: str
         """
-        cls.restart_package = restart_package
-        cls.restart_package_service = restart_package_service
         cls.application_name = application_name
-        cls.deferred_hook = deferred_hook
-        super(BaseDeferredRestartTest, cls).setUpClass(
-            application_name=cls.application_name)
+        super().setUpClass(application_name=cls.application_name)
 
     def check_status_message_is_clear(self):
         """Check each units status message show no defeerred events."""
@@ -795,12 +789,15 @@ class BaseDeferredRestartTest(BaseCharmTest):
         action = model.run_action(unit.entity_id, 'show-deferred-events')
         return yaml.safe_load(action.data['results']['output'])
 
-    def check_show_deferred_events_action_restart(self, restart_reason):
+    def check_show_deferred_events_action_restart(self, test_service,
+                                                  restart_reason):
         """Check the output from the action to list deferred restarts.
 
         Run the action to list any deferred restarts and check it has entry for
         the given service and reason.
 
+        :param test_service: Service that should need a restart
+        :type test_service: str
         :param restart_reason: The reason the action should list for the
                                service needing to be restarted. This can be a
                                substring.
@@ -810,19 +807,18 @@ class BaseDeferredRestartTest(BaseCharmTest):
         logging.info(
             ("Checking {} is marked as needing restart in "
              "show-deferred-events action").format(
-                self.restart_package_service))
+                test_service))
         for event in self.run_show_deferred_events_action()['restarts']:
             logging.info("{} in {} and {} in {}".format(
-                self.restart_package_service,
+                test_service,
                 event,
                 restart_reason,
                 event))
-            if (self.restart_package_service in event and
-                    restart_reason in event):
+            if test_service in event and restart_reason in event:
                 break
         else:
             msg = 'No entry for restart of {} for reason {} found'.format(
-                self.restart_package_service,
+                test_service,
                 restart_reason)
             raise Exception(msg)
 
@@ -832,7 +828,7 @@ class BaseDeferredRestartTest(BaseCharmTest):
         Run the action to list any deferred events and check it has entry for
         the given hook.
 
-        :param hook: Hook name
+        :param hook: Hook or method name
         :type hook: str
         """
         # Ensure that the deferred restart and cause are listed via action
@@ -847,64 +843,114 @@ class BaseDeferredRestartTest(BaseCharmTest):
             msg = '{} not found in {}'.format(hook, event)
             raise Exception(msg)
 
-    def check_show_deferred_restarts_wlm(self):
-        """Check the workload status message lists deferred restart."""
+    def check_show_deferred_restarts_wlm(self, test_service):
+        """Check the workload status message lists deferred restart.
+
+        :param test_service: Service that should need a restart
+        :type test_service: str
+        """
         # Ensure that the deferred restarts are visible in Juju status
         for unit in model.get_units(self.application_name):
             # Just checking one example service should we be checking all?
             logging.info(
                 ("Checking {} is marked as needing restart in workload "
-                 "message of {}".format(
-                     self.restart_package_service,
-                     unit.entity_id)))
-            assert self.restart_package_service in unit.workload_status_message
+                 "message of {}".format(test_service, unit.entity_id)))
+            assert test_service in unit.workload_status_message
 
-    def check_deferred_hook_wlm(self):
-        """Check the workload status message lists deferred event."""
+    def check_deferred_hook_wlm(self, deferred_hook):
+        """Check the workload status message lists deferred event.
+
+        :param deferred_hook: Hook or method name which should be showing as
+                              defeerred.
+        :type deferred_hook: str
+        """
         # Ensure that the deferred restarts are visible in Juju status
         for unit in model.get_units(self.application_name):
             logging.info(
                 ("Checking {} is marked as having deferred hook in workload "
                  "message".format(unit.entity_id)))
-            assert self.deferred_hook in unit.workload_status_message
+            assert deferred_hook in unit.workload_status_message
 
     def get_new_config(self):
         """Return the config key and new value to trigger a hook execution.
 
+        NOTE: The implementation assumes the charm has a `debug` option and
+              If that is not true the specaliasation class should override this
+              method.
         :returns: Config key and new value
         :rtype: (str, bool)
         """
         app_config = model.get_application_config(self.application_name)
         return 'debug', str(not app_config['debug']['value'])
 
-    def trigger_deferred_hook_via_charm(self):
-        """Set charm config option which requires a service start.
-
-        Set the charm debug option and wait for that change to be renderred in
-        applications config file.
-
-        NOTE: The implementation assumes the charm has a `debug` option and
-              self.restart_config_file in an oslo config file where that
-              debug option is renderred. If that is not true the specaliasation
-              class should override this method.
-        """
+    def set_new_config(self):
+        """Change applications charm config."""
         logging.info("Triggering deferred restart via config change")
         config_key, new_value = self.get_new_config()
         logging.info("Setting {}: {}".format(config_key, new_value))
         model.set_application_config(
             self.application_name,
             {config_key: new_value})
+        return new_value
+
+    def trigger_deferred_restart_via_charm(self, restart_config_file):
+        """Set charm config option which requires a service start.
+
+        Set the charm debug option and wait for that change to be renderred in
+        applications config file.
+
+        NOTE: The implementation assumes the restart_config_file in an oslo
+              config file. If that is not true the specaliasation class should
+              override this method.
+
+        :param restart_config_file: Config file that updated value is expected
+                                    in.
+        :type restart_config_file: str
+        """
+        new_debug_value = self.set_new_config()
+        expected_contents = {
+            'DEFAULT': {
+                'debug': [new_debug_value]}}
+        logging.info("Waiting for debug to be {} in {}".format(
+            new_debug_value,
+            restart_config_file))
+        model.block_until_oslo_config_entries_match(
+            self.application_name,
+            restart_config_file,
+            expected_contents)
+        logging.info("Waiting for units to be idle")
+        model.block_until_all_units_idle()
+
+    def trigger_deferred_hook_via_charm(self, deferred_hook):
+        """Set charm config option which requires a service start.
+
+        Set the charm debug option and wait for that change to be renderred in
+        applications config file.
+
+        :param deferred_hook: Hook or method name which should be showing as
+                              defeerred.
+        :type deferred_hook: str
+        :returns: New config value
+        :rtype: Union[str, int, float]
+        """
+        new_debug_value = self.set_new_config()
         for unit in model.get_units(self.application_name):
             logging.info('Waiting for {} to show deferred hook'.format(
                 unit.entity_id))
             model.block_until_unit_wl_message_match(
                 unit.entity_id,
-                status_pattern='.*{}.*'.format(self.deferred_hook))
+                status_pattern='.*{}.*'.format(deferred_hook))
         logging.info("Waiting for units to be idle")
         model.block_until_all_units_idle()
+        return new_debug_value
 
-    def trigger_deferred_restart_via_package(self):
-        """Update a package which requires a service restart."""
+    def trigger_deferred_restart_via_package(self, restart_package):
+        """Update a package which requires a service restart.
+
+        :param restart_package: Package that will be changed to trigger a
+                                service restart.
+        :type restart_package: str
+        """
         logging.info("Triggering deferred restart via package change")
         # Test restart requested by package
         for unit in model.get_units(self.application_name):
@@ -912,41 +958,86 @@ class BaseDeferredRestartTest(BaseCharmTest):
                 unit.entity_id,
                 ('dpkg-reconfigure {}; '
                  'JUJU_HOOK_NAME=update-status ./hooks/update-status').format(
-                    self.restart_package))
+                    restart_package))
 
-    def run_charm_change_test(self):
+    def run_charm_change_restart_test(self, test_service, restart_config_file):
         """Trigger a deferred restart by updating a config file via the charm.
 
-        Trigger a config-changed hook in the charm which will update a config
-        file and add a deferred restart.
+        Trigger a hook in the charm which the charm will defer.
 
-        NOTE: If this test is not relevant for the target charm then override
-              this method and raise unittest.SkipTest
+        :param test_service: Service that should need a restart
+        :type test_service: str
+        :param restart_config_file: Config file that updated value is expected
+                                    in.
+        :type restart_config_file: str
         """
-        self.trigger_deferred_hook_via_charm()
+        self.trigger_deferred_restart_via_charm(restart_config_file)
 
-        self.check_deferred_hook_wlm()
-        self.check_show_deferred_events_action_hook(self.deferred_hook)
+        self.check_show_deferred_restarts_wlm(test_service)
+        self.check_show_deferred_events_action_restart(
+            test_service,
+            restart_config_file)
+        logging.info("Running restart action to clear deferred restarts")
+        self.check_clear_restarts()
+
+    def run_charm_change_hook_test(self, deferred_hook):
+        """Trigger a deferred restart by updating a config file via the charm.
+
+        :param deferred_hook: Hook or method name which should be showing as
+                              defeerred.
+        :type deferred_hook: str
+        """
+        self.trigger_deferred_hook_via_charm(deferred_hook)
+
+        self.check_deferred_hook_wlm(deferred_hook)
+        self.check_show_deferred_events_action_hook(deferred_hook)
         # Rerunning to flip config option back to previous value.
-        self.trigger_deferred_hook_via_charm()
+        self.trigger_deferred_hook_via_charm(deferred_hook)
         logging.info("Running restart action to clear deferred hooks")
         self.check_clear_hooks()
 
-    def run_package_change_test(self):
+    def run_package_change_test(self, restart_package, restart_package_svc):
         """Trigger a deferred restart by updating a package.
 
         Update a package which requires will add a deferred restart.
 
-        NOTE: If this test is not relevant for the target charm then override
-              this method and raise unittest.SkipTest
+        :param restart_package: Package that will be changed to trigger a
+                                service restart.
+        :type restart_package: str
+        :param restart_package_service: Service that will require a restart
+                                        after restart_package has changed.
+        :type restart_package_service: str
         """
-        self.trigger_deferred_restart_via_package()
+        self.trigger_deferred_restart_via_package(restart_package)
 
-        self.check_show_deferred_restarts_wlm()
+        self.check_show_deferred_restarts_wlm(restart_package_svc)
         self.check_show_deferred_events_action_restart(
+            restart_package_svc,
             'Package update')
         logging.info("Running restart action to clear deferred restarts")
         self.check_clear_restarts()
+
+    def run_tests(self):
+        """Run charm tests. should specify which tests to run.
+
+        The charm test that implements this test should specify which tests to
+        run, for example:
+
+            def run_tests(self):
+                # Trigger a config change which triggers a deferred hook.
+                self.run_charm_change_hook_test('config-changed')
+
+                # Trigger a config change which requires a restart
+                self.run_charm_change_restart_test(
+                    'neutron-l3-agent',
+                    '/etc/neutron/neutron.conf')
+
+                # Trigger a package change which requires a restart
+                self.run_package_change_test(
+                    'openvswitch-switch',
+                    'openvswitch-switch')
+        """
+        raise NotImplementedError
 
     def test_deferred_restarts(self):
         """Run deferred restart tests."""
@@ -976,11 +1067,7 @@ class BaseDeferredRestartTest(BaseCharmTest):
         else:
             logging.info("Auto restarts already disabled")
 
-        # Trigger a config change which requires a restart
-        self.run_charm_change_test()
-
-        # Trigger a package change which requires a restart
-        self.run_package_change_test()
+        self.run_tests()
 
         # Finished so turn auto-restarts back on.
         logging.info("Turning on auto restarts")

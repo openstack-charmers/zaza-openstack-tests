@@ -439,11 +439,17 @@ class OVNChassisDeferredRestartTest(test_utils.BaseDeferredRestartTest):
     @classmethod
     def setUpClass(cls):
         """Run setup for deferred restart tests."""
-        super().setUpClass(
-            restart_package='openvswitch-switch',
-            restart_package_service='openvswitch-switch',
-            application_name='ovn-chassis',
-            deferred_hook='configure_ovs')
+        super().setUpClass(application_name='ovn-chassis')
+
+    def run_tests(self):
+        """Run deferred restart tests."""
+        # Trigger a config change which triggers a deferred hook.
+        self.run_charm_change_hook_test('configure_ovs')
+
+        # Trigger a package change which requires a restart
+        self.run_package_change_test(
+            'openvswitch-switch',
+            'openvswitch-switch')
 
     def get_new_config(self):
         """Return the config key and new value to trigger a hook execution.
