@@ -746,7 +746,10 @@ class BaseDeferredRestartTest(BaseCharmTest):
         """Check each units status message show no defeerred events."""
         # Check workload status no longer shows deferred restarts.
         for unit in model.get_units(self.application_name):
-            assert unit.workload_status_message == 'Unit is ready'
+            model.block_until_unit_wl_message_match(
+                unit.entity_id,
+                'Unit is ready')
+        model.block_until_all_units_idle()
 
     def check_clear_restarts(self):
         """Clear and deferred restarts and check status.

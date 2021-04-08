@@ -440,10 +440,12 @@ class RabbitMQDeferredRestartTest(test_utils.BaseDeferredRestartTest):
 
     def check_status_message_is_clear(self):
         """Check each units status message show no defeerred events."""
+        pattern = '(Unit is ready|Unit is ready and clustered)$'
         for unit in zaza.model.get_units(self.application_name):
-            assert unit.workload_status_message in [
-                'Unit is ready',
-                'Unit is ready and clustered']
+            zaza.model.block_until_unit_wl_message_match(
+                unit.entity_id,
+                pattern)
+        zaza.model.block_until_all_units_idle()
 
     def get_new_config(self):
         """Return the config key and new value to trigger a hook execution.
@@ -465,3 +467,19 @@ class RabbitMQDeferredRestartTest(test_utils.BaseDeferredRestartTest):
         self.run_package_change_test(
             'rabbitmq-server',
             'rabbitmq-server')
+
+    def check_clear_restarts(self):
+        """Clear and deferred restarts and check status.
+
+        Clear and deferred restarts and then check the workload status message
+        for each unit.
+        """
+        # Use action to run any deferred restarts
+        for unit in zaza.model.get_units(self.application_name):
+            zaza.model.run_action(
+                unit.entity_id,
+                'restart-services',
+                action_params={'services': 'rabbitmq-server'})
+
+        # Check workload status no longer shows deferred restarts.
+        self.check_status_message_is_clear()
