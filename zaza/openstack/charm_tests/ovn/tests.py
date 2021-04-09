@@ -487,5 +487,5 @@ class OVNDedicatedChassisDeferredRestartTest(
         :rtype: (str, bool)
         """
         app_config = zaza.model.get_application_config(self.application_name)
-        new_value = str(not app_config['disable-mlockall']['value'])
+        new_value = str(not app_config['disable-mlockall'].get('value', False))
         return 'disable-mlockall', new_value
