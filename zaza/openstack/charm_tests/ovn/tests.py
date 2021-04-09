@@ -431,3 +431,61 @@ class OVSOVNMigrationTest(test_utils.BaseCharmTest):
             except KeyError:
                 # One of the applications is not in the model, which is fine
                 pass
+
+
+class OVNChassisDeferredRestartTest(test_utils.BaseDeferredRestartTest):
+    """Deferred restart tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run setup for deferred restart tests."""
+        super().setUpClass(application_name='ovn-chassis')
+
+    def run_tests(self):
+        """Run deferred restart tests."""
+        # Trigger a config change which triggers a deferred hook.
+        self.run_charm_change_hook_test('configure_ovs')
+
+        # Trigger a package change which requires a restart
+        self.run_package_change_test(
+            'openvswitch-switch',
+            'openvswitch-switch')
+
+    def get_new_config(self):
+        """Return the config key and new value to trigger a hook execution.
+
+        :returns: Config key and new value
+        :rtype: (str, bool)
+        """
+        app_config = zaza.model.get_application_config(self.application_name)
+        return 'enable-sriov', str(not app_config['enable-sriov']['value'])
+
+
+class OVNDedicatedChassisDeferredRestartTest(
+        test_utils.BaseDeferredRestartTest):
+    """Deferred restart tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run setup for deferred restart tests."""
+        super().setUpClass(application_name='ovn-dedicated-chassis')
+
+    def run_tests(self):
+        """Run deferred restart tests."""
+        # Trigger a config change which triggers a deferred hook.
+        self.run_charm_change_hook_test('configure_ovs')
+
+        # Trigger a package change which requires a restart
+        self.run_package_change_test(
+            'openvswitch-switch',
+            'openvswitch-switch')
+
+    def get_new_config(self):
+        """Return the config key and new value to trigger a hook execution.
+
+        :returns: Config key and new value
+        :rtype: (str, bool)
+        """
+        app_config = zaza.model.get_application_config(self.application_name)
+        new_value = str(not app_config['disable-mlockall']['value'])
+        return 'disable-mlockall', new_value
