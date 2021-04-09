@@ -759,26 +759,38 @@ class BaseDeferredRestartTest(BaseCharmTest):
         """
         # Use action to run any deferred restarts
         for unit in model.get_units(self.application_name):
+            logging.info("Running restart-services on {}".format(
+                unit.entity_id))
             model.run_action(
                 unit.entity_id,
                 'restart-services',
-                action_params={'deferred-only': True})
+                action_params={'deferred-only': True},
+                raise_on_failure=True)
 
         # Check workload status no longer shows deferred restarts.
         self.check_status_message_is_clear()
 
-    def check_clear_hooks(self):
-        """Clear and deferred restarts and check status.
+    def clear_hooks(self):
+        """Clear and deferred hooks.
 
-        Clear and deferred restarts and then check the workload status message
-        for each unit.
+        Run any deferred hooks.
         """
         # Use action to run any deferred restarts
         for unit in model.get_units(self.application_name):
+            logging.info("Running run-deferred-hooks on {}".format(
+                unit.entity_id))
             model.run_action(
                 unit.entity_id,
-                'run-deferred-hooks')
+                'run-deferred-hooks',
+                raise_on_failure=True)
 
+    def check_clear_hooks(self):
+        """Clear deferred hooks and check status.
+
+        Clear deferred hooks and then check the workload status message
+        for each unit.
+        """
+        self.clear_hooks()
         # Check workload status no longer shows deferred restarts.
         self.check_status_message_is_clear()
 
@@ -789,7 +801,10 @@ class BaseDeferredRestartTest(BaseCharmTest):
         :rtype: Dict
         """
         unit = model.get_units(self.application_name)[0]
-        action = model.run_action(unit.entity_id, 'show-deferred-events')
+        action = model.run_action(
+            unit.entity_id,
+            'show-deferred-events',
+            raise_on_failure=True)
         return yaml.safe_load(action.data['results']['output'])
 
     def check_show_deferred_events_action_restart(self, test_service,
@@ -997,7 +1012,10 @@ class BaseDeferredRestartTest(BaseCharmTest):
         # Rerunning to flip config option back to previous value.
         self.trigger_deferred_hook_via_charm(deferred_hook)
         logging.info("Running restart action to clear deferred hooks")
-        self.check_clear_hooks()
+        # If there are a number of units in the application and restarts take
+        # time then another deferred hook can occur so do not block on a
+        # clear status message.
+        self.clear_hooks()
 
     def run_package_change_test(self, restart_package, restart_package_svc):
         """Trigger a deferred restart by updating a package.
@@ -1080,3 +1098,4 @@ class BaseDeferredRestartTest(BaseCharmTest):
             self.application_name,
             policy_file)
         model.block_until_all_units_idle()
+        self.check_clear_hooks()
