@@ -1013,9 +1013,35 @@ class NeutronOVSDeferredRestartTest(test_utils.BaseDeferredRestartTest):
     @classmethod
     def setUpClass(cls):
         """Run setup for deferred restart tests."""
-        super(NeutronOVSDeferredRestartTest, cls).setUpClass(
-            restart_config_file='/etc/neutron/neutron.conf',
-            test_service='neutron-openvswitch-agent',
-            restart_package='openvswitch-switch',
-            restart_package_service='openvswitch-switch',
-            application_name='neutron-openvswitch')
+        super().setUpClass(application_name='neutron-openvswitch')
+
+    def run_tests(self):
+        """Run deferred restart tests."""
+        # Trigger a config change which triggers a deferred hook.
+        self.run_charm_change_hook_test('config-changed')
+
+        # Trigger a package change which requires a restart
+        self.run_package_change_test(
+            'openvswitch-switch',
+            'openvswitch-switch')
+
+
+class NeutronGatewayDeferredRestartTest(test_utils.BaseDeferredRestartTest):
+    """Deferred restart tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run setup for deferred restart tests."""
+        super().setUpClass(application_name='neutron-gateway')
+
+    def run_tests(self):
+        """Run deferred restart tests."""
+        # Trigger a config change which requires a restart
+        self.run_charm_change_restart_test(
+            'neutron-l3-agent',
+            '/etc/neutron/neutron.conf')
+
+        # Trigger a package change which requires a restart
+        self.run_package_change_test(
+            'openvswitch-switch',
+            'openvswitch-switch')
