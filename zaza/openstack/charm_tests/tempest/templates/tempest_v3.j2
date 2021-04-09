@@ -10,6 +10,7 @@ admin_username = {{ admin_username }}
 admin_project_name = {{ admin_project_name }}
 admin_password = {{ admin_password }}
 admin_domain_name = {{ admin_domain_name }}
+tempest_roles = load-balancer_admin
 
 {% if 'nova' in enabled_services %}
 [compute]
@@ -65,7 +66,7 @@ floating_network_name = {{ ext_net }}
 [network-feature-enabled]
 ipv6 = false
 api_extensions = {{ neutron_api_extensions }}
-port_security = True
+port_security = false
 {% endif %}
 
 {% if 'heat' in enabled_services %}
@@ -108,7 +109,7 @@ backup = false
 
 {% if 'octavia' in enabled_services %}
 [load_balancer]
-enable_security_groups = true
-test_with_ipv6 = False
+enable_security_groups = false
+test_with_ipv6 = false
 test_server_path = {{ workspace_path }}/test_server.bin
 {% endif %}
