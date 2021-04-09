@@ -864,7 +864,7 @@ class BaseDeferredRestartTest(BaseCharmTest):
         """Check the workload status message lists deferred event.
 
         :param deferred_hook: Hook or method name which should be showing as
-                              defeerred.
+                              deferred.
         :type deferred_hook: str
         """
         # Ensure that the deferred restarts are visible in Juju status
@@ -878,7 +878,7 @@ class BaseDeferredRestartTest(BaseCharmTest):
         """Return the config key and new value to trigger a hook execution.
 
         NOTE: The implementation assumes the charm has a `debug` option and
-              If that is not true the specaliasation class should override this
+              If that is not true the derived class should override this
               method.
         :returns: Config key and new value
         :rtype: (str, bool)
@@ -903,7 +903,7 @@ class BaseDeferredRestartTest(BaseCharmTest):
         applications config file.
 
         NOTE: The implementation assumes the restart_config_file in an oslo
-              config file. If that is not true the specaliasation class should
+              config file. If that is not true the derived class should
               override this method.
 
         :param restart_config_file: Config file that updated value is expected
@@ -927,11 +927,11 @@ class BaseDeferredRestartTest(BaseCharmTest):
     def trigger_deferred_hook_via_charm(self, deferred_hook):
         """Set charm config option which requires a service start.
 
-        Set the charm debug option and wait for that change to be renderred in
+        Set the charm debug option and wait for that change to be rendered in
         applications config file.
 
         :param deferred_hook: Hook or method name which should be showing as
-                              defeerred.
+                              deferred.
         :type deferred_hook: str
         :returns: New config value
         :rtype: Union[str, int, float]
