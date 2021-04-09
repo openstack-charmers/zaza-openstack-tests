@@ -436,40 +436,50 @@ class RabbitMQDeferredRestartTest(test_utils.BaseDeferredRestartTest):
     @classmethod
     def setUpClass(cls):
         """Run setup for deferred restart tests."""
-        super().setUpClass(
-            restart_config_file='/etc/rabbitmq/rabbitmq.config',
-            test_service='rabbitmq-server',
-            restart_package='rabbitmq-server',
-            restart_package_service='rabbitmq-server',
-            application_name='rabbitmq-server')
+        super().setUpClass(application_name='rabbitmq-server')
 
     def check_status_message_is_clear(self):
         """Check each units status message show no defeerred events."""
+        pattern = '(Unit is ready|Unit is ready and clustered)$'
         for unit in zaza.model.get_units(self.application_name):
-            assert unit.workload_status_message in [
-                'Unit is ready',
-                'Unit is ready and clustered']
+            zaza.model.block_until_unit_wl_message_match(
+                unit.entity_id,
+                pattern)
+        zaza.model.block_until_all_units_idle()
 
-    def trigger_deferred_hook_via_charm(self):
-        """Set charm config option which requires a service start.
+    def get_new_config(self):
+        """Return the config key and new value to trigger a hook execution.
 
-        Set the charm debug option and wait for that change to be renderred in
-        applications config file.
-
-        This overrides the base class version as the rabbit charm does not
-        have a debug option and the config file is not in oslo config format.
+        :returns: Config key and new value
+        :rtype: (str, bool)
         """
         app_config = zaza.model.get_application_config(self.application_name)
-        logging.info("Triggering deferred restart via config change")
-        new_debug_value = str(
-            int(app_config['connection-backlog'].get('value', 100) + 1))
-        logging.info("Setting connection-backlog: {}".format(new_debug_value))
-        zaza.model.set_application_config(
-            self.application_name,
-            {'connection-backlog': new_debug_value})
-        logging.info("Waiting for units to be idle")
-        test_unit = zaza.model.get_units(self.application_name)[0]
-        zaza.model.block_until_unit_wl_message_match(
-            test_unit.entity_id,
-            status_pattern='.*config-changed.*')
-        zaza.model.block_until_all_units_idle()
+        new_value = str(int(
+            app_config['connection-backlog'].get('value', 100) + 1))
+        return 'connection-backlog', new_value
+
+    def run_tests(self):
+        """Run deferred restart tests."""
+        # Trigger a config change which triggers a deferred hook.
+        self.run_charm_change_hook_test('config-changed')
+
+        # Trigger a package change which requires a restart
+        self.run_package_change_test(
+            'rabbitmq-server',
+            'rabbitmq-server')
+
+    def check_clear_restarts(self):
+        """Clear and deferred restarts and check status.
+
+        Clear and deferred restarts and then check the workload status message
+        for each unit.
+        """
+        # Use action to run any deferred restarts
+        for unit in zaza.model.get_units(self.application_name):
+            zaza.model.run_action(
+                unit.entity_id,
+                'restart-services',
+                action_params={'services': 'rabbitmq-server'})
+
+        # Check workload status no longer shows deferred restarts.
+        self.check_status_message_is_clear()
