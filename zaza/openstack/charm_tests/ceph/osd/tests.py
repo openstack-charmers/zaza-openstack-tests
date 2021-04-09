@@ -258,8 +258,11 @@ class ServiceTest(unittest.TestCase):
         to_start = should_stop.pop()
         should_stop = [service.name for service in should_stop]
 
+        # Note: can't stop ceph-osd.target as restarting a single OSD will
+        # cause this to start all of the OSDs when a single one starts.
         logging.info("Stopping all running ceph-osd services")
-        service_stop_cmd = 'systemctl stop ceph-osd.target'
+        service_stop_cmd = '; '.join(['systemctl stop {}'.format(service)
+                                      for service in service_names])
         zaza_model.run_on_unit(self.TESTED_UNIT, service_stop_cmd)
 
         wait_for_service(unit_name=self.TESTED_UNIT,
