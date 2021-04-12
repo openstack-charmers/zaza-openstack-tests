@@ -1045,3 +1045,7 @@ class NeutronGatewayDeferredRestartTest(test_utils.BaseDeferredRestartTest):
         self.run_package_change_test(
             'openvswitch-switch',
             'openvswitch-switch')
+
+    def check_clear_hooks(self):
+        """Gateway does not defer hooks so noop."""
+        return
