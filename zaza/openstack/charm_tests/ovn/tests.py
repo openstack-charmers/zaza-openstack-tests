@@ -489,3 +489,21 @@ class OVNDedicatedChassisDeferredRestartTest(
         app_config = zaza.model.get_application_config(self.application_name)
         new_value = str(not app_config['disable-mlockall'].get('value', False))
         return 'disable-mlockall', new_value
+
+
+class OVNCentralDeferredRestartTest(
+        test_utils.BaseDeferredRestartTest):
+    """Deferred restart tests for OVN Central."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run setup for deferred restart tests."""
+        super().setUpClass(application_name='ovn-central')
+
+    def run_tests(self):
+        """Run deferred restart tests."""
+        # Charm does not defer hooks so that test is not included.
+        # Trigger a package change which requires a restart
+        self.run_package_change_test(
+            'ovn-central',
+            'ovn-central')
