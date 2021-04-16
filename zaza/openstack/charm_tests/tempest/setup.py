@@ -186,6 +186,10 @@ def add_octavia_config(ctxt):
             ctxt['test_swift_ip']),
         '-o', "{}/test_server.bin".format(ctxt['workspace_path'])
     ])
+    subprocess.check_call([
+        'chmod', '+x',
+        "{}/test_server.bin".format(ctxt['workspace_path'])
+    ])
 
 
 def get_service_list(keystone_session):
