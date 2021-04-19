@@ -36,6 +36,7 @@ UBUNTU_OPENSTACK_RELEASE = OrderedDict([
     ('eoan', 'train'),
     ('focal', 'ussuri'),
     ('groovy', 'victoria'),
+    ('hirsute', 'wallaby'),
 ])
 
 
@@ -69,7 +70,8 @@ OPENSTACK_RELEASES_PAIRS = [
     'bionic_queens', 'bionic_rocky', 'cosmic_rocky',
     'bionic_stein', 'disco_stein', 'bionic_train',
     'eoan_train', 'bionic_ussuri', 'focal_ussuri',
-    'focal_victoria', 'groovy_victoria']
+    'focal_victoria', 'groovy_victoria',
+    'focal_wallaby', 'hirsute_wallaby']
 
 SWIFT_CODENAMES = OrderedDict([
     ('diablo',

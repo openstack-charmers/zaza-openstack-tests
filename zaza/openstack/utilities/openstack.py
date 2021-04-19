@@ -1753,8 +1753,43 @@ def get_os_code_info(package, pkg_version):
             return OPENSTACK_CODENAMES[vers]
 
 
+def get_openstack_release(application, model_name=None):
+    """Return the openstack release codename based on /etc/openstack-release.
+
+    This will only return a codename if the openstack-release package is
+    installed on the unit.
+
+    :param application: Application name
+    :type application: string
+    :param model_name: Name of model to query.
+    :type model_name: str
+    :returns: OpenStack release codename for application
+    :rtype: string
+    """
+    versions = []
+    units = model.get_units(application, model_name=model_name)
+    for unit in units:
+        cmd = 'cat /etc/openstack-release | grep OPENSTACK_CODENAME'
+        out = juju_utils.remote_run(unit.entity_id, cmd, model_name=model_name)
+        codename = out.split('=')[1].strip()
+        versions.append(codename)
+    if len(set(versions)) == 0:
+        return None
+    elif len(set(versions)) > 1:
+        raise Exception('Unexpected mix of OpenStack releases for {}: {}',
+                        application, versions)
+    return versions[0]
+
+
 def get_current_os_versions(deployed_applications, model_name=None):
     """Determine OpenStack codename of deployed applications.
+
+    Initially, see if the openstack-release pkg is available and use it
+    instead.
+
+    If it isn't then it falls back to the existing method of checking the
+    version of the package passed and then resolving the version from that
+    using lookup tables.
 
     :param deployed_applications: List of deployed applications
     :type deployed_applications: list
@@ -1769,11 +1804,16 @@ def get_current_os_versions(deployed_applications, model_name=None):
             continue
         logging.info("looking at application: {}".format(application))
 
-        version = generic_utils.get_pkg_version(application['name'],
-                                                application['type']['pkg'],
-                                                model_name=model_name)
-        versions[application['name']] = (
-            get_os_code_info(application['type']['pkg'], version))
+        codename = get_openstack_release(application['name'],
+                                         model_name=model_name)
+        if codename:
+            versions[application['name']] = codename
+        else:
+            version = generic_utils.get_pkg_version(application['name'],
+                                                    application['type']['pkg'],
+                                                    model_name=model_name)
+            versions[application['name']] = (
+                get_os_code_info(application['type']['pkg'], version))
     return versions
 
 
