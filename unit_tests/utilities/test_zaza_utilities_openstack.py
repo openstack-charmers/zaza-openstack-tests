@@ -884,7 +884,24 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         result = openstack_utils.get_current_os_release_pair()
         self.assertEqual(expected, result)
 
-    def test_get_openstack_release(self):
+    def test_get_current_os_versions(self):
+        self.patch_object(openstack_utils, "get_openstack_release")
+        self.patch_object(openstack_utils.generic_utils, "get_pkg_version")
+
+        # Pre-Wallaby scenario where openstack-release package isn't installed
+        self.get_openstack_release.return_value = None
+        self.get_pkg_version.return_value = '18.0.0'
+        expected = {'keystone': 'victoria'}
+        result = openstack_utils.get_current_os_versions('keystone')
+        self.assertEqual(expected, result)
+
+        # Wallaby+ scenario where openstack-release package is installed
+        self.get_openstack_release.return_value = 'wallaby'
+        expected = {'keystone': 'wallaby'}
+        result = openstack_utils.get_current_os_versions('keystone')
+        self.assertEqual(expected, result)
+
+    def test_get_os_release(self):
         self.patch(
             'zaza.openstack.utilities.openstack.get_current_os_release_pair',
             new_callable=mock.MagicMock(),
@@ -935,6 +952,23 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.get_current_os_versions.return_value = {"keystone": "queens"}
         self.get_application_config_option.return_value = None
         self.assertEqual(openstack_utils.get_keystone_api_version(), 3)
+
+    def test_get_openstack_release(self):
+        self.patch_object(openstack_utils.model, "get_units")
+        self.patch_object(openstack_utils.juju_utils, "remote_run")
+
+        # Test pre-Wallaby behavior where openstack-release pkg isn't installed
+        self.get_units.return_value = []
+        self.remote_run.return_value = "OPENSTACK_CODENAME=wallaby "
+
+        # Test Wallaby+ behavior where openstack-release package is installed
+        unit1 = mock.MagicMock()
+        unit1.entity_id = 1
+        self.get_units.return_value = [unit1]
+        self.remote_run.return_value = "OPENSTACK_CODENAME=wallaby "
+
+        result = openstack_utils.get_openstack_release("application", "model")
+        self.assertEqual(result, "wallaby")
 
     def test_get_project_id(self):
         # No domain
