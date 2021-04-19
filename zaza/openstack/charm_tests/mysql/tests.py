@@ -864,7 +864,7 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
 
 
 class MySQLInnoDBClusterPartitionTest(MySQLBaseTest):
-    """MySQL parition handling."""
+    """MySQL partition handling."""
 
     def test_850_force_quorum_using_partition_of(self):
         """Force quorum using partition of instance with given address.
