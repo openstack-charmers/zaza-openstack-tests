@@ -1770,9 +1770,14 @@ def get_openstack_release(application, model_name=None):
     units = model.get_units(application, model_name=model_name)
     for unit in units:
         cmd = 'cat /etc/openstack-release | grep OPENSTACK_CODENAME'
-        out = juju_utils.remote_run(unit.entity_id, cmd, model_name=model_name)
-        codename = out.split('=')[1].strip()
-        versions.append(codename)
+        try:
+            out = juju_utils.remote_run(unit.entity_id, cmd,
+                                        model_name=model_name)
+        except model.CommandRunFailed:
+            logging.info('Fall back to version check for OpenStack codename')
+        else:
+            codename = out.split('=')[1].strip()
+            versions.append(codename)
     if len(set(versions)) == 0:
         return None
     elif len(set(versions)) > 1:
