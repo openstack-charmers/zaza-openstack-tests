@@ -1774,7 +1774,7 @@ def get_openstack_release(application, model_name=None):
             out = juju_utils.remote_run(unit.entity_id, cmd,
                                         model_name=model_name)
         except model.CommandRunFailed:
-            logging.info('Fall back to version check for OpenStack codename')
+            logging.debug('Fall back to version check for OpenStack codename')
         else:
             codename = out.split('=')[1].strip()
             versions.append(codename)
