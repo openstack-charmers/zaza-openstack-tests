@@ -341,18 +341,18 @@ class NovaCloudControllerActionTest(test_utils.OpenStackBaseTest):
 
         session = openstack_utils.get_overcloud_keystone_session()
         nova = openstack_utils.get_nova_session_client(session)
-        expected_output = ''
-        for hypervisor in nova.hypervisors.list():
-            az = juju_units_az_map.get(hypervisor.host_ip, None)
-            expected_output += ('Hypervisor {} added to '
-                                'availability zone {}\n'.format(
-                                    hypervisor.hypervisor_hostname, az))
 
         result = zaza.model.run_action_on_leader(
             'nova-cloud-controller',
             'sync-compute-availability-zones',
             model_name=self.model_name)
-        self.assertEqual(result.results['output'], expected_output)
+
+        # For validating the action results, we simply want to validate that
+        # the action was completed and we have something in the output. The
+        # functional validation really occurs below, in that the hosts are
+        # checked to be in the appropriate host aggregates.
+        self.assertEqual(result.status, 'completed')
+        self.assertNotEqual('', result.results['output'])
 
         unique_az_list = list(set(juju_units_az_map.values()))
         aggregates = nova.aggregates.list()
