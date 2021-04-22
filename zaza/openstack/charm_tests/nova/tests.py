@@ -319,6 +319,62 @@ class NovaComputeActionTest(test_utils.OpenStackBaseTest):
                     "The action failed: {}".format(action.data["message"]))
 
 
+class NovaCloudControllerActionTest(test_utils.OpenStackBaseTest):
+    """Run nova-cloud-controller specific tests.
+
+    Add this test class for new nova-cloud-controller action
+    to avoid breaking older version.
+    """
+
+    def test_sync_compute_az_action(self):
+        """Test sync-compute-availability-zones action."""
+        juju_units_az_map = {}
+        compute_config = zaza.model.get_application_config('nova-compute')
+        default_az = compute_config['default-availability-zone']['value']
+        use_juju_az = compute_config['customize-failure-domain']['value']
+
+        for unit in zaza.model.get_units('nova-compute',
+                                         model_name=self.model_name):
+            zone = default_az
+            if use_juju_az:
+                result = zaza.model.run_on_unit(unit.name,
+                                                'echo $JUJU_AVAILABILITY_ZONE',
+                                                model_name=self.model_name,
+                                                timeout=60)
+                self.assertEqual(int(result['Code']), 0)
+                juju_az = result['Stdout'].strip()
+                if juju_az:
+                    zone = juju_az
+
+            juju_units_az_map[unit.public_address] = zone
+            continue
+
+        session = openstack_utils.get_overcloud_keystone_session()
+        nova = openstack_utils.get_nova_session_client(session)
+
+        result = zaza.model.run_action_on_leader(
+            'nova-cloud-controller',
+            'sync-compute-availability-zones',
+            model_name=self.model_name)
+
+        # For validating the action results, we simply want to validate that
+        # the action was completed and we have something in the output. The
+        # functional validation really occurs below, in that the hosts are
+        # checked to be in the appropriate host aggregates.
+        self.assertEqual(result.status, 'completed')
+        self.assertNotEqual('', result.results['output'])
+
+        unique_az_list = list(set(juju_units_az_map.values()))
+        aggregates = nova.aggregates.list()
+        self.assertEqual(len(aggregates), len(unique_az_list))
+        for unit_address in juju_units_az_map:
+            az = juju_units_az_map[unit_address]
+            aggregate = nova.aggregates.find(
+                name='{}_az'.format(az), availability_zone=az)
+            hypervisor = nova.hypervisors.find(host_ip=unit_address)
+            self.assertIn(hypervisor.hypervisor_hostname, aggregate.hosts)
+
+
 class NovaCloudController(test_utils.OpenStackBaseTest):
     """Run nova-cloud-controller specific tests."""
 
