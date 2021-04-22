@@ -329,14 +329,24 @@ class NovaCloudControllerActionTest(test_utils.OpenStackBaseTest):
     def test_sync_compute_az_action(self):
         """Test sync-compute-availability-zones action."""
         juju_units_az_map = {}
+        compute_config = zaza.model.get_application_config('nova-compute')
+        default_az = compute_config['default-availability-zone']['value']
+        use_juju_az = compute_config['customize-failure-domain']['value']
+
         for unit in zaza.model.get_units('nova-compute',
                                          model_name=self.model_name):
-            result = zaza.model.run_on_unit(unit.name,
-                                            'echo $JUJU_AVAILABILITY_ZONE',
-                                            model_name=self.model_name,
-                                            timeout=60)
-            self.assertEqual(int(result['Code']), 0)
-            juju_units_az_map[unit.public_address] = result['Stdout'].strip()
+            zone = default_az
+            if use_juju_az:
+                result = zaza.model.run_on_unit(unit.name,
+                                                'echo $JUJU_AVAILABILITY_ZONE',
+                                                model_name=self.model_name,
+                                                timeout=60)
+                self.assertEqual(int(result['Code']), 0)
+                juju_az = result['Stdout'].strip()
+                if juju_az:
+                    zone = juju_az
+
+            juju_units_az_map[unit.public_address] = zone
             continue
 
         session = openstack_utils.get_overcloud_keystone_session()
