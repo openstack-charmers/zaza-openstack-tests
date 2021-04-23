@@ -20,7 +20,10 @@ import json
 import logging
 import unittest
 
+import tenacity
+
 import zaza
+import zaza.openstack.utilities.generic as generic_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 
 
@@ -31,6 +34,11 @@ class NeutronOpenvSwitchOverlayTest(unittest.TestCase):
     def setUpClass(cls):
         """Run class setup for `neutron-openvswitch` tests."""
         super(NeutronOpenvSwitchOverlayTest, cls).setUpClass()
+        cls.nrpe_checks = [
+            'ovsdb-server',
+            'ovs-vswitchd',
+            'openvswitch',
+        ]
 
     def test_tunnel_datapath(self):
         """From ports list, connect to unit in one end, ping other end(s)."""
@@ -79,3 +87,25 @@ class NeutronOpenvSwitchOverlayTest(unittest.TestCase):
                     logging.info(result['Stdout'])
                     if result['Code'] == '1':
                         raise Exception('FAILED')
+
+    @tenacity.retry(
+        retry=tenacity.retry_if_result(lambda ret: ret is not None),
+        # sleep for 2mins to allow 1min cron job to run...
+        wait=tenacity.wait_fixed(120),
+        stop=tenacity.stop_after_attempt(2))
+    def _retry_check_commands_on_units(self, cmds, units):
+        return generic_utils.check_commands_on_units(cmds, units)
+
+    def test_nrpe_configured(self):
+        """Confirm that the NRPE service check files are created."""
+        units = zaza.model.get_units(self.application_name)
+        cmds = []
+        for check_name in self.nrpe_checks:
+            cmds.append(
+                'egrep -oh /usr/local.* /etc/nagios/nrpe.d/'
+                'check_{}.cfg'.format(check_name)
+            )
+        ret = self._retry_check_commands_on_units(cmds, units)
+        if ret:
+            logging.info(ret)
+        self.assertIsNone(ret, msg=ret)
