@@ -573,6 +573,32 @@ class BaseCharmTest(unittest.TestCase):
         return self.test_config.get('tests_options', {}).get(
             '.'.join(caller_path + [key]), default)
 
+    def get_applications_with_substring_in_name(self, substring):
+        """Get applications with substring in name.
+
+        :param substring: String to search for in application names
+        :type substring: str
+        :returns: List of matching applictions
+        :rtype: List
+        """
+        status = model.get_status().applications
+        applications = []
+        for application in status.keys():
+            if substring in application:
+                applications.append(application)
+        return applications
+
+    def run_update_status_hooks(self, units):
+        """Run update status hooks on units.
+
+        :param units: List of unit names or unit.entity_id
+        :type units: List[str]
+        :returns: None
+        :rtype: None
+        """
+        for unit in units:
+            model.run_on_unit(unit, "hooks/update-status")
+
 
 class OpenStackBaseTest(BaseCharmTest):
     """Generic helpers for testing OpenStack API charms."""

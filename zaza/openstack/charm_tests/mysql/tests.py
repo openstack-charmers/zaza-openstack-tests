@@ -113,6 +113,56 @@ class MySQLBaseTest(test_utils.OpenStackBaseTest):
             if _primary_ip in unit.public_address:
                 return unit
 
+    def get_blocked_mysql_routers(self):
+        """Get blocked mysql routers.
+
+        :returns: List of blocked mysql-router unit names
+        :rtype: List[str]
+        """
+        # Make sure mysql-router units are up to date
+        # We cannot assume they are as there is up to a five minute delay
+        mysql_router_units = []
+        for application in self.get_applications_with_substring_in_name(
+                "mysql-router"):
+            for unit in zaza.model.get_units(application):
+                mysql_router_units.append(unit.entity_id)
+        self.run_update_status_hooks(mysql_router_units)
+
+        # Get up to date status
+        status = zaza.model.get_status().applications
+        blocked_mysql_routers = []
+        # Check if the units are blocked
+        for application in self.get_applications_with_substring_in_name(
+                "mysql-router"):
+            # Subordinate dance with primary
+            # There is no satus[applicatoin]["units"] for subordinates
+            _subordinate_to = status[application].subordinate_to[0]
+            for appunit in status[_subordinate_to].units:
+                for subunit in (
+                        status[_subordinate_to].
+                        units[appunit].subordinates.keys()):
+                    if "blocked" in (
+                            status[_subordinate_to].units[appunit].
+                            subordinates[subunit].workload_status.status):
+                        blocked_mysql_routers.append(subunit)
+        return blocked_mysql_routers
+
+    def restart_blocked_mysql_routers(self):
+        """Restart blocked mysql routers.
+
+        :returns: None
+        :rtype: None
+        """
+        # Check for blocked mysql-router units
+        blocked_mysql_routers = self.get_blocked_mysql_routers()
+        for unit in blocked_mysql_routers:
+            logging.warning(
+                "Restarting blocked mysql-router unit {}"
+                .format(unit))
+            zaza.model.run_on_unit(
+                unit,
+                "systemctl restart {}".format(unit.rpartition("/")[0]))
+
 
 class MySQLCommonTests(MySQLBaseTest):
     """Common mysql charm tests."""
@@ -169,6 +219,15 @@ class MySQLCommonTests(MySQLBaseTest):
         """
         with self.pause_resume(self.services):
             logging.info("Testing pause resume")
+
+        logging.info("Wait till model is idle ...")
+        zaza.model.block_until_all_units_idle()
+
+        # If there are any blocekd mysql routers restart them.
+        self.restart_blocked_mysql_routers()
+        assert not self.get_blocked_mysql_routers(), (
+            "Should no longer be blocked mysql-router units")
+
         logging.info("Passed pause and resume test.")
 
 
