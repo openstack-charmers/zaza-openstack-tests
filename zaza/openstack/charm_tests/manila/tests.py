@@ -231,6 +231,33 @@ packages:
     @tenacity.retry(
         stop=tenacity.stop_after_attempt(5),
         wait=tenacity.wait_exponential(multiplier=3, min=2, max=10))
+    def _clear_testing_file_on_instance(self, instance_ip, ssh_user_name,
+                                        ssh_private_key):
+        """Clear a file on a Manila share mounted into a Nova instance.
+
+        Remove a testing file into the already mounted Manila share from the
+        given Nova instance (which is meant to be validated from another
+        instance). These commands are executed via SSH.
+
+        :param instance_ip: IP of the Nova instance.
+        :type instance_ip: string
+        :param ssh_user_name: SSH user name.
+        :type ssh_user_name: string
+        :param ssh_private_key: SSH private key.
+        :type ssh_private_key: string
+        """
+        openstack_utils.ssh_command(
+            vm_name="instance-{}".format(instance_ip),
+            ip=instance_ip,
+            username=ssh_user_name,
+            privkey=ssh_private_key,
+            command='sudo rm {}/test'.format(
+                self.mount_dir),
+            verify=verify_status)
+
+    @tenacity.retry(
+        stop=tenacity.stop_after_attempt(5),
+        wait=tenacity.wait_exponential(multiplier=3, min=2, max=10))
     def _validate_testing_file_from_instance(self, instance_ip, ssh_user_name,
                                              ssh_private_key):
         """Validate a file from the Manila share mounted into a Nova instance.
@@ -254,24 +281,28 @@ packages:
             command='sudo cat {}/test'.format(self.mount_dir),
             verify=verify_manila_testing_file)
 
+    def _restart_share_instance(self):
+        """Restart the share service's provider.
+
+        restart_share_instance is intended to be overridden with driver
+        specific implementations that allow verrification that the share is
+        still  accessible after the service is restarted.
+
+        :returns bool: If the test should re-validate
+        :rtype: bool
+        """
+        return False
+
     def test_manila_share(self):
         """Test that a Manila share can be accessed on two instances.
 
-        1. Create a share
-        2. Spawn two servers
+        1. Spawn two servers
+        2. Create a share
         3. Mount it on both
         4. Write a file on one
         5. Read it on the other
         6. Profit
         """
-        # Create a share
-        share = self.manila_client.shares.create(
-            share_type=self.share_type_name,
-            name=self.share_name,
-            share_proto=self.share_protocol,
-            share_network=self.share_network,
-            size=1)
-
         # Spawn Servers
         instance_1 = self.launch_guest(
             guest_name='ins-1',
@@ -284,6 +315,14 @@ packages:
 
         fip_1 = neutron_tests.floating_ips_from_instance(instance_1)[0]
         fip_2 = neutron_tests.floating_ips_from_instance(instance_2)[0]
+
+        # Create a share
+        share = self.manila_client.shares.create(
+            share_type=self.share_type_name,
+            name=self.share_name,
+            share_proto=self.share_protocol,
+            share_network=self.share_network,
+            size=1)
 
         # Wait for the created share to become available before it gets used.
         openstack_utils.resource_reaches_status(
@@ -313,3 +352,25 @@ packages:
             fip_2, ssh_user_name, privkey, share_path)
         self._validate_testing_file_from_instance(
             fip_2, ssh_user_name, privkey)
+
+        # Restart the share provider
+        if self._restart_share_instance():
+            logging.info("Verifying manila after restarting share instance")
+            # Read the previous testing file from instance #1
+            self._mount_share_on_instance(
+                fip_1, ssh_user_name, privkey, share_path)
+            self._validate_testing_file_from_instance(
+                fip_1, ssh_user_name, privkey)
+            #  Read the previous testing file from instance #1
+            self._mount_share_on_instance(
+                fip_2, ssh_user_name, privkey, share_path)
+            # Reset the test!
+            self._clear_testing_file_on_instance(
+                fip_1, ssh_user_name, privkey
+            )
+            # Write a testing file on instance #1
+            self._write_testing_file_on_instance(
+                fip_1, ssh_user_name, privkey)
+            # Validate the testing file from instance #2
+            self._validate_testing_file_from_instance(
+                fip_2, ssh_user_name, privkey)
