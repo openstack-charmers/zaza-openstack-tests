@@ -463,7 +463,7 @@ class TrilioDMAPITest(TrilioBaseTest):
     services = ["dmapi-api"]
 
 
-class TrilioDataMoverTest(TrilioGhostNFSShareTest):
+class TrilioDataMoverTest(TrilioBaseTest):
     """Tests for Trilio Data Mover charm."""
 
     conf_file = "/etc/tvault-contego/tvault-contego.conf"
