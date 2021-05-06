@@ -276,7 +276,8 @@ def get_tempest_context(workspace_path):
             ctxt_func(ctxt, keystone_session)
     add_environment_var_config(ctxt, ctxt['enabled_services'])
     add_auth_config(ctxt)
-    add_octavia_config(ctxt)
+    if 'octavia' in ctxt['enabled_services']:
+        add_octavia_config(ctxt)
     return ctxt
 
 
