@@ -34,22 +34,6 @@ from zaza.openstack.utilities import (
 )
 
 
-def _filter_easyrsa(app, app_config, model_name=None):
-    charm_name = upgrade_utils.extract_charm_name_from_url(app_config['charm'])
-    if "easyrsa" in charm_name:
-        logging.warn("Skipping series upgrade of easyrsa Bug #1850121")
-        return True
-    return False
-
-
-def _filter_etcd(app, app_config, model_name=None):
-    charm_name = upgrade_utils.extract_charm_name_from_url(app_config['charm'])
-    if "etcd" in charm_name:
-        logging.warn("Skipping series upgrade of easyrsa Bug #1850124")
-        return True
-    return False
-
-
 class ParallelSeriesUpgradeTest(unittest.TestCase):
     """Class to encapsulate Series Upgrade Tests."""
 
@@ -67,13 +51,15 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
         cls.to_series = None
         cls.workaround_script = None
         cls.files = []
+        cls.extra_filters = []
 
     def test_200_run_series_upgrade(self):
         """Run series upgrade."""
         # Set Feature Flag
         os.environ["JUJU_DEV_FEATURE_FLAGS"] = "upgrade-series"
         upgrade_groups = upgrade_utils.get_series_upgrade_groups(
-            extra_filters=[_filter_etcd, _filter_easyrsa])
+            extra_filters=[upgrade_utils._filter_etcd,
+                           upgrade_utils._filter_easyrsa] + self.extra_filters)
         from_series = self.from_series
         to_series = self.to_series
         completed_machines = []
@@ -194,6 +180,7 @@ class BionicFocalSeriesUpgrade(OpenStackParallelSeriesUpgrade):
         super(BionicFocalSeriesUpgrade, cls).setUpClass()
         cls.from_series = "bionic"
         cls.to_series = "focal"
+        cls.extra_filters = [upgrade_utils._filter_percona_cluster]
 
 
 class UbuntuLiteParallelSeriesUpgrade(unittest.TestCase):
@@ -247,6 +234,7 @@ class BionicFocalSeriesUpgradeUbuntu(UbuntuLiteParallelSeriesUpgrade):
         super(BionicFocalSeriesUpgradeUbuntu, cls).setUpClass()
         cls.from_series = "bionic"
         cls.to_series = "focal"
+        cls.extra_filters = [upgrade_utils._filter_percona_cluster]
 
 
 if __name__ == "__main__":

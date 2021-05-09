@@ -138,7 +138,15 @@ def _filter_etcd(app, app_config, model_name=None):
 def _filter_memcached(app, app_config, model_name=None):
     charm_name = extract_charm_name_from_url(app_config['charm'])
     if "memcached" in charm_name:
-        logging.warn("Skipping upgrade of memcached charm")
+        logging.warn("Skipping upgrade of memcached")
+        return True
+    return False
+
+
+def _filter_percona_cluster(app, app_config, model_name=None):
+    charm_name = extract_charm_name_from_url(app_config['charm'])
+    if "percona-cluster" in charm_name:
+        logging.warn("Skipping upgrade of percona-cluster")
         return True
     return False
 
