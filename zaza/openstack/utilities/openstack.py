@@ -2478,7 +2478,11 @@ def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[],
     local_path = os.path.join(image_cache_dir, img_name)
 
     if not os.path.exists(local_path):
+        logging.info('Downloading {} ...'.format(image_url))
         download_image(image_url, local_path)
+    else:
+        logging.info('Cached image found at {} - Skipping download'.format(
+            local_path))
 
     image = upload_image_to_glance(
         glance, local_path, image_name, backend=backend,
