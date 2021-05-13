@@ -107,14 +107,25 @@ def configure_octavia():
         'amp-ssh-pub-key': base64.b64encode(
             bytes(ssh_public_key, 'utf-8')).decode('utf-8'),
     }
-    logging.info('Configuring certificates for mandatory Octavia '
-                 'client/server authentication '
-                 '(client being the ``Amphorae`` load balancer instances)')
+
+    # Tell Octavia charm it is safe to create cloud resources, we do this now
+    # because the workload status will be checked on config-change and it gets
+    # a bit complicated to augment test config to accept 'blocked' vs. 'active'
+    # in the various stages.
+    logging.info('Running `configure-resources` action on Octavia leader unit')
+    zaza.model.run_action_on_leader(
+        'octavia',
+        'configure-resources',
+        action_params={})
 
     # Our expected workload status will change after we have configured the
     # certificates
     test_config = zaza.charm_lifecycle.utils.get_charm_config()
     del test_config['target_deploy_status']['octavia']
+
+    logging.info('Configuring certificates for mandatory Octavia '
+                 'client/server authentication '
+                 '(client being the ``Amphorae`` load balancer instances)')
 
     _singleton = zaza.openstack.charm_tests.test_utils.OpenStackBaseTest()
     _singleton.setUpClass(application_name='octavia')
@@ -122,8 +133,10 @@ def configure_octavia():
         # wait for configuration to be applied then return
         pass
 
-    # Tell Octavia charm it is safe to create cloud resources
-    logging.info('Running `configure-resources` action on Octavia leader unit')
+    # Should we consider making the charm attempt to create this key on
+    # config-change?
+    logging.info('Running `configure-resources` action again to ensure '
+                 'Octavia Nova SSH key pair is created after config change.')
     zaza.model.run_action_on_leader(
         'octavia',
         'configure-resources',
