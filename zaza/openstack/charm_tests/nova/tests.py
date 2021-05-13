@@ -143,7 +143,39 @@ class CloudActions(test_utils.OpenStackBaseTest):
         for service in self.nova_client.services.list(binary='nova-compute'):
             self.assertEqual(service.status, 'enabled')
 
-    def test_950_remove_from_cloud_actions(self):
+    def test_950_instance_count_action(self):
+        """Test that action 'instance-count' returns expected values."""
+        def check_instance_count(expect_count, unit_name):
+            """Assert that unit with 'unit_name' has 'expect_count' of VMs.
+
+            :param expect_count: How many VMs are expected to be running
+            :param unit_name: Name of the target nova-compute unit
+            :return: None
+            :raises AssertionError: If result of the 'instance-count' action
+                                    does not match 'expect_count'.
+            """
+            logging.debug('Running "instance-count" action on unit "{}".'
+                          'Expecting result: {}'.format(unit_name,
+                                                        expect_count))
+            result = zaza.model.run_action(unit_name, 'instance-count')
+            self.assertEqual(result.status, 'completed')
+            instances = result.data.get('results', {}).get('instance-count')
+            self.assertEqual(instances, str(expect_count))
+
+        nova_unit = zaza.model.get_units('nova-compute',
+                                         model_name=self.model_name)[0]
+
+        check_instance_count(0, nova_unit.entity_id)
+
+        self.RESOURCE_PREFIX = 'zaza-nova'
+        self.launch_guest(
+            'ubuntu', instance_key=glance_setup.LTS_IMAGE_NAME)
+
+        check_instance_count(1, nova_unit.entity_id)
+
+        self.resource_cleanup()
+
+    def test_960_remove_from_cloud_actions(self):
         """Test actions remove-from-cloud and register-to-cloud.
 
         Note (martin-kalcok): This test requires that nova-compute unit is not
