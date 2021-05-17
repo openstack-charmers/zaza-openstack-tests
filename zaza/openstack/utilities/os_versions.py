@@ -121,6 +121,8 @@ OVN_CODENAMES = OrderedDict([
         ['20.03']),
     ('victoria',
         ['20.06']),
+    ('wallaby',
+        ['20.12']),
 ])
 
 # >= Liberty version->codename mapping
