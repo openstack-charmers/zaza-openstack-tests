@@ -39,12 +39,14 @@ def nfs_setup():
     trilio_wlm_unit = zaza_model.get_first_unit_name("trilio-wlm")
 
     nfs_shares_conf = {"nfs-shares": "{}:/srv/testing".format(nfs_server_ip)}
+    logging.info("NFS share config: {}".format(nfs_shares_conf))
     _trilio_services = ["trilio-wlm", "trilio-data-mover"]
 
     conf_changed = False
     for juju_service in _trilio_services:
         app_config = zaza_model.get_application_config(juju_service)
         if app_config["nfs-shares"] != nfs_shares_conf["nfs-shares"]:
+            logging.info("Updating nfs-shares config option")
             zaza_model.set_application_config(juju_service, nfs_shares_conf)
             conf_changed = True
 
