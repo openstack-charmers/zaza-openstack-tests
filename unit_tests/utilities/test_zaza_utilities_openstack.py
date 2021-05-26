@@ -550,7 +550,8 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             backend=None,
             disk_format='qcow2',
             visibility='public',
-            container_format='bare')
+            container_format='bare',
+            force_import=False)
 
     def test_create_image_pass_directory(self):
         glance_mock = mock.MagicMock()
@@ -574,7 +575,8 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             backend=None,
             disk_format='qcow2',
             visibility='public',
-            container_format='bare')
+            container_format='bare',
+            force_import=False)
         self.gettempdir.assert_not_called()
 
     def test_create_ssh_key(self):
