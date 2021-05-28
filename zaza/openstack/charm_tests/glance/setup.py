@@ -188,7 +188,7 @@ def configure_external_s3_backend():
         region="RegionOne",
     )
 
-    logging.info("Creating a test S3 bucketfor Glance")
+    logging.info("Creating a test S3 bucket for Glance")
     bucket_name = "zaza-glance-s3-test"
     s3_client = boto3.client(
         "s3",
@@ -198,7 +198,7 @@ def configure_external_s3_backend():
     )
     s3_client.create_bucket(Bucket=bucket_name)
 
-    logging.info("Updating Glance configs with S3 endpoint infomation")
+    logging.info("Updating Glance configs with S3 endpoint information")
     model.set_application_config(
         "glance",
         {
