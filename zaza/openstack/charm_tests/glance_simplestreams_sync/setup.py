@@ -17,6 +17,7 @@
 """Code for configuring glance-simplestreams-sync."""
 
 import logging
+import tenacity
 
 import zaza.model as zaza_model
 import zaza.openstack.utilities.generic as generic_utils
@@ -30,11 +31,17 @@ def sync_images():
     deployment.
     """
     logging.info("Synchronising images using glance-simplestreams-sync")
-    generic_utils.assertActionRanOK(
-        zaza_model.run_action_on_leader(
-            "glance-simplestreams-sync",
-            "sync-images",
-            raise_on_failure=True,
-            action_params={},
-        )
-    )
+    for attempt in tenacity.Retrying(
+            stop=tenacity.stop_after_attempt(3),
+            wait=tenacity.wait_exponential(
+                multiplier=1, min=2, max=10),
+            reraise=True):
+        with attempt:
+            generic_utils.assertActionRanOK(
+                zaza_model.run_action_on_leader(
+                    "glance-simplestreams-sync",
+                    "sync-images",
+                    raise_on_failure=True,
+                    action_params={},
+                )
+            )

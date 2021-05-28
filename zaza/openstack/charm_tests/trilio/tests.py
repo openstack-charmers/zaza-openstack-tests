@@ -440,7 +440,7 @@ class TrilioGhostNFSShareTest(TrilioBaseTest):
         )
 
 
-class TrilioWLMTest(TrilioGhostNFSShareTest):
+class TrilioWLMBaseTest(TrilioBaseTest):
     """Tests for Trilio Workload Manager charm."""
 
     conf_file = "/etc/workloadmgr/workloadmgr.conf"
@@ -478,3 +478,11 @@ class TrilioDataMoverNFSTest(TrilioDataMoverBaseTest, TrilioGhostNFSShareTest):
 
 class TrilioDataMoverS3Test(TrilioDataMoverBaseTest):
     """Tests for Trilio Data Mover charm backed by S3."""
+
+
+class TrilioWLMNFSTest(TrilioWLMBaseTest, TrilioGhostNFSShareTest):
+    """Tests for Trilio WLM charm backed by NFS."""
+
+
+class TrilioWLMS3Test(TrilioWLMBaseTest):
+    """Tests for Trilio WLM charm backed by S3."""
