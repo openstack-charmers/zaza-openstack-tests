@@ -2407,7 +2407,7 @@ def delete_volume_backup(cinder, vol_backup_id):
 
 def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
                            visibility='public', container_format='bare',
-                           backend=None):
+                           backend=None, force_import=False):
     """Upload the given image to glance and apply the given label.
 
     :param glance: Authenticated glanceclient
@@ -2424,6 +2424,9 @@ def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
                              format that also contains metadata about the
                              actual virtual machine.
     :type container_format: str
+    :param force_import: Force the use of glance image import
+        instead of direct upload
+    :type force_import: boolean
     :returns: glance image pointer
     :rtype: glanceclient.common.utils.RequestIdProxy
     """
@@ -2433,7 +2436,15 @@ def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
         disk_format=disk_format,
         visibility=visibility,
         container_format=container_format)
-    glance.images.upload(image.id, open(local_path, 'rb'), backend=backend)
+
+    if force_import:
+        logging.info('Forcing image import')
+        glance.images.stage(image.id, open(local_path, 'rb'))
+        glance.images.image_import(
+            image.id, method='glance-direct', backend=backend)
+    else:
+        glance.images.upload(
+            image.id, open(local_path, 'rb'), backend=backend)
 
     resource_reaches_status(
         glance.images,
@@ -2446,7 +2457,8 @@ def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
 
 def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[],
                  properties=None, backend=None, disk_format='qcow2',
-                 visibility='public', container_format='bare'):
+                 visibility='public', container_format='bare',
+                 force_import=False):
     """Download the image and upload it to glance.
 
     Download an image from image_url and upload it to glance labelling
@@ -2465,6 +2477,9 @@ def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[],
     :type tags: list of str
     :param properties: Properties and values to add to image
     :type properties: dict
+    :param force_import: Force the use of glance image import
+        instead of direct upload
+    :type force_import: boolean
     :returns: glance image pointer
     :rtype: glanceclient.common.utils.RequestIdProxy
     """
@@ -2487,7 +2502,7 @@ def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[],
     image = upload_image_to_glance(
         glance, local_path, image_name, backend=backend,
         disk_format=disk_format, visibility=visibility,
-        container_format=container_format)
+        container_format=container_format, force_import=force_import)
     for tag in tags:
         result = glance.image_tags.update(image.id, tag)
         logging.debug(

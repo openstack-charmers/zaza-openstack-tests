@@ -67,6 +67,32 @@ class GlanceTest(test_utils.OpenStackBaseTest):
             {'image_format': {'disk_formats': ['qcow2']}},
             ['glance-api'])
 
+    def test_412_image_conversion(self):
+        """Check image-conversion config.
+
+        When image-conversion config is enabled glance will convert images
+        to raw format, this is only performed for interoperable image import
+        docs.openstack.org/glance/train/admin/interoperable-image-import.html
+        image conversion is done at server-side for better image handling
+        """
+        current_release = openstack_utils.get_os_release()
+        bionic_stein = openstack_utils.get_os_release('bionic_stein')
+        if current_release < bionic_stein:
+            self.skipTest('image-conversion config is supported since '
+                          'bionic_stein or newer versions')
+
+        with self.config_change({'image-conversion': 'false'},
+                                {'image-conversion': 'true'}):
+            image_url = openstack_utils.find_cirros_image(arch='x86_64')
+            image = openstack_utils.create_image(
+                self.glance_client,
+                image_url,
+                'cirros-test-import',
+                force_import=True)
+
+            disk_format = self.glance_client.images.get(image.id).disk_format
+            self.assertEqual('raw', disk_format)
+
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change."""
         # Config file affected by juju set config change
