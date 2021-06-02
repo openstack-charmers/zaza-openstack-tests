@@ -688,5 +688,6 @@ class OctaviaTests(BasePolicydSpecialization):
             self.get_keystone_session_admin_user(ip))
         try:
             octavia_client.provider_list()
-        except octaviaclient.OctaviaClientException:
+        except (octaviaclient.OctaviaClientException,
+                keystoneauth1.exceptions.http.Forbidden):
             raise PolicydOperationFailedException()
