@@ -111,7 +111,11 @@ class UnsealVault(BaseVaultTest):
         vault_utils.run_charm_authorize(self.vault_creds['root_token'])
         if not test_config:
             test_config = lifecycle_utils.get_charm_config()
-        del test_config['target_deploy_status']['vault']
+        try:
+            del test_config['target_deploy_status']['vault']
+        except KeyError:
+            # Already removed
+            pass
         zaza.model.wait_for_application_states(
             states=test_config.get('target_deploy_status', {}))
 
@@ -154,7 +158,11 @@ class VaultTest(BaseVaultTest):
             allowed_domains='openstack.local')
 
         test_config = lifecycle_utils.get_charm_config()
-        del test_config['target_deploy_status']['vault']
+        try:
+            del test_config['target_deploy_status']['vault']
+        except KeyError:
+            # Already removed
+            pass
         zaza.openstack.utilities.openstack.block_until_ca_exists(
             'keystone',
             cacert.decode().strip())
