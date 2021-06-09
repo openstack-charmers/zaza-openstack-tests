@@ -18,8 +18,10 @@
 
 import logging
 
-import zaza.openstack.utilities.openstack as openstack_utils
+import boto3
+import zaza.model as model
 import zaza.openstack.charm_tests.test_utils as test_utils
+import zaza.openstack.utilities.openstack as openstack_utils
 
 
 class GlanceTest(test_utils.OpenStackBaseTest):
@@ -168,3 +170,55 @@ class GlanceCephRGWBackendTest(test_utils.OpenStackBaseTest):
             'image size {}'.format(image['size'], total_bytes))
         self.assertEqual(image['size'], total_bytes)
         openstack_utils.delete_image(self.glance_client, image['id'])
+
+
+class GlanceExternalS3Test(test_utils.OpenStackBaseTest):
+    """Encapsulate glance tests using an external S3 backend."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running glance tests with S3 backend."""
+        super(GlanceExternalS3Test, cls).setUpClass()
+        cls.glance_client = openstack_utils.get_glance_session_client(
+            cls.keystone_session
+        )
+
+        configs = model.get_application_config("glance")
+        cls.s3_store_host = configs["s3-store-host"]["value"]
+        cls.s3_store_access_key = configs["s3-store-access-key"]["value"]
+        cls.s3_store_secret_key = configs["s3-store-secret-key"]["value"]
+        cls.s3_store_bucket = configs["s3-store-bucket"]["value"]
+
+    def test_100_create_delete_image(self):
+        """Create an image and do a simple validation of it.
+
+        Validate the size of the image in both Glance API and actual S3 bucket.
+        """
+        image_name = "zaza-s3-test-image"
+        openstack_utils.create_image(
+            glance=self.glance_client,
+            image_url=openstack_utils.find_cirros_image(arch="x86_64"),
+            image_name=image_name,
+            backend="s3",
+        )
+        images = openstack_utils.get_images_by_name(
+            self.glance_client, image_name
+        )
+        self.assertEqual(len(images), 1)
+        image = images[0]
+
+        s3_client = boto3.client(
+            "s3",
+            endpoint_url=self.s3_store_host,
+            aws_access_key_id=self.s3_store_access_key,
+            aws_secret_access_key=self.s3_store_secret_key,
+        )
+        response = s3_client.head_object(
+            Bucket=self.s3_store_bucket, Key=image["id"]
+        )
+        logging.info(
+            "Checking glance image size {} matches S3 object's ContentLength "
+            "{}".format(image["size"], response["ContentLength"])
+        )
+        self.assertEqual(image["size"], response["ContentLength"])
+        openstack_utils.delete_image(self.glance_client, image["id"])
