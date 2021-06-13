@@ -18,6 +18,7 @@
 
 import contextlib
 import hvac
+import json
 import logging
 import time
 import unittest
@@ -277,6 +278,15 @@ class VaultTest(BaseVaultTest):
             raise unittest.SkipTest("The version of charm-vault tested does "
                                     "not have reload action")
 
+        container_results = zaza.model.run_on_leader(
+            "vault", "systemd-detect-virt --container"
+        )
+        container_rc = json.loads(container_results["Code"])
+        if container_rc == 0:
+            raise unittest.SkipTest(
+                "Vault unit is running in a container. Cannot use mlock."
+            )
+
         lead_client = vault_utils.get_cluster_leader(self.clients)
         running_config = vault_utils.get_running_config(lead_client)
         value_to_set = not running_config['data']['disable_mlock']
@@ -286,7 +296,7 @@ class VaultTest(BaseVaultTest):
             'vault',
             {'disable-mlock': str(value_to_set)})
 
-        logging.info("Waiting for modle to be idle ...")
+        logging.info("Waiting for model to be idle ...")
         zaza.model.block_until_all_units_idle(model_name=self.model_name)
 
         logging.info("Testing action reload on {}".format(lead_client))
