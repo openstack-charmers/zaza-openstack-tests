@@ -24,6 +24,7 @@ import time
 import unittest
 import uuid
 import tempfile
+import tenacity
 
 import requests
 import zaza.charm_lifecycle.utils as lifecycle_utils
@@ -171,10 +172,19 @@ class VaultTest(BaseVaultTest):
             states=test_config.get('target_deploy_status', {}))
         ip = zaza.model.get_app_ips(
             'keystone')[0]
+
         with tempfile.NamedTemporaryFile(mode='w') as fp:
             fp.write(cacert.decode())
             fp.flush()
-            requests.get('https://{}:5000'.format(ip), verify=fp.name)
+            # Avoid race condition and retry
+            for attempt in tenacity.Retrying(
+                stop=tenacity.stop_after_attempt(3),
+                wait=tenacity.wait_exponential(
+                    multiplier=2, min=2, max=10)):
+                with attempt:
+                    logging.info(
+                        "Attempting to connect to https://{}:5000".format(ip))
+                    requests.get('https://{}:5000'.format(ip), verify=fp.name)
 
     def test_all_clients_authenticated(self):
         """Check all vault clients are authenticated."""
