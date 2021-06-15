@@ -27,6 +27,74 @@ import zaza.openstack.utilities.openstack as openstack_utils
 
 from zaza.openstack.utilities import ObjectRetrierWraps
 
+LBAAS_ADMIN_ROLE = 'load-balancer_admin'
+
+
+def _op_role_current_user(keystone_client, keystone_session, op, role_name,
+                          scope=None):
+    """Perform role operation on current user.
+
+    :param keystone_client: Keysonte cilent object
+    :type keystone_client: keystoneclient.v3.Client
+    :param keystone_session: Keystone session object
+    :type keystone_session: keystoneauth1.session.Session
+    :param op: Operation to perform, one of ('grant', 'revoke')
+    :type op: str
+    :param role_name: Name of role
+    :type role_name: str
+    :param scope: Scope to apply role to, one of ('domain', 'project'(default))
+    :type scope: Optional[str]
+    :returns: the granted role returned from server.
+    :rtype: keystoneclient.v3.roles.Role
+    :raises: ValueError, keystoneauth1.exceptions.*
+    """
+    allowed_ops = ('grant', 'revoke')
+    if op not in allowed_ops:
+        raise ValueError('op "{}" not in allowed_ops "{}"'
+                         .format(op, allowed_ops))
+    scope = scope or 'project'
+    allowed_scope = ('domain', 'project')
+    if scope not in allowed_scope:
+        raise ValueError('scope "{}" not in allowed_scope "{}"'
+                         .format(scope, allowed_scope))
+
+    logging.info('{} "{}" role {} current user with "{}" scope...'
+                 .format(op.capitalize(), role_name,
+                         'to' if op == 'grant' else 'from',
+                         scope))
+    role_method = getattr(keystone_client.roles, op)
+    token = keystone_session.get_token()
+    token_data = keystone_client.tokens.get_token_data(token)
+    role = keystone_client.roles.find(name=role_name)
+
+    kwargs = {
+        'user': token_data['token']['user']['id'],
+        scope: token_data['token'][scope]['id'],
+    }
+    return role_method(
+        role,
+        **kwargs)
+
+
+def grant_role_current_user(keystone_client, keystone_session, role_name,
+                            scope=None):
+    """Grant role to current user.
+
+    Please refer to docstring for _op_role_current_user.
+    """
+    _op_role_current_user(
+        keystone_client, keystone_session, 'grant', role_name, scope=scope)
+
+
+def revoke_role_current_user(keystone_client, keystone_session, role_name,
+                             scope=None):
+    """Grant role to current user.
+
+    Please refer to docstring for _op_role_current_user.
+    """
+    _op_role_current_user(
+        keystone_client, keystone_session, 'revoke', role_name, scope=scope)
+
 
 class CharmOperationTest(test_utils.OpenStackBaseTest):
     """Charm operation tests."""
@@ -67,6 +135,11 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         super(LBAASv2Test, cls).setUpClass()
         cls.keystone_client = ObjectRetrierWraps(
             openstack_utils.get_keystone_session_client(cls.keystone_session))
+
+        # add role to admin user for the duration of the test
+        grant_role_current_user(cls.keystone_client, cls.keystone_session,
+                                LBAAS_ADMIN_ROLE)
+
         cls.neutron_client = ObjectRetrierWraps(
             openstack_utils.get_neutron_session_client(cls.keystone_session))
         cls.octavia_client = ObjectRetrierWraps(
@@ -132,6 +205,11 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
                     pass
         # allow resource cleanup to be run multiple times
         self.loadbalancers = []
+
+        # revoke role from admin user added by this test
+        revoke_role_current_user(self.keystone_client, self.keystone_session,
+                                 LBAAS_ADMIN_ROLE)
+
         for fip in self.fips:
             self.neutron_client.delete_floatingip(fip)
         # allow resource cleanup to be run multiple times
