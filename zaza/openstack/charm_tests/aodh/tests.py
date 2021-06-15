@@ -25,6 +25,7 @@ import zaza.model
 import zaza.openstack.configure.guest
 import zaza.openstack.charm_tests.glance.setup as glance_setup
 import zaza.openstack.charm_tests.test_utils as test_utils
+import zaza.openstack.utilities.generic as generic_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.configure.telemetry as telemetry_utils
 
@@ -69,6 +70,13 @@ class AodhTest(test_utils.OpenStackBaseTest):
     def query_aodh_api(self):
         """Check that aodh api is responding."""
         self.aodh_client.alarm.list()
+
+    @tenacity.retry(
+        retry=tenacity.retry_if_result(lambda ret: ret is not None),
+        wait=tenacity.wait_fixed(120),
+        stop=tenacity.stop_after_attempt(2))
+    def _retry_check_commands_on_units(self, cmds, units):
+        return generic_utils.check_commands_on_units(cmds, units)
 
     @property
     def services(self):
@@ -138,6 +146,26 @@ class AodhTest(test_utils.OpenStackBaseTest):
                 pgrep_full=False):
             logging.info("Testing pause resume")
         self.query_aodh_api()
+
+    def test_902_nrpe_service_checks(self):
+        """Confirm that the NRPE service check files are created."""
+        units = zaza.model.get_units('aodh')
+        cmds = []
+        if self.release >= self.xenial_ocata:
+            services = ['aodh-evaluator', 'aodh-notifier',
+                        'aodh-listener', 'apache2']
+        else:
+            services = ['aodh-api', 'aodh-evaluator',
+                        'aodh-notifier', 'aodh-listener']
+        for check_name in services:
+            cmds.append(
+                'egrep -oh /usr/local.* /etc/nagios/nrpe.d/'
+                'check_{}.cfg'.format(check_name)
+            )
+        ret = self._retry_check_commands_on_units(cmds, units)
+        if ret:
+            logging.info(ret)
+        self.assertIsNone(ret, msg=ret)
 
 
 class AodhServerAlarmTest(test_utils.OpenStackBaseTest):

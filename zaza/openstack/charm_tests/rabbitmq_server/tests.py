@@ -428,3 +428,58 @@ class RmqTests(test_utils.OpenStackBaseTest):
         check_units(all_units)
 
         logging.info('OK')
+
+
+class RabbitMQDeferredRestartTest(test_utils.BaseDeferredRestartTest):
+    """Deferred restart tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run setup for deferred restart tests."""
+        super().setUpClass(application_name='rabbitmq-server')
+
+    def check_status_message_is_clear(self):
+        """Check each units status message show no defeerred events."""
+        pattern = '(Unit is ready|Unit is ready and clustered)$'
+        for unit in zaza.model.get_units(self.application_name):
+            zaza.model.block_until_unit_wl_message_match(
+                unit.entity_id,
+                pattern)
+        zaza.model.block_until_all_units_idle()
+
+    def get_new_config(self):
+        """Return the config key and new value to trigger a hook execution.
+
+        :returns: Config key and new value
+        :rtype: (str, bool)
+        """
+        app_config = zaza.model.get_application_config(self.application_name)
+        new_value = str(int(
+            app_config['connection-backlog'].get('value', 100) + 1))
+        return 'connection-backlog', new_value
+
+    def run_tests(self):
+        """Run deferred restart tests."""
+        # Trigger a config change which triggers a deferred hook.
+        self.run_charm_change_hook_test('config-changed')
+
+        # Trigger a package change which requires a restart
+        self.run_package_change_test(
+            'rabbitmq-server',
+            'rabbitmq-server')
+
+    def check_clear_restarts(self):
+        """Clear and deferred restarts and check status.
+
+        Clear and deferred restarts and then check the workload status message
+        for each unit.
+        """
+        # Use action to run any deferred restarts
+        for unit in zaza.model.get_units(self.application_name):
+            zaza.model.run_action(
+                unit.entity_id,
+                'restart-services',
+                action_params={'services': 'rabbitmq-server'})
+
+        # Check workload status no longer shows deferred restarts.
+        self.check_status_message_is_clear()

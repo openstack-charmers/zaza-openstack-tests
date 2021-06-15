@@ -69,6 +69,7 @@ from neutronclient.v2_0 import client as neutronclient
 from neutronclient.common import exceptions as neutronexceptions
 from octaviaclient.api.v2 import octavia as octaviaclient
 from swiftclient import client as swiftclient
+from manilaclient import client as manilaclient
 
 from juju.errors import JujuError
 
@@ -447,6 +448,19 @@ def get_aodh_session_client(session):
     :rtype: openstack.instance_ha.v1._proxy.Proxy
     """
     return aodh_client.Client(session=session)
+
+
+def get_manila_session_client(session, version='2'):
+    """Return Manila client authenticated by keystone session.
+
+    :param session: Keystone session object
+    :type session: keystoneauth1.session.Session object
+    :param version: Manila API version
+    :type version: str
+    :returns: Authenticated manilaclient
+    :rtype: manilaclient.Client
+    """
+    return manilaclient.Client(session=session, client_version=version)
 
 
 def get_keystone_scope(model_name=None):
@@ -1739,8 +1753,48 @@ def get_os_code_info(package, pkg_version):
             return OPENSTACK_CODENAMES[vers]
 
 
+def get_openstack_release(application, model_name=None):
+    """Return the openstack release codename based on /etc/openstack-release.
+
+    This will only return a codename if the openstack-release package is
+    installed on the unit.
+
+    :param application: Application name
+    :type application: string
+    :param model_name: Name of model to query.
+    :type model_name: str
+    :returns: OpenStack release codename for application
+    :rtype: string
+    """
+    versions = []
+    units = model.get_units(application, model_name=model_name)
+    for unit in units:
+        cmd = 'cat /etc/openstack-release | grep OPENSTACK_CODENAME'
+        try:
+            out = juju_utils.remote_run(unit.entity_id, cmd,
+                                        model_name=model_name)
+        except model.CommandRunFailed:
+            logging.debug('Fall back to version check for OpenStack codename')
+        else:
+            codename = out.split('=')[1].strip()
+            versions.append(codename)
+    if len(set(versions)) == 0:
+        return None
+    elif len(set(versions)) > 1:
+        raise Exception('Unexpected mix of OpenStack releases for {}: {}',
+                        application, versions)
+    return versions[0]
+
+
 def get_current_os_versions(deployed_applications, model_name=None):
     """Determine OpenStack codename of deployed applications.
+
+    Initially, see if the openstack-release pkg is available and use it
+    instead.
+
+    If it isn't then it falls back to the existing method of checking the
+    version of the package passed and then resolving the version from that
+    using lookup tables.
 
     :param deployed_applications: List of deployed applications
     :type deployed_applications: list
@@ -1755,11 +1809,16 @@ def get_current_os_versions(deployed_applications, model_name=None):
             continue
         logging.info("looking at application: {}".format(application))
 
-        version = generic_utils.get_pkg_version(application['name'],
-                                                application['type']['pkg'],
-                                                model_name=model_name)
-        versions[application['name']] = (
-            get_os_code_info(application['type']['pkg'], version))
+        codename = get_openstack_release(application['name'],
+                                         model_name=model_name)
+        if codename:
+            versions[application['name']] = codename
+        else:
+            version = generic_utils.get_pkg_version(application['name'],
+                                                    application['type']['pkg'],
+                                                    model_name=model_name)
+            versions[application['name']] = (
+                get_os_code_info(application['type']['pkg'], version))
     return versions
 
 
@@ -2348,7 +2407,7 @@ def delete_volume_backup(cinder, vol_backup_id):
 
 def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
                            visibility='public', container_format='bare',
-                           backend=None):
+                           backend=None, force_import=False):
     """Upload the given image to glance and apply the given label.
 
     :param glance: Authenticated glanceclient
@@ -2365,6 +2424,9 @@ def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
                              format that also contains metadata about the
                              actual virtual machine.
     :type container_format: str
+    :param force_import: Force the use of glance image import
+        instead of direct upload
+    :type force_import: boolean
     :returns: glance image pointer
     :rtype: glanceclient.common.utils.RequestIdProxy
     """
@@ -2374,7 +2436,15 @@ def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
         disk_format=disk_format,
         visibility=visibility,
         container_format=container_format)
-    glance.images.upload(image.id, open(local_path, 'rb'), backend=backend)
+
+    if force_import:
+        logging.info('Forcing image import')
+        glance.images.stage(image.id, open(local_path, 'rb'))
+        glance.images.image_import(
+            image.id, method='glance-direct', backend=backend)
+    else:
+        glance.images.upload(
+            image.id, open(local_path, 'rb'), backend=backend)
 
     resource_reaches_status(
         glance.images,
@@ -2387,7 +2457,8 @@ def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
 
 def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[],
                  properties=None, backend=None, disk_format='qcow2',
-                 visibility='public', container_format='bare'):
+                 visibility='public', container_format='bare',
+                 force_import=False):
     """Download the image and upload it to glance.
 
     Download an image from image_url and upload it to glance labelling
@@ -2406,6 +2477,9 @@ def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[],
     :type tags: list of str
     :param properties: Properties and values to add to image
     :type properties: dict
+    :param force_import: Force the use of glance image import
+        instead of direct upload
+    :type force_import: boolean
     :returns: glance image pointer
     :rtype: glanceclient.common.utils.RequestIdProxy
     """
@@ -2419,12 +2493,16 @@ def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[],
     local_path = os.path.join(image_cache_dir, img_name)
 
     if not os.path.exists(local_path):
+        logging.info('Downloading {} ...'.format(image_url))
         download_image(image_url, local_path)
+    else:
+        logging.info('Cached image found at {} - Skipping download'.format(
+            local_path))
 
     image = upload_image_to_glance(
         glance, local_path, image_name, backend=backend,
         disk_format=disk_format, visibility=visibility,
-        container_format=container_format)
+        container_format=container_format, force_import=force_import)
     for tag in tags:
         result = glance.image_tags.update(image.id, tag)
         logging.debug(
@@ -2487,6 +2565,40 @@ def attach_volume(nova, volume_id, instance_id):
     return nova.volumes.create_server_volume(server_id=instance_id,
                                              volume_id=volume_id,
                                              device='/dev/vdx')
+
+
+def failover_cinder_volume_host(cinder, backend_name='cinder-ceph',
+                                target_backend_id='ceph',
+                                target_status='disabled',
+                                target_replication_status='failed-over'):
+    """Failover Cinder volume host with replication enabled.
+
+    :param cinder: Authenticated cinderclient
+    :type cinder: cinder.Client
+    :param backend_name: Cinder volume backend name with
+                         replication enabled.
+    :type backend_name: str
+    :param target_backend_id: Failover target Cinder backend id.
+    :type target_backend_id: str
+    :param target_status: Target Cinder volume status after failover.
+    :type target_status: str
+    :param target_replication_status: Target Cinder volume replication
+                                      status after failover.
+    :type target_replication_status: str
+    :raises: AssertionError
+    """
+    host = 'cinder@{}'.format(backend_name)
+    logging.info('Failover Cinder volume host %s to backend_id %s',
+                 host, target_backend_id)
+    cinder.services.failover_host(host=host, backend_id=target_backend_id)
+    for attempt in tenacity.Retrying(
+            retry=tenacity.retry_if_exception_type(AssertionError),
+            stop=tenacity.stop_after_attempt(10),
+            wait=tenacity.wait_exponential(multiplier=1, min=2, max=10)):
+        with attempt:
+            svc = cinder.services.list(host=host, binary='cinder-volume')[0]
+            assert svc.status == target_status
+            assert svc.replication_status == target_replication_status
 
 
 def create_volume_backup(cinder, volume_id, name=None):
