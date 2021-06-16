@@ -262,7 +262,7 @@ class WorkloadmgrCLIHelper(object):
 
         retryer = tenacity.Retrying(
             wait=tenacity.wait_exponential(multiplier=1, max=30),
-            stop=tenacity.stop_after_delay(720),
+            stop=tenacity.stop_after_delay(900),
             reraise=True,
         )
 
