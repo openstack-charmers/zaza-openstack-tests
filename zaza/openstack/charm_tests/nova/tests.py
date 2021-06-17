@@ -83,6 +83,79 @@ class LTSGuestCreateVolumeBackedTest(test_utils.OpenStackBaseTest):
         self.resource_cleanup()
 
 
+class NovaCommonTests(test_utils.OpenStackBaseTest):
+    """nova-compute and nova-cloud-controller common tests."""
+
+    XENIAL_MITAKA = openstack_utils.get_os_release('xenial_mitaka')
+    XENIAL_OCATA = openstack_utils.get_os_release('xenial_ocata')
+    XENIAL_QUEENS = openstack_utils.get_os_release('xenial_queens')
+    BIONIC_QUEENS = openstack_utils.get_os_release('bionic_queens')
+    BIONIC_ROCKY = openstack_utils.get_os_release('bionic_rocky')
+    BIONIC_TRAIN = openstack_utils.get_os_release('bionic_train')
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running nova-cloud-controller tests."""
+        super(NovaCommonTests, cls).setUpClass()
+        cls.current_release = openstack_utils.get_os_release()
+
+    def _test_pci_alias_config(self, app_name, service_list):
+        logging.info('Checking pci aliases in nova config...')
+
+        # Expected default and alternate values
+        current_value = zaza.model.get_application_config(
+            app_name)['pci-alias']
+        try:
+            current_value = current_value['value']
+        except KeyError:
+            current_value = None
+        new_value = '[{}, {}]'.format(
+            json.dumps({
+                'name': 'IntelNIC',
+                'capability_type': 'pci',
+                'product_id': '1111',
+                'vendor_id': '8086',
+                'device_type': 'type-PF'
+            }, sort_keys=True),
+            json.dumps({
+                'name': ' Cirrus Logic ',
+                'capability_type': 'pci',
+                'product_id': '0ff2',
+                'vendor_id': '10de',
+                'device_type': 'type-PCI'
+            }, sort_keys=True))
+
+        set_default = {'pci-alias': current_value}
+        set_alternate = {'pci-alias': new_value}
+
+        expected_conf_section = 'pci'
+        expected_conf_key = 'alias'
+
+        default_entry = {expected_conf_section: {}}
+        alternate_entry = {expected_conf_section: {
+            expected_conf_key: [
+                ('{"capability_type": "pci", "device_type": "type-PF", '
+                 '"name": "IntelNIC", "product_id": "1111", '
+                 '"vendor_id": "8086"}'),
+                ('{"capability_type": "pci", "device_type": "type-PCI", '
+                 '"name": " Cirrus Logic ", "product_id": "0ff2", '
+                 '"vendor_id": "10de"}')]}}
+
+        # Config file affected by juju set config change
+        conf_file = '/etc/nova/nova.conf'
+
+        # Make config change, check for service restarts
+        logging.info(
+            'Setting config on {} to {}'.format(app_name, set_alternate))
+        self.restart_on_changed(
+            conf_file,
+            set_default,
+            set_alternate,
+            default_entry,
+            alternate_entry,
+            service_list)
+
+
 class CloudActions(test_utils.OpenStackBaseTest):
     """Test actions from actions/cloud.py."""
 
@@ -242,8 +315,18 @@ class CloudActions(test_utils.OpenStackBaseTest):
                       "nova-cloud-controller as expected.")
 
 
-class NovaCompute(test_utils.OpenStackBaseTest):
+class NovaCompute(NovaCommonTests):
     """Run nova-compute specific tests."""
+
+    def test_311_pci_alias_config_compute(self):
+        """Verify that the pci alias data is rendered properly.
+
+        Change pci-alias and assert that change propagates to the correct
+        file and that services are restarted as a result
+        """
+        # We are not touching the behavior of anything older than QUEENS
+        if self.current_release >= self.XENIAL_QUEENS:
+            self._test_pci_alias_config("nova-compute", ['nova-compute'])
 
     def test_500_hugepagereport_action(self):
         """Test hugepagereport action."""
@@ -407,21 +490,8 @@ class NovaCloudControllerActionTest(test_utils.OpenStackBaseTest):
             self.assertIn(hypervisor.hypervisor_hostname, aggregate.hosts)
 
 
-class NovaCloudController(test_utils.OpenStackBaseTest):
+class NovaCloudController(NovaCommonTests):
     """Run nova-cloud-controller specific tests."""
-
-    XENIAL_MITAKA = openstack_utils.get_os_release('xenial_mitaka')
-    XENIAL_OCATA = openstack_utils.get_os_release('xenial_ocata')
-    XENIAL_QUEENS = openstack_utils.get_os_release('xenial_queens')
-    BIONIC_QUEENS = openstack_utils.get_os_release('bionic_queens')
-    BIONIC_ROCKY = openstack_utils.get_os_release('bionic_rocky')
-    BIONIC_TRAIN = openstack_utils.get_os_release('bionic_train')
-
-    @classmethod
-    def setUpClass(cls):
-        """Run class setup for running nova-cloud-controller tests."""
-        super(NovaCloudController, cls).setUpClass()
-        cls.current_release = openstack_utils.get_os_release()
 
     @property
     def services(self):
@@ -518,70 +588,13 @@ class NovaCloudController(test_utils.OpenStackBaseTest):
                 'filter:legacy_ratelimit': {
                     'limits': ["( POST, '*', .*, 9999, MINUTE );"]}})
 
-    def test_310_pci_alias_config(self):
+    def test_310_pci_alias_config_ncc(self):
         """Verify that the pci alias data is rendered properly.
 
         Change pci-alias and assert that change propagates to the correct
         file and that services are restarted as a result
         """
-        logging.info('Checking pci aliases in nova config...')
-
-        # Expected default and alternate values
-        current_value = zaza.model.get_application_config(
-            'nova-cloud-controller')['pci-alias']
-        try:
-            current_value = current_value['value']
-        except KeyError:
-            current_value = None
-        new_value = '[{}, {}]'.format(
-            json.dumps({
-                'name': 'IntelNIC',
-                'capability_type': 'pci',
-                'product_id': '1111',
-                'vendor_id': '8086',
-                'device_type': 'type-PF'
-            }, sort_keys=True),
-            json.dumps({
-                'name': ' Cirrus Logic ',
-                'capability_type': 'pci',
-                'product_id': '0ff2',
-                'vendor_id': '10de',
-                'device_type': 'type-PCI'
-            }, sort_keys=True))
-
-        set_default = {'pci-alias': current_value}
-        set_alternate = {'pci-alias': new_value}
-
-        expected_conf_section = 'DEFAULT'
-        expected_conf_key = 'pci_alias'
-        if self.current_release >= self.XENIAL_OCATA:
-            expected_conf_section = 'pci'
-            expected_conf_key = 'alias'
-
-        default_entry = {expected_conf_section: {}}
-        alternate_entry = {expected_conf_section: {
-            expected_conf_key: [
-                ('{"capability_type": "pci", "device_type": "type-PF", '
-                 '"name": "IntelNIC", "product_id": "1111", '
-                 '"vendor_id": "8086"}'),
-                ('{"capability_type": "pci", "device_type": "type-PCI", '
-                 '"name": " Cirrus Logic ", "product_id": "0ff2", '
-                 '"vendor_id": "10de"}')]}}
-
-        # Config file affected by juju set config change
-        conf_file = '/etc/nova/nova.conf'
-
-        # Make config change, check for service restarts
-        logging.info(
-            'Setting config on nova-cloud-controller to {}'.format(
-                set_alternate))
-        self.restart_on_changed(
-            conf_file,
-            set_default,
-            set_alternate,
-            default_entry,
-            alternate_entry,
-            self.services)
+        self._test_pci_alias_config("nova-cloud-controller", self.services)
 
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change.
