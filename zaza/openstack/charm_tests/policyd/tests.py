@@ -51,6 +51,9 @@ import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.keystone as ch_keystone
 import zaza.openstack.utilities.exceptions as zaza_exceptions
+import zaza.openstack.charm_tests.octavia.tests as octavia_tests
+
+from zaza.openstack.utilities import ObjectRetrierWraps
 
 
 class PolicydTest(object):
@@ -673,6 +676,20 @@ class OctaviaTests(BasePolicydSpecialization):
         """Run class setup for running OctaviaTests charm operation tests."""
         super(OctaviaTests, cls).setUpClass(application_name="octavia")
         cls.application_name = "octavia"
+        cls.keystone_client = ObjectRetrierWraps(
+            openstack_utils.get_keystone_session_client(cls.keystone_session))
+
+        # add role to admin user for the duration of the test
+        octavia_tests.grant_role_current_user(
+            cls.keystone_client, cls.keystone_session,
+            octavia_tests.LBAAS_ADMIN_ROLE)
+
+    def resource_cleanup(self):
+        """Restore changes made by test."""
+        # revoke role from admin user added by this test
+        octavia_tests.revoke_role_current_user(
+            self.keystone_client, self.keystone_session,
+            octavia_tests.LBAAS_ADMIN_ROLE)
 
     def get_client_and_attempt_operation(self, ip):
         """Attempt to list available provider drivers.
@@ -688,6 +705,7 @@ class OctaviaTests(BasePolicydSpecialization):
             self.get_keystone_session_admin_user(ip))
         try:
             octavia_client.provider_list()
+            self.run_resource_cleanup = True
         except (octaviaclient.OctaviaClientException,
                 keystoneauth1.exceptions.http.Forbidden):
             raise PolicydOperationFailedException()
