@@ -69,7 +69,7 @@ class CephDashboardTest(test_utils.BaseCharmTest):
         self.assertEqual(len(rcs[requests.codes.see_other]), len(units) - 1)
 
     def create_user(self, username, role='administrator'):
-        """Store the model aliases in a global.
+        """Create a dashboard user.
 
         :param username: Username to create.
         :type username: str
