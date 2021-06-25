@@ -113,6 +113,56 @@ class MySQLBaseTest(test_utils.OpenStackBaseTest):
             if _primary_ip in unit.public_address:
                 return unit
 
+    def get_blocked_mysql_routers(self):
+        """Get blocked mysql routers.
+
+        :returns: List of blocked mysql-router unit names
+        :rtype: List[str]
+        """
+        # Make sure mysql-router units are up to date
+        # We cannot assume they are as there is up to a five minute delay
+        mysql_router_units = []
+        for application in self.get_applications_with_substring_in_name(
+                "mysql-router"):
+            for unit in zaza.model.get_units(application):
+                mysql_router_units.append(unit.entity_id)
+        self.run_update_status_hooks(mysql_router_units)
+
+        # Get up to date status
+        status = zaza.model.get_status().applications
+        blocked_mysql_routers = []
+        # Check if the units are blocked
+        for application in self.get_applications_with_substring_in_name(
+                "mysql-router"):
+            # Subordinate dance with primary
+            # There is no satus[applicatoin]["units"] for subordinates
+            _subordinate_to = status[application].subordinate_to[0]
+            for appunit in status[_subordinate_to].units:
+                for subunit in (
+                        status[_subordinate_to].
+                        units[appunit].subordinates.keys()):
+                    if "blocked" in (
+                            status[_subordinate_to].units[appunit].
+                            subordinates[subunit].workload_status.status):
+                        blocked_mysql_routers.append(subunit)
+        return blocked_mysql_routers
+
+    def restart_blocked_mysql_routers(self):
+        """Restart blocked mysql routers.
+
+        :returns: None
+        :rtype: None
+        """
+        # Check for blocked mysql-router units
+        blocked_mysql_routers = self.get_blocked_mysql_routers()
+        for unit in blocked_mysql_routers:
+            logging.warning(
+                "Restarting blocked mysql-router unit {}"
+                .format(unit))
+            zaza.model.run_on_unit(
+                unit,
+                "systemctl restart {}".format(unit.rpartition("/")[0]))
+
 
 class MySQLCommonTests(MySQLBaseTest):
     """Common mysql charm tests."""
@@ -169,6 +219,15 @@ class MySQLCommonTests(MySQLBaseTest):
         """
         with self.pause_resume(self.services):
             logging.info("Testing pause resume")
+
+        logging.info("Wait till model is idle ...")
+        zaza.model.block_until_all_units_idle()
+
+        # If there are any blocekd mysql routers restart them.
+        self.restart_blocked_mysql_routers()
+        assert not self.get_blocked_mysql_routers(), (
+            "Should no longer be blocked mysql-router units")
+
         logging.info("Passed pause and resume test.")
 
 
@@ -589,6 +648,10 @@ class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
                 unit.entity_id,
                 'blocked')
 
+        # Wait until update-status hooks have completed
+        logging.info("Wait till model is idle ...")
+        zaza.model.block_until_all_units_idle()
+
         logging.info("Execute reboot-cluster-from-complete-outage "
                      "action after cold boot ...")
         # We do not know which unit has the most up to date data
@@ -753,13 +816,22 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
         logging.info("Scale in test: remove leader")
         leader, nons = self.get_leaders_and_non_leaders()
         leader_unit = zaza.model.get_unit_from_name(leader)
-        zaza.model.destroy_unit(self.application_name, leader)
 
-        logging.info("Wait until unit is in waiting state ...")
-        zaza.model.block_until_unit_wl_status(nons[0], "waiting")
-
+        # Wait until we are idle in the hopes clients are not running
+        # update-status hooks
         logging.info("Wait till model is idle ...")
         zaza.model.block_until_all_units_idle()
+        zaza.model.destroy_unit(self.application_name, leader)
+
+        logging.info("Wait until all only 2 units ...")
+        zaza.model.block_until_unit_count(self.application, 2)
+
+        logging.info("Wait until all units are cluster incomplete ...")
+        zaza.model.block_until_wl_status_info_starts_with(
+            self.application, "'cluster' incomplete")
+
+        # Show status
+        logging.info(self.get_cluster_status())
 
         logging.info(
             "Removing old unit from cluster: {} "
@@ -786,6 +858,9 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
         logging.info("Adding unit after removed unit ...")
         zaza.model.add_unit(self.application_name)
 
+        logging.info("Wait until 3 units ...")
+        zaza.model.block_until_unit_count(self.application, 3)
+
         logging.info("Wait for application states ...")
         zaza.model.wait_for_application_states(states=self.states)
 
@@ -801,6 +876,9 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
         logging.info("Adding unit after full cluster ...")
         zaza.model.add_unit(self.application_name)
 
+        logging.info("Wait until 4 units ...")
+        zaza.model.block_until_unit_count(self.application, 4)
+
         logging.info("Wait for application states ...")
         zaza.model.wait_for_application_states(states=self.states)
 
@@ -810,18 +888,25 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
         We start with a four node full cluster, remove one, down to a three
         node full cluster.
         """
-        logging.info("Wait till model is idle ...")
-        zaza.model.block_until_all_units_idle()
-
         leader, nons = self.get_leaders_and_non_leaders()
         non_leader_unit = zaza.model.get_unit_from_name(nons[0])
-        zaza.model.destroy_unit(self.application_name, nons[0])
 
+        # Wait until we are idle in the hopes clients are not running
+        # update-status hooks
         logging.info("Wait till model is idle ...")
         zaza.model.block_until_all_units_idle()
 
+        zaza.model.destroy_unit(self.application_name, nons[0])
+
         logging.info("Scale in test: back down to three")
+        logging.info("Wait until 3 units ...")
+        zaza.model.block_until_unit_count(self.application, 3)
+
+        logging.info("Wait for status ready ...")
         zaza.model.wait_for_application_states(states=self.states)
+
+        # Show status
+        logging.info(self.get_cluster_status())
 
         logging.info(
             "Removing old unit from cluster: {} "
@@ -835,3 +920,109 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
         assert action.data.get("results") is not None, (
             "Remove instance action failed: No results: {}"
             .format(action.data))
+
+
+class MySQLInnoDBClusterPartitionTest(MySQLBaseTest):
+    """MySQL partition handling."""
+
+    def test_850_force_quorum_using_partition_of(self):
+        """Force quorum using partition of instance with given address.
+
+        After outage, cluster can end up without quorum. Force it.
+        """
+        logging.info("Wait till model is idle ...")
+        zaza.model.block_until_all_units_idle()
+
+        # Block all traffic across mysql instances: 0<-1, 1<-2 and 2<-0
+        mysql_units = [unit for unit in zaza.model.get_units(self.application)]
+        no_of_units = len(mysql_units)
+        for index, unit in enumerate(mysql_units):
+            next_unit = mysql_units[(index+1) % no_of_units]
+            ip_address = next_unit.public_address
+            cmd = "sudo iptables -A INPUT -s {} -j DROP".format(ip_address)
+            zaza.model.async_run_on_unit(unit, cmd)
+
+        logging.info(
+            "Wait till all {} units are in state 'blocked' ..."
+            .format(self.application))
+        for unit in zaza.model.get_units(self.application):
+            zaza.model.block_until_unit_wl_status(
+                unit.entity_id,
+                'blocked',
+                negate_match=True)
+
+        logging.info("Wait till model is idle ...")
+        zaza.model.block_until_all_units_idle()
+
+        logging.info("Execute force-quorum-using-partition-of action ...")
+
+        # Select "quorum leader" unit
+        leader_unit = mysql_units[0]
+        action = zaza.model.run_action(
+            leader_unit.entity_id,
+            "force-quorum-using-partition-of",
+            action_params={
+                "address": leader_unit.public_address,
+                'i-really-mean-it': True
+            })
+
+        assert action.data.get("results") is not None, (
+            "Force quorum using partition of action failed: {}"
+            .format(action.data))
+        logging.debug(
+            "Results from running 'force-quorum' command ...\n{}".format(
+                action.data))
+
+        logging.info("Wait till model is idle ...")
+        try:
+            zaza.model.block_until_all_units_idle()
+        except zaza.model.UnitError:
+            self.resolve_update_status_errors()
+            zaza.model.block_until_all_units_idle()
+
+        # Unblock all traffic across mysql instances
+        for unit in zaza.model.get_units(self.application):
+            cmd = "sudo iptables -F"
+            zaza.model.async_run_on_unit(unit, cmd)
+
+        logging.info("Wait for application states ...")
+        for unit in zaza.model.get_units(self.application):
+            zaza.model.run_on_unit(unit.entity_id, "hooks/update-status")
+        test_config = lifecycle_utils.get_charm_config(fatal=False)
+        zaza.model.wait_for_application_states(
+            states=test_config.get("target_deploy_status", {}))
+
+
+class MySQLRouterTests(test_utils.OpenStackBaseTest):
+    """MySQL Router Tests."""
+
+    @classmethod
+    def setUpClass(cls, application_name="keystone-mysql-router"):
+        """Run class setup for running mysql-router tests."""
+        super().setUpClass(application_name=application_name)
+        cls.application = application_name
+        cls.services = ["mysqlrouter"]
+        # Config file affected by juju set config change
+        cls.conf_file = (
+            "/var/lib/mysql/{}-mysql-router/mysqlrouter.conf"
+            .format(application_name))
+
+    def test_910_restart_on_config_change(self):
+        """Checking restart happens on config change.
+
+        Change max connections and assert that change propagates to the correct
+        file and that services are restarted as a result
+        """
+        # Expected default and alternate values
+        set_default = {"ttl": ".5"}
+        set_alternate = {"ttl": "7"}
+
+        # Make config change, check for service restarts
+        logging.info("Setting TTL ...")
+        self.restart_on_changed(
+            self.conf_file,
+            set_default,
+            set_alternate,
+            {}, {},
+            self.services)
+        logging.info("Passed restart on changed test.")

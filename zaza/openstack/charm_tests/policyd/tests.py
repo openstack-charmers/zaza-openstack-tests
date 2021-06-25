@@ -337,8 +337,7 @@ class BasePolicydSpecialization(PolicydTest,
         logging.info('Authentication for {} on keystone IP {}'
                      .format(openrc['OS_USERNAME'], ip))
         if self.tls_rid:
-            openrc['OS_CACERT'] = \
-                openstack_utils.KEYSTONE_LOCAL_CACERT
+            openrc['OS_CACERT'] = openstack_utils.get_cacert()
             openrc['OS_AUTH_URL'] = (
                 openrc['OS_AUTH_URL'].replace('http', 'https'))
         logging.info('keystone IP {}'.format(ip))
@@ -402,9 +401,10 @@ class BasePolicydSpecialization(PolicydTest,
     def test_003_test_override_is_observed(self):
         """Test that the override is observed by the underlying service."""
         if (openstack_utils.get_os_release() <
-                openstack_utils.get_os_release('groovy_victoria')):
+                openstack_utils.get_os_release('xenial_queens')):
             raise unittest.SkipTest(
-                "Test skipped until Bug #1880959 is fix released")
+                "Test skipped because bug #1880959 won't be fixed for "
+                "releases older than Queens")
         if self._test_name is None:
             logging.info("Doing policyd override for {}"
                          .format(self._service_name))
@@ -572,6 +572,13 @@ class GlanceTests(BasePolicydSpecialization):
         super(GlanceTests, cls).setUpClass(application_name="glance")
         cls.application_name = "glance"
 
+    # NOTE(lourot): Same as NeutronApiTests. There is a race between the glance
+    # charm signalling its readiness and the service actually being ready to
+    # serve requests. The test will fail intermittently unless we gracefully
+    # accept this.
+    # Issue: openstack-charmers/zaza-openstack-tests#578
+    @tenacity.retry(wait=tenacity.wait_fixed(1),
+                    reraise=True, stop=tenacity.stop_after_delay(8))
     def get_client_and_attempt_operation(self, ip):
         """Attempt to list the images as a policyd override.
 
@@ -681,5 +688,6 @@ class OctaviaTests(BasePolicydSpecialization):
             self.get_keystone_session_admin_user(ip))
         try:
             octavia_client.provider_list()
-        except octaviaclient.OctaviaClientException:
+        except (octaviaclient.OctaviaClientException,
+                keystoneauth1.exceptions.http.Forbidden):
             raise PolicydOperationFailedException()

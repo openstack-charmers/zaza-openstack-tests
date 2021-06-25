@@ -64,26 +64,25 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
         :rtype: Dict
         """
         gw_units = zaza.model.get_units('ceph-iscsi')
-        primary_gw = gw_units[0]
-        secondary_gw = gw_units[1]
         host_names = generic_utils.get_unit_hostnames(gw_units, fqdn=True)
         client_entity_ids = [
             u.entity_id for u in zaza.model.get_units('ubuntu')]
         ctxt = {
             'client_entity_ids': sorted(client_entity_ids),
             'gw_iqn': self.GW_IQN,
-            'gw1_ip': primary_gw.public_address,
-            'gw1_hostname': host_names[primary_gw.entity_id],
-            'gw1_entity_id': primary_gw.entity_id,
-            'gw2_ip': secondary_gw.public_address,
-            'gw2_hostname': host_names[secondary_gw.entity_id],
-            'gw2_entity_id': secondary_gw.entity_id,
             'chap_creds': 'username={chap_username} password={chap_password}',
             'gwcli_gw_dir': '/iscsi-targets/{gw_iqn}/gateways',
             'gwcli_hosts_dir': '/iscsi-targets/{gw_iqn}/hosts',
             'gwcli_disk_dir': '/disks',
             'gwcli_client_dir': '{gwcli_hosts_dir}/{client_initiatorname}',
         }
+        ctxt['gateway_units'] = [
+            {
+                'entity_id': u.entity_id,
+                'ip': u.public_address,
+                'hostname': host_names[u.entity_id]}
+            for u in zaza.model.get_units('ceph-iscsi')]
+        ctxt['gw_ip'] = sorted([g['ip'] for g in ctxt['gateway_units']])[0]
         return ctxt
 
     def run_commands(self, unit_name, commands, ctxt):
@@ -116,9 +115,8 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
             'ceph-iscsi',
             'create-target',
             action_params={
-                'gateway-units': '{} {}'.format(
-                    ctxt['gw1_entity_id'],
-                    ctxt['gw2_entity_id']),
+                'gateway-units': ' '.join([g['entity_id']
+                                           for g in ctxt['gateway_units']]),
                 'iqn': self.GW_IQN,
                 'rbd-pool-name': ctxt.get('pool_name', ''),
                 'ec-rbd-metadata-pool': ctxt.get('ec_meta_pool_name', ''),
@@ -139,7 +137,7 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
         base_op_cmd = ('iscsiadm --mode node --targetname {gw_iqn} '
                        '--op=update ').format(**ctxt)
         setup_cmds = [
-            'iscsiadm -m discovery -t st -p {gw1_ip}',
+            'iscsiadm -m discovery -t st -p {gw_ip}',
             base_op_cmd + '-n node.session.auth.authmethod -v CHAP',
             base_op_cmd + '-n node.session.auth.username -v {chap_username}',
             base_op_cmd + '-n node.session.auth.password -v {chap_password}',

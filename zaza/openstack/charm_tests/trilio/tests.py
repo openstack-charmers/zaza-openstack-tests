@@ -262,7 +262,7 @@ class WorkloadmgrCLIHelper(object):
 
         retryer = tenacity.Retrying(
             wait=tenacity.wait_exponential(multiplier=1, max=30),
-            stop=tenacity.stop_after_delay(720),
+            stop=tenacity.stop_after_delay(900),
             reraise=True,
         )
 
@@ -440,7 +440,7 @@ class TrilioGhostNFSShareTest(TrilioBaseTest):
         )
 
 
-class TrilioWLMTest(TrilioGhostNFSShareTest):
+class TrilioWLMBaseTest(TrilioBaseTest):
     """Tests for Trilio Workload Manager charm."""
 
     conf_file = "/etc/workloadmgr/workloadmgr.conf"
@@ -463,10 +463,26 @@ class TrilioDMAPITest(TrilioBaseTest):
     services = ["dmapi-api"]
 
 
-class TrilioDataMoverTest(TrilioGhostNFSShareTest):
+class TrilioDataMoverBaseTest(TrilioBaseTest):
     """Tests for Trilio Data Mover charm."""
 
     conf_file = "/etc/tvault-contego/tvault-contego.conf"
     application_name = "trilio-data-mover"
 
     services = ["tvault-contego"]
+
+
+class TrilioDataMoverNFSTest(TrilioDataMoverBaseTest, TrilioGhostNFSShareTest):
+    """Tests for Trilio Data Mover charm backed by NFS."""
+
+
+class TrilioDataMoverS3Test(TrilioDataMoverBaseTest):
+    """Tests for Trilio Data Mover charm backed by S3."""
+
+
+class TrilioWLMNFSTest(TrilioWLMBaseTest, TrilioGhostNFSShareTest):
+    """Tests for Trilio WLM charm backed by NFS."""
+
+
+class TrilioWLMS3Test(TrilioWLMBaseTest):
+    """Tests for Trilio WLM charm backed by S3."""

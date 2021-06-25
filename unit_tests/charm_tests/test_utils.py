@@ -97,7 +97,7 @@ class TestBaseCharmTest(ut_utils.BaseTestCase):
             self.set_application_config.reset_mock()
         self.assertFalse(self.set_application_config.called)
         self.reset_application_config.assert_called_once_with(
-            'anApp', alterna_config.keys(), model_name='aModel')
+            'anApp', list(alterna_config.keys()), model_name='aModel')
         self.wait_for_application_states.assert_has_calls([
             mock.call(model_name='aModel', states={}),
             mock.call(model_name='aModel', states={}),
@@ -124,6 +124,66 @@ class TestBaseCharmTest(ut_utils.BaseTestCase):
         self.assertFalse(self.reset_application_config.called)
         self.assertFalse(self.wait_for_agent_status.called)
         self.assertFalse(self.wait_for_application_states.called)
+
+    def test_separate_non_string_config(self):
+        intended_cfg_keys = ['foo2', 'foo3', 'foo4', 'foo5']
+        current_config_mock = {
+            'foo2': None,
+            'foo3': 'old_bar3',
+            'foo4': None,
+            'foo5': 'old_bar5',
+        }
+        self.patch_target('config_current')
+        self.config_current.return_value = current_config_mock
+        non_string_type_keys = ['foo2', 'foo3', 'foo4']
+        expected_result_filtered = {
+            'foo3': 'old_bar3',
+            'foo5': 'old_bar5',
+        }
+        expected_result_special = {
+            'foo2': None,
+            'foo4': None,
+        }
+        current, non_string = (
+            self.target.config_current_separate_non_string_type_keys(
+                non_string_type_keys, intended_cfg_keys, 'application_name')
+        )
+
+        self.assertEqual(expected_result_filtered, current)
+        self.assertEqual(expected_result_special, non_string)
+
+        self.config_current.assert_called_once_with(
+            'application_name', intended_cfg_keys)
+
+    def test_separate_special_config_None_params(self):
+        current_config_mock = {
+            'foo1': 'old_bar1',
+            'foo2': None,
+            'foo3': 'old_bar3',
+            'foo4': None,
+            'foo5': 'old_bar5',
+        }
+        self.patch_target('config_current')
+        self.config_current.return_value = current_config_mock
+        non_string_type_keys = ['foo2', 'foo3', 'foo4']
+        expected_result_filtered = {
+            'foo1': 'old_bar1',
+            'foo3': 'old_bar3',
+            'foo5': 'old_bar5',
+        }
+        expected_result_special = {
+            'foo2': None,
+            'foo4': None,
+        }
+        current, non_string = (
+            self.target.config_current_separate_non_string_type_keys(
+                non_string_type_keys)
+        )
+
+        self.assertEqual(expected_result_filtered, current)
+        self.assertEqual(expected_result_special, non_string)
+
+        self.config_current.assert_called_once_with(None, None)
 
 
 class TestOpenStackBaseTest(ut_utils.BaseTestCase):

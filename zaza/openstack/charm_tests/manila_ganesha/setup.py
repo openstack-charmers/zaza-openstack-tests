@@ -23,6 +23,9 @@ import zaza.openstack.utilities.openstack as openstack_utils
 from manilaclient import client as manilaclient
 
 
+MANILA_GANESHA_TYPE_NAME = "cephfsnfstype"
+
+
 def setup_ganesha_share_type(manila_client=None):
     """Create a share type for manila with Ganesha.
 
@@ -35,7 +38,7 @@ def setup_ganesha_share_type(manila_client=None):
             session=keystone_session, client_version='2')
 
     manila_client.share_types.create(
-        name="cephfsnfstype", spec_driver_handles_share_servers=False,
+        name=MANILA_GANESHA_TYPE_NAME, spec_driver_handles_share_servers=False,
         extra_specs={
             'vendor_name': 'Ceph',
             'storage_protocol': 'NFS',

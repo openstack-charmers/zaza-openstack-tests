@@ -137,6 +137,41 @@ def get_vip_client(cacert=None):
     return client
 
 
+def get_cluster_leader(clients):
+    """Get Vault cluster leader.
+
+    We have to make sure we run api calls against the actual leader.
+
+    :param clients: Clients list to get leader
+    :type clients: List of CharmVaultClient
+    :returns: CharmVaultClient
+    :rtype: CharmVaultClient or None
+    """
+    if len(clients) == 1:
+        return clients[0]
+
+    for client in clients:
+        if client.hvac_client.ha_status['is_self']:
+            return client
+    return None
+
+
+def get_running_config(client):
+    """Get Vault running config.
+
+    The hvac library does not support getting info from endpoint
+    /v1/sys/config/state/sanitized Therefore we implement it here
+
+    :param client: Client used to get config
+    :type client: CharmVaultClient
+    :returns: dict from Vault api response
+    :rtype: dict
+    """
+    return requests.get(
+        client.hvac_client.adapter.base_uri + '/v1/sys/config/state/sanitized',
+        headers={'X-Vault-Token': client.hvac_client.token}).json()
+
+
 def init_vault(client, shares=1, threshold=1):
     """Initialise vault.
 
