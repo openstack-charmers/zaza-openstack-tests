@@ -329,7 +329,7 @@ class TrilioBaseTest(test_utils.OpenStackBaseTest):
     @classmethod
     def setUpClass(cls):
         """Run class setup for running tests."""
-        super().setUpClass()
+        super().setUpClass(application_name=cls.application_name)
         cls.cinder_client = openstack_utils.get_cinder_session_client(
             cls.keystone_session
         )
@@ -474,15 +474,19 @@ class TrilioDataMoverBaseTest(TrilioBaseTest):
 
 class TrilioDataMoverNFSTest(TrilioDataMoverBaseTest, TrilioGhostNFSShareTest):
     """Tests for Trilio Data Mover charm backed by NFS."""
+    application_name = "trilio-data-mover"
 
 
 class TrilioDataMoverS3Test(TrilioDataMoverBaseTest):
     """Tests for Trilio Data Mover charm backed by S3."""
+    application_name = "trilio-data-mover"
 
 
 class TrilioWLMNFSTest(TrilioWLMBaseTest, TrilioGhostNFSShareTest):
     """Tests for Trilio WLM charm backed by NFS."""
+    application_name = "trilio-wlm"
 
 
 class TrilioWLMS3Test(TrilioWLMBaseTest):
     """Tests for Trilio WLM charm backed by S3."""
+    application_name = "trilio-wlm"
