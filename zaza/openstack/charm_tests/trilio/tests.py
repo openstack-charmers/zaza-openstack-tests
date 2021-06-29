@@ -474,19 +474,23 @@ class TrilioDataMoverBaseTest(TrilioBaseTest):
 
 class TrilioDataMoverNFSTest(TrilioDataMoverBaseTest, TrilioGhostNFSShareTest):
     """Tests for Trilio Data Mover charm backed by NFS."""
+
     application_name = "trilio-data-mover"
 
 
 class TrilioDataMoverS3Test(TrilioDataMoverBaseTest):
     """Tests for Trilio Data Mover charm backed by S3."""
+
     application_name = "trilio-data-mover"
 
 
 class TrilioWLMNFSTest(TrilioWLMBaseTest, TrilioGhostNFSShareTest):
     """Tests for Trilio WLM charm backed by NFS."""
+
     application_name = "trilio-wlm"
 
 
 class TrilioWLMS3Test(TrilioWLMBaseTest):
     """Tests for Trilio WLM charm backed by S3."""
+
     application_name = "trilio-wlm"
