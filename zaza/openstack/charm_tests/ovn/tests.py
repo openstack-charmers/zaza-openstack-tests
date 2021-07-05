@@ -263,8 +263,27 @@ class OVSOVNMigrationTest(test_utils.BaseCharmTest):
                 'neutron-api-plugin-ovn', 'neutron-plugin',
                 'neutron-api:neutron-plugin-api-subordinate')
             zaza.model.wait_for_agent_status()
+
+            # NOTE(lourot): usually in this scenario, the test bundle has been
+            # originally deployed with a non-related neutron-api-plugin-ovn
+            # subordinate application, and thus Zaza has been taught to expect
+            # initially no unit from this application. We are now relating it
+            # to a principal neutron-api application with one unit. Thus we now
+            # need to make sure we wait for one unit from this subordinate
+            # before proceeding:
+            target_deploy_status = self.test_config.get('target_deploy_status',
+                                                        {})
+            try:
+                target_deploy_status['neutron-api-plugin-ovn'][
+                    'num-expected-units'] = 1
+            except KeyError:
+                # num-expected-units wasn't set to 0, no expectation to be
+                # fixed, let's move on.
+                pass
+
             zaza.model.wait_for_application_states(
-                states=self.test_config.get('target_deploy_status', {}))
+                states=target_deploy_status)
+
         except juju.errors.JujuAPIError:
             # we were not able to add the relation, let's make sure it's
             # because it's already there
