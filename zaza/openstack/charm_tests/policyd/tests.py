@@ -671,17 +671,21 @@ class OctaviaTests(BasePolicydSpecialization):
         cls.keystone_client = ObjectRetrierWraps(
             openstack_utils.get_keystone_session_client(cls.keystone_session))
 
-        # add role to admin user for the duration of the test
-        octavia_tests.grant_role_current_user(
-            cls.keystone_client, cls.keystone_session,
-            octavia_tests.LBAAS_ADMIN_ROLE)
+        if (openstack_utils.get_os_release() >=
+                openstack_utils.get_os_release('focal_wallaby')):
+            # add role to admin user for the duration of the test
+            octavia_tests.grant_role_current_user(
+                cls.keystone_client, cls.keystone_session,
+                octavia_tests.LBAAS_ADMIN_ROLE)
 
     def resource_cleanup(self):
         """Restore changes made by test."""
-        # revoke role from admin user added by this test
-        octavia_tests.revoke_role_current_user(
-            self.keystone_client, self.keystone_session,
-            octavia_tests.LBAAS_ADMIN_ROLE)
+        if (openstack_utils.get_os_release() >=
+                openstack_utils.get_os_release('focal_wallaby')):
+            # revoke role from admin user added by this test
+            octavia_tests.revoke_role_current_user(
+                self.keystone_client, self.keystone_session,
+                octavia_tests.LBAAS_ADMIN_ROLE)
 
     def get_client_and_attempt_operation(self, ip):
         """Attempt to list available provider drivers.

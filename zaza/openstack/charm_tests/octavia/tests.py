@@ -136,9 +136,11 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         cls.keystone_client = ObjectRetrierWraps(
             openstack_utils.get_keystone_session_client(cls.keystone_session))
 
-        # add role to admin user for the duration of the test
-        grant_role_current_user(cls.keystone_client, cls.keystone_session,
-                                LBAAS_ADMIN_ROLE)
+        if (openstack_utils.get_os_release() >=
+                openstack_utils.get_os_release('focal_wallaby')):
+            # add role to admin user for the duration of the test
+            grant_role_current_user(cls.keystone_client, cls.keystone_session,
+                                    LBAAS_ADMIN_ROLE)
 
         cls.neutron_client = ObjectRetrierWraps(
             openstack_utils.get_neutron_session_client(cls.keystone_session))
@@ -206,9 +208,12 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         # allow resource cleanup to be run multiple times
         self.loadbalancers = []
 
-        # revoke role from admin user added by this test
-        revoke_role_current_user(self.keystone_client, self.keystone_session,
-                                 LBAAS_ADMIN_ROLE)
+        if (openstack_utils.get_os_release() >=
+                openstack_utils.get_os_release('focal_wallaby')):
+            # revoke role from admin user added by this test
+            revoke_role_current_user(self.keystone_client,
+                                     self.keystone_session,
+                                     LBAAS_ADMIN_ROLE)
 
         for fip in self.fips:
             self.neutron_client.delete_floatingip(fip)
