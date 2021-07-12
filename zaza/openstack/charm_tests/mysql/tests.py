@@ -54,26 +54,6 @@ class MySQLBaseTest(test_utils.OpenStackBaseTest):
             self.application,
             "leader-get root-password")["Stdout"].strip()
 
-    def get_leaders_and_non_leaders(self):
-        """Get leader node and non-leader nodes of percona.
-
-        Update and set on the object the leader node and list of non-leader
-        nodes.
-
-        :returns: None
-        :rtype: None
-        """
-        status = zaza.model.get_status().applications[self.application]
-        # Reset
-        self.leader = None
-        self.non_leaders = []
-        for unit in status["units"]:
-            if status["units"][unit].get("leader"):
-                self.leader = unit
-            else:
-                self.non_leaders.append(unit)
-        return self.leader, self.non_leaders
-
     def get_cluster_status(self):
         """Get cluster status.
 
@@ -445,7 +425,8 @@ class PerconaClusterColdStartTest(PerconaClusterBaseTest):
         zaza.model.wait_for_application_states(states=states)
 
         # Update which node is the leader and which are not
-        _leader, _non_leaders = self.get_leaders_and_non_leaders()
+        _leader, _non_leaders = generic_utils.get_leaders_and_non_leaders(
+            self.application_name)
         # We want to test the worst possible scenario which is the
         # non-leader with the highest sequence number. We will use the leader
         # for the notify-bootstrapped after. They just need to be different
@@ -818,7 +799,8 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
         The cluster will be in waiting state.
         """
         logging.info("Scale in test: remove leader")
-        leader, nons = self.get_leaders_and_non_leaders()
+        leader, nons = generic_utils.get_leaders_and_non_leaders(
+            self.application_name)
         leader_unit = zaza.model.get_unit_from_name(leader)
 
         # Wait until we are idle in the hopes clients are not running
@@ -892,7 +874,8 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
         We start with a four node full cluster, remove one, down to a three
         node full cluster.
         """
-        leader, nons = self.get_leaders_and_non_leaders()
+        leader, nons = generic_utils.get_leaders_and_non_leaders(
+            self.application_name)
         non_leader_unit = zaza.model.get_unit_from_name(nons[0])
 
         # Wait until we are idle in the hopes clients are not running
