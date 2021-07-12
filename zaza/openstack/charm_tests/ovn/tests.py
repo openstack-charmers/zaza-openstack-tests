@@ -139,6 +139,35 @@ class ChassisCharmOperationTest(BaseCharmOperationTest):
                 'ovs-vswitchd',
             ]
 
+    def test_prefer_chassis_as_gw(self):
+        """Confirm effect of prefer-chassis-as-gw configuration option."""
+        expected_key = 'external-ids:ovn-cms-options'
+        expected_value = 'enable-chassis-as-gw'
+        with self.config_change(
+                {}, {'prefer-chassis-as-gw': True},
+                reset_to_charm_default=True):
+            for unit in zaza.model.get_units(self.application_name):
+                self.assertEqual(
+                    zaza.model.run_on_unit(
+                        unit.entity_id,
+                        'ovs-vsctl get open-vswitch . {}'.format(expected_key)
+                    )['Stdout'].rstrip(),
+                    expected_value)
+                logging.info(
+                    '{}: "{}" set to "{}"'
+                    .format(unit.entity_id, expected_key, expected_value))
+        logging.info('Config restored, checking things went back to normal')
+        for unit in zaza.model.get_units(self.application_name):
+            self.assertEqual(
+                zaza.model.run_on_unit(
+                    unit.entity_id,
+                    'ovs-vsctl get open-vswitch . '
+                    'external-ids:ovn-cms-options')['Code'],
+                '1')
+            logging.info(
+                '{}: "{}" no longer present'
+                .format(unit.entity_id, expected_key))
+
 
 class OVSOVNMigrationTest(test_utils.BaseCharmTest):
     """OVS to OVN migration tests."""
