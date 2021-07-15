@@ -168,6 +168,28 @@ class ChassisCharmOperationTest(BaseCharmOperationTest):
                 '{}: "{}" no longer present'
                 .format(unit.entity_id, expected_key))
 
+    def test_wrong_bridge_config(self):
+        """Confirm that ovn-chassis units block with wrong bridge config."""
+        alternate_config = {'bridge-interface-mappings': 'incorrect'}
+        logging.info('set wrong bridge-interface-mappings')
+        zaza.model.set_application_config(
+            self.application_name,
+            self._stringed_value_config(alternate_config),
+            model_name=self.model_name
+        )
+        zaza.model.block_until_unit_wl_status('ovn-chassis/0', 'blocked')
+        zaza.model.block_until_unit_wl_status('ovn-chassis/1', 'blocked')
+        logging.info('ovn-chassis units successfully blocked')
+
+        logging.info('returning default config')
+        zaza.model.reset_application_config(self.application_name,
+                                            list(alternate_config.keys()),
+                                            model_name=self.model_name)
+
+        zaza.model.block_until_unit_wl_status('ovn-chassis/0', 'active')
+        zaza.model.block_until_unit_wl_status('ovn-chassis/1', 'active')
+        logging.info('ovn-chassis units successfully activated')
+
 
 class OVSOVNMigrationTest(test_utils.BaseCharmTest):
     """OVS to OVN migration tests."""
