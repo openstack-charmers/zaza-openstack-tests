@@ -16,6 +16,9 @@
 
 """Collection of tests for vault."""
 
+import contextlib
+import json
+import logging
 import unittest
 import uuid
 import tempfile
@@ -30,6 +33,7 @@ import zaza.openstack.charm_tests.vault.utils as vault_utils
 import zaza.openstack.utilities.cert
 import zaza.openstack.utilities.openstack
 import zaza.model
+import zaza.utilities.juju as juju_utils
 
 
 @tenacity.retry(
@@ -47,12 +51,15 @@ def retry_hvac_client_authenticated(client):
     return client.hvac_client.is_authenticated()
 
 
-class BaseVaultTest(unittest.TestCase):
+class BaseVaultTest(test_utils.OpenStackBaseTest):
     """Base class for vault tests."""
 
     @classmethod
     def setUpClass(cls):
         """Run setup for Vault tests."""
+        cls.model_name = zaza.model.get_juju_model()
+        cls.lead_unit = zaza.model.get_lead_unit_name(
+            "vault", model_name=cls.model_name)
         cls.clients = vault_utils.get_clients()
         cls.vip_client = vault_utils.get_vip_client()
         if cls.vip_client:
@@ -61,6 +68,43 @@ class BaseVaultTest(unittest.TestCase):
         vault_utils.unseal_all(cls.clients, cls.vault_creds['keys'][0])
         vault_utils.auth_all(cls.clients, cls.vault_creds['root_token'])
         vault_utils.ensure_secret_backend(cls.clients[0])
+
+    def tearDown(self):
+        """Tun test cleanup for Vault tests."""
+        vault_utils.unseal_all(self.clients, self.vault_creds['keys'][0])
+
+    @contextlib.contextmanager
+    def pause_resume(self, services, pgrep_full=False):
+        """Override pause_resume for Vault behavior."""
+        zaza.model.block_until_service_status(
+            self.lead_unit,
+            services,
+            'running',
+            model_name=self.model_name)
+        zaza.model.block_until_unit_wl_status(
+            self.lead_unit,
+            'active',
+            model_name=self.model_name)
+        zaza.model.block_until_all_units_idle(model_name=self.model_name)
+        zaza.model.run_action(
+            self.lead_unit,
+            'pause',
+            model_name=self.model_name)
+        zaza.model.block_until_service_status(
+            self.lead_unit,
+            services,
+            'blocked',  # Service paused
+            model_name=self.model_name)
+        yield
+        zaza.model.run_action(
+            self.lead_unit,
+            'resume',
+            model_name=self.model_name)
+        zaza.model.block_until_service_status(
+            self.lead_unit,
+            services,
+            'blocked',  # Service sealed
+            model_name=self.model_name)
 
 
 class UnsealVault(BaseVaultTest):
@@ -84,7 +128,11 @@ class UnsealVault(BaseVaultTest):
         vault_utils.run_charm_authorize(self.vault_creds['root_token'])
         if not test_config:
             test_config = lifecycle_utils.get_charm_config()
-        del test_config['target_deploy_status']['vault']
+        try:
+            del test_config['target_deploy_status']['vault']
+        except KeyError:
+            # Already removed
+            pass
         zaza.model.wait_for_application_states(
             states=test_config.get('target_deploy_status', {}))
 
@@ -127,19 +175,31 @@ class VaultTest(BaseVaultTest):
             allowed_domains='openstack.local')
 
         test_config = lifecycle_utils.get_charm_config()
-        del test_config['target_deploy_status']['vault']
-        zaza.model.block_until_file_has_contents(
+        try:
+            del test_config['target_deploy_status']['vault']
+        except KeyError:
+            # Already removed
+            pass
+        zaza.openstack.utilities.openstack.block_until_ca_exists(
             'keystone',
-            zaza.openstack.utilities.openstack.KEYSTONE_REMOTE_CACERT,
             cacert.decode().strip())
         zaza.model.wait_for_application_states(
             states=test_config.get('target_deploy_status', {}))
         ip = zaza.model.get_app_ips(
             'keystone')[0]
+
         with tempfile.NamedTemporaryFile(mode='w') as fp:
             fp.write(cacert.decode())
             fp.flush()
-            requests.get('https://{}:5000'.format(ip), verify=fp.name)
+            # Avoid race condition and retry
+            for attempt in tenacity.Retrying(
+                stop=tenacity.stop_after_attempt(3),
+                wait=tenacity.wait_exponential(
+                    multiplier=2, min=2, max=10)):
+                with attempt:
+                    logging.info(
+                        "Attempting to connect to https://{}:5000".format(ip))
+                    requests.get('https://{}:5000'.format(ip), verify=fp.name)
 
     def test_all_clients_authenticated(self):
         """Check all vault clients are authenticated."""
@@ -202,6 +262,97 @@ class VaultTest(BaseVaultTest):
         self.assertIn(
             'local-charm-policy',
             client.hvac_client.list_policies())
+
+    def test_zzz_pause_resume(self):
+        """Run pause and resume tests.
+
+        Pause service and check services are stopped, then resume and check
+        they are started.
+        """
+        vault_actions = zaza.model.get_actions(
+            'vault')
+        if 'pause' not in vault_actions or 'resume' not in vault_actions:
+            raise unittest.SkipTest("The version of charm-vault tested does "
+                                    "not have pause/resume actions")
+        # this pauses and resumes the LEAD unit
+        with self.pause_resume(['vault']):
+            logging.info("Testing pause resume")
+        lead_client = vault_utils.extract_lead_unit_client(self.clients)
+        self.assertTrue(lead_client.hvac_client.seal_status['sealed'])
+
+    def test_vault_reload(self):
+        """Run reload tests.
+
+        Reload service and check services were restarted
+        by doing simple change in the running config by API.
+        Then confirm that service is not sealed
+        """
+        vault_actions = zaza.model.get_actions(
+            'vault')
+        if 'reload' not in vault_actions:
+            raise unittest.SkipTest("The version of charm-vault tested does "
+                                    "not have reload action")
+
+        container_results = zaza.model.run_on_leader(
+            "vault", "systemd-detect-virt --container"
+        )
+        container_rc = json.loads(container_results["Code"])
+        if container_rc == 0:
+            raise unittest.SkipTest(
+                "Vault unit is running in a container. Cannot use mlock."
+            )
+
+        lead_client = vault_utils.get_cluster_leader(self.clients)
+        running_config = vault_utils.get_running_config(lead_client)
+        value_to_set = not running_config['data']['disable_mlock']
+
+        logging.info("Setting disable-mlock to {}".format(str(value_to_set)))
+        zaza.model.set_application_config(
+            'vault',
+            {'disable-mlock': str(value_to_set)})
+
+        logging.info("Waiting for model to be idle ...")
+        zaza.model.block_until_all_units_idle(model_name=self.model_name)
+
+        logging.info("Testing action reload on {}".format(lead_client))
+        zaza.model.run_action(
+            juju_utils.get_unit_name_from_ip_address(
+                lead_client.addr, 'vault'),
+            'reload',
+            model_name=self.model_name)
+
+        logging.info("Getting new value ...")
+        new_value = vault_utils.get_running_config(lead_client)[
+            'data']['disable_mlock']
+
+        logging.info(
+            "Asserting new value {} is equal to set value {}"
+            .format(new_value, value_to_set))
+        self.assertEqual(
+            value_to_set,
+            new_value)
+
+        logging.info("Asserting not sealed")
+        self.assertFalse(lead_client.hvac_client.seal_status['sealed'])
+
+    def test_vault_restart(self):
+        """Run pause and resume tests.
+
+        Restart service and check services are started.
+        """
+        vault_actions = zaza.model.get_actions(
+            'vault')
+        if 'restart' not in vault_actions:
+            raise unittest.SkipTest("The version of charm-vault tested does "
+                                    "not have restart action")
+        logging.info("Testing restart")
+        zaza.model.run_action_on_leader(
+            'vault',
+            'restart',
+            action_params={})
+
+        lead_client = vault_utils.extract_lead_unit_client(self.clients)
+        self.assertTrue(lead_client.hvac_client.seal_status['sealed'])
 
 
 if __name__ == '__main__':

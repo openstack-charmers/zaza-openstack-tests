@@ -116,3 +116,20 @@ class TestCephUtils(ut_utils.BaseTestCase):
         with self.assertRaises(model.CommandRunFailed):
             ceph_utils.get_rbd_hash('aunit', 'apool', 'aimage',
                                     model_name='amodel')
+
+    def test_pools_from_broker_req(self):
+        self.patch_object(ceph_utils.juju_utils, 'get_relation_from_unit')
+        self.get_relation_from_unit.return_value = {
+            'broker_req': (
+                '{"api-version": 1, "ops": ['
+                '{"op": "create-pool", "name": "cinder-ceph", '
+                '"compression-mode": null},'
+                '{"op": "create-pool", "name": "cinder-ceph", '
+                '"compression-mode": "aggressive"}]}'),
+        }
+        self.assertEquals(
+            ceph_utils.get_pools_from_broker_req(
+                'anApplication', 'aModelName'),
+            ['cinder-ceph'])
+        self.get_relation_from_unit.assert_called_once_with(
+            'ceph-mon', 'anApplication', None, model_name='aModelName')

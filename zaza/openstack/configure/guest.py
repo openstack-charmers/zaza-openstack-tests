@@ -16,11 +16,20 @@
 
 """Encapsulate nova testing."""
 
+import subprocess
 import logging
 import time
 
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.nova.utils as nova_utils
+import zaza.openstack.utilities.exceptions as openstack_exceptions
+
+from tenacity import (
+    RetryError,
+    Retrying,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 boot_tests = {
     'cirros': {
@@ -62,6 +71,8 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
     :type meta: dict
     :param userdata: Configuration to use upon launch, used by cloud-init.
     :type userdata: str
+    :returns: the created instance
+    :rtype: novaclient.Server
     """
     keystone_session = openstack_utils.get_overcloud_keystone_session()
     nova_client = openstack_utils.get_nova_session_client(keystone_session)
@@ -130,7 +141,21 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
         external_network_name,
         port=port)['floating_ip_address']
     logging.info('Assigned floating IP {} to {}'.format(ip, vm_name))
-    openstack_utils.ping_response(ip)
+    try:
+        for attempt in Retrying(
+                stop=stop_after_attempt(8),
+                wait=wait_exponential(multiplier=1, min=2, max=60)):
+            with attempt:
+                try:
+                    openstack_utils.ping_response(ip)
+                except subprocess.CalledProcessError as e:
+                    logging.error('Pinging {} failed with {}'
+                                  .format(ip, e.returncode))
+                    logging.error('stdout: {}'.format(e.stdout))
+                    logging.error('stderr: {}'.format(e.stderr))
+                    raise
+    except RetryError:
+        raise openstack_exceptions.NovaGuestNoPingResponse()
 
     # Check ssh'ing to instance.
     logging.info('Testing ssh access.')
@@ -140,3 +165,4 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
         vm_name=vm_name,
         password=boot_tests[instance_key].get('password'),
         privkey=openstack_utils.get_private_key(nova_utils.KEYPAIR_NAME))
+    return instance

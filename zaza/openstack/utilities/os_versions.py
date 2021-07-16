@@ -34,6 +34,9 @@ UBUNTU_OPENSTACK_RELEASE = OrderedDict([
     ('cosmic', 'rocky'),
     ('disco', 'stein'),
     ('eoan', 'train'),
+    ('focal', 'ussuri'),
+    ('groovy', 'victoria'),
+    ('hirsute', 'wallaby'),
 ])
 
 
@@ -55,6 +58,8 @@ OPENSTACK_CODENAMES = OrderedDict([
     ('2018.2', 'rocky'),
     ('2019.1', 'stein'),
     ('2019.2', 'train'),
+    ('2020.1', 'ussuri'),
+    ('2020.2', 'victoria'),
 ])
 
 OPENSTACK_RELEASES_PAIRS = [
@@ -64,9 +69,10 @@ OPENSTACK_RELEASES_PAIRS = [
     'xenial_pike', 'artful_pike', 'xenial_queens',
     'bionic_queens', 'bionic_rocky', 'cosmic_rocky',
     'bionic_stein', 'disco_stein', 'bionic_train',
-    'eoan_train']
+    'eoan_train', 'bionic_ussuri', 'focal_ussuri',
+    'focal_victoria', 'groovy_victoria',
+    'focal_wallaby', 'hirsute_wallaby']
 
-# The ugly duckling - must list releases oldest to newest
 SWIFT_CODENAMES = OrderedDict([
     ('diablo',
         ['1.4.3']),
@@ -102,6 +108,21 @@ SWIFT_CODENAMES = OrderedDict([
         ['2.20.0', '2.21.0']),
     ('train',
         ['2.22.0']),
+    ('ussuri',
+        ['2.24.0', '2.25.0']),
+    ('victoria',
+        ['2.25.0']),
+])
+
+OVN_CODENAMES = OrderedDict([
+    ('train',
+        ['2.12']),
+    ('ussuri',
+        ['20.03']),
+    ('victoria',
+        ['20.06']),
+    ('wallaby',
+        ['20.12']),
 ])
 
 # >= Liberty version->codename mapping
@@ -116,6 +137,8 @@ PACKAGE_CODENAMES = {
         ('18', 'rocky'),
         ('19', 'stein'),
         ('20', 'train'),
+        ('21', 'ussuri'),
+        ('22', 'victoria'),
     ]),
     'neutron-common': OrderedDict([
         ('7', 'liberty'),
@@ -127,6 +150,8 @@ PACKAGE_CODENAMES = {
         ('13', 'rocky'),
         ('14', 'stein'),
         ('15', 'train'),
+        ('16', 'ussuri'),
+        ('17', 'victoria'),
     ]),
     'cinder-common': OrderedDict([
         ('7', 'liberty'),
@@ -138,6 +163,8 @@ PACKAGE_CODENAMES = {
         ('13', 'rocky'),
         ('14', 'stein'),
         ('15', 'train'),
+        ('16', 'ussuri'),
+        ('17', 'victoria'),
     ]),
     'keystone': OrderedDict([
         ('8', 'liberty'),
@@ -149,6 +176,8 @@ PACKAGE_CODENAMES = {
         ('14', 'rocky'),
         ('15', 'stein'),
         ('16', 'train'),
+        ('17', 'ussuri'),
+        ('18', 'victoria'),
     ]),
     'horizon-common': OrderedDict([
         ('8', 'liberty'),
@@ -160,6 +189,8 @@ PACKAGE_CODENAMES = {
         ('14', 'rocky'),
         ('15', 'stein'),
         ('16', 'train'),
+        ('18', 'ussuri'),
+        ('19', 'victoria'),
     ]),
     'ceilometer-common': OrderedDict([
         ('5', 'liberty'),
@@ -171,6 +202,8 @@ PACKAGE_CODENAMES = {
         ('11', 'rocky'),
         ('12', 'stein'),
         ('13', 'train'),
+        ('14', 'ussuri'),
+        ('15', 'victoria'),
     ]),
     'heat-common': OrderedDict([
         ('5', 'liberty'),
@@ -182,6 +215,8 @@ PACKAGE_CODENAMES = {
         ('11', 'rocky'),
         ('12', 'stein'),
         ('13', 'train'),
+        ('14', 'ussuri'),
+        ('15', 'victoria'),
     ]),
     'glance-common': OrderedDict([
         ('11', 'liberty'),
@@ -193,6 +228,8 @@ PACKAGE_CODENAMES = {
         ('17', 'rocky'),
         ('18', 'stein'),
         ('19', 'train'),
+        ('20', 'ussuri'),
+        ('21', 'victoria'),
     ]),
     'openstack-dashboard': OrderedDict([
         ('8', 'liberty'),
@@ -204,5 +241,32 @@ PACKAGE_CODENAMES = {
         ('14', 'rocky'),
         ('15', 'stein'),
         ('16', 'train'),
+        ('18', 'ussuri'),
+        ('19', 'victoria'),
+    ]),
+    'designate-common': OrderedDict([
+        ('1', 'liberty'),
+        ('2', 'mitaka'),
+        ('3', 'newton'),
+        ('4', 'ocata'),
+        ('5', 'pike'),
+        ('6', 'queens'),
+        ('7', 'rocky'),
+        ('8', 'stein'),
+        ('9', 'train'),
+        ('10', 'ussuri'),
+        ('11', 'victoria'),
+    ]),
+    'ceph-common': OrderedDict([
+        ('10', 'mitaka'),  # jewel
+        ('12', 'queens'),  # luminous
+        ('13', 'rocky'),   # mimic
+        ('14', 'train'),   # nautilus
+        ('15', 'ussuri'),  # octopus
+    ]),
+    'placement-common': OrderedDict([
+        ('2', 'train'),
+        ('3', 'ussuri'),
+        ('4', 'victoria'),
     ]),
 }

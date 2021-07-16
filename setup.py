@@ -25,22 +25,40 @@ from setuptools.command.test import test as TestCommand
 
 version = "0.0.1.dev1"
 install_require = [
+    'futurist<2.0.0',
     'async_generator',
-    'cryptography',
+    'boto3',
+
+    # Newer versions require a Rust compiler to build, see
+    # * https://github.com/openstack-charmers/zaza/issues/421
+    # * https://mail.python.org/pipermail/cryptography-dev/2021-January/001003.html
+    'cryptography<3.4',
+
+    'dnspython',
     'hvac<0.7.0',
     'jinja2',
     'juju',
     'juju-wait',
+    'lxml',
     'PyYAML',
     'tenacity',
-    'oslo.config',
-    'python-glanceclient',
-    'python-keystoneclient',
-    'python-novaclient',
-    'python-neutronclient',
-    'python-octaviaclient',
-    'python-cinderclient',
-    'python-swiftclient',
+    'oslo.config<6.12.0',
+    'aodhclient<1.4.0',
+    'gnocchiclient>=7.0.5,<8.0.0',
+    'pika>=1.1.0,<2.0.0',
+    'python-barbicanclient>=4.0.1,<5.0.0',
+    'python-designateclient>=1.5,<3.0.0',
+    'python-heatclient<2.0.0',
+    'python-ironicclient',
+    'python-glanceclient<3.0.0',
+    'python-keystoneclient<3.22.0',
+    'python-manilaclient<2.0.0',
+    'python-novaclient<16.0.0',
+    'python-neutronclient<7.0.0',
+    'python-octaviaclient<1.11.0',
+    'python-ceilometerclient',
+    'python-cinderclient<6.0.0',
+    'python-swiftclient<3.9.0',
     'zaza@git+https://github.com/openstack-charmers/zaza.git#egg=zaza',
 ]
 
@@ -96,6 +114,7 @@ setup(
     license='Apache-2.0: http://www.apache.org/licenses/LICENSE-2.0',
     packages=find_packages(exclude=["unit_tests"]),
     zip_safe=False,
+    include_package_data=True,
     cmdclass={'test': Tox},
     install_requires=install_require,
     extras_require={

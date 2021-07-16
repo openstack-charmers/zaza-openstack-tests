@@ -129,7 +129,6 @@ def setup_sdn(network_config, keystone_session=None):
     ext_network = openstack_utils.create_external_network(
         neutron_client,
         project_id,
-        network_config.get("dvr_enabled", False),
         network_config["external_net_name"])
     openstack_utils.create_external_subnet(
         neutron_client,
@@ -184,7 +183,9 @@ def setup_sdn(network_config, keystone_session=None):
     openstack_utils.add_neutron_secgroup_rules(neutron_client, project_id)
 
 
-def setup_gateway_ext_port(network_config, keystone_session=None):
+def setup_gateway_ext_port(network_config, keystone_session=None,
+                           limit_gws=None,
+                           use_juju_wait=True):
     """Perform setup external port on Neutron Gateway.
 
     For OpenStack on OpenStack scenarios.
@@ -193,6 +194,10 @@ def setup_gateway_ext_port(network_config, keystone_session=None):
     :type network_config: dict
     :param keystone_session: Keystone session object for undercloud
     :type keystone_session: keystoneauth1.session.Session object
+    :param limit_gws: Limit the number of gateways that get a port attached
+    :type limit_gws: Optional[int]
+    :param use_juju_wait: Use juju wait (default True) for model to settle
+    :type use_juju_wait: boolean
     :returns: None
     :rtype: None
     """
@@ -212,12 +217,24 @@ def setup_gateway_ext_port(network_config, keystone_session=None):
     else:
         net_id = None
 
+    # If we're using netplan, we need to add the new interface to the guest
+    current_release = openstack_utils.get_os_release()
+    bionic_queens = openstack_utils.get_os_release('bionic_queens')
+    if current_release >= bionic_queens:
+        logging.warn("Adding second interface for dataport to guest netplan "
+                     "for bionic-queens and later")
+        add_dataport_to_netplan = True
+    else:
+        add_dataport_to_netplan = False
+
     logging.info("Configuring network for OpenStack undercloud/provider")
     openstack_utils.configure_gateway_ext_port(
         nova_client,
         neutron_client,
-        dvr_mode=network_config.get("dvr_enabled", False),
-        net_id=net_id)
+        net_id=net_id,
+        add_dataport_to_netplan=add_dataport_to_netplan,
+        limit_gws=limit_gws,
+        use_juju_wait=use_juju_wait)
 
 
 def run_from_cli(**kwargs):
@@ -256,6 +273,11 @@ def run_from_cli(**kwargs):
                         default="network.yaml")
     parser.add_argument("--cacert", help="Path to CA certificate bundle file",
                         default=None)
+    parser.add_argument("--no-use-juju-wait",
+                        help=("don't use juju wait for the model to settle "
+                              "(default true)"),
+                        action="store_false",
+                        default=True)
     # Handle CLI options
     options = parser.parse_args()
     net_topology = (kwargs.get('net_toplogoy') or
@@ -271,12 +293,14 @@ def run_from_cli(**kwargs):
     network_config = generic_utils.get_network_config(
         net_topology, ignore_env_vars, net_topology_file)
 
-    # Handle network for Openstack-on-Openstack scenarios
+    # Handle network for OpenStack-on-OpenStack scenarios
     if juju_utils.get_provider_type() == "openstack":
         undercloud_ks_sess = openstack_utils.get_undercloud_keystone_session(
             verify=cacert)
         setup_gateway_ext_port(network_config,
-                               keystone_session=undercloud_ks_sess)
+                               keystone_session=undercloud_ks_sess,
+                               use_juju_wait=cli_utils.parse_arg(
+                                   options, 'no_use_juju_wait'))
 
     overcloud_ks_sess = openstack_utils.get_overcloud_keystone_session(
         verify=cacert)

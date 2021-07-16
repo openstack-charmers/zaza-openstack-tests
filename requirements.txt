@@ -1,10 +1,14 @@
-
+# pin lxml < 4.6.3 for py35 as no wheels exist for 4.6.3 (deprecated platform)
+# This is necessary for Xenial builders
+# BUG: https://github.com/openstack-charmers/zaza-openstack-tests/issues/530
+lxml<4.6.3
 aiounittest
 async_generator
-juju
+boto3
+juju!=2.8.3  # blacklist 2.8.3 as it appears to have a connection bug
 juju_wait
-PyYAML<=4.2,>=3.0 
-flake8>=2.2.4,<=3.5.0
+PyYAML<=4.2,>=3.0
+flake8>=2.2.4
 flake8-docstrings
 flake8-per-file-ignores
 pydocstyle<4.0.0
@@ -21,12 +25,17 @@ dnspython>=1.12.0
 psutil>=1.1.1,<2.0.0
 python-openstackclient>=3.14.0
 aodhclient
+gnocchiclient>=7.0.5,<8.0.0
+pika>=1.1.0,<2.0.0
+python-barbicanclient
 python-designateclient
 python-ceilometerclient
 python-cinderclient
 python-glanceclient
 python-heatclient
+python-ironicclient
 python-keystoneclient
+python-manilaclient
 python-neutronclient
 python-novaclient
 python-octaviaclient
@@ -34,7 +43,13 @@ python-swiftclient
 tenacity
 distro-info
 paramiko
+
 # Documentation requirements
 sphinx
 sphinxcontrib-asyncio
 git+https://github.com/openstack-charmers/zaza#egg=zaza
+
+# Newer versions require a Rust compiler to build, see
+# * https://github.com/openstack-charmers/zaza/issues/421
+# * https://mail.python.org/pipermail/cryptography-dev/2021-January/001003.html
+cryptography<3.4

@@ -1,9 +1,16 @@
 """Module containing Ceph related utilities."""
-
+import json
 import logging
 
-import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.model as zaza_model
+import zaza.utilities.juju as juju_utils
+
+import zaza.openstack.utilities.openstack as openstack_utils
+
+REPLICATED_POOL_TYPE = 'replicated'
+ERASURE_POOL_TYPE = 'erasure-coded'
+REPLICATED_POOL_CODE = 1
+ERASURE_POOL_CODE = 3
 
 
 def get_expected_pools(radosgw=False):
@@ -97,6 +104,87 @@ def get_ceph_pools(unit_name, model_name=None):
     return pools
 
 
+def get_ceph_pool_details(query_leader=True, unit_name=None, model_name=None):
+    """Get ceph pool details.
+
+    Return a list of ceph pools details dicts.
+
+    :param query_leader: Whether to query the leader for pool details.
+    :type query_leader: bool
+    :param unit_name: Name of unit to get the pools on if query_leader is False
+    :type unit_name: string
+    :param model_name: Name of model to operate in
+    :type model_name: str
+    :returns: Dict of ceph pools
+    :rtype: List[Dict,]
+    :raise: zaza_model.CommandRunFailed
+    """
+    cmd = 'sudo ceph osd pool ls detail -f json'
+    if query_leader and unit_name:
+        raise ValueError("Cannot set query_leader and unit_name")
+    if query_leader:
+        result = zaza_model.run_on_leader(
+            'ceph-mon',
+            cmd,
+            model_name=model_name)
+    else:
+        result = zaza_model.run_on_unit(
+            unit_name,
+            cmd,
+            model_name=model_name)
+    if int(result.get('Code')) != 0:
+        raise zaza_model.CommandRunFailed(cmd, result)
+    return json.loads(result.get('Stdout'))
+
+
+def get_ceph_df(unit_name, model_name=None):
+    """Return dict of ceph df json output, including ceph pool state.
+
+    :param unit_name: Name of the unit to get ceph df
+    :type unit_name: string
+    :param model_name: Name of model to operate in
+    :type model_name: str
+    :returns: Dict of ceph df output
+    :rtype: dict
+    :raise: zaza.model.CommandRunFailed
+    """
+    cmd = 'sudo ceph df --format=json'
+    result = zaza_model.run_on_unit(unit_name, cmd, model_name=model_name)
+    if result.get('Code') != '0':
+        raise zaza_model.CommandRunFailed(cmd, result)
+    return json.loads(result.get('Stdout'))
+
+
+def get_ceph_pool_sample(unit_name, pool_id=0, model_name=None):
+    """Return list of ceph pool attributes.
+
+    Take a sample of attributes of a ceph pool, returning ceph
+    pool name, object count and disk space used for the specified
+    pool ID number.
+
+    :param unit_name: Name of the unit to get the pool sample
+    :type unit_name: string
+    :param pool_id: Ceph pool ID
+    :type pool_id: int
+    :param model_name: Name of model to operate in
+    :type model_name: str
+    :returns: List of pool name, object count, kb disk space used
+    :rtype: list
+    :raises: zaza.model.CommandRunFailed
+    """
+    df = get_ceph_df(unit_name, model_name)
+    for pool in df['pools']:
+        if pool['id'] == pool_id:
+            pool_name = pool['name']
+            obj_count = pool['stats']['objects']
+            kb_used = pool['stats']['kb_used']
+
+    logging.debug('Ceph {} pool (ID {}): {} objects, '
+                  '{} kb used'.format(pool_name, pool_id,
+                                      obj_count, kb_used))
+    return pool_name, obj_count, kb_used
+
+
 def get_rbd_hash(unit_name, pool, image, model_name=None):
     """Get SHA512 hash of RBD image.
 
@@ -118,3 +206,37 @@ def get_rbd_hash(unit_name, pool, image, model_name=None):
     if result.get('Code') != '0':
         raise zaza_model.CommandRunFailed(cmd, result)
     return result.get('Stdout').rstrip()
+
+
+def get_pools_from_broker_req(application_or_unit, model_name=None):
+    """Get pools requested by application or unit.
+
+    By retrieving and parsing broker request from relation data we can get a
+    list of pools a unit has requested.
+
+    :param application_or_unit: Name of application or unit that is at the
+                                other end of a ceph-mon relation.
+    :type application_or_unit: str
+    :param model_name: Name of Juju model to operate on
+    :type model_name: Optional[str]
+    :returns: List of pools requested.
+    :rtype: List[str]
+    :raises: KeyError
+    """
+    # NOTE: we do not pass on a name for the remote_interface_name as that
+    # varies between the Ceph consuming applications.
+    relation_data = juju_utils.get_relation_from_unit(
+        'ceph-mon', application_or_unit, None, model_name=model_name)
+
+    # NOTE: we probably should consume the Ceph broker code from c-h but c-h is
+    # such a beast of a dependency so let's defer adding it to Zaza if we can.
+    broker_req = json.loads(relation_data['broker_req'])
+
+    # A charm may request modifications to an existing pool by adding multiple
+    # 'create-pool' broker requests so we need to deduplicate the list before
+    # returning it.
+    return list(set([
+        op['name']
+        for op in broker_req['ops']
+        if op['op'] == 'create-pool'
+    ]))

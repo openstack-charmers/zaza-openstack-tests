@@ -15,11 +15,13 @@
 """Ceph Testing."""
 
 import unittest
+import json
 import logging
 from os import (
     listdir,
     path
 )
+import requests
 import tempfile
 
 import tenacity
@@ -31,7 +33,7 @@ import zaza.model as zaza_model
 import zaza.openstack.utilities.ceph as zaza_ceph
 import zaza.openstack.utilities.exceptions as zaza_exceptions
 import zaza.openstack.utilities.generic as zaza_utils
-import zaza.openstack.utilities.juju as zaza_juju
+import zaza.utilities.juju as juju_utils
 import zaza.openstack.utilities.openstack as zaza_openstack
 
 
@@ -56,7 +58,7 @@ class CephLowLevelTest(test_utils.OpenStackBaseTest):
         }
 
         ceph_osd_processes = {
-            'ceph-osd': [2, 3]
+            'ceph-osd': [1, 2, 3]
         }
 
         # Units with process names and PID quantities expected
@@ -95,6 +97,16 @@ class CephLowLevelTest(test_utils.OpenStackBaseTest):
                 target_status='running'
             )
 
+    @test_utils.skipUntilVersion('ceph-mon', 'ceph', '14.2.0')
+    def test_pg_tuning(self):
+        """Verify that auto PG tuning is enabled for Nautilus+."""
+        unit_name = 'ceph-mon/0'
+        cmd = "ceph osd pool autoscale-status --format=json"
+        result = zaza_model.run_on_unit(unit_name, cmd)
+        self.assertEqual(result['Code'], '0')
+        for pool in json.loads(result['Stdout']):
+            self.assertEqual(pool['pg_autoscale_mode'], 'on')
+
 
 class CephRelationTest(test_utils.OpenStackBaseTest):
     """Ceph's relations test class."""
@@ -112,7 +124,7 @@ class CephRelationTest(test_utils.OpenStackBaseTest):
         relation_name = 'osd'
         remote_unit = zaza_model.get_unit_from_name(remote_unit_name)
         remote_ip = remote_unit.public_address
-        relation = zaza_juju.get_relation_from_unit(
+        relation = juju_utils.get_relation_from_unit(
             unit_name,
             remote_unit_name,
             relation_name
@@ -138,11 +150,10 @@ class CephRelationTest(test_utils.OpenStackBaseTest):
         fsid = result.get('Stdout').strip()
         expected = {
             'private-address': remote_ip,
-            'auth': 'none',
             'ceph-public-address': remote_ip,
             'fsid': fsid,
         }
-        relation = zaza_juju.get_relation_from_unit(
+        relation = juju_utils.get_relation_from_unit(
             unit_name,
             remote_unit_name,
             relation_name
@@ -360,6 +371,19 @@ class CephTest(test_utils.OpenStackBaseTest):
         As the ephemeral device will have data on it we can use it to validate
         that these checks work as intended.
         """
+        current_release = zaza_openstack.get_os_release()
+        focal_ussuri = zaza_openstack.get_os_release('focal_ussuri')
+        if current_release >= focal_ussuri:
+            # NOTE(ajkavanagh) - focal (on ServerStack) is broken for /dev/vdb
+            # and so this test can't pass: LP#1842751 discusses the issue, but
+            # basically the snapd daemon along with lxcfs results in /dev/vdb
+            # being mounted in the lxcfs process namespace.  If the charm
+            # 'tries' to umount it, it can (as root), but the mount is still
+            # 'held' by lxcfs and thus nothing else can be done with it.  This
+            # is only a problem in serverstack with images with a default
+            # /dev/vdb ephemeral
+            logging.warn("Skipping pristine disk test for focal and higher")
+            return
         logging.info('Checking behaviour when non-pristine disks appear...')
         logging.info('Configuring ephemeral-unmount...')
         alternate_conf = {
@@ -408,8 +432,13 @@ class CephTest(test_utils.OpenStackBaseTest):
 
         set_default = {
             'ephemeral-unmount': '',
-            'osd-devices': '/dev/vdb /srv/ceph',
+            'osd-devices': '/dev/vdb',
         }
+
+        current_release = zaza_openstack.get_os_release()
+        bionic_train = zaza_openstack.get_os_release('bionic_train')
+        if current_release < bionic_train:
+            set_default['osd-devices'] = '/dev/vdb /srv/ceph'
 
         logging.info('Restoring to default configuration...')
         zaza_model.set_application_config(juju_service, set_default)
@@ -515,7 +544,7 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
     @classmethod
     def setUpClass(cls):
         """Run class setup for running ceph low level tests."""
-        super(CephRGWTest, cls).setUpClass()
+        super(CephRGWTest, cls).setUpClass(application_name='ceph-radosgw')
 
     @property
     def expected_apps(self):
@@ -577,6 +606,12 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
                     target_status='running'
                 )
 
+    # When testing with TLS there is a chance the deployment will appear done
+    # and idle prior to ceph-radosgw and Keystone have updated the service
+    # catalog.  Retry the test in this circumstance.
+    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=10, max=300),
+                    reraise=True, stop=tenacity.stop_after_attempt(10),
+                    retry=tenacity.retry_if_exception_type(IOError))
     def test_object_storage(self):
         """Verify object storage API.
 
@@ -587,10 +622,13 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
                                     'multisite configuration')
         logging.info('Checking Swift REST API')
         keystone_session = zaza_openstack.get_overcloud_keystone_session()
-        region_name = 'RegionOne'
+        region_name = zaza_model.get_application_config(
+            self.application_name,
+            model_name=self.model_name)['region']['value']
         swift_client = zaza_openstack.get_swift_session_client(
             keystone_session,
-            region_name
+            region_name,
+            cacert=self.cacert,
         )
         _container = 'demo-container'
         _test_data = 'Test data from Zaza'
@@ -614,7 +652,8 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
         keystone_session = zaza_openstack.get_overcloud_keystone_session()
         source_client = zaza_openstack.get_swift_session_client(
             keystone_session,
-            region_name='east-1'
+            region_name='east-1',
+            cacert=self.cacert,
         )
         _container = 'demo-container'
         _test_data = 'Test data from Zaza'
@@ -628,7 +667,8 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
 
         target_client = zaza_openstack.get_swift_session_client(
             keystone_session,
-            region_name='east-1'
+            region_name='east-1',
+            cacert=self.cacert,
         )
 
         @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
@@ -660,11 +700,13 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
         keystone_session = zaza_openstack.get_overcloud_keystone_session()
         source_client = zaza_openstack.get_swift_session_client(
             keystone_session,
-            region_name='east-1'
+            region_name='east-1',
+            cacert=self.cacert,
         )
         target_client = zaza_openstack.get_swift_session_client(
             keystone_session,
-            region_name='west-1'
+            region_name='west-1',
+            cacert=self.cacert,
         )
         zaza_model.run_action_on_leader(
             'slave-ceph-radosgw',
@@ -706,7 +748,269 @@ class CephProxyTest(unittest.TestCase):
 
     def test_ceph_health(self):
         """Make sure ceph-proxy can communicate with ceph."""
+        logging.info('Wait for idle/ready status...')
+        zaza_model.wait_for_application_states()
+
         self.assertEqual(
             zaza_model.run_on_leader("ceph-proxy", "sudo ceph health")["Code"],
             "0"
         )
+
+    def test_cinder_ceph_restrict_pool_setup(self):
+        """Make sure cinder-ceph restrict pool was created successfully."""
+        logging.info('Wait for idle/ready status...')
+        zaza_model.wait_for_application_states()
+
+        pools = zaza_ceph.get_ceph_pools('ceph-mon/0')
+        if 'cinder-ceph' not in pools:
+            msg = 'cinder-ceph pool was not found upon querying ceph-mon/0'
+            raise zaza_exceptions.CephPoolNotFound(msg)
+
+        # Checking for cinder-ceph specific permissions makes
+        # the test more rugged when we add additional relations
+        # to ceph for other applications (such as glance and nova).
+        expected_permissions = [
+            "allow rwx pool=cinder-ceph",
+            "allow class-read object_prefix rbd_children",
+        ]
+        cmd = "sudo ceph auth get client.cinder-ceph"
+        result = zaza_model.run_on_unit('ceph-mon/0', cmd)
+        output = result.get('Stdout').strip()
+
+        for expected in expected_permissions:
+            if expected not in output:
+                msg = ('cinder-ceph pool restriction ({}) was not'
+                       ' configured correctly.'
+                       ' Found: {}'.format(expected, output))
+                raise zaza_exceptions.CephPoolNotConfigured(msg)
+
+
+class CephPrometheusTest(unittest.TestCase):
+    """Test the Ceph <-> Prometheus relation."""
+
+    def test_prometheus_metrics(self):
+        """Validate that Prometheus has Ceph metrics."""
+        try:
+            zaza_model.get_application(
+                'prometheus2')
+        except KeyError:
+            raise unittest.SkipTest('Prometheus not present, skipping test')
+        unit = zaza_model.get_unit_from_name(
+            zaza_model.get_lead_unit_name('prometheus2'))
+        self.assertEqual(
+            '3', _get_mon_count_from_prometheus(unit.public_address))
+
+
+class CephPoolConfig(Exception):
+    """Custom Exception for bad Ceph pool config."""
+
+    pass
+
+
+class CheckPoolTypes(unittest.TestCase):
+    """Test the ceph pools created for clients are of the expected type."""
+
+    def test_check_pool_types(self):
+        """Check type of pools created for clients."""
+        app_pools = [
+            ('glance', 'glance'),
+            ('nova-compute', 'nova'),
+            ('cinder-ceph', 'cinder-ceph')]
+        runtime_pool_details = zaza_ceph.get_ceph_pool_details()
+        for app, pool_name in app_pools:
+            try:
+                app_config = zaza_model.get_application_config(app)
+            except KeyError:
+                logging.info(
+                    'Skipping pool check of %s, application %s not present',
+                    pool_name,
+                    app)
+                continue
+            rel_id = zaza_model.get_relation_id(
+                app,
+                'ceph-mon',
+                remote_interface_name='client')
+            if not rel_id:
+                logging.info(
+                    'Skipping pool check of %s, ceph relation not present',
+                    app)
+                continue
+            juju_pool_config = app_config.get('pool-type')
+            if juju_pool_config:
+                expected_pool_type = juju_pool_config['value']
+            else:
+                # If the pool-type option is absent assume the default of
+                # replicated.
+                expected_pool_type = zaza_ceph.REPLICATED_POOL_TYPE
+            for pool_config in runtime_pool_details:
+                if pool_config['pool_name'] == pool_name:
+                    logging.info('Checking {} is {}'.format(
+                        pool_name,
+                        expected_pool_type))
+                    expected_pool_code = -1
+                    if expected_pool_type == zaza_ceph.REPLICATED_POOL_TYPE:
+                        expected_pool_code = zaza_ceph.REPLICATED_POOL_CODE
+                    elif expected_pool_type == zaza_ceph.ERASURE_POOL_TYPE:
+                        expected_pool_code = zaza_ceph.ERASURE_POOL_CODE
+                    self.assertEqual(
+                        pool_config['type'],
+                        expected_pool_code)
+                    break
+            else:
+                raise CephPoolConfig(
+                    "Failed to find config for {}".format(pool_name))
+
+
+# NOTE: We might query before prometheus has fetch data
+@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1,
+                                               min=5, max=10),
+                reraise=True)
+def _get_mon_count_from_prometheus(prometheus_ip):
+    url = ('http://{}:9090/api/v1/query?query='
+           'count(ceph_mon_metadata)'.format(prometheus_ip))
+    client = requests.session()
+    response = client.get(url)
+    logging.debug("Prometheus response: {}".format(response.json()))
+    return response.json()['data']['result'][0]['value'][1]
+
+
+class BlueStoreCompressionCharmOperation(test_utils.BaseCharmTest):
+    """Test charm handling of bluestore compression configuration options."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Perform class one time initialization."""
+        super(BlueStoreCompressionCharmOperation, cls).setUpClass()
+        release_application = 'keystone'
+        try:
+            zaza_model.get_application(release_application)
+        except KeyError:
+            release_application = 'ceph-mon'
+        cls.current_release = zaza_openstack.get_os_release(
+            application=release_application)
+        cls.bionic_rocky = zaza_openstack.get_os_release('bionic_rocky')
+
+    def setUp(self):
+        """Perform common per test initialization steps."""
+        super(BlueStoreCompressionCharmOperation, self).setUp()
+
+        # determine if the tests should be run or not
+        logging.debug('os_release: {} >= {} = {}'
+                      .format(self.current_release,
+                              self.bionic_rocky,
+                              self.current_release >= self.bionic_rocky))
+        self.mimic_or_newer = self.current_release >= self.bionic_rocky
+
+    def _assert_pools_properties(self, pools, pools_detail,
+                                 expected_properties, log_func=logging.info):
+        """Check properties on a set of pools.
+
+        :param pools: List of pool names to check.
+        :type pools: List[str]
+        :param pools_detail: List of dictionaries with pool detail
+        :type pools_detail List[Dict[str,any]]
+        :param expected_properties: Properties to check and their expected
+                                    values.
+        :type expected_properties: Dict[str,any]
+        :returns: Nothing
+        :raises: AssertionError
+        """
+        for pool in pools:
+            for pd in pools_detail:
+                if pd['pool_name'] == pool:
+                    if 'options' in expected_properties:
+                        for k, v in expected_properties['options'].items():
+                            self.assertEquals(pd['options'][k], v)
+                            log_func("['options']['{}'] == {}".format(k, v))
+                    for k, v in expected_properties.items():
+                        if k == 'options':
+                            continue
+                        self.assertEquals(pd[k], v)
+                        log_func("{} == {}".format(k, v))
+
+    def test_configure_compression(self):
+        """Enable compression and validate properties flush through to pool."""
+        if not self.mimic_or_newer:
+            logging.info('Skipping test, Mimic or newer required.')
+            return
+        if self.application_name == 'ceph-osd':
+            # The ceph-osd charm itself does not request pools, neither does
+            # the BlueStore Compression configuration options it have affect
+            # pool properties.
+            logging.info('test does not apply to ceph-osd charm.')
+            return
+        elif self.application_name == 'ceph-radosgw':
+            # The Ceph RadosGW creates many light weight pools to keep track of
+            # metadata, we only compress the pool containing actual data.
+            app_pools = ['.rgw.buckets.data']
+        else:
+            # Retrieve which pools the charm under test has requested skipping
+            # metadata pools as they are deliberately not compressed.
+            app_pools = [
+                pool
+                for pool in zaza_ceph.get_pools_from_broker_req(
+                    self.application_name, model_name=self.model_name)
+                if 'metadata' not in pool
+            ]
+
+        ceph_pools_detail = zaza_ceph.get_ceph_pool_details(
+            model_name=self.model_name)
+
+        logging.debug('BEFORE: {}'.format(ceph_pools_detail))
+        try:
+            logging.info('Checking Ceph pool compression_mode prior to change')
+            self._assert_pools_properties(
+                app_pools, ceph_pools_detail,
+                {'options': {'compression_mode': 'none'}})
+        except KeyError:
+            logging.info('property does not exist on pool, which is OK.')
+        logging.info('Changing "bluestore-compression-mode" to "force" on {}'
+                     .format(self.application_name))
+        with self.config_change(
+                {'bluestore-compression-mode': 'none'},
+                {'bluestore-compression-mode': 'force'}):
+            # Retrieve pool details from Ceph after changing configuration
+            ceph_pools_detail = zaza_ceph.get_ceph_pool_details(
+                model_name=self.model_name)
+            logging.debug('CONFIG_CHANGE: {}'.format(ceph_pools_detail))
+            logging.info('Checking Ceph pool compression_mode after to change')
+            self._assert_pools_properties(
+                app_pools, ceph_pools_detail,
+                {'options': {'compression_mode': 'force'}})
+        ceph_pools_detail = zaza_ceph.get_ceph_pool_details(
+            model_name=self.model_name)
+        logging.debug('AFTER: {}'.format(ceph_pools_detail))
+        logging.debug(juju_utils.get_relation_from_unit(
+            'ceph-mon', self.application_name, None,
+            model_name=self.model_name))
+        logging.info('Checking Ceph pool compression_mode after restoring '
+                     'config to previous value')
+        self._assert_pools_properties(
+            app_pools, ceph_pools_detail,
+            {'options': {'compression_mode': 'none'}})
+
+    def test_invalid_compression_configuration(self):
+        """Set invalid configuration and validate charm response."""
+        if not self.mimic_or_newer:
+            logging.info('Skipping test, Mimic or newer required.')
+            return
+        stored_target_deploy_status = self.test_config.get(
+            'target_deploy_status', {})
+        new_target_deploy_status = stored_target_deploy_status.copy()
+        new_target_deploy_status[self.application_name] = {
+            'workload-status': 'blocked',
+            'workload-status-message': 'Invalid configuration',
+        }
+        if 'target_deploy_status' in self.test_config:
+            self.test_config['target_deploy_status'].update(
+                new_target_deploy_status)
+        else:
+            self.test_config['target_deploy_status'] = new_target_deploy_status
+
+        with self.config_change(
+                {'bluestore-compression-mode': 'none'},
+                {'bluestore-compression-mode': 'PEBCAK'}):
+            logging.info('Charm went into blocked state as expected, restore '
+                         'configuration')
+            self.test_config[
+                'target_deploy_status'] = stored_target_deploy_status

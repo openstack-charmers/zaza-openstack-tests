@@ -14,19 +14,44 @@
 
 """Module for interacting with OpenStack.
 
-This module contains a number of functions for interacting with Openstack.
+This module contains a number of functions for interacting with OpenStack.
 """
+import collections
+import copy
+import datetime
+import enum
+import io
+import itertools
+import juju_wait
+import logging
+import os
+import paramiko
+import re
+import shutil
+import six
+import subprocess
+import sys
+import tempfile
+import tenacity
+import textwrap
+import urllib
+
+
 from .os_versions import (
     OPENSTACK_CODENAMES,
     SWIFT_CODENAMES,
+    OVN_CODENAMES,
     PACKAGE_CODENAMES,
     OPENSTACK_RELEASES_PAIRS,
 )
 
 from openstack import connection
 
+from aodhclient.v2 import client as aodh_client
 from cinderclient import client as cinderclient
+from heatclient import client as heatclient
 from glanceclient import Client as GlanceClient
+from designateclient.client import Client as DesignateClient
 
 from keystoneclient.v2_0 import client as keystoneclient_v2
 from keystoneclient.v3 import client as keystoneclient_v3
@@ -36,38 +61,35 @@ from keystoneauth1.identity import (
     v2,
 )
 import zaza.openstack.utilities.cert as cert
+import zaza.utilities.deployment_env as deployment_env
+import zaza.utilities.juju as juju_utils
+import zaza.utilities.maas
 from novaclient import client as novaclient_client
 from neutronclient.v2_0 import client as neutronclient
 from neutronclient.common import exceptions as neutronexceptions
 from octaviaclient.api.v2 import octavia as octaviaclient
 from swiftclient import client as swiftclient
+from manilaclient import client as manilaclient
 
-import datetime
-import io
-import juju_wait
-import logging
-import os
-import paramiko
-import re
-import six
-import subprocess
-import sys
-import tempfile
-import tenacity
-import urllib
+from juju.errors import JujuError
+
+import zaza
 
 from zaza import model
 from zaza.openstack.utilities import (
     exceptions,
     generic as generic_utils,
-    juju as juju_utils,
 )
+import zaza.utilities.networking as network_utils
+
 
 CIRROS_RELEASE_URL = 'http://download.cirros-cloud.net/version/released'
 CIRROS_IMAGE_URL = 'http://download.cirros-cloud.net'
 UBUNTU_IMAGE_URLS = {
     'bionic': ('http://cloud-images.ubuntu.com/{release}/current/'
-               '{release}-server-cloudimg-{arch}.img')
+               '{release}-server-cloudimg-{arch}.img'),
+    'focal': ('http://cloud-images.ubuntu.com/{release}/current/'
+              '{release}-server-cloudimg-{arch}.img'),
 }
 
 CHARM_TYPES = {
@@ -99,18 +121,43 @@ CHARM_TYPES = {
         'pkg': 'ceilometer-common',
         'origin_setting': 'openstack-origin'
     },
+    'designate': {
+        'pkg': 'designate-common',
+        'origin_setting': 'openstack-origin'
+    },
+    'ovn-central': {
+        'pkg': 'ovn-common',
+        'origin_setting': 'source'
+    },
+    'ceph-mon': {
+        'pkg': 'ceph-common',
+        'origin_setting': 'source'
+    },
+    'placement': {
+        'pkg': 'placement-common',
+        'origin_setting': 'openstack-origin'
+    },
 }
+
+# Older tests use the order the services appear in the list to imply
+# the order they should be upgraded in. This approach has been superceded and
+# zaza.openstack.utilities.openstack_upgrade.get_upgrade_groups should be used
+# instead.
 UPGRADE_SERVICES = [
     {'name': 'keystone', 'type': CHARM_TYPES['keystone']},
-    {'name': 'nova-cloud-controller', 'type': CHARM_TYPES['nova']},
-    {'name': 'nova-compute', 'type': CHARM_TYPES['nova']},
     {'name': 'neutron-api', 'type': CHARM_TYPES['neutron']},
-    {'name': 'neutron-gateway', 'type': CHARM_TYPES['neutron']},
+    {'name': 'nova-cloud-controller', 'type': CHARM_TYPES['nova']},
     {'name': 'glance', 'type': CHARM_TYPES['glance']},
     {'name': 'cinder', 'type': CHARM_TYPES['cinder']},
+    {'name': 'neutron-gateway', 'type': CHARM_TYPES['neutron']},
+    {'name': 'ceilometer', 'type': CHARM_TYPES['ceilometer']},
+    {'name': 'designate', 'type': CHARM_TYPES['designate']},
+    {'name': 'nova-compute', 'type': CHARM_TYPES['nova']},
     {'name': 'openstack-dashboard',
      'type': CHARM_TYPES['openstack-dashboard']},
-    {'name': 'ceilometer', 'type': CHARM_TYPES['ceilometer']},
+    {'name': 'ovn-central', 'type': CHARM_TYPES['ovn-central']},
+    {'name': 'ceph-mon', 'type': CHARM_TYPES['ceph-mon']},
+    {'name': 'placement', 'type': CHARM_TYPES['placement']},
 ]
 
 
@@ -137,17 +184,90 @@ WORKLOAD_STATUS_EXCEPTIONS = {
              'ceilometer and gnocchi')}}
 
 # For vault TLS certificates
+CACERT_FILENAME_FORMAT = "{}_juju_ca_cert.crt"
+CERT_PROVIDERS = ['vault']
+REMOTE_CERT_DIR = "/usr/local/share/ca-certificates"
 KEYSTONE_CACERT = "keystone_juju_ca_cert.crt"
 KEYSTONE_REMOTE_CACERT = (
     "/usr/local/share/ca-certificates/{}".format(KEYSTONE_CACERT))
-KEYSTONE_LOCAL_CACERT = ("/tmp/{}".format(KEYSTONE_CACERT))
 
 
-# Openstack Client helpers
+async def async_block_until_ca_exists(application_name, ca_cert,
+                                      model_name=None, timeout=2700):
+    """Block until a CA cert is on all units of application_name.
+
+    :param application_name: Name of application to check
+    :type application_name: str
+    :param ca_cert: The certificate content.
+    :type ca_cert: str
+    :param model_name: Name of model to query.
+    :type model_name: str
+    :param timeout: How long in seconds to wait
+    :type timeout: int
+    """
+    async def _check_ca_present(model, ca_files):
+        units = model.applications[application_name].units
+        for ca_file in ca_files:
+            for unit in units:
+                try:
+                    output = await unit.run('cat {}'.format(ca_file))
+                    contents = output.data.get('results').get('Stdout', '')
+                    if ca_cert not in contents:
+                        break
+                # libjuju throws a generic error for connection failure. So we
+                # cannot differentiate between a connectivity issue and a
+                # target file not existing error. For now just assume the
+                # latter.
+                except JujuError:
+                    break
+            else:
+                # The CA was found in `ca_file` on all units.
+                return True
+        else:
+            return False
+    ca_files = await _async_get_remote_ca_cert_file_candidates(
+        application_name,
+        model_name=model_name)
+    async with zaza.model.run_in_model(model_name) as model:
+        await zaza.model.async_block_until(
+            lambda: _check_ca_present(model, ca_files), timeout=timeout)
+
+block_until_ca_exists = zaza.model.sync_wrapper(async_block_until_ca_exists)
+
+
+def get_cacert_absolute_path(filename):
+    """Build string containing location of the CA Certificate file.
+
+    :param filename: Expected filename for CA Certificate file.
+    :type filename: str
+    :returns: Absolute path to file containing CA Certificate
+    :rtype: str
+    """
+    return os.path.join(
+        deployment_env.get_tmpdir(), filename)
+
+
+def get_cacert():
+    """Return path to CA Certificate bundle for verification during test.
+
+    :returns: Path to CA Certificate bundle or None.
+    :rtype: Union[str, None]
+    """
+    for _provider in CERT_PROVIDERS:
+        _cert = get_cacert_absolute_path(
+            CACERT_FILENAME_FORMAT.format(_provider))
+        if os.path.exists(_cert):
+            return _cert
+    _keystone_local_cacert = get_cacert_absolute_path(KEYSTONE_CACERT)
+    if os.path.exists(_keystone_local_cacert):
+        return _keystone_local_cacert
+
+
+# OpenStack Client helpers
 def get_ks_creds(cloud_creds, scope='PROJECT'):
     """Return the credentials for authenticating against keystone.
 
-    :param cloud_creds: Openstack RC environment credentials
+    :param cloud_creds: OpenStack RC environment credentials
     :type cloud_creds: dict
     :param scope: Authentication scope: PROJECT or DOMAIN
     :type scope: string
@@ -194,15 +314,29 @@ def get_glance_session_client(session):
     return GlanceClient('2', session=session)
 
 
-def get_nova_session_client(session):
+def get_designate_session_client(**kwargs):
+    """Return designateclient authenticated by keystone session.
+
+    :param kwargs: Designate Client Arguments
+    :returns: Authenticated designateclient
+    :rtype: DesignateClient
+    """
+    version = kwargs.pop('version', None) or 2
+    return DesignateClient(version=str(version),
+                           **kwargs)
+
+
+def get_nova_session_client(session, version=2):
     """Return novaclient authenticated by keystone session.
 
     :param session: Keystone session object
     :type session: keystoneauth1.session.Session object
+    :param version: Version of client to request.
+    :type version: float
     :returns: Authenticated novaclient
     :rtype: novaclient.Client object
     """
-    return novaclient_client.Client(2, session=session)
+    return novaclient_client.Client(version, session=session)
 
 
 def get_neutron_session_client(session):
@@ -217,18 +351,22 @@ def get_neutron_session_client(session):
 
 
 def get_swift_session_client(session,
-                             region_name='RegionOne'):
+                             region_name='RegionOne',
+                             cacert=None):
     """Return swiftclient authenticated by keystone session.
 
     :param session: Keystone session object
     :type session: keystoneauth1.session.Session object
     :param region_name: Optional region name to use
     :type region_name: str
+    :param cacert: Path to CA Certificate
+    :type cacert: Optional[str]
     :returns: Authenticated swiftclient
     :rtype: swiftclient.Client object
     """
     return swiftclient.Connection(session=session,
-                                  os_options={'region_name': region_name})
+                                  os_options={'region_name': region_name},
+                                  cacert=cacert)
 
 
 def get_octavia_session_client(session, service_type='load-balancer',
@@ -254,6 +392,19 @@ def get_octavia_session_client(session, service_type='load-balancer',
     return octaviaclient.OctaviaAPI(session=session,
                                     service_type=service_type,
                                     endpoint=endpoint.url)
+
+
+def get_heat_session_client(session, version=1):
+    """Return heatclient authenticated by keystone session.
+
+    :param session: Keystone session object
+    :type session: keystoneauth1.session.Session object
+    :param version: Heat API version
+    :type version: int
+    :returns: Authenticated cinderclient
+    :rtype: heatclient.Client object
+    """
+    return heatclient.Client(session=session, version=version)
 
 
 def get_cinder_session_client(session, version=2):
@@ -288,13 +439,40 @@ def get_masakari_session_client(session, interface='internal',
     return conn.instance_ha
 
 
-def get_keystone_scope():
+def get_aodh_session_client(session):
+    """Return aodh client authenticated by keystone session.
+
+    :param session: Keystone session object
+    :type session: keystoneauth1.session.Session object
+    :returns: Authenticated aodh client
+    :rtype: openstack.instance_ha.v1._proxy.Proxy
+    """
+    return aodh_client.Client(session=session)
+
+
+def get_manila_session_client(session, version='2'):
+    """Return Manila client authenticated by keystone session.
+
+    :param session: Keystone session object
+    :type session: keystoneauth1.session.Session object
+    :param version: Manila API version
+    :type version: str
+    :returns: Authenticated manilaclient
+    :rtype: manilaclient.Client
+    """
+    return manilaclient.Client(session=session, client_version=version)
+
+
+def get_keystone_scope(model_name=None):
     """Return Keystone scope based on OpenStack release of the overcloud.
 
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns: String keystone scope
     :rtype: string
     """
-    os_version = get_current_os_versions("keystone")["keystone"]
+    os_version = get_current_os_versions("keystone",
+                                         model_name=model_name)["keystone"]
     # Keystone policy.json shipped the charm with liberty requires a domain
     # scoped token. Bug #1649106
     if os_version == "liberty":
@@ -307,7 +485,7 @@ def get_keystone_scope():
 def get_keystone_session(openrc_creds, scope='PROJECT', verify=None):
     """Return keystone session.
 
-    :param openrc_creds: Openstack RC credentials
+    :param openrc_creds: OpenStack RC credentials
     :type openrc_creds: dict
     :param verify: Control TLS certificate verification behaviour
     :type verify: any (True  - use system certs,
@@ -329,17 +507,20 @@ def get_keystone_session(openrc_creds, scope='PROJECT', verify=None):
     return session.Session(auth=auth, verify=verify)
 
 
-def get_overcloud_keystone_session(verify=None):
+def get_overcloud_keystone_session(verify=None, model_name=None):
     """Return Over cloud keystone session.
 
     :param verify: Control TLS certificate verification behaviour
     :type verify: any
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns keystone_session: keystoneauth1.session.Session object
     :rtype: keystoneauth1.session.Session
     """
-    return get_keystone_session(get_overcloud_auth(),
-                                scope=get_keystone_scope(),
-                                verify=verify)
+    return get_keystone_session(
+        get_overcloud_auth(model_name=model_name),
+        scope=get_keystone_scope(model_name=model_name),
+        verify=verify)
 
 
 def get_undercloud_keystone_session(verify=None):
@@ -373,7 +554,7 @@ def get_keystone_session_client(session, client_api_version=3):
 def get_keystone_client(openrc_creds, verify=None):
     """Return authenticated keystoneclient and set auth_ref for service_catalog.
 
-    :param openrc_creds: Openstack RC credentials
+    :param openrc_creds: OpenStack RC credentials
     :type openrc_creds: dict
     :param verify: Control TLS certificate verification behaviour
     :type verify: any
@@ -416,12 +597,28 @@ def get_project_id(ks_client, project_name, api_version=2, domain_name=None):
     return None
 
 
+def get_domain_id(ks_client, domain_name):
+    """Return domain ID.
+
+    :param ks_client: Authenticated keystoneclient
+    :type ks_client: keystoneclient.v3.Client object
+    :param domain_name: Name of the domain
+    :type domain_name: string
+    :returns: Domain ID
+    :rtype: string or None
+    """
+    all_domains = ks_client.domains.list(name=domain_name)
+    if all_domains:
+        return all_domains[0].id
+    return None
+
+
 # Neutron Helpers
 def get_gateway_uuids():
     """Return machine uuids for neutron-gateway(s).
 
     :returns: List of uuids
-    :rtype: list
+    :rtype: Iterator[str]
     """
     return juju_utils.get_machine_uuids_for_application('neutron-gateway')
 
@@ -430,28 +627,78 @@ def get_ovs_uuids():
     """Return machine uuids for neutron-openvswitch(s).
 
     :returns: List of uuids
-    :rtype: list
+    :rtype: Iterator[str]
     """
-    return (juju_utils
-            .get_machine_uuids_for_application('neutron-openvswitch'))
+    return juju_utils.get_machine_uuids_for_application('neutron-openvswitch')
+
+
+def get_ovn_uuids():
+    """Provide machine uuids for OVN Chassis.
+
+    :returns: List of uuids
+    :rtype: Iterator[str]
+    """
+    return itertools.chain(
+        juju_utils.get_machine_uuids_for_application('ovn-chassis'),
+        juju_utils.get_machine_uuids_for_application('ovn-dedicated-chassis'),
+    )
+
+
+def dvr_enabled():
+    """Check whether DVR is enabled in deployment.
+
+    :returns: True when DVR is enabled, False otherwise
+    :rtype: bool
+    """
+    return get_application_config_option('neutron-api', 'enable-dvr')
+
+
+def ngw_present():
+    """Check whether Neutron Gateway is present in deployment.
+
+    :returns: True when Neutron Gateway is present, False otherwise
+    :rtype: bool
+    """
+    try:
+        model.get_application('neutron-gateway')
+        return True
+    except KeyError:
+        pass
+    return False
+
+
+def ovn_present():
+    """Check whether OVN is present in deployment.
+
+    :returns: True when OVN is present, False otherwise
+    :rtype: bool
+    """
+    app_presence = []
+    for name in ('ovn-chassis', 'ovn-dedicated-chassis'):
+        try:
+            model.get_application(name)
+            app_presence.append(True)
+        except KeyError:
+            app_presence.append(False)
+    return any(app_presence)
 
 
 BRIDGE_MAPPINGS = 'bridge-mappings'
 NEW_STYLE_NETWORKING = 'physnet1:br-ex'
 
 
-def deprecated_external_networking(dvr_mode=False):
+def deprecated_external_networking():
     """Determine whether deprecated external network mode is in use.
 
-    :param dvr_mode: Using DVR mode or not
-    :type dvr_mode: boolean
     :returns: True or False
     :rtype: boolean
     """
     bridge_mappings = None
-    if dvr_mode:
+    if dvr_enabled():
         bridge_mappings = get_application_config_option('neutron-openvswitch',
                                                         BRIDGE_MAPPINGS)
+    elif ovn_present():
+        return False
     else:
         bridge_mappings = get_application_config_option('neutron-gateway',
                                                         BRIDGE_MAPPINGS)
@@ -488,43 +735,201 @@ def get_admin_net(neutron_client):
             return net
 
 
-def configure_gateway_ext_port(novaclient, neutronclient,
-                               dvr_mode=None, net_id=None):
-    """Configure the neturong-gateway external port.
+def add_interface_to_netplan(server_name, mac_address):
+    """In guest server_name, add nic with mac_address to netplan.
 
-    :param novaclient: Authenticated novaclient
-    :type novaclient: novaclient.Client object
-    :param neutronclient: Authenticated neutronclient
-    :type neutronclient: neutronclient.Client object
-    :param dvr_mode: Using DVR mode or not
-    :type dvr_mode: boolean
-    :param net_id: Network ID
-    :type net_id: string
+    :param server_name: Hostname of instance
+    :type server_name: string
+    :param mac_address: mac address of nic to be added to netplan
+    :type mac_address: string
     """
-    if dvr_mode:
-        uuids = get_ovs_uuids()
+    if dvr_enabled():
+        application_names = ('neutron-openvswitch',)
+    elif ovn_present():
+        # OVN chassis is a subordinate to nova-compute
+        application_names = ('nova-compute', 'ovn-dedicated-chassis')
     else:
-        uuids = get_gateway_uuids()
+        application_names = ('neutron-gateway',)
 
-    deprecated_extnet_mode = deprecated_external_networking(dvr_mode)
+    for app_name in application_names:
+        unit_name = juju_utils.get_unit_name_from_host_name(
+            server_name, app_name)
+        if unit_name:
+            break
+    else:
+        raise RuntimeError('Unable to find unit to run commands on.')
+    run_cmd_nic = "ip -f link -br -o addr|grep {}".format(mac_address)
+    interface = model.run_on_unit(unit_name, run_cmd_nic)
+    interface = interface['Stdout'].split(' ')[0]
 
-    config_key = 'data-port'
-    if deprecated_extnet_mode:
-        config_key = 'ext-port'
+    run_cmd_netplan = """sudo egrep -iR '{}|{}$' /etc/netplan/
+                        """.format(mac_address, interface)
 
-    if not net_id:
-        net_id = get_admin_net(neutronclient)['id']
+    netplancfg = model.run_on_unit(unit_name, run_cmd_netplan)
 
-    for uuid in uuids:
+    if (mac_address in str(netplancfg)) or (interface in str(netplancfg)):
+        logging.warn("mac address {} or nic {} already exists in "
+                     "/etc/netplan".format(mac_address, interface))
+        return
+    body_value = textwrap.dedent("""\
+        network:
+            ethernets:
+                {0}:
+                    dhcp4: false
+                    dhcp6: true
+                    optional: true
+                    match:
+                        macaddress: {1}
+                    set-name: {0}
+            version: 2
+    """.format(interface, mac_address))
+    logging.debug("plumb guest interface debug info:")
+    logging.debug("body_value: {}\nunit_name: {}\ninterface: {}\nmac_address:"
+                  "{}\nserver_name: {}".format(body_value, unit_name,
+                                               interface, mac_address,
+                                               server_name))
+    for attempt in tenacity.Retrying(
+            stop=tenacity.stop_after_attempt(3),
+            wait=tenacity.wait_exponential(
+            multiplier=1, min=2, max=10)):
+        with attempt:
+            with tempfile.NamedTemporaryFile(mode="w") as netplan_file:
+                netplan_file.write(body_value)
+                netplan_file.flush()
+                model.scp_to_unit(
+                    unit_name, netplan_file.name,
+                    '/home/ubuntu/60-dataport.yaml', user="ubuntu")
+            run_cmd_mv = "sudo mv /home/ubuntu/60-dataport.yaml /etc/netplan/"
+            model.run_on_unit(unit_name, run_cmd_mv)
+            model.run_on_unit(unit_name, "sudo netplan apply")
+
+
+class OpenStackNetworkingTopology(enum.Enum):
+    """OpenStack Charms Network Topologies."""
+
+    ML2_OVS = 'ML2+OVS'
+    ML2_OVS_DVR = 'ML2+OVS+DVR'
+    ML2_OVS_DVR_SNAT = 'ML2+OVS+DVR, no dedicated GWs'
+    ML2_OVN = 'ML2+OVN'
+
+
+CharmedOpenStackNetworkingData = collections.namedtuple(
+    'CharmedOpenStackNetworkingData',
+    [
+        'topology',
+        'application_names',
+        'unit_machine_ids',
+        'port_config_key',
+        'other_config',
+    ])
+
+
+def get_charm_networking_data(limit_gws=None):
+    """Inspect Juju model, determine networking topology and return data.
+
+    :param limit_gws: Limit the number of gateways that get a port attached
+    :type limit_gws: Optional[int]
+    :rtype: CharmedOpenStackNetworkingData[
+                OpenStackNetworkingTopology,
+                List[str],
+                Iterator[str],
+                str,
+                Dict[str,str]]
+    :returns: Named Tuple with networking data, example:
+        CharmedOpenStackNetworkingData(
+            OpenStackNetworkingTopology.ML2_OVN,
+            ['ovn-chassis', 'ovn-dedicated-chassis'],
+            ['machine-id-1', 'machine-id-2'],         # generator object
+            'bridge-interface-mappings',
+            {'ovn-bridge-mappings': 'physnet1:br-ex'})
+    :raises: RuntimeError
+    """
+    # Initialize defaults, these will be amended to fit the reality of the
+    # model in the checks below.
+    topology = OpenStackNetworkingTopology.ML2_OVS
+    other_config = {}
+    port_config_key = (
+        'data-port' if not deprecated_external_networking() else 'ext-port')
+    unit_machine_ids = []
+    application_names = []
+
+    if dvr_enabled():
+        if ngw_present():
+            application_names = ['neutron-gateway', 'neutron-openvswitch']
+            topology = OpenStackNetworkingTopology.ML2_OVS_DVR
+        else:
+            application_names = ['neutron-openvswitch']
+            topology = OpenStackNetworkingTopology.ML2_OVS_DVR_SNAT
+        unit_machine_ids = itertools.islice(
+            itertools.chain(
+                get_ovs_uuids(),
+                get_gateway_uuids()),
+            limit_gws)
+    elif ngw_present():
+        unit_machine_ids = itertools.islice(
+            get_gateway_uuids(), limit_gws)
+        application_names = ['neutron-gateway']
+    elif ovn_present():
+        topology = OpenStackNetworkingTopology.ML2_OVN
+        unit_machine_ids = itertools.islice(get_ovn_uuids(), limit_gws)
+        application_names = ['ovn-chassis']
+        try:
+            ovn_dc_name = 'ovn-dedicated-chassis'
+            model.get_application(ovn_dc_name)
+            application_names.append(ovn_dc_name)
+        except KeyError:
+            # ovn-dedicated-chassis not in deployment
+            pass
+        port_config_key = 'bridge-interface-mappings'
+        other_config.update({'ovn-bridge-mappings': 'physnet1:br-ex'})
+    else:
+        raise RuntimeError('Unable to determine charm network topology.')
+
+    return CharmedOpenStackNetworkingData(
+        topology,
+        application_names,
+        unit_machine_ids,
+        port_config_key,
+        other_config)
+
+
+def create_additional_port_for_machines(novaclient, neutronclient, net_id,
+                                        unit_machine_ids,
+                                        add_dataport_to_netplan=False):
+    """Create additional port for machines for use with external networking.
+
+    :param novaclient: Undercloud Authenticated novaclient.
+    :type novaclient: novaclient.Client object
+    :param neutronclient: Undercloud Authenticated neutronclient.
+    :type neutronclient: neutronclient.Client object
+    :param net_id: Network ID to create ports on.
+    :type net_id: string
+    :param unit_machine_ids: Juju provider specific machine IDs for which we
+                             should add ports on.
+    :type unit_machine_ids: Iterator[str]
+    :param add_dataport_to_netplan: Whether the newly created port should be
+                                    added to instance system configuration so
+                                    that it is brought up on instance reboot.
+    :type add_dataport_to_netplan: Optional[bool]
+    :returns: List of MAC addresses for created ports.
+    :rtype: List[str]
+    :raises: RuntimeError
+    """
+    eligible_machines = 0
+    for uuid in unit_machine_ids:
+        eligible_machines += 1
         server = novaclient.servers.get(uuid)
         ext_port_name = "{}_ext-port".format(server.name)
         for port in neutronclient.list_ports(device_id=server.id)['ports']:
             if port['name'] == ext_port_name:
-                logging.warning('Neutron Gateway already has additional port')
+                logging.warning(
+                    'Instance {} already has additional port, skipping.'
+                    .format(server.id))
                 break
         else:
-            logging.info('Attaching additional port to instance, '
-                         'connected to net id: {}'.format(net_id))
+            logging.info('Attaching additional port to instance ("{}"), '
+                         'connected to net id: {}'
+                         .format(uuid, net_id))
             body_value = {
                 "port": {
                     "admin_state_up": True,
@@ -536,32 +941,150 @@ def configure_gateway_ext_port(novaclient, neutronclient,
             port = neutronclient.create_port(body=body_value)
             server.interface_attach(port_id=port['port']['id'],
                                     net_id=None, fixed_ip=None)
-    ext_br_macs = []
-    for port in neutronclient.list_ports(network_id=net_id)['ports']:
-        if 'ext-port' in port['name']:
-            if deprecated_extnet_mode:
-                ext_br_macs.append(port['mac_address'])
-            else:
-                ext_br_macs.append('br-ex:{}'.format(port['mac_address']))
-    ext_br_macs.sort()
-    ext_br_macs_str = ' '.join(ext_br_macs)
-    if dvr_mode:
-        application_name = 'neutron-openvswitch'
-    else:
-        application_name = 'neutron-gateway'
+            if add_dataport_to_netplan:
+                mac_address = get_mac_from_port(port, neutronclient)
+                add_interface_to_netplan(server.name,
+                                         mac_address=mac_address)
+    if not eligible_machines:
+        # NOTE: unit_machine_ids may be an iterator so testing it for contents
+        # or length prior to iterating over it is futile.
+        raise RuntimeError('Unable to determine UUIDs for machines to attach '
+                           'external networking to.')
 
-    if ext_br_macs:
-        logging.info('Setting {} on {} external port to {}'.format(
-            config_key, application_name, ext_br_macs_str))
-        current_data_port = get_application_config_option(application_name,
-                                                          config_key)
-        if current_data_port == ext_br_macs_str:
+    # Retrieve the just created ports from Neutron so that we can provide our
+    # caller with their MAC addresses.
+    return [
+        port['mac_address']
+        for port in neutronclient.list_ports(network_id=net_id)['ports']
+        if 'ext-port' in port['name']
+    ]
+
+
+def configure_networking_charms(networking_data, macs, use_juju_wait=True):
+    """Configure external networking for networking charms.
+
+    :param networking_data: Data on networking charm topology.
+    :type networking_data: CharmedOpenStackNetworkingData
+    :param macs: MAC addresses of ports for use with external networking.
+    :type macs: Iterator[str]
+    :param use_juju_wait: Whether to use juju wait to wait for the model to
+        settle once the gateway has been configured. Default is True
+    :type use_juju_wait: Optional[bool]
+    """
+    br_mac_fmt = 'br-ex:{}' if not deprecated_external_networking() else '{}'
+    br_mac = [
+        br_mac_fmt.format(mac)
+        for mac in macs
+    ]
+
+    config = copy.deepcopy(networking_data.other_config)
+    config.update({networking_data.port_config_key: ' '.join(sorted(br_mac))})
+
+    for application_name in networking_data.application_names:
+        logging.info('Setting {} on {}'.format(
+            config, application_name))
+        current_data_port = get_application_config_option(
+            application_name,
+            networking_data.port_config_key)
+        if current_data_port == config[networking_data.port_config_key]:
             logging.info('Config already set to value')
             return
+
         model.set_application_config(
             application_name,
-            configuration={config_key: ext_br_macs_str})
+            configuration=config)
+    # NOTE(fnordahl): We are stuck with juju_wait until we figure out how
+    # to deal with all the non ['active', 'idle', 'Unit is ready.']
+    # workload/agent states and msgs that our mojo specs are exposed to.
+    if use_juju_wait:
         juju_wait.wait(wait_for_workload=True)
+    else:
+        zaza.model.wait_for_agent_status()
+        # TODO: shouldn't access get_charm_config() here as it relies on
+        # ./tests/tests.yaml existing by default (regardless of the
+        # fatal=False) ... it's not great design.
+        test_config = zaza.charm_lifecycle.utils.get_charm_config(
+            fatal=False)
+        zaza.model.wait_for_application_states(
+            states=test_config.get('target_deploy_status', {}))
+
+
+def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
+                               add_dataport_to_netplan=False,
+                               limit_gws=None,
+                               use_juju_wait=True):
+    """Configure the neturong-gateway external port.
+
+    :param novaclient: Authenticated novaclient
+    :type novaclient: novaclient.Client object
+    :param neutronclient: Authenticated neutronclient
+    :type neutronclient: neutronclient.Client object
+    :param net_id: Network ID
+    :type net_id: string
+    :param limit_gws: Limit the number of gateways that get a port attached
+    :type limit_gws: Optional[int]
+    :param use_juju_wait: Whether to use juju wait to wait for the model to
+        settle once the gateway has been configured. Default is True
+    :type use_juju_wait: boolean
+    """
+    networking_data = get_charm_networking_data(limit_gws=limit_gws)
+    if networking_data.topology in (
+            OpenStackNetworkingTopology.ML2_OVS_DVR,
+            OpenStackNetworkingTopology.ML2_OVS_DVR_SNAT):
+        # If dvr, do not attempt to persist nic in netplan
+        # https://github.com/openstack-charmers/zaza-openstack-tests/issues/78
+        add_dataport_to_netplan = False
+
+    if not net_id:
+        net_id = get_admin_net(neutronclient)['id']
+
+    macs = create_additional_port_for_machines(
+        novaclient, neutronclient, net_id, networking_data.unit_machine_ids,
+        add_dataport_to_netplan)
+
+    if macs:
+        configure_networking_charms(
+            networking_data, macs, use_juju_wait=use_juju_wait)
+
+
+def configure_charmed_openstack_on_maas(network_config, limit_gws=None):
+    """Configure networking charms for charm-based OVS config on MAAS provider.
+
+    :param network_config: Network configuration as provided in environment.
+    :type network_config: Dict[str]
+    :param limit_gws: Limit the number of gateways that get a port attached
+    :type limit_gws: Optional[int]
+    """
+    networking_data = get_charm_networking_data(limit_gws=limit_gws)
+    macs = [
+        mim.mac
+        for mim in zaza.utilities.maas.get_macs_from_cidr(
+            zaza.utilities.maas.get_maas_client_from_juju_cloud_data(
+                zaza.model.get_cloud_data()),
+            network_config['external_net_cidr'],
+            link_mode=zaza.utilities.maas.LinkMode.LINK_UP)
+    ]
+    if macs:
+        configure_networking_charms(
+            networking_data, macs, use_juju_wait=False)
+
+
+@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
+                reraise=True, retry=tenacity.retry_if_exception_type(KeyError))
+def get_mac_from_port(port, neutronclient):
+    """Get mac address from port, with tenacity due to openstack async.
+
+    :param port: neutron port
+    :type port: neutron port
+    :param neutronclient: Authenticated neutronclient
+    :type neutronclient: neutronclient.Client object
+    :returns: mac address
+    :rtype: string
+    """
+    logging.info("Trying to get mac address from port:"
+                 "{}".format(port['port']['id']))
+    refresh_port = neutronclient.show_port(port['port']['id'])
+    return refresh_port['port']['mac_address']
 
 
 def create_project_network(neutron_client, project_id, net_name='private',
@@ -604,16 +1127,13 @@ def create_project_network(neutron_client, project_id, net_name='private',
     return network
 
 
-def create_external_network(neutron_client, project_id, dvr_mode,
-                            net_name='ext_net'):
+def create_external_network(neutron_client, project_id, net_name='ext_net'):
     """Create the external network.
 
     :param neutron_client: Authenticated neutronclient
     :type neutron_client: neutronclient.Client object
     :param project_id: Project ID
     :type project_id: string
-    :param dvr_mode: Using DVR mode or not
-    :type dvr_mode: boolean
     :param net_name: Network name
     :type net_name: string
     :returns: Network object
@@ -1175,8 +1695,23 @@ def get_swift_codename(version):
     :returns: Codename for swift
     :rtype: string
     """
-    codenames = [k for k, v in six.iteritems(SWIFT_CODENAMES) if version in v]
-    return codenames[0]
+    return _get_special_codename(version, SWIFT_CODENAMES)
+
+
+def get_ovn_codename(version):
+    """Determine OpenStack codename that corresponds to OVN version.
+
+    :param version: Version of OVN
+    :type version: string
+    :returns: Codename for OVN
+    :rtype: string
+    """
+    return _get_special_codename(version, OVN_CODENAMES)
+
+
+def _get_special_codename(version, codenames):
+    found = [k for k, v in six.iteritems(codenames) if version in v]
+    return found[0]
 
 
 def get_os_code_info(package, pkg_version):
@@ -1189,17 +1724,16 @@ def get_os_code_info(package, pkg_version):
     :returns: Codename for package
     :rtype: string
     """
-    # {'code_num': entry, 'code_name': OPENSTACK_CODENAMES[entry]}
     # Remove epoch if it exists
     if ':' in pkg_version:
         pkg_version = pkg_version.split(':')[1:][0]
     if 'swift' in package:
         # Fully x.y.z match for swift versions
-        match = re.match('^(\d+)\.(\d+)\.(\d+)', pkg_version)
+        match = re.match(r'^(\d+)\.(\d+)\.(\d+)', pkg_version)
     else:
         # x.y match only for 20XX.X
         # and ignore patch level for other packages
-        match = re.match('^(\d+)\.(\d+)', pkg_version)
+        match = re.match(r'^(\d+)\.(\d+)', pkg_version)
 
     if match:
         vers = match.group(0)
@@ -1213,15 +1747,59 @@ def get_os_code_info(package, pkg_version):
         # < Liberty co-ordinated project versions
         if 'swift' in package:
             return get_swift_codename(vers)
+        elif 'ovn' in package:
+            return get_ovn_codename(vers)
         else:
             return OPENSTACK_CODENAMES[vers]
 
 
-def get_current_os_versions(deployed_applications):
+def get_openstack_release(application, model_name=None):
+    """Return the openstack release codename based on /etc/openstack-release.
+
+    This will only return a codename if the openstack-release package is
+    installed on the unit.
+
+    :param application: Application name
+    :type application: string
+    :param model_name: Name of model to query.
+    :type model_name: str
+    :returns: OpenStack release codename for application
+    :rtype: string
+    """
+    versions = []
+    units = model.get_units(application, model_name=model_name)
+    for unit in units:
+        cmd = 'cat /etc/openstack-release | grep OPENSTACK_CODENAME'
+        try:
+            out = juju_utils.remote_run(unit.entity_id, cmd,
+                                        model_name=model_name)
+        except model.CommandRunFailed:
+            logging.debug('Fall back to version check for OpenStack codename')
+        else:
+            codename = out.split('=')[1].strip()
+            versions.append(codename)
+    if len(set(versions)) == 0:
+        return None
+    elif len(set(versions)) > 1:
+        raise Exception('Unexpected mix of OpenStack releases for {}: {}',
+                        application, versions)
+    return versions[0]
+
+
+def get_current_os_versions(deployed_applications, model_name=None):
     """Determine OpenStack codename of deployed applications.
+
+    Initially, see if the openstack-release pkg is available and use it
+    instead.
+
+    If it isn't then it falls back to the existing method of checking the
+    version of the package passed and then resolving the version from that
+    using lookup tables.
 
     :param deployed_applications: List of deployed applications
     :type deployed_applications: list
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns: List of aplication to codenames dictionaries
     :rtype: list
     """
@@ -1229,11 +1807,18 @@ def get_current_os_versions(deployed_applications):
     for application in UPGRADE_SERVICES:
         if application['name'] not in deployed_applications:
             continue
+        logging.info("looking at application: {}".format(application))
 
-        version = generic_utils.get_pkg_version(application['name'],
-                                                application['type']['pkg'])
-        versions[application['name']] = (
-            get_os_code_info(application['type']['pkg'], version))
+        codename = get_openstack_release(application['name'],
+                                         model_name=model_name)
+        if codename:
+            versions[application['name']] = codename
+        else:
+            version = generic_utils.get_pkg_version(application['name'],
+                                                    application['type']['pkg'],
+                                                    model_name=model_name)
+            versions[application['name']] = (
+                get_os_code_info(application['type']['pkg'], version))
     return versions
 
 
@@ -1260,10 +1845,9 @@ def get_current_os_release_pair(application='keystone'):
     :raises: exceptions.SeriesNotFound
     :raises: exceptions.OSVersionNotFound
     """
-    machines = juju_utils.get_machines_for_application(application)
-    if len(machines) >= 1:
-        machine = machines[0]
-    else:
+    try:
+        machine = list(juju_utils.get_machines_for_application(application))[0]
+    except IndexError:
         raise exceptions.ApplicationNotFound(application)
 
     series = juju_utils.get_machine_series(machine)
@@ -1277,15 +1861,19 @@ def get_current_os_release_pair(application='keystone'):
     return '{}_{}'.format(series, os_version)
 
 
-def get_os_release(release_pair=None):
+def get_os_release(release_pair=None, application='keystone'):
     """Return index of release in OPENSTACK_RELEASES_PAIRS.
 
+    :param release_pair: OpenStack release pair eg 'focal_ussuri'
+    :type release_pair: string
+    :param application: Name of application to derive release pair from.
+    :type application: string
     :returns: Index of the release
     :rtype: int
     :raises: exceptions.ReleasePairNotFound
     """
     if release_pair is None:
-        release_pair = get_current_os_release_pair()
+        release_pair = get_current_os_release_pair(application=application)
     try:
         index = OPENSTACK_RELEASES_PAIRS.index(release_pair)
     except ValueError:
@@ -1297,17 +1885,21 @@ def get_os_release(release_pair=None):
     return index
 
 
-def get_application_config_option(application, option):
+def get_application_config_option(application, option, model_name=None):
     """Return application configuration.
 
     :param application: Name of application
     :type application: string
     :param option: Specific configuration option
     :type option: string
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns: Value of configuration option
     :rtype: Configuration option value type
     """
-    application_config = model.get_application_config(application)
+    application_config = model.get_application_config(
+        application,
+        model_name=model_name)
     try:
         return application_config.get(option).get('value')
     except AttributeError:
@@ -1326,7 +1918,7 @@ def get_undercloud_auth():
     else:
         logging.error('Missing OS authentication setting: OS_AUTH_URL')
         raise exceptions.MissingOSAthenticationException(
-            'One or more OpenStack authetication variables could '
+            'One or more OpenStack authentication variables could '
             'be found in the environment. Please export the OS_* '
             'settings into the environment.')
 
@@ -1355,7 +1947,7 @@ def get_undercloud_auth():
             'API_VERSION': 3,
         }
         if domain:
-            auth_settings['OS_DOMAIN_NAME': 'admin_domain'] = domain
+            auth_settings['OS_DOMAIN_NAME'] = domain
         else:
             auth_settings['OS_USER_DOMAIN_NAME'] = (
                 os.environ.get('OS_USER_DOMAIN_NAME'))
@@ -1367,41 +1959,57 @@ def get_undercloud_auth():
             if os_project_id is not None:
                 auth_settings['OS_PROJECT_ID'] = os_project_id
 
+    _os_cacert = os.environ.get('OS_CACERT')
+    if _os_cacert:
+        auth_settings.update({'OS_CACERT': _os_cacert})
+
     # Validate settings
     for key, settings in list(auth_settings.items()):
         if settings is None:
             logging.error('Missing OS authentication setting: {}'
                           ''.format(key))
             raise exceptions.MissingOSAthenticationException(
-                'One or more OpenStack authetication variables could '
+                'One or more OpenStack authentication variables could '
                 'be found in the environment. Please export the OS_* '
                 'settings into the environment.')
 
     return auth_settings
 
 
-# Openstack Client helpers
-def get_keystone_ip():
+# OpenStack Client helpers
+def get_keystone_ip(model_name=None):
     """Return the IP address to use when communicating with keystone api.
 
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns: IP address
     :rtype: str
     """
-    if get_application_config_option('keystone', 'vip'):
-        return get_application_config_option('keystone', 'vip')
-    unit = model.get_units('keystone')[0]
+    vip_option = get_application_config_option(
+        'keystone',
+        'vip',
+        model_name=model_name)
+    if vip_option:
+        return vip_option
+    unit = model.get_units('keystone', model_name=model_name)[0]
     return unit.public_address
 
 
-def get_keystone_api_version():
+def get_keystone_api_version(model_name=None):
     """Return the keystone api version.
 
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns: Keystone's api version
     :rtype: int
     """
-    os_version = get_current_os_versions('keystone')['keystone']
-    api_version = get_application_config_option('keystone',
-                                                'preferred-api-version')
+    os_version = get_current_os_versions(
+        'keystone',
+        model_name=model_name)['keystone']
+    api_version = get_application_config_option(
+        'keystone',
+        'preferred-api-version',
+        model_name=model_name)
     if os_version >= 'queens':
         api_version = 3
     elif api_version is None:
@@ -1410,15 +2018,21 @@ def get_keystone_api_version():
     return int(api_version)
 
 
-def get_overcloud_auth(address=None):
+def get_overcloud_auth(address=None, model_name=None):
     """Get overcloud OpenStack authentication from the environment.
 
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns: Dictionary of authentication settings
     :rtype: dict
     """
     tls_rid = model.get_relation_id('keystone', 'vault',
+                                    model_name=model_name,
                                     remote_interface_name='certificates')
-    ssl_config = get_application_config_option('keystone', 'ssl_cert')
+    ssl_config = get_application_config_option(
+        'keystone',
+        'ssl_cert',
+        model_name=model_name)
     if tls_rid or ssl_config:
         transport = 'https'
         port = 35357
@@ -1427,11 +2041,15 @@ def get_overcloud_auth(address=None):
         port = 5000
 
     if not address:
-        address = get_keystone_ip()
+        address = get_keystone_ip(model_name=model_name)
+    address = network_utils.format_addr(address)
 
-    password = juju_utils.leader_get('keystone', 'admin_passwd')
+    password = juju_utils.leader_get(
+        'keystone',
+        'admin_passwd',
+        model_name=model_name)
 
-    if get_keystone_api_version() == 2:
+    if get_keystone_api_version(model_name=model_name) == 2:
         # V2 Explicitly, or None when charm does not possess the config key
         logging.info('Using keystone API V2 for overcloud auth')
         auth_settings = {
@@ -1456,18 +2074,80 @@ def get_overcloud_auth(address=None):
             'OS_PROJECT_DOMAIN_NAME': 'admin_domain',
             'API_VERSION': 3,
         }
-    if tls_rid:
-        unit = model.get_first_unit_name('keystone')
-        model.scp_from_unit(
-            unit,
-            KEYSTONE_REMOTE_CACERT,
-            KEYSTONE_LOCAL_CACERT)
-
-        if os.path.exists(KEYSTONE_LOCAL_CACERT):
-            os.chmod(KEYSTONE_LOCAL_CACERT, 0o644)
-            auth_settings['OS_CACERT'] = KEYSTONE_LOCAL_CACERT
+    local_ca_cert = get_remote_ca_cert_file('keystone', model_name=model_name)
+    if local_ca_cert:
+        auth_settings['OS_CACERT'] = local_ca_cert
 
     return auth_settings
+
+
+async def _async_get_remote_ca_cert_file_candidates(application,
+                                                    model_name=None):
+    """Return a list of possible remote CA file names.
+
+    :param application: Name of application to examine.
+    :type application: str
+    :param model_name: Name of model to query.
+    :type model_name: str
+    :returns: List of paths to possible ca files.
+    :rtype: List[str]
+    """
+    cert_files = []
+    for _provider in CERT_PROVIDERS:
+        tls_rid = await model.async_get_relation_id(
+            application,
+            _provider,
+            model_name=model_name,
+            remote_interface_name='certificates')
+        if tls_rid:
+            cert_files.append(
+                REMOTE_CERT_DIR + '/' + CACERT_FILENAME_FORMAT.format(
+                    _provider))
+    cert_files.append(KEYSTONE_REMOTE_CACERT)
+    return cert_files
+
+_get_remote_ca_cert_file_candidates = zaza.model.sync_wrapper(
+    _async_get_remote_ca_cert_file_candidates)
+
+
+def get_remote_ca_cert_file(application, model_name=None):
+    """Collect CA certificate from application.
+
+    :param application: Name of application to collect file from.
+    :type application: str
+    :param model_name: Name of model to query.
+    :type model_name: str
+    :returns: Path to cafile
+    :rtype: str
+    """
+    unit = model.get_first_unit_name(application, model_name=model_name)
+    local_cert_file = None
+    cert_files = _get_remote_ca_cert_file_candidates(
+        application,
+        model_name=model_name)
+    for cert_file in cert_files:
+        _local_cert_file = get_cacert_absolute_path(
+            os.path.basename(cert_file))
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as _tmp_ca:
+            try:
+                model.scp_from_unit(
+                    unit,
+                    cert_file,
+                    _tmp_ca.name)
+            except JujuError:
+                continue
+            # ensure that the path to put the local cacert in actually exists.
+            # The assumption that 'tests/' exists for, say, mojo is false.
+            # Needed due to:
+            # commit: 537473ad3addeaa3d1e4e2d0fd556aeaa4018eb2
+            _dir = os.path.dirname(_local_cert_file)
+            if not os.path.exists(_dir):
+                os.makedirs(_dir)
+            shutil.move(_tmp_ca.name, _local_cert_file)
+            os.chmod(_local_cert_file, 0o644)
+            local_cert_file = _local_cert_file
+            break
+    return local_cert_file
 
 
 def get_urllib_opener():
@@ -1475,14 +2155,15 @@ def get_urllib_opener():
 
     Using urllib.request.urlopen will automatically handle proxies so none
     of this function is needed except we are currently specifying proxies
-    via OS_TEST_HTTP_PROXY rather than http_proxy so a ProxyHandler is needed
+    via TEST_HTTP_PROXY rather than http_proxy so a ProxyHandler is needed
     explicitly stating the proxies.
 
     :returns: An opener which opens URLs via BaseHandlers chained together
     :rtype: urllib.request.OpenerDirector
     """
-    http_proxy = os.getenv('OS_TEST_HTTP_PROXY')
-    logging.debug('OS_TEST_HTTP_PROXY: {}'.format(http_proxy))
+    deploy_env = deployment_env.get_deployment_context()
+    http_proxy = deploy_env.get('TEST_HTTP_PROXY')
+    logging.debug('TEST_HTTP_PROXY: {}'.format(http_proxy))
 
     if http_proxy:
         handler = urllib.request.ProxyHandler({'http': http_proxy})
@@ -1540,7 +2221,8 @@ def download_image(image_url, target_file):
 
 def _resource_reaches_status(resource, resource_id,
                              expected_status='available',
-                             msg='resource'):
+                             msg='resource',
+                             resource_attribute='status'):
     """Wait for an openstack resources status to reach an expected status.
 
        Wait for an openstack resources status to reach an expected status
@@ -1555,20 +2237,22 @@ def _resource_reaches_status(resource, resource_id,
     :param expected_status: status to expect resource to reach
     :type expected_status: str
     :param msg: text to identify purpose in logging
-    :type msy: str
+    :type msg: str
+    :param resource_attribute: Resource attribute to check against
+    :type resource_attribute: str
     :raises: AssertionError
     """
-    resource_status = resource.get(resource_id).status
-    logging.info(resource_status)
-    assert resource_status == expected_status, (
-        "Resource in {} state, waiting for {}" .format(resource_status,
-                                                       expected_status,))
+    resource_status = getattr(resource.get(resource_id), resource_attribute)
+    logging.info("{}: resource {} in {} state, waiting for {}".format(
+        msg, resource_id, resource_status, expected_status))
+    assert resource_status == expected_status
 
 
 def resource_reaches_status(resource,
                             resource_id,
                             expected_status='available',
                             msg='resource',
+                            resource_attribute='status',
                             wait_exponential_multiplier=1,
                             wait_iteration_max_time=60,
                             stop_after_attempt=8,
@@ -1588,6 +2272,8 @@ def resource_reaches_status(resource,
     :type expected_status: str
     :param msg: text to identify purpose in logging
     :type msg: str
+    :param resource_attribute: Resource attribute to check against
+    :type resource_attribute: str
     :param wait_exponential_multiplier: Wait 2^x * wait_exponential_multiplier
                                         seconds between each retry
     :type wait_exponential_multiplier: int
@@ -1609,7 +2295,8 @@ def resource_reaches_status(resource,
         resource,
         resource_id,
         expected_status,
-        msg)
+        msg,
+        resource_attribute)
 
 
 def _resource_removed(resource, resource_id, msg="resource"):
@@ -1624,8 +2311,8 @@ def _resource_removed(resource, resource_id, msg="resource"):
     :raises: AssertionError
     """
     matching = [r for r in resource.list() if r.id == resource_id]
-    logging.debug("Resource {} still present".format(resource_id))
-    assert len(matching) == 0, "Resource {} still present".format(resource_id)
+    logging.debug("{}: resource {} still present".format(msg, resource_id))
+    assert len(matching) == 0
 
 
 def resource_removed(resource,
@@ -1719,7 +2406,8 @@ def delete_volume_backup(cinder, vol_backup_id):
 
 
 def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
-                           visibility='public', container_format='bare'):
+                           visibility='public', container_format='bare',
+                           backend=None, force_import=False):
     """Upload the given image to glance and apply the given label.
 
     :param glance: Authenticated glanceclient
@@ -1736,6 +2424,9 @@ def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
                              format that also contains metadata about the
                              actual virtual machine.
     :type container_format: str
+    :param force_import: Force the use of glance image import
+        instead of direct upload
+    :type force_import: boolean
     :returns: glance image pointer
     :rtype: glanceclient.common.utils.RequestIdProxy
     """
@@ -1745,7 +2436,15 @@ def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
         disk_format=disk_format,
         visibility=visibility,
         container_format=container_format)
-    glance.images.upload(image.id, open(local_path, 'rb'))
+
+    if force_import:
+        logging.info('Forcing image import')
+        glance.images.stage(image.id, open(local_path, 'rb'))
+        glance.images.image_import(
+            image.id, method='glance-direct', backend=backend)
+    else:
+        glance.images.upload(
+            image.id, open(local_path, 'rb'), backend=backend)
 
     resource_reaches_status(
         glance.images,
@@ -1756,7 +2455,10 @@ def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
     return image
 
 
-def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[]):
+def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[],
+                 properties=None, backend=None, disk_format='qcow2',
+                 visibility='public', container_format='bare',
+                 force_import=False):
     """Download the image and upload it to glance.
 
     Download an image from image_url and upload it to glance labelling
@@ -1773,6 +2475,11 @@ def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[]):
     :type image_cache_dir: Option[str, None]
     :param tags: Tags to add to image
     :type tags: list of str
+    :param properties: Properties and values to add to image
+    :type properties: dict
+    :param force_import: Force the use of glance image import
+        instead of direct upload
+    :type force_import: boolean
     :returns: glance image pointer
     :rtype: glanceclient.common.utils.RequestIdProxy
     """
@@ -1786,14 +2493,26 @@ def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[]):
     local_path = os.path.join(image_cache_dir, img_name)
 
     if not os.path.exists(local_path):
+        logging.info('Downloading {} ...'.format(image_url))
         download_image(image_url, local_path)
+    else:
+        logging.info('Cached image found at {} - Skipping download'.format(
+            local_path))
 
-    image = upload_image_to_glance(glance, local_path, image_name)
+    image = upload_image_to_glance(
+        glance, local_path, image_name, backend=backend,
+        disk_format=disk_format, visibility=visibility,
+        container_format=container_format, force_import=force_import)
     for tag in tags:
         result = glance.image_tags.update(image.id, tag)
         logging.debug(
             'applying tag to image: glance.image_tags.update({}, {}) = {}'
             .format(image.id, tags, result))
+
+    logging.info("Setting image properties: {}".format(properties))
+    if properties:
+        result = glance.images.update(image.id, **properties)
+
     return image
 
 
@@ -1824,6 +2543,62 @@ def create_volume(cinder, size, name=None, image=None):
         expected_status='available',
         msg='Volume status wait')
     return volume
+
+
+def attach_volume(nova, volume_id, instance_id):
+    """Attach a cinder volume to a nova instance.
+
+    :param nova: Authenticated nova client
+    :type nova: novaclient.v2.client.Client
+    :param volume_id: the id of the volume to attach
+    :type volume_id: str
+    :param instance_id: the id of the instance to attach the volume to
+    :type instance_id: str
+    :returns: nova volume pointer
+    :rtype: novaclient.v2.volumes.Volume
+    """
+    logging.info(
+        'Attaching volume {} to instance {}'.format(
+            volume_id, instance_id
+        )
+    )
+    return nova.volumes.create_server_volume(server_id=instance_id,
+                                             volume_id=volume_id,
+                                             device='/dev/vdx')
+
+
+def failover_cinder_volume_host(cinder, backend_name='cinder-ceph',
+                                target_backend_id='ceph',
+                                target_status='disabled',
+                                target_replication_status='failed-over'):
+    """Failover Cinder volume host with replication enabled.
+
+    :param cinder: Authenticated cinderclient
+    :type cinder: cinder.Client
+    :param backend_name: Cinder volume backend name with
+                         replication enabled.
+    :type backend_name: str
+    :param target_backend_id: Failover target Cinder backend id.
+    :type target_backend_id: str
+    :param target_status: Target Cinder volume status after failover.
+    :type target_status: str
+    :param target_replication_status: Target Cinder volume replication
+                                      status after failover.
+    :type target_replication_status: str
+    :raises: AssertionError
+    """
+    host = 'cinder@{}'.format(backend_name)
+    logging.info('Failover Cinder volume host %s to backend_id %s',
+                 host, target_backend_id)
+    cinder.services.failover_host(host=host, backend_id=target_backend_id)
+    for attempt in tenacity.Retrying(
+            retry=tenacity.retry_if_exception_type(AssertionError),
+            stop=tenacity.stop_after_attempt(10),
+            wait=tenacity.wait_exponential(multiplier=1, min=2, max=10)):
+        with attempt:
+            svc = cinder.services.list(host=host, binary='cinder-volume')[0]
+            assert svc.status == target_status
+            assert svc.replication_status == target_replication_status
 
 
 def create_volume_backup(cinder, volume_id, name=None):
@@ -1872,7 +2647,7 @@ def create_ssh_key(nova_client, keypair_name, replace=False):
 
     :param nova_client: Authenticated nova client
     :type nova_client: novaclient.v2.client.Client
-    :param keypair_name: Label to apply to keypair in Openstack.
+    :param keypair_name: Label to apply to keypair in OpenStack.
     :type keypair_name: str
     :param replace: Whether to replace the existing keypair if it already
                     exists.
@@ -1895,18 +2670,19 @@ def create_ssh_key(nova_client, keypair_name, replace=False):
 def get_private_key_file(keypair_name):
     """Location of the file containing the private key with the given label.
 
-    :param keypair_name: Label of keypair in Openstack.
+    :param keypair_name: Label of keypair in OpenStack.
     :type keypair_name: str
     :returns: Path to file containing key
     :rtype: str
     """
-    return 'tests/id_rsa_{}'.format(keypair_name)
+    tmp_dir = deployment_env.get_tmpdir()
+    return '{}/id_rsa_{}'.format(tmp_dir, keypair_name)
 
 
 def write_private_key(keypair_name, key):
     """Store supplied private key in file.
 
-    :param keypair_name: Label of keypair in Openstack.
+    :param keypair_name: Label of keypair in OpenStack.
     :type keypair_name: str
     :param key: PEM Encoded Private Key
     :type key: str
@@ -1918,7 +2694,7 @@ def write_private_key(keypair_name, key):
 def get_private_key(keypair_name):
     """Return private key.
 
-    :param keypair_name: Label of keypair in Openstack.
+    :param keypair_name: Label of keypair in OpenStack.
     :type keypair_name: str
     :returns: PEM Encoded Private Key
     :rtype: str
@@ -1932,11 +2708,11 @@ def get_private_key(keypair_name):
 
 
 def get_public_key(nova_client, keypair_name):
-    """Return public key from Openstack.
+    """Return public key from OpenStack.
 
     :param nova_client: Authenticated nova client
     :type nova_client: novaclient.v2.client.Client
-    :param keypair_name: Label of keypair in Openstack.
+    :param keypair_name: Label of keypair in OpenStack.
     :type keypair_name: str
     :returns: OpenSSH Encoded Public Key
     :rtype: str or None
@@ -1953,7 +2729,7 @@ def valid_key_exists(nova_client, keypair_name):
 
     :param nova_client: Authenticated nova client
     :type nova_client: novaclient.v2.client.Client
-    :param keypair_name: Label of keypair in Openstack.
+    :param keypair_name: Label of keypair in OpenStack.
     :type keypair_name: str
     """
     pub_key = get_public_key(nova_client, keypair_name)
@@ -1980,8 +2756,8 @@ def get_ports_from_device_id(neutron_client, device_id):
     return ports
 
 
-@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
-                reraise=True, stop=tenacity.stop_after_attempt(8))
+@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=120),
+                reraise=True, stop=tenacity.stop_after_delay(1800))
 def cloud_init_complete(nova_client, vm_id, bootstring):
     """Wait for cloud init to complete on the given vm.
 
@@ -2000,11 +2776,13 @@ def cloud_init_complete(nova_client, vm_id, bootstring):
     instance = nova_client.servers.find(id=vm_id)
     console_log = instance.get_console_output()
     if bootstring not in console_log:
-        raise exceptions.CloudInitIncomplete()
+        raise exceptions.CloudInitIncomplete(
+            "'{}' not found in console log: {}"
+            .format(bootstring, console_log))
 
 
 @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
-                reraise=True, stop=tenacity.stop_after_attempt(8))
+                reraise=True, stop=tenacity.stop_after_attempt(16))
 def ping_response(ip):
     """Wait for ping to respond on the given IP.
 
@@ -2013,10 +2791,11 @@ def ping_response(ip):
     :raises: subprocess.CalledProcessError
     """
     cmd = ['ping', '-c', '1', '-W', '1', ip]
-    subprocess.check_call(cmd, stdout=subprocess.DEVNULL)
+    subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                   check=True)
 
 
-def ssh_test(username, ip, vm_name, password=None, privkey=None):
+def ssh_test(username, ip, vm_name, password=None, privkey=None, retry=True):
     """SSH to given ip using supplied credentials.
 
     :param username: Username to connect with
@@ -2031,6 +2810,9 @@ def ssh_test(username, ip, vm_name, password=None, privkey=None):
     :param privkey: Private key to authenticate with. If a password is
                     supplied it is used rather than the private key.
     :type privkey: str
+    :param retry: If True, retry a few times if an exception is raised in the
+                  process, e.g. on connection failure.
+    :type retry: boolean
     :raises: exceptions.SSHFailed
     """
     def verify(stdin, stdout, stderr):
@@ -2044,8 +2826,18 @@ def ssh_test(username, ip, vm_name, password=None, privkey=None):
                                                               vm_name))
             raise exceptions.SSHFailed()
 
-    ssh_command(username, ip, vm_name, 'uname -n',
-                password=password, privkey=privkey, verify=verify)
+    # NOTE(lourot): paramiko.SSHClient().connect() calls read_all() which can
+    # raise an EOFError, see
+    # * https://docs.paramiko.org/en/stable/api/packet.html
+    # * https://github.com/paramiko/paramiko/issues/925
+    # So retrying a few times makes sense.
+    for attempt in tenacity.Retrying(
+            stop=tenacity.stop_after_attempt(3 if retry else 1),
+            wait=tenacity.wait_exponential(multiplier=1, min=2, max=10),
+            reraise=True):
+        with attempt:
+            ssh_command(username, ip, vm_name, 'uname -n',
+                        password=password, privkey=privkey, verify=verify)
 
 
 def ssh_command(username,
@@ -2082,7 +2874,7 @@ def ssh_command(username,
         ssh.connect(ip, username=username, password=password)
     else:
         key = paramiko.RSAKey.from_private_key(io.StringIO(privkey))
-        ssh.connect(ip, username=username, password='', pkey=key)
+        ssh.connect(ip, username=username, password=None, pkey=key)
     logging.info("Running {} on {}".format(command, vm_name))
     stdin, stdout, stderr = ssh.exec_command(command)
     if verify and callable(verify):
@@ -2239,7 +3031,8 @@ def get_keystone_session_from_relation(client_app,
                                        identity_app='keystone',
                                        relation_name='identity-service',
                                        scope='PROJECT',
-                                       verify=None):
+                                       verify=None,
+                                       model_name=None):
     """Extract credentials information from a relation & return a session.
 
     :param client_app: Name of application receiving credentials.
@@ -2255,16 +3048,19 @@ def get_keystone_session_from_relation(client_app,
                        False - do not verify,
                        None  - defer to requests library to find certs,
                        str   - path to a CA cert bundle)
+    :param model_name: Name of model to query.
+    :type model_name: str
     :returns: Keystone session object
     :rtype: keystoneauth1.session.Session object
     """
     relation = juju_utils.get_relation_from_unit(
         client_app,
         identity_app,
-        relation_name)
+        relation_name,
+        model_name=model_name)
 
     api_version = int(relation.get('api_version', 2))
-    creds = get_overcloud_auth()
+    creds = get_overcloud_auth(model_name=model_name)
     creds['OS_USERNAME'] = relation['service_username']
     creds['OS_PASSWORD'] = relation['service_password']
     creds['OS_PROJECT_NAME'] = relation['service_tenant']

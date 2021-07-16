@@ -16,6 +16,7 @@
 
 import logging
 import os
+import sys
 
 
 def parse_arg(options, arg, multiargs=False):
@@ -51,6 +52,6 @@ def setup_logging():
     rootLogger = logging.getLogger()
     rootLogger.setLevel('INFO')
     if not rootLogger.hasHandlers():
-        consoleHandler = logging.StreamHandler()
+        consoleHandler = logging.StreamHandler(sys.stdout)
         consoleHandler.setFormatter(logFormatter)
         rootLogger.addHandler(consoleHandler)

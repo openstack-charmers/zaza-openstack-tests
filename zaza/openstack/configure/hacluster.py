@@ -66,6 +66,23 @@ def get_nodes_status(service_name, model_name=None):
     return status
 
 
+def remove_node(service_name, node_name, model_name=None):
+    """Remove given node from pacemaker.
+
+    :param service_name: Name of Juju application to run query against.
+    :type service_name: str
+    :param node_name: Name of node to delete.
+    :type node_name: str
+    :param model_name: Name of model unit_name resides in.
+    :type model_name: str
+    """
+    remove_cmd = 'crm_node --force -R {}'.format(node_name)
+    zaza.model.run_on_leader(
+        service_name,
+        remove_cmd,
+        model_name=model_name)
+
+
 def check_all_nodes_online(service_name, model_name=None):
     """Return whether all the crm nodes are online.
 
