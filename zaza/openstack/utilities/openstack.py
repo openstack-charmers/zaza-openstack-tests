@@ -2194,8 +2194,9 @@ def find_cirros_image(arch):
     :returns: URL for latest cirros image
     :rtype: str
     """
+    http_connection_timeout = 10  # seconds
     opener = get_urllib_opener()
-    f = opener.open(CIRROS_RELEASE_URL)
+    f = opener.open(CIRROS_RELEASE_URL, timeout=http_connection_timeout)
     version = f.read().strip().decode()
     cirros_img = 'cirros-{}-{}-disk.img'.format(version, arch)
     return '{}/{}/{}'.format(CIRROS_IMAGE_URL, version, cirros_img)
