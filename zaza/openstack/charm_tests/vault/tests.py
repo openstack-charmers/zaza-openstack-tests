@@ -17,16 +17,16 @@
 """Collection of tests for vault."""
 
 import contextlib
-import hvac
 import json
 import logging
-import time
 import unittest
 import uuid
 import tempfile
-import tenacity
 
 import requests
+import tenacity
+from hvac.exceptions import InternalServerError
+
 import zaza.charm_lifecycle.utils as lifecycle_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.charm_tests.vault.utils as vault_utils
@@ -34,6 +34,21 @@ import zaza.openstack.utilities.cert
 import zaza.openstack.utilities.openstack
 import zaza.model
 import zaza.utilities.juju as juju_utils
+
+
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(InternalServerError),
+    retry_error_callback=lambda retry_state: False,
+    wait=tenacity.wait_fixed(2),  # interval between retries
+    stop=tenacity.stop_after_attempt(10))  # retry 10 times
+def retry_hvac_client_authenticated(client):
+    """Check hvac client is authenticated with retry.
+
+    If is_authenticated() raise exception for all retries,
+    return False(which is done by `retry_error_callback`).
+    Otherwise, return whatever the returned value.
+    """
+    return client.hvac_client.is_authenticated()
 
 
 class BaseVaultTest(test_utils.OpenStackBaseTest):
@@ -189,17 +204,7 @@ class VaultTest(BaseVaultTest):
     def test_all_clients_authenticated(self):
         """Check all vault clients are authenticated."""
         for client in self.clients:
-            for i in range(1, 10):
-                try:
-                    self.assertTrue(client.hvac_client.is_authenticated())
-                except hvac.exceptions.InternalServerError:
-                    # XXX time.sleep roundup
-                    # https://github.com/openstack-charmers/zaza-openstack-tests/issues/46
-                    time.sleep(2)
-                else:
-                    break
-            else:
-                self.assertTrue(client.hvac_client.is_authenticated())
+            self.assertTrue(retry_hvac_client_authenticated(client))
 
     def check_read(self, key, value):
         """Check reading the key from all vault units."""

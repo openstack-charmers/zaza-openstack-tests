@@ -20,9 +20,9 @@ import base64
 import hvac
 import requests
 import tempfile
-import time
 import urllib3
 import yaml
+import tenacity
 
 import collections
 
@@ -240,6 +240,15 @@ def extract_lead_unit_client(
                        .format(application_name))
 
 
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type((
+        ConnectionRefusedError,
+        urllib3.exceptions.NewConnectionError,
+        urllib3.exceptions.MaxRetryError,
+        requests.exceptions.ConnectionError)),
+    reraise=True,  # if all retries failed, reraise the last exception
+    wait=tenacity.wait_fixed(2),  # interval between retries
+    stop=tenacity.stop_after_attempt(10))  # retry 10 times
 def is_initialized(client):
     """Check if vault is initialized.
 
@@ -247,23 +256,10 @@ def is_initialized(client):
     :type client: CharmVaultClient
     :returns: Whether vault is initialized
     :rtype: bool
+
+    Raise the last exception if no value returned after retries.
     """
-    initialized = False
-    for i in range(1, 10):
-        try:
-            initialized = client.hvac_client.is_initialized()
-        except (ConnectionRefusedError,
-                urllib3.exceptions.NewConnectionError,
-                urllib3.exceptions.MaxRetryError,
-                requests.exceptions.ConnectionError):
-            # XXX time.sleep roundup
-            # https://github.com/openstack-charmers/zaza-openstack-tests/issues/46
-            time.sleep(2)
-        else:
-            break
-    else:
-        raise Exception("Cannot connect")
-    return initialized
+    return client.hvac_client.is_initialized()
 
 
 def ensure_secret_backend(client):
