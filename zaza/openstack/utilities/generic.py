@@ -709,13 +709,10 @@ def attach_file_resource(application_name, resource_name,
 
 
 def get_leaders_and_non_leaders(application_name):
-    """Get leader node and non-leader nodes of percona.
+    """Get leader node and non-leader nodes.
 
-    Update and set on the object the leader node and list of non-leader
-    nodes.
-
-    :returns: None
-    :rtype: None
+    :returns: leader, list of non-leader
+    :rtype: str, list of str
     """
     status = model.get_status().applications[application_name]
     leader = None
