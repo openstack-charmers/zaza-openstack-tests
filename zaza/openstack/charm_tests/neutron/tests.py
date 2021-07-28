@@ -21,6 +21,7 @@
 
 
 import copy
+import json
 import logging
 import tenacity
 
@@ -246,6 +247,117 @@ class NeutronGatewayTest(NeutronPluginApiSharedTests):
             services.append('neutron-lbaasv2-agent')
 
         return services
+
+
+class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
+    """Test status actions of Neutron Gateway Charm.
+
+    actions:
+      * get-status-routers
+      * get-status-dhcp
+      * get-status-lb
+    """
+
+    @classmethod
+    def setUpClass(cls, application_name='neutron-gateway', model_alias=None):
+        """Run class setup for running Neutron Gateway tests."""
+        super(NeutronGatewayStatusActionsTest, cls).setUpClass(application_name,
+                                                               model_alias)
+        # set up clients
+        cls.neutron_client = (
+            openstack_utils.get_neutron_session_client(cls.keystone_session))
+
+    def tearDown(self):
+        """Cleanup loadbalancers if there are any left over."""
+        super(NeutronGatewayStatusActionsTest, self).tearDown()
+        load_balancers = self.neutron_client.list_loadbalancers().get('loadbalancers',
+                                                                      [])
+        for lbaas in load_balancers:
+            self.neutron_client.delete_loadbalancer(lbaas['id'])
+
+    def test_get_status_routers(self):
+        """Test that routers reported by neutron client match those from action."""
+        ngw_unit = zaza.model.get_units(self.application_name,
+                                        model_name=self.model_name)[0]
+        routers_from_client = self.neutron_client.list_routers().get('routers', [])
+
+        if not routers_from_client:
+            self.fail('At least one router must be configured for this test to pass.')
+
+        result = zaza.model.run_action(ngw_unit.entity_id,
+                                       'get-status-routers',
+                                       model_name=self.model_name,
+                                       action_params={"format": "json"})
+        self.assertEqual(result.status, 'completed')
+        action_data = result.data.get('results', {}).get('router-list')
+        routers_from_action = json.loads(action_data)
+
+        ids_from_client = {router['id'] for router in routers_from_client}
+        ids_from_action = {router['id'] for router in routers_from_action}
+
+        self.assertEqual(ids_from_action, ids_from_client)
+
+    def test_get_status_dhcp(self):
+        """Test that DHCP networks reported by neutron client match those from action."""
+        ngw_unit = zaza.model.get_units(self.application_name,
+                                        model_name=self.model_name)[0]
+        networks_from_client = self.neutron_client.list_networks().get('networks', [])
+
+        if not networks_from_client:
+            self.fail('At least one network must be configured for this test to pass.')
+
+        result = zaza.model.run_action(ngw_unit.entity_id,
+                                       'get-status-dhcp',
+                                       model_name=self.model_name,
+                                       action_params={"format": "json"})
+        self.assertEqual(result.status, 'completed')
+        action_data = result.data.get('results', {}).get('dhcp-networks')
+        networks_from_action = json.loads(action_data)
+
+        ids_from_client = {net['id'] for net in networks_from_client}
+        ids_from_action = {net['id'] for net in networks_from_action}
+
+        self.assertEqual(ids_from_action, ids_from_client)
+
+    def test_get_status_load_balancers(self):
+        """Test that loadbalancers reported by neutron client match those from action."""
+        current_release = openstack_utils.get_os_release()
+        bionic_train = openstack_utils.get_os_release('bionic_train')
+        if current_release >= bionic_train:
+            self.skipTest('LBaasV2 is not supported in this version.')
+
+        # create LBaasV2 for the purpose of this test
+        lbaas_name = 'test_lbaas'
+
+        subnet_list = self.neutron_client.list_subnets(name='private_subnet').\
+            get('subnets', [])
+
+        if not subnet_list:
+            raise RuntimeError('Expected subnet "private_subnet" is not configured.')
+
+        subnet = subnet_list[0]
+        loadbalancer_data = {'loadbalancer': {'name': lbaas_name,
+                                              'vip_subnet_id': subnet['id']}}
+        self.neutron_client.create_loadbalancer(body=loadbalancer_data)
+
+        # test that client and action report same data
+        ngw_unit = zaza.model.get_units(self.application_name,
+                                        model_name=self.model_name)[0]
+        lbaas_from_client = self.neutron_client.list_loadbalancers()\
+            .get('loadbalancers', [])
+
+        result = zaza.model.run_action(ngw_unit.entity_id,
+                                       'get-status-lb',
+                                       model_name=self.model_name,
+                                       action_params={"format": "json"})
+        self.assertEqual(result.status, 'completed')
+        action_data = result.data.get('results', {}).get('load-balancers')
+        lbaas_from_action = json.loads(action_data)
+
+        ids_from_client = {lbaas['id'] for lbaas in lbaas_from_client}
+        ids_from_action = {lbaas['id'] for lbaas in lbaas_from_action}
+
+        self.assertEqual(ids_from_action, ids_from_client)
 
 
 class NeutronCreateNetworkTest(test_utils.OpenStackBaseTest):
