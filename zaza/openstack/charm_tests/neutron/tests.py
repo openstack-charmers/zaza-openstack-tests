@@ -258,6 +258,8 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
       * get-status-lb
     """
 
+    SKIP_LBAAS_TESTS = True
+
     @classmethod
     def setUpClass(cls, application_name='neutron-gateway', model_alias=None):
         """Run class setup for running Neutron Gateway tests."""
@@ -267,13 +269,19 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
         cls.neutron_client = (
             openstack_utils.get_neutron_session_client(cls.keystone_session))
 
+        # Loadbalancer tests not supported on Train and above
+        current_release = openstack_utils.get_os_release()
+        bionic_train = openstack_utils.get_os_release('bionic_train')
+        cls.SKIP_LBAAS_TESTS = current_release >= bionic_train
+
     def tearDown(self):
         """Cleanup loadbalancers if there are any left over."""
         super(NeutronGatewayStatusActionsTest, self).tearDown()
-        load_balancers = self.neutron_client.list_loadbalancers().get('loadbalancers',
-                                                                      [])
-        for lbaas in load_balancers:
-            self.neutron_client.delete_loadbalancer(lbaas['id'])
+        if not self.SKIP_LBAAS_TESTS:
+            load_balancers = self.neutron_client.list_loadbalancers().get('loadbalancers',
+                                                                          [])
+            for lbaas in load_balancers:
+                self.neutron_client.delete_loadbalancer(lbaas['id'])
 
     def test_get_status_routers(self):
         """Test that routers reported by neutron client match those from action."""
@@ -321,9 +329,7 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
 
     def test_get_status_load_balancers(self):
         """Test that loadbalancers reported by neutron client match those from action."""
-        current_release = openstack_utils.get_os_release()
-        bionic_train = openstack_utils.get_os_release('bionic_train')
-        if current_release >= bionic_train:
+        if self.SKIP_LBAAS_TESTS:
             self.skipTest('LBaasV2 is not supported in this version.')
 
         # create LBaasV2 for the purpose of this test
