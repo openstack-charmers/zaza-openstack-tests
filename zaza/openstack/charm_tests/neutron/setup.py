@@ -82,7 +82,7 @@ def basic_overcloud_network(limit_gws=None):
     # Get keystone session
     keystone_session = openstack_utils.get_overcloud_keystone_session()
 
-    # Get optional use_juju_wait for netw ork option
+    # Get optional use_juju_wait for network option
     options = (lifecycle_utils
                .get_charm_config(fatal=False)
                .get('configure_options', {}))
