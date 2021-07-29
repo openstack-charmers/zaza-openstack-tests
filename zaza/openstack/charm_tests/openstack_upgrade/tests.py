@@ -19,16 +19,21 @@
 import logging
 import unittest
 
+import zaza.model
+import zaza.global_options
+
 from zaza.openstack.utilities import (
     cli as cli_utils,
     upgrade_utils as upgrade_utils,
     openstack as openstack_utils,
     openstack_upgrade as openstack_upgrade,
+    exceptions,
+    generic,
 )
 from zaza.openstack.charm_tests.nova.tests import LTSGuestCreateTest
 
 
-class OpenStackUpgradeVMLaunchBase(object):
+class OpenStackUpgradeVMLaunchBase(unittest.TestCase):
     """A base class to peform a simple validation on the cloud.
 
     This wraps an OpenStack upgrade with a VM launch before and after the
@@ -97,15 +102,19 @@ class OpenStackUpgradeTestsFocalUssuri(OpenStackUpgradeVMLaunchBase):
         openstack_upgrade.run_upgrade_tests("cloud:focal-victoria")
 
 
-class OpenStackUpgradeTests(OpenStackUpgradeVMLaunchBase):
+class OpenStackUpgradeTestsByOption(OpenStackUpgradeVMLaunchBase):
     """A Principal Class to encapsulate OpenStack Upgrade Tests.
 
-    A generic Test class that can discover which Ubuntu version and OpenStack
-    version to upgrade from.
+    A generic Test class that uses the options in the tests.yaml to use a charm
+    to detect the Ubuntu and OpenStack versions and then workout what to
+    upgrade to.
 
-    TODO: Not used at present.  Use the declarative tests directly that choose
-    the version to upgrade to.  The functions that this class depends on need a
-    bit more work regarding how the determine which version to go to.
+        tests_options:
+          openstack-upgrade:
+            detect-charm: keystone
+
+    This will use the octavia application, detect the ubuntu version and then
+    read the config to discover the current OpenStack version.
     """
 
     @classmethod
@@ -122,16 +131,30 @@ class OpenStackUpgradeTests(OpenStackUpgradeVMLaunchBase):
         determine which ubuntu version to work from.  Don't use until we can
         make it better.
         """
-        # TODO: work out the most recent Ubuntu version; we assume this is the
-        # version that OpenStack is running on.
-        ubuntu_version = "focal"
-        logging.info("Getting all principle applications ...")
-        principle_services = upgrade_utils.get_all_principal_applications()
+        # get the tests_options / openstack-upgrade.detect-using-charm so that
+        # the ubuntu version and OpenStack version can be detected.
+        try:
+            detect_charm = (
+                zaza.global_options.get_options()
+                .openstack_upgrade.detect_using_charm)
+        except KeyError:
+            raise exceptions.InvalidTestConfig(
+                "Missing tests_options.openstack-upgrade.detect-charm config.")
+
+        unit = zaza.model.get_lead_unit(detect_charm)
+        ubuntu_version = generic.get_series(unit)
+        logging.info("Current version detected from {} is {}"
+                     .format(detect_charm, ubuntu_version))
+
         logging.info(
-            "Getting OpenStack vesions from principal applications ...")
+            "Getting OpenStack version from %s ..." % detect_charm)
         current_versions = openstack_utils.get_current_os_versions(
-            principle_services)
-        logging.info("current versions: %s" % current_versions)
+            [detect_charm])
+        if not current_versions:
+            raise exceptions.ApplicationNotFound(
+                "No version found for {}?".format(detect_charm))
+
+        logging.info("current version: %s" % current_versions[detect_charm])
         # Find the lowest value openstack release across all services and make
         # sure all servcies are upgraded to one release higher than the lowest
         from_version = upgrade_utils.get_lowest_openstack_version(
@@ -140,7 +163,6 @@ class OpenStackUpgradeTests(OpenStackUpgradeVMLaunchBase):
         to_version = upgrade_utils.determine_next_openstack_release(
             from_version)[1]
         logging.info("to version: %s" % to_version)
-        # TODO: need to determine the ubuntu base verion that is being upgraded
         target_source = upgrade_utils.determine_new_source(
             ubuntu_version, from_version, to_version, single_increment=True)
         logging.info("target source: %s" % target_source)
