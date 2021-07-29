@@ -269,10 +269,13 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
         cls.neutron_client = (
             openstack_utils.get_neutron_session_client(cls.keystone_session))
 
-        # Loadbalancer tests not supported on Train and above
+        # Loadbalancer tests not supported on Train and above and on
+        # releases Mitaka and below
         current_release = openstack_utils.get_os_release()
         bionic_train = openstack_utils.get_os_release('bionic_train')
-        cls.SKIP_LBAAS_TESTS = current_release >= bionic_train
+        xenial_mitaka = openstack_utils.get_os_release('xenial_mitaka')
+        cls.SKIP_LBAAS_TESTS = (xenial_mitaka <= current_release or
+                                current_release >= bionic_train)
 
     def tearDown(self):
         """Cleanup loadbalancers if there are any left over."""
