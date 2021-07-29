@@ -263,8 +263,8 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
     @classmethod
     def setUpClass(cls, application_name='neutron-gateway', model_alias=None):
         """Run class setup for running Neutron Gateway tests."""
-        super(NeutronGatewayStatusActionsTest, cls).setUpClass(application_name,
-                                                               model_alias)
+        super(NeutronGatewayStatusActionsTest, cls).setUpClass(
+            application_name, model_alias)
         # set up clients
         cls.neutron_client = (
             openstack_utils.get_neutron_session_client(cls.keystone_session))
@@ -278,19 +278,21 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
         """Cleanup loadbalancers if there are any left over."""
         super(NeutronGatewayStatusActionsTest, self).tearDown()
         if not self.SKIP_LBAAS_TESTS:
-            load_balancers = self.neutron_client.list_loadbalancers().get('loadbalancers',
-                                                                          [])
+            load_balancers = self.neutron_client.list_loadbalancers().get(
+                'loadbalancers', [])
             for lbaas in load_balancers:
                 self.neutron_client.delete_loadbalancer(lbaas['id'])
 
     def test_get_status_routers(self):
-        """Test that routers reported by neutron client match those from action."""
+        """Test that get-status-routers reports correct neutron routers."""
         ngw_unit = zaza.model.get_units(self.application_name,
                                         model_name=self.model_name)[0]
-        routers_from_client = self.neutron_client.list_routers().get('routers', [])
+        routers_from_client = self.neutron_client.list_routers().get(
+            'routers', [])
 
         if not routers_from_client:
-            self.fail('At least one router must be configured for this test to pass.')
+            self.fail('At least one router must be configured for this test '
+                      'to pass.')
 
         result = zaza.model.run_action(ngw_unit.entity_id,
                                        'get-status-routers',
@@ -306,13 +308,15 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
         self.assertEqual(ids_from_action, ids_from_client)
 
     def test_get_status_dhcp(self):
-        """Test that DHCP networks reported by neutron client match those from action."""
+        """Test that get-status-dhcp reports correct DHCP networks."""
         ngw_unit = zaza.model.get_units(self.application_name,
                                         model_name=self.model_name)[0]
-        networks_from_client = self.neutron_client.list_networks().get('networks', [])
+        networks_from_client = self.neutron_client.list_networks().get(
+            'networks', [])
 
         if not networks_from_client:
-            self.fail('At least one network must be configured for this test to pass.')
+            self.fail('At least one network must be configured for this test '
+                      'to pass.')
 
         result = zaza.model.run_action(ngw_unit.entity_id,
                                        'get-status-dhcp',
@@ -328,7 +332,7 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
         self.assertEqual(ids_from_action, ids_from_client)
 
     def test_get_status_load_balancers(self):
-        """Test that loadbalancers reported by neutron client match those from action."""
+        """Test that get-status-lb reports correct loadbalancers."""
         if self.SKIP_LBAAS_TESTS:
             self.skipTest('LBaasV2 is not supported in this version.')
 
@@ -339,7 +343,8 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
             get('subnets', [])
 
         if not subnet_list:
-            raise RuntimeError('Expected subnet "private_subnet" is not configured.')
+            raise RuntimeError('Expected subnet "private_subnet" is not '
+                               'configured.')
 
         subnet = subnet_list[0]
         loadbalancer_data = {'loadbalancer': {'name': lbaas_name,
