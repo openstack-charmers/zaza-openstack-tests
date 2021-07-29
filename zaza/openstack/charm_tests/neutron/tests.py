@@ -283,8 +283,27 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
             for lbaas in load_balancers:
                 self.neutron_client.delete_loadbalancer(lbaas['id'])
 
+    def _assert_result_match(self, action_result, resource_list,
+                             resource_name):
+        """Assert that action_result contains same data as resource_list."""
+        # make sure that action completed successfully
+        self.assertEqual(action_result.status, 'completed')
+
+        # extract data from juju action
+        action_data = action_result.data.get('results', {}).get(resource_name)
+        resources_from_action = json.loads(action_data)
+
+        # pull resource IDs from expected resource list and juju action data
+        expected_resource_ids = {resource['id'] for resource in resource_list}
+        result_resource_ids = {resource['id'] for resource in
+                               resources_from_action}
+
+        # assert that juju action returned expected resources
+        self.assertEqual(result_resource_ids, expected_resource_ids)
+
     def test_get_status_routers(self):
         """Test that get-status-routers reports correct neutron routers."""
+        # fetch neutron routers using neutron client
         ngw_unit = zaza.model.get_units(self.application_name,
                                         model_name=self.model_name)[0]
         routers_from_client = self.neutron_client.list_routers().get(
@@ -294,21 +313,18 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
             self.fail('At least one router must be configured for this test '
                       'to pass.')
 
+        # fetch neutron routers using juju-action
         result = zaza.model.run_action(ngw_unit.entity_id,
                                        'get-status-routers',
                                        model_name=self.model_name,
                                        action_params={"format": "json"})
-        self.assertEqual(result.status, 'completed')
-        action_data = result.data.get('results', {}).get('router-list')
-        routers_from_action = json.loads(action_data)
 
-        ids_from_client = {router['id'] for router in routers_from_client}
-        ids_from_action = {router['id'] for router in routers_from_action}
-
-        self.assertEqual(ids_from_action, ids_from_client)
+        # assert that data from neutron client match data from juju action
+        self._assert_result_match(result, routers_from_client, 'router-list')
 
     def test_get_status_dhcp(self):
         """Test that get-status-dhcp reports correct DHCP networks."""
+        # fetch DHCP networks using neutron client
         ngw_unit = zaza.model.get_units(self.application_name,
                                         model_name=self.model_name)[0]
         networks_from_client = self.neutron_client.list_networks().get(
@@ -318,18 +334,15 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
             self.fail('At least one network must be configured for this test '
                       'to pass.')
 
+        # fetch DHCP networks using juju-action
         result = zaza.model.run_action(ngw_unit.entity_id,
                                        'get-status-dhcp',
                                        model_name=self.model_name,
                                        action_params={"format": "json"})
-        self.assertEqual(result.status, 'completed')
-        action_data = result.data.get('results', {}).get('dhcp-networks')
-        networks_from_action = json.loads(action_data)
 
-        ids_from_client = {net['id'] for net in networks_from_client}
-        ids_from_action = {net['id'] for net in networks_from_action}
-
-        self.assertEqual(ids_from_action, ids_from_client)
+        # assert that data from neutron client match data from juju action
+        self._assert_result_match(result, networks_from_client,
+                                  'dhcp-networks')
 
     def test_get_status_load_balancers(self):
         """Test that get-status-lb reports correct loadbalancers."""
@@ -339,8 +352,8 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
         # create LBaasV2 for the purpose of this test
         lbaas_name = 'test_lbaas'
 
-        subnet_list = self.neutron_client.list_subnets(name='private_subnet').\
-            get('subnets', [])
+        subnet_list = self.neutron_client.list_subnets(
+            name='private_subnet').get('subnets', [])
 
         if not subnet_list:
             raise RuntimeError('Expected subnet "private_subnet" is not '
@@ -354,21 +367,15 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
         # test that client and action report same data
         ngw_unit = zaza.model.get_units(self.application_name,
                                         model_name=self.model_name)[0]
-        lbaas_from_client = self.neutron_client.list_loadbalancers()\
-            .get('loadbalancers', [])
+        lbaas_from_client = self.neutron_client.list_loadbalancers().get(
+            'loadbalancers', [])
 
         result = zaza.model.run_action(ngw_unit.entity_id,
                                        'get-status-lb',
                                        model_name=self.model_name,
                                        action_params={"format": "json"})
-        self.assertEqual(result.status, 'completed')
-        action_data = result.data.get('results', {}).get('load-balancers')
-        lbaas_from_action = json.loads(action_data)
 
-        ids_from_client = {lbaas['id'] for lbaas in lbaas_from_client}
-        ids_from_action = {lbaas['id'] for lbaas in lbaas_from_action}
-
-        self.assertEqual(ids_from_action, ids_from_client)
+        self._assert_result_match(result, lbaas_from_client, 'load-balancers')
 
 
 class NeutronCreateNetworkTest(test_utils.OpenStackBaseTest):
