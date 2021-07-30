@@ -274,17 +274,8 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
         current_release = openstack_utils.get_os_release()
         bionic_train = openstack_utils.get_os_release('bionic_train')
         xenial_mitaka = openstack_utils.get_os_release('xenial_mitaka')
-        cls.SKIP_LBAAS_TESTS = (xenial_mitaka <= current_release or
+        cls.SKIP_LBAAS_TESTS = (current_release <= xenial_mitaka or
                                 current_release >= bionic_train)
-
-    def tearDown(self):
-        """Cleanup loadbalancers if there are any left over."""
-        super(NeutronGatewayStatusActionsTest, self).tearDown()
-        if not self.SKIP_LBAAS_TESTS:
-            load_balancers = self.neutron_client.list_loadbalancers().get(
-                'loadbalancers', [])
-            for lbaas in load_balancers:
-                self.neutron_client.delete_loadbalancer(lbaas['id'])
 
     def _assert_result_match(self, action_result, resource_list,
                              resource_name):
@@ -352,33 +343,45 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
         if self.SKIP_LBAAS_TESTS:
             self.skipTest('LBaasV2 is not supported in this version.')
 
-        # create LBaasV2 for the purpose of this test
-        lbaas_name = 'test_lbaas'
+        loadbalancer_id = None
 
-        subnet_list = self.neutron_client.list_subnets(
-            name='private_subnet').get('subnets', [])
+        try:
+            # create LBaasV2 for the purpose of this test
+            lbaas_name = 'test_lbaas'
+            subnet_list = self.neutron_client.list_subnets(
+                name='private_subnet').get('subnets', [])
 
-        if not subnet_list:
-            raise RuntimeError('Expected subnet "private_subnet" is not '
-                               'configured.')
+            if not subnet_list:
+                raise RuntimeError('Expected subnet "private_subnet" is not '
+                                   'configured.')
 
-        subnet = subnet_list[0]
-        loadbalancer_data = {'loadbalancer': {'name': lbaas_name,
-                                              'vip_subnet_id': subnet['id']}}
-        self.neutron_client.create_loadbalancer(body=loadbalancer_data)
+            subnet = subnet_list[0]
+            loadbalancer_data = {'loadbalancer': {'name': lbaas_name,
+                                                  'vip_subnet_id': subnet['id']
+                                                  }
+                                 }
+            loadbalancer = self.neutron_client.create_loadbalancer(
+                body=loadbalancer_data)
+            loadbalancer_id = loadbalancer['loadbalancer']['id']
 
-        # test that client and action report same data
-        ngw_unit = zaza.model.get_units(self.application_name,
-                                        model_name=self.model_name)[0]
-        lbaas_from_client = self.neutron_client.list_loadbalancers().get(
-            'loadbalancers', [])
+            # test that client and action report same data
+            ngw_unit = zaza.model.get_units(self.application_name,
+                                            model_name=self.model_name)[0]
+            lbaas_from_client = self.neutron_client.list_loadbalancers().get(
+                'loadbalancers', [])
 
-        result = zaza.model.run_action(ngw_unit.entity_id,
-                                       'get-status-lb',
-                                       model_name=self.model_name,
-                                       action_params={"format": "json"})
+            result = zaza.model.run_action(ngw_unit.entity_id,
+                                           'get-status-lb',
+                                           model_name=self.model_name,
+                                           action_params={"format": "json"})
 
-        self._assert_result_match(result, lbaas_from_client, 'load-balancers')
+            self._assert_result_match(result, lbaas_from_client,
+                                      'load-balancers')
+        except Exception as exc:
+            raise exc
+        finally:
+            if loadbalancer_id:
+                self.neutron_client.delete_loadbalancer(loadbalancer_id)
 
 
 class NeutronCreateNetworkTest(test_utils.OpenStackBaseTest):
