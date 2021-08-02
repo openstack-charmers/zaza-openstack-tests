@@ -271,11 +271,10 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
 
         # Loadbalancer tests not supported on Train and above and on
         # releases Mitaka and below
-        current_release = openstack_utils.get_os_release()
+        current = openstack_utils.get_os_release()
         bionic_train = openstack_utils.get_os_release('bionic_train')
         xenial_mitaka = openstack_utils.get_os_release('xenial_mitaka')
-        cls.SKIP_LBAAS_TESTS = (current_release <= xenial_mitaka or
-                                current_release >= bionic_train)
+        cls.SKIP_LBAAS_TESTS = not (xenial_mitaka > current < bionic_train)
 
     def _assert_result_match(self, action_result, resource_list,
                              resource_name):
@@ -378,8 +377,6 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
 
             self._assert_result_match(result, lbaas_from_client,
                                       'load-balancers')
-        except Exception as exc:
-            raise exc
         finally:
             if loadbalancer_id:
                 self.neutron_client.delete_loadbalancer(loadbalancer_id)
