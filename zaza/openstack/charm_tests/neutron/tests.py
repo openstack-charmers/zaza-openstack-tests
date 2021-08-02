@@ -281,7 +281,8 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
                              resource_name):
         """Assert that action_result contains same data as resource_list."""
         # make sure that action completed successfully
-        self.assertEqual(action_result.status, 'completed')
+        if action_result.status != 'completed':
+            self.fail('Juju Action failed: {}'.format(action_result.message))
 
         # extract data from juju action
         action_data = action_result.data.get('results', {}).get(resource_name)
