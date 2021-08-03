@@ -18,6 +18,7 @@
 
 import logging
 import tenacity
+import unittest
 
 import zaza.model as zaza_model
 
@@ -423,6 +424,21 @@ class TrilioBaseTest(test_utils.OpenStackBaseTest):
 
         logging.info("Initiating restore")
         workloadmgrcli.oneclick_restore(snapshot_id)
+
+    def test_post_upgrade_configuration_action(self):
+        """Test that the action runs succesfully."""
+        actions = zaza_model.get_actions(
+            self.application_name)
+        if 'post-upgrade-configuration' not in actions:
+            raise unittest.SkipTest(
+                'Action post-upgrade-configuration not defined')
+
+        generic_utils.assertActionRanOK(zaza_model.run_action(
+            self.lead_unit,
+            'post-upgrade-configuration',
+            action_params={},
+            model_name=self.model_name)
+        )
 
 
 class TrilioGhostNFSShareTest(TrilioBaseTest):
