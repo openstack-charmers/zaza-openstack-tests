@@ -33,8 +33,13 @@ class TempestTest():
         """Run tempest tests as specified in tests/tests.yaml.
 
         Test keys are parsed from ['tests_options']['tempest']['model'], where
-        valid test keys are: smoke (bool), whitelist (list of tests), blacklist
-        (list of tests), regex (list of regex's), and keep-workspace (bool).
+        valid test keys are:
+          - smoke (bool)
+          - include-list (list of tests)
+          - exclude-list (list of tests)
+          - regex (list of regex's)
+          - exclude-regex (list of regex's)
+          - keep-workspace (bool)
 
         :returns: Status of tempest run
         :rtype: bool
@@ -57,23 +62,23 @@ class TempestTest():
                 tempest_options.extend(
                     ['--regex',
                      ' '.join([reg for reg in config.get('regex')])])
-            if config.get('black-regex'):
+            if config.get('exclude-regex'):
                 tempest_options.extend(
-                    ['--black-regex',
-                     ' '.join([reg for reg in config.get('black-regex')])])
+                    ['--exclude-regex',
+                     ' '.join([reg for reg in config.get('exclude-regex')])])
             with tempfile.TemporaryDirectory() as tmpdirname:
-                if config.get('whitelist'):
-                    white_file = os.path.join(tmpdirname, 'white.cfg')
-                    with open(white_file, 'w') as f:
-                        f.write('\n'.join(config.get('whitelist')))
+                if config.get('include-list'):
+                    include_file = os.path.join(tmpdirname, 'include.cfg')
+                    with open(include_file, 'w') as f:
+                        f.write('\n'.join(config.get('include-list')))
                         f.write('\n')
-                    tempest_options.extend(['--whitelist-file', white_file])
-                if config.get('blacklist'):
-                    black_file = os.path.join(tmpdirname, 'black.cfg')
-                    with open(black_file, 'w') as f:
-                        f.write('\n'.join(config.get('blacklist')))
+                    tempest_options.extend(['--include-list', include_file])
+                if config.get('exclude-list'):
+                    exclude_file = os.path.join(tmpdirname, 'exclude.cfg')
+                    with open(exclude_file, 'w') as f:
+                        f.write('\n'.join(config.get('exclude-list')))
                         f.write('\n')
-                    tempest_options.extend(['--blacklist-file', black_file])
+                    tempest_options.extend(['--exclude-list', exclude_file])
                 print(tempest_options)
                 try:
                     subprocess.check_call(tempest_options)
