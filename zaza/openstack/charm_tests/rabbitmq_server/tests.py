@@ -429,6 +429,57 @@ class RmqTests(test_utils.OpenStackBaseTest):
 
         logging.info('OK')
 
+    def test_policies(self):
+        """Test if policies can be created, detroyed and listed."""
+        units = zaza.model.get_units(self.application_name)
+        rmq_utils.add_user(units)
+        unit = units[0]
+        action = zaza.model.run_action(unit.entity_id, "check-policies")
+        policies_before = json.loads(action.results["output"])
+        logging.info("Creating queue: my_queue")
+        rmq_utils.publish_amqp_message_by_unit(
+            unit, "My Message", queue="my_queue"
+        )
+        logging.info("Creating a max-lenght policy")
+        action = zaza.model.run_action(
+            unit.entity_id,
+            "set-max-lenght",
+            action_params={"name": "my_pol", "pattern": "^my_queue$"},
+        )
+        self.assertIsInstance(action, juju.action.Action)
+        msg_set = (
+            'Setting policy "my_pol" for pattern "^my_queue$" to '
+            '"{"max-length": 100, "overflow": "reject-publish-dlx"}" '
+            'with priority "0" for vhost "/" ...\n'
+        )
+        result = action.results["output"]
+        self.assertEqual(msg_set, result)
+
+        logging.info("Max-lenght policy successfully created")
+
+        action = zaza.model.run_action(unit.entity_id, "check-policies")
+        policies_after = json.loads(action.results["output"])
+        self.assertEqual(len(policies_after), len(policies_before) + 1)
+
+        logging.info("Clear my_pol policy")
+        action = zaza.model.run_action(
+            unit.entity_id,
+            "clear-policy",
+            action_params={
+                "name": "my_pol",
+            },
+        )
+        msg_clear = 'Clearing policy "my_pol" on vhost "/" ...\n'
+        result = action.results["output"]
+        self.assertEqual(msg_clear, result)
+        action = zaza.model.run_action(unit.entity_id, "check-policies")
+        policies_after = json.loads(action.results["output"])
+        self.assertEqual(len(policies_after), len(policies_before))
+        logging.info("my_pol policy successfully deleted")
+
+        # Delete the test user
+        rmq_utils.delete_user(units)
+
 
 class RabbitMQDeferredRestartTest(test_utils.BaseDeferredRestartTest):
     """Deferred restart tests."""
