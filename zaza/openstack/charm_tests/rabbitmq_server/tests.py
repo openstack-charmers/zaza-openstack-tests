@@ -440,10 +440,10 @@ class RmqTests(test_utils.OpenStackBaseTest):
         rmq_utils.publish_amqp_message_by_unit(
             unit, "My Message", queue="my_queue"
         )
-        logging.info("Creating a max-lenght policy")
+        logging.info("Creating a max length policy")
         action = zaza.model.run_action(
             unit.entity_id,
-            "set-max-lenght",
+            "set-policy-max-length",
             action_params={"name": "my_pol", "pattern": "^my_queue$"},
         )
         self.assertIsInstance(action, juju.action.Action)
@@ -455,7 +455,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
         result = action.results["output"]
         self.assertEqual(msg_set, result)
 
-        logging.info("Max-lenght policy successfully created")
+        logging.info("Max-length policy successfully created")
 
         action = zaza.model.run_action(unit.entity_id, "check-policies")
         policies_after = json.loads(action.results["output"])
