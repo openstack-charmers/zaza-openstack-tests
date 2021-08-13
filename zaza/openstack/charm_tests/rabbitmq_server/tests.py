@@ -447,19 +447,11 @@ class RmqTests(test_utils.OpenStackBaseTest):
             action_params={"name": "my_pol", "pattern": "^my_queue$"},
         )
         self.assertIsInstance(action, juju.action.Action)
-        msg_set = (
-            'Setting policy "my_pol" for pattern "^my_queue$" to '
-            '"{"max-length": 100, "overflow": "reject-publish-dlx"}" '
-            'with priority "0" for vhost "/" ...\n'
-        )
-        result = action.results["output"]
-        self.assertEqual(msg_set, result)
-
-        logging.info("Max-length policy successfully created")
 
         action = zaza.model.run_action(unit.entity_id, "check-policies")
         policies_after = json.loads(action.results["output"])
         self.assertEqual(len(policies_after), len(policies_before) + 1)
+        logging.info("Max-length policy successfully created")
 
         logging.info("Clear my_pol policy")
         action = zaza.model.run_action(
@@ -469,9 +461,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
                 "name": "my_pol",
             },
         )
-        msg_clear = 'Clearing policy "my_pol" on vhost "/" ...\n'
-        result = action.results["output"]
-        self.assertEqual(msg_clear, result)
+
         action = zaza.model.run_action(unit.entity_id, "check-policies")
         policies_after = json.loads(action.results["output"])
         self.assertEqual(len(policies_after), len(policies_before))
