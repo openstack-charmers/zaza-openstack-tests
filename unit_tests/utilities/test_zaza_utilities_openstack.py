@@ -24,6 +24,7 @@ import tenacity
 import unit_tests.utils as ut_utils
 from zaza.openstack.utilities import openstack as openstack_utils
 from zaza.openstack.utilities import exceptions
+from zaza.utilities.maas import LinkMode, MachineInterfaceMac
 
 
 class TestOpenStackUtils(ut_utils.BaseTestCase):
@@ -1427,6 +1428,34 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.chmod.assert_called_once_with('/tmp/default/ca1.cert', 0o644)
         self.move.assert_called_once_with(
             'tempfilename', '/tmp/default/ca1.cert')
+
+    def test_configure_charmed_openstack_on_maas(self):
+        self.patch_object(openstack_utils, 'get_charm_networking_data')
+        self.patch_object(openstack_utils.zaza.utilities.maas,
+                          'get_macs_from_cidr')
+        self.patch_object(openstack_utils.zaza.utilities.maas,
+                          'get_maas_client_from_juju_cloud_data')
+        self.patch_object(openstack_utils.zaza.model, 'get_cloud_data')
+        self.patch_object(openstack_utils, 'configure_networking_charms')
+        self.get_charm_networking_data.return_value = 'fakenetworkingdata'
+        self.get_macs_from_cidr.return_value = [
+            MachineInterfaceMac('id_a', 'ens6', '00:53:00:00:00:01',
+                                '192.0.2.0/24', LinkMode.LINK_UP),
+            MachineInterfaceMac('id_a', 'ens7', '00:53:00:00:00:02',
+                                '192.0.2.0/24', LinkMode.LINK_UP),
+            MachineInterfaceMac('id_b', 'ens6', '00:53:00:00:01:01',
+                                '192.0.2.0/24', LinkMode.LINK_UP),
+
+        ]
+        network_config = {'external_net_cidr': '192.0.2.0/24'}
+        expect = [
+            '00:53:00:00:00:01',
+            '00:53:00:00:01:01',
+        ]
+        openstack_utils.configure_charmed_openstack_on_maas(
+            network_config)
+        self.configure_networking_charms.assert_called_once_with(
+            'fakenetworkingdata', expect, use_juju_wait=False)
 
 
 class TestAsyncOpenstackUtils(ut_utils.AioTestCase):
