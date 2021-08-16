@@ -67,7 +67,6 @@ def _login(dashboard_url, domain, username, password, cafile=None):
     # start session, get csrftoken
     client = requests.session()
     client.get(auth_url, verify=cafile)
-
     if 'csrftoken' in client.cookies:
         csrftoken = client.cookies['csrftoken']
     else:
@@ -163,7 +162,60 @@ def _do_request(request, cafile=None):
     return urllib.request.urlopen(request, cafile=cafile)
 
 
-class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
+class OpenStackDashboardBase():
+    """Mixin for interacting with Horizon."""
+
+    def get_base_url(self):
+        """Return the base url for http(s) requests.
+
+        :returns: URL
+        :rtype: str
+        """
+        vip = (zaza_model.get_application_config(self.application_name)
+               .get("vip").get("value"))
+        if vip:
+            ip = vip
+        else:
+            unit = zaza_model.get_unit_from_name(
+                zaza_model.get_lead_unit_name(self.application_name))
+            ip = unit.public_address
+
+        logging.debug("Dashboard ip is:{}".format(ip))
+        scheme = 'http'
+        if self.use_https:
+            scheme = 'https'
+        url = '{}://{}'.format(scheme, ip)
+        return url
+
+    def get_horizon_url(self):
+        """Return the url for acccessing horizon.
+
+        :returns: Horizon URL
+        :rtype: str
+        """
+        url = '{}/horizon'.format(self.get_base_url())
+        logging.info("Horizon URL is: {}".format(url))
+        return url
+
+    @property
+    def use_https(self):
+        """Whether dashboard is using https.
+
+        :returns: Whether dashboard is using https
+        :rtype: boolean
+        """
+        use_https = False
+        vault_relation = zaza_model.get_relation_id(
+            self.application,
+            'vault',
+            remote_interface_name='certificates')
+        if vault_relation:
+            use_https = True
+        return use_https
+
+
+class OpenStackDashboardTests(test_utils.OpenStackBaseTest,
+                              OpenStackDashboardBase):
     """Encapsulate openstack dashboard charm tests."""
 
     @classmethod
@@ -171,13 +223,6 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
         """Run class setup for running openstack dashboard charm tests."""
         super(OpenStackDashboardTests, cls).setUpClass()
         cls.application = 'openstack-dashboard'
-        cls.use_https = False
-        vault_relation = zaza_model.get_relation_id(
-            cls.application,
-            'vault',
-            remote_interface_name='certificates')
-        if vault_relation:
-            cls.use_https = True
 
     def test_050_local_settings_permissions_regression_check_lp1755027(self):
         """Assert regression check lp1755027.
@@ -302,39 +347,6 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
                         mismatches.append(msg)
         return mismatches
 
-    def get_base_url(self):
-        """Return the base url for http(s) requests.
-
-        :returns: URL
-        :rtype: str
-        """
-        vip = (zaza_model.get_application_config(self.application_name)
-               .get("vip").get("value"))
-        if vip:
-            ip = vip
-        else:
-            unit = zaza_model.get_unit_from_name(
-                zaza_model.get_lead_unit_name(self.application_name))
-            ip = unit.public_address
-
-        logging.debug("Dashboard ip is:{}".format(ip))
-        scheme = 'http'
-        if self.use_https:
-            scheme = 'https'
-        url = '{}://{}'.format(scheme, ip)
-        logging.debug("Base URL is: {}".format(url))
-        return url
-
-    def get_horizon_url(self):
-        """Return the url for acccessing horizon.
-
-        :returns: Horizon URL
-        :rtype: str
-        """
-        url = '{}/horizon'.format(self.get_base_url())
-        logging.info("Horizon URL is: {}".format(url))
-        return url
-
     def test_400_connection(self):
         """Test that dashboard responds to http request.
 
@@ -395,17 +407,6 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
                 self.assertEqual(e.code, 404, msg)
         logging.info('OK')
 
-    def test_501_security_checklist_action(self):
-        """Verify expected result on a default install.
-
-        Ported from amulet tests.
-        """
-        logging.info("Testing security-checklist")
-        unit_name = zaza_model.get_lead_unit_name('openstack-dashboard')
-        action = zaza_model.run_action(unit_name, 'security-checklist')
-        assert action.data.get(u"status") == "failed", \
-            "Security check is expected to not pass by default"
-
     def test_900_restart_on_config_change(self):
         """Verify that the specified services are restarted on config changed.
 
@@ -450,7 +451,8 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest):
             logging.info("Testing pause resume")
 
 
-class OpenStackDashboardPolicydTests(policyd.BasePolicydSpecialization):
+class OpenStackDashboardPolicydTests(policyd.BasePolicydSpecialization,
+                                     OpenStackDashboardBase):
     """Test the policyd override using the dashboard."""
 
     good = {
@@ -476,6 +478,7 @@ class OpenStackDashboardPolicydTests(policyd.BasePolicydSpecialization):
         super(OpenStackDashboardPolicydTests, cls).setUpClass(
             application_name="openstack-dashboard")
         cls.application_name = "openstack-dashboard"
+        cls.application = cls.application_name
 
     def get_client_and_attempt_operation(self, ip):
         """Attempt to list users on the openstack-dashboard service.
@@ -500,9 +503,51 @@ class OpenStackDashboardPolicydTests(policyd.BasePolicydSpecialization):
         username = 'admin',
         password = overcloud_auth['OS_PASSWORD'],
         client, response = _login(
-            unit.public_address, domain, username, password)
+            self.get_horizon_url(), domain, username, password)
         # now attempt to get the domains page
         _url = self.url.format(unit.public_address)
         result = client.get(_url)
         if result.status_code == 403:
             raise policyd.PolicydOperationFailedException("Not authenticated")
+
+
+class SecurityTests(test_utils.OpenStackBaseTest,
+                    OpenStackDashboardBase):
+    """Openstack-dashboard security tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running openstack-dashboard SecurityTests."""
+        super(SecurityTests, cls).setUpClass()
+
+    def test_security_checklist(self):
+        """Verify expected state with security checklist."""
+        logging.info("Testing security checklist.")
+
+        expected_failures = [
+            'csrf_cookie_set',
+            'disable_password_reveal',
+            'disallow-iframe-embed',
+            'password-validator-is-not-default',
+            'securie_proxy_ssl_header_is_set',
+            'session_cookie-httponly',
+            'session-cookie-store',
+        ]
+        expected_passes = [
+            'disable_password_autocomplete',
+            'enforce-password-check',
+            'validate-file-ownership',
+            'validate-file-permissions'
+        ]
+
+        logging.info('Running `security-checklist` action'
+                     ' on {} leader'.format(self.application_name))
+        test_utils.audit_assertions(
+            zaza_model.run_action_on_leader(
+                self.application_name,
+                'security-checklist',
+                model_name=self.model_name,
+                action_params={}),
+            expected_passes,
+            expected_failures,
+            expected_to_pass=False)

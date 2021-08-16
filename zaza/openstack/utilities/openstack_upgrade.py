@@ -95,8 +95,8 @@ async def async_action_unit_upgrade(units, model_name=None):
 action_unit_upgrade = sync_wrapper(async_action_unit_upgrade)
 
 
-def action_upgrade_group(applications, model_name=None):
-    """Upgrade units using action managed upgrades.
+def action_upgrade_apps(applications, model_name=None):
+    """Upgrade units in the applications using action managed upgrades.
 
     Upgrade all units of the given applications using action managed upgrades.
     This involves the following process:
@@ -132,15 +132,65 @@ def action_upgrade_group(applications, model_name=None):
             status=status,
             model_name=model_name)
 
+        # NOTE(lourot): we're more likely to time out while waiting for the
+        # action's result if we launch an action while the model is still
+        # executing. Thus it's safer to wait for the model to settle between
+        # actions.
+        zaza.model.block_until_all_units_idle(model_name)
         pause_units(hacluster_units, model_name=model_name)
+
+        zaza.model.block_until_all_units_idle(model_name)
         pause_units(target, model_name=model_name)
 
+        zaza.model.block_until_all_units_idle(model_name)
         action_unit_upgrade(target, model_name=model_name)
 
+        zaza.model.block_until_all_units_idle(model_name)
         resume_units(target, model_name=model_name)
+
+        zaza.model.block_until_all_units_idle(model_name)
         resume_units(hacluster_units, model_name=model_name)
 
         done.extend(target)
+
+    # Ensure that mysql-innodb-cluster has at least one R/W group (it can get
+    # into a state where all are R/O whilst it is sorting itself out after an
+    # openstack_upgrade
+    if "mysql-innodb-cluster" in applications:
+        block_until_mysql_innodb_cluster_has_rw(model_name)
+
+    # Now we need to wait for the model to go back to idle.
+    zaza.model.block_until_all_units_idle(model_name)
+
+
+async def async_block_until_mysql_innodb_cluster_has_rw(model=None,
+                                                        timeout=None):
+    """Block until the mysql-innodb-cluster is in a healthy state.
+
+    Curiously, after a series of pauses and restarts (e.g. during an upgrade)
+    the mysql-innodb-cluster charms may not yet have agreed which one is the
+    R/W node; i.e. they are all R/O.  Anyway, eventually they sort it out and
+    one jumps to the front and says "it's me!".  This is detected, externally,
+    by the status line including R/W in the output.
+
+    This function blocks until that happens so that no charm attempts to have a
+    chat with the mysql server before it has settled, thus breaking the whole
+    test.
+    """
+    async def async_check_workload_messages_for_rw(model=None):
+        """Return True if a least one work message contains R/W."""
+        status = await zaza.model.async_get_status()
+        app_status = status.applications.get("mysql-innodb-cluster")
+        units_data = app_status.units.values()
+        workload_statuses = [d.workload_status.info for d in units_data]
+        return any("R/W" in s for s in workload_statuses)
+
+    await zaza.model.async_block_until(async_check_workload_messages_for_rw,
+                                       timeout=timeout)
+
+
+block_until_mysql_innodb_cluster_has_rw = sync_wrapper(
+    async_block_until_mysql_innodb_cluster_has_rw)
 
 
 def set_upgrade_application_config(applications, new_source,
@@ -150,7 +200,7 @@ def set_upgrade_application_config(applications, new_source,
     Set the charm config for upgrade.
 
     :param applications: List of application names.
-    :type applications: []
+    :type applications: List[str]
     :param new_source: New package origin.
     :type new_source: str
     :param action_managed: Whether to set action-managed-upgrade config option.
@@ -180,8 +230,8 @@ def set_upgrade_application_config(applications, new_source,
 def is_action_upgradable(app, model_name=None):
     """Can application be upgraded using action managed upgrade method.
 
-    :param new_source: New package origin.
-    :type new_source: str
+    :param app: The application to check
+    :type app: str
     :param model_name: Name of model to query.
     :type model_name: str
     :returns: Whether app be upgraded using action managed upgrade method.
@@ -196,66 +246,95 @@ def is_action_upgradable(app, model_name=None):
     return supported
 
 
-def run_action_upgrade(group, new_source, model_name=None):
+def is_already_upgraded(app, new_src, model_name=None):
+    """Return True if the app has already been upgraded.
+
+    :param app: The application to check
+    :type app: str
+    :param new_src: the new source (distro, cloud:x-y, etc.)
+    :type new_src: str
+    :param model_name: Name of model to query.
+    :type model_name: str
+    :returns: Whether app be upgraded using action managed upgrade method.
+    :rtype: bool
+    """
+    config = zaza.model.get_application_config(app, model_name=model_name)
+    try:
+        src = config['openstack-origin']['value']
+        key_was = 'openstack-origin'
+    except KeyError:
+        src = config['source']['value']
+        key_was = 'source'
+    logging.info("origin for {} is {}={}".format(app, key_was, src))
+    return src == new_src
+
+
+def run_action_upgrades(apps, new_source, model_name=None):
     """Upgrade payload of all applications in group using action upgrades.
 
-    :param group: List of applications to upgrade.
-    :type group
+    :param apps: List of applications to upgrade.
+    :type apps: List[str]
     :param new_source: New package origin.
     :type new_source: str
     :param model_name: Name of model to query.
     :type model_name: str
     """
-    set_upgrade_application_config(group, new_source, model_name=model_name)
-    action_upgrade_group(group, model_name=model_name)
+    set_upgrade_application_config(apps, new_source, model_name=model_name)
+    action_upgrade_apps(apps, model_name=model_name)
 
 
-def run_all_in_one_upgrade(group, new_source, model_name=None):
+def run_all_in_one_upgrades(apps, new_source, model_name=None):
     """Upgrade payload of all applications in group using all-in-one method.
 
-    :param group: List of applications to upgrade.
-    :type group: []
+    :param apps: List of applications to upgrade.
+    :type apps: List[str]
     :source: New package origin.
     :type new_source: str
     :param model_name: Name of model to query.
     :type model_name: str
     """
     set_upgrade_application_config(
-        group,
+        apps,
         new_source,
         model_name=model_name,
         action_managed=False)
     zaza.model.block_until_all_units_idle()
 
 
-def run_upgrade(group, new_source, model_name=None):
+def run_upgrade_on_apps(apps, new_source, model_name=None):
     """Upgrade payload of all applications in group.
 
     Upgrade apps using action managed upgrades where possible and fallback to
     all_in_one method.
 
-    :param group: List of applications to upgrade.
-    :type group: []
+    :param apps: List of applications to upgrade.
+    :type apps: []
     :param new_source: New package origin.
     :type new_source: str
     :param model_name: Name of model to query.
     :type model_name: str
     """
-    action_upgrade = []
-    all_in_one_upgrade = []
-    for app in group:
+    action_upgrades = []
+    all_in_one_upgrades = []
+    for app in apps:
+        if is_already_upgraded(app, new_source, model_name=model_name):
+            logging.info("Application '%s' is already upgraded. Skipping.",
+                         app)
+            continue
         if is_action_upgradable(app, model_name=model_name):
-            action_upgrade.append(app)
+            action_upgrades.append(app)
         else:
-            all_in_one_upgrade.append(app)
-    run_all_in_one_upgrade(
-        all_in_one_upgrade,
-        new_source,
-        model_name=model_name)
-    run_action_upgrade(
-        action_upgrade,
-        new_source,
-        model_name=model_name)
+            all_in_one_upgrades.append(app)
+    if all_in_one_upgrades:
+        run_all_in_one_upgrades(
+            all_in_one_upgrades,
+            new_source,
+            model_name=model_name)
+    if action_upgrades:
+        run_action_upgrades(
+            action_upgrades,
+            new_source,
+            model_name=model_name)
 
 
 def run_upgrade_tests(new_source, model_name=None):
@@ -270,8 +349,6 @@ def run_upgrade_tests(new_source, model_name=None):
     :type model_name: str
     """
     groups = get_upgrade_groups(model_name=model_name)
-    run_upgrade(groups['Core Identity'], new_source, model_name=model_name)
-    run_upgrade(groups['Storage'], new_source, model_name=model_name)
-    run_upgrade(groups['Control Plane'], new_source, model_name=model_name)
-    run_upgrade(groups['Compute'], new_source, model_name=model_name)
-    run_upgrade(groups['sweep_up'], new_source, model_name=model_name)
+    for name, apps in groups:
+        logging.info("Performing upgrade of %s", name)
+        run_upgrade_on_apps(apps, new_source, model_name=model_name)

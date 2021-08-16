@@ -229,7 +229,7 @@ class AuthenticationAuthorizationTest(BaseKeystoneTest):
                     'OS_DOMAIN_NAME': DEMO_DOMAIN,
                 }
                 if self.tls_rid:
-                    openrc['OS_CACERT'] = openstack_utils.KEYSTONE_LOCAL_CACERT
+                    openrc['OS_CACERT'] = openstack_utils.get_cacert()
                     openrc['OS_AUTH_URL'] = (
                         openrc['OS_AUTH_URL'].replace('http', 'https'))
                 logging.info('keystone IP {}'.format(ip))
@@ -259,7 +259,7 @@ class AuthenticationAuthorizationTest(BaseKeystoneTest):
         """
         def _validate_token_data(openrc):
             if self.tls_rid:
-                openrc['OS_CACERT'] = openstack_utils.KEYSTONE_LOCAL_CACERT
+                openrc['OS_CACERT'] = openstack_utils.get_cacert()
                 openrc['OS_AUTH_URL'] = (
                     openrc['OS_AUTH_URL'].replace('http', 'https'))
             logging.info('keystone IP {}'.format(ip))
@@ -380,7 +380,12 @@ class SecurityTests(BaseKeystoneTest):
 
 
 class LdapTests(BaseKeystoneTest):
-    """Keystone ldap tests tests."""
+    """Keystone ldap tests."""
+
+    non_string_type_keys = ('ldap-user-enabled-mask',
+                            'ldap-user-enabled-invert',
+                            'ldap-group-members-are-ids',
+                            'ldap-use-pool')
 
     @classmethod
     def setUpClass(cls):
@@ -402,13 +407,22 @@ class LdapTests(BaseKeystoneTest):
             'ldap-password': 'crapper',
             'ldap-suffix': 'dc=test,dc=com',
             'domain-name': 'userdomain',
+            'ldap-config-flags':
+                {
+                    'group_tree_dn': 'ou=groups,dc=test,dc=com',
+                    'group_objectclass': 'posixGroup',
+                    'group_name_attribute': 'cn',
+                    'group_member_attribute': 'memberUid',
+                    'group_members_are_ids': 'true',
+            }
         }
 
-    def _find_keystone_v3_user(self, username, domain):
+    def _find_keystone_v3_user(self, username, domain, group=None):
         """Find a user within a specified keystone v3 domain.
 
         :param str username: Username to search for in keystone
         :param str domain: username selected from which domain
+        :param str group: group to search for in keystone for group membership
         :return: return username if found
         :rtype: Optional[str]
         """
@@ -418,9 +432,15 @@ class LdapTests(BaseKeystoneTest):
                 openstack_utils.get_overcloud_auth(address=ip))
             client = openstack_utils.get_keystone_session_client(session)
 
-            domain_users = client.users.list(
-                domain=client.domains.find(name=domain).id
-            )
+            if group is None:
+                domain_users = client.users.list(
+                    domain=client.domains.find(name=domain).id,
+                )
+            else:
+                domain_users = client.users.list(
+                    domain=client.domains.find(name=domain).id,
+                    group=self._find_keystone_v3_group(group, domain).id,
+                )
 
             usernames = [u.name.lower() for u in domain_users]
             if username.lower() in usernames:
@@ -431,34 +451,151 @@ class LdapTests(BaseKeystoneTest):
         )
         return None
 
+    def _find_keystone_v3_group(self, group, domain):
+        """Find a group within a specified keystone v3 domain.
+
+        :param str group: Group to search for in keystone
+        :param str domain: group selected from which domain
+        :return: return group if found
+        :rtype: Optional[str]
+        """
+        for ip in self.keystone_ips:
+            logging.info('Keystone IP {}'.format(ip))
+            session = openstack_utils.get_keystone_session(
+                openstack_utils.get_overcloud_auth(address=ip))
+            client = openstack_utils.get_keystone_session_client(session)
+
+            domain_groups = client.groups.list(
+                domain=client.domains.find(name=domain).id
+            )
+
+            for searched_group in domain_groups:
+                if searched_group.name.lower() == group.lower():
+                    return searched_group
+
+        logging.debug(
+            "Group {} was not found. Returning None.".format(group)
+        )
+        return None
+
     def test_100_keystone_ldap_users(self):
         """Validate basic functionality of keystone API with ldap."""
         application_name = 'keystone-ldap'
-        config = self._get_ldap_config()
+        intended_cfg = self._get_ldap_config()
+        current_cfg, non_string_cfg = (
+            self.config_current_separate_non_string_type_keys(
+                self.non_string_type_keys, intended_cfg, application_name)
+        )
 
         with self.config_change(
-                self.config_current(application_name, config.keys()),
-                config,
-                application_name=application_name):
-            logging.info(
-                'Waiting for users to become available in keystone...'
-            )
-            test_config = lifecycle_utils.get_charm_config(fatal=False)
-            zaza.model.wait_for_application_states(
-                states=test_config.get("target_deploy_status", {})
-            )
+                {},
+                non_string_cfg,
+                application_name=application_name,
+                reset_to_charm_default=True):
+            with self.config_change(
+                    current_cfg,
+                    intended_cfg,
+                    application_name=application_name):
+                logging.info(
+                    'Waiting for users to become available in keystone...'
+                )
+                test_config = lifecycle_utils.get_charm_config(fatal=False)
+                zaza.model.wait_for_application_states(
+                    states=test_config.get("target_deploy_status", {})
+                )
 
-            with self.v3_keystone_preferred():
-                # NOTE(jamespage): Test fixture should have johndoe and janedoe
-                #                  accounts
-                johndoe = self._find_keystone_v3_user('john doe', 'userdomain')
-                self.assertIsNotNone(johndoe, "user 'john doe' was unknown")
-                janedoe = self._find_keystone_v3_user('jane doe', 'userdomain')
-                self.assertIsNotNone(janedoe, "user 'jane doe' was unknown")
+                with self.v3_keystone_preferred():
+                    # NOTE(jamespage): Test fixture should have
+                    #                  johndoe and janedoe accounts
+                    johndoe = self._find_keystone_v3_user(
+                        'john doe', 'userdomain')
+                    self.assertIsNotNone(
+                        johndoe, "user 'john doe' was unknown")
+                    janedoe = self._find_keystone_v3_user(
+                        'jane doe', 'userdomain')
+                    self.assertIsNotNone(
+                        janedoe, "user 'jane doe' was unknown")
+
+    def test_101_keystone_ldap_groups(self):
+        """Validate basic functionality of keystone API with ldap."""
+        application_name = 'keystone-ldap'
+        intended_cfg = self._get_ldap_config()
+        current_cfg, non_string_cfg = (
+            self.config_current_separate_non_string_type_keys(
+                self.non_string_type_keys, intended_cfg, application_name)
+        )
+
+        with self.config_change(
+                {},
+                non_string_cfg,
+                application_name=application_name,
+                reset_to_charm_default=True):
+            with self.config_change(
+                    current_cfg,
+                    intended_cfg,
+                    application_name=application_name):
+                logging.info(
+                    'Waiting for groups to become available in keystone...'
+                )
+                test_config = lifecycle_utils.get_charm_config(fatal=False)
+                zaza.model.wait_for_application_states(
+                    states=test_config.get("target_deploy_status", {})
+                )
+
+                with self.v3_keystone_preferred():
+                    # NOTE(arif-ali): Test fixture should have openstack and
+                    #                 admin groups
+                    openstack_group = self._find_keystone_v3_group(
+                        'openstack', 'userdomain')
+                    self.assertIsNotNone(
+                        openstack_group.name, "group 'openstack' was unknown")
+                    admin_group = self._find_keystone_v3_group(
+                        'admin', 'userdomain')
+                    self.assertIsNotNone(
+                        admin_group.name, "group 'admin' was unknown")
+
+    def test_102_keystone_ldap_group_membership(self):
+        """Validate basic functionality of keystone API with ldap."""
+        application_name = 'keystone-ldap'
+        intended_cfg = self._get_ldap_config()
+        current_cfg, non_string_cfg = (
+            self.config_current_separate_non_string_type_keys(
+                self.non_string_type_keys, intended_cfg, application_name)
+        )
+
+        with self.config_change(
+                {},
+                non_string_cfg,
+                application_name=application_name,
+                reset_to_charm_default=True):
+            with self.config_change(
+                    current_cfg,
+                    intended_cfg,
+                    application_name=application_name):
+                logging.info(
+                    'Waiting for groups to become available in keystone...'
+                )
+                test_config = lifecycle_utils.get_charm_config(fatal=False)
+                zaza.model.wait_for_application_states(
+                    states=test_config.get("target_deploy_status", {})
+                )
+
+                with self.v3_keystone_preferred():
+                    # NOTE(arif-ali): Test fixture should have openstack and
+                    #                 admin groups
+                    openstack_group = self._find_keystone_v3_user(
+                        'john doe', 'userdomain', group='openstack')
+                    self.assertIsNotNone(
+                        openstack_group,
+                        "john doe was not in group 'openstack'")
+                    admin_group = self._find_keystone_v3_user(
+                        'john doe', 'userdomain', group='admin')
+                    self.assertIsNotNone(
+                        admin_group, "'john doe' was not in group 'admin'")
 
 
 class LdapExplicitCharmConfigTests(LdapTests):
-    """Keystone ldap tests tests."""
+    """Keystone ldap tests."""
 
     def _get_ldap_config(self):
         """Generate ldap config for current model.
@@ -483,10 +620,63 @@ class LdapExplicitCharmConfigTests(LdapTests):
             'ldap-user-enabled-invert': False,
             'ldap-user-enabled-mask': 0,
             'ldap-user-enabled-default': 'True',
-            'ldap-group-tree-dn': 'ou=groups',
-            'ldap-group-objectclass': 'groupOfNames',
+            'ldap-group-tree-dn': 'ou=groups,dc=test,dc=com',
+            'ldap-group-objectclass': '',
             'ldap-group-id-attribute': 'cn',
+            'ldap-group-name-attribute': 'cn',
             'ldap-group-member-attribute': 'memberUid',
             'ldap-group-members-are-ids': True,
-            'ldap-config-flags': '{group_objectclass: "posixGroup"}',
+            'ldap-config-flags': '{group_objectclass: "posixGroup",'
+                                 ' use_pool: True,'
+                                 ' group_tree_dn: "group_tree_dn_foobar"}',
         }
+
+    def test_200_config_flags_precedence(self):
+        """Validates precedence when the same config options are used."""
+        application_name = 'keystone-ldap'
+        intended_cfg = self._get_ldap_config()
+        current_cfg, non_string_cfg = (
+            self.config_current_separate_non_string_type_keys(
+                self.non_string_type_keys, intended_cfg, application_name)
+        )
+
+        with self.config_change(
+                {},
+                non_string_cfg,
+                application_name=application_name,
+                reset_to_charm_default=True):
+            with self.config_change(
+                    current_cfg,
+                    intended_cfg,
+                    application_name=application_name):
+                logging.info(
+                    'Performing LDAP settings validation in keystone.conf...'
+                )
+                test_config = lifecycle_utils.get_charm_config(fatal=False)
+                zaza.model.wait_for_application_states(
+                    states=test_config.get("target_deploy_status", {})
+                )
+                units = zaza.model.get_units("keystone-ldap",
+                                             model_name=self.model_name)
+                result = zaza.model.run_on_unit(
+                    units[0].name,
+                    "cat /etc/keystone/domains/keystone.userdomain.conf")
+                # not present in charm config, but present in config flags
+                self.assertIn("use_pool = True", result['stdout'],
+                              "use_pool value is expected to be present and "
+                              "set to True in the config file")
+                # ldap-config-flags overriding empty charm config value
+                self.assertIn("group_objectclass = posixGroup",
+                              result['stdout'],
+                              "group_objectclass is expected to be present and"
+                              " set to posixGroup in the config file")
+                # overridden by charm config, not written to file
+                self.assertNotIn(
+                    "group_tree_dn_foobar",
+                    result['stdout'],
+                    "user_tree_dn ldap-config-flags value needs to be "
+                    "overridden by ldap-user-tree-dn in config file")
+                # complementing the above, value used is from charm setting
+                self.assertIn("group_tree_dn = ou=groups", result['stdout'],
+                              "user_tree_dn value is expected to be present "
+                              "and set to dc=test,dc=com in the config file")

@@ -17,6 +17,8 @@ import datetime
 import io
 import mock
 import subprocess
+import sys
+import unittest
 import tenacity
 
 import unit_tests.utils as ut_utils
@@ -191,6 +193,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.patch_object(openstack_utils, 'get_application_config_option')
         self.patch_object(openstack_utils, 'get_keystone_ip')
         self.patch_object(openstack_utils, "get_current_os_versions")
+        self.patch_object(openstack_utils, "get_remote_ca_cert_file")
         self.patch_object(openstack_utils.juju_utils, 'leader_get')
         if tls_relation:
             self.patch_object(openstack_utils.model, "scp_from_unit")
@@ -204,6 +207,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.get_relation_id.return_value = None
         self.get_application_config_option.return_value = None
         self.leader_get.return_value = 'openstack'
+        self.get_remote_ca_cert_file.return_value = None
         if tls_relation or ssl_cert:
             port = 35357
             transport = 'https'
@@ -245,7 +249,8 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 'API_VERSION': 3,
             }
         if tls_relation:
-            expect['OS_CACERT'] = openstack_utils.KEYSTONE_LOCAL_CACERT
+            self.get_remote_ca_cert_file.return_value = '/tmp/a.cert'
+            expect['OS_CACERT'] = '/tmp/a.cert'
         self.assertEqual(openstack_utils.get_overcloud_auth(),
                          expect)
 
@@ -288,6 +293,15 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
 
         openstack_utils.get_undercloud_keystone_session()
         self.get_keystone_session.assert_called_once_with(_auth, verify=None)
+
+    def test_get_nova_session_client(self):
+        session_mock = mock.MagicMock()
+        self.patch_object(openstack_utils.novaclient_client, "Client")
+        openstack_utils.get_nova_session_client(session_mock)
+        self.Client.assert_called_once_with(2, session=session_mock)
+        self.Client.reset_mock()
+        openstack_utils.get_nova_session_client(session_mock, version=2.56)
+        self.Client.assert_called_once_with(2.56, session=session_mock)
 
     def test_get_urllib_opener(self):
         self.patch_object(openstack_utils.urllib.request, "ProxyHandler")
@@ -369,12 +383,15 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 'e01df65a')
 
     def test__resource_reaches_status_bespoke(self):
+        client_mock = mock.MagicMock()
         resource_mock = mock.MagicMock()
-        resource_mock.get.return_value = mock.MagicMock(status='readyish')
+        resource_mock.special_status = 'readyish'
+        client_mock.get.return_value = resource_mock
         openstack_utils._resource_reaches_status(
-            resource_mock,
+            client_mock,
             'e01df65a',
-            'readyish')
+            'readyish',
+            resource_attribute='special_status')
 
     def test__resource_reaches_status_bespoke_fail(self):
         resource_mock = mock.MagicMock()
@@ -533,7 +550,8 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             backend=None,
             disk_format='qcow2',
             visibility='public',
-            container_format='bare')
+            container_format='bare',
+            force_import=False)
 
     def test_create_image_pass_directory(self):
         glance_mock = mock.MagicMock()
@@ -557,7 +575,8 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             backend=None,
             disk_format='qcow2',
             visibility='public',
-            container_format='bare')
+            container_format='bare',
+            force_import=False)
         self.gettempdir.assert_not_called()
 
     def test_create_ssh_key(self):
@@ -867,7 +886,24 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         result = openstack_utils.get_current_os_release_pair()
         self.assertEqual(expected, result)
 
-    def test_get_openstack_release(self):
+    def test_get_current_os_versions(self):
+        self.patch_object(openstack_utils, "get_openstack_release")
+        self.patch_object(openstack_utils.generic_utils, "get_pkg_version")
+
+        # Pre-Wallaby scenario where openstack-release package isn't installed
+        self.get_openstack_release.return_value = None
+        self.get_pkg_version.return_value = '18.0.0'
+        expected = {'keystone': 'victoria'}
+        result = openstack_utils.get_current_os_versions('keystone')
+        self.assertEqual(expected, result)
+
+        # Wallaby+ scenario where openstack-release package is installed
+        self.get_openstack_release.return_value = 'wallaby'
+        expected = {'keystone': 'wallaby'}
+        result = openstack_utils.get_current_os_versions('keystone')
+        self.assertEqual(expected, result)
+
+    def test_get_os_release(self):
         self.patch(
             'zaza.openstack.utilities.openstack.get_current_os_release_pair',
             new_callable=mock.MagicMock(),
@@ -896,6 +932,14 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         release_comp = xenial_queens > xenial_mitaka
         self.assertTrue(release_comp)
 
+        # Check specifying an application
+        self._get_os_rel_pair.reset_mock()
+        self._get_os_rel_pair.return_value = 'xenial_mitaka'
+        expected = 4
+        result = openstack_utils.get_os_release(application='myapp')
+        self.assertEqual(expected, result)
+        self._get_os_rel_pair.assert_called_once_with(application='myapp')
+
     def test_get_keystone_api_version(self):
         self.patch_object(openstack_utils, "get_current_os_versions")
         self.patch_object(openstack_utils, "get_application_config_option")
@@ -910,6 +954,23 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.get_current_os_versions.return_value = {"keystone": "queens"}
         self.get_application_config_option.return_value = None
         self.assertEqual(openstack_utils.get_keystone_api_version(), 3)
+
+    def test_get_openstack_release(self):
+        self.patch_object(openstack_utils.model, "get_units")
+        self.patch_object(openstack_utils.juju_utils, "remote_run")
+
+        # Test pre-Wallaby behavior where openstack-release pkg isn't installed
+        self.get_units.return_value = []
+        self.remote_run.return_value = "OPENSTACK_CODENAME=wallaby "
+
+        # Test Wallaby+ behavior where openstack-release package is installed
+        unit1 = mock.MagicMock()
+        unit1.entity_id = 1
+        self.get_units.return_value = [unit1]
+        self.remote_run.return_value = "OPENSTACK_CODENAME=wallaby "
+
+        result = openstack_utils.get_openstack_release("application", "model")
+        self.assertEqual(result, "wallaby")
 
     def test_get_project_id(self):
         # No domain
@@ -1242,34 +1303,230 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.get_application.side_effect = KeyError
         self.assertFalse(openstack_utils.ngw_present())
 
-    def test_configure_gateway_ext_port(self):
-        # FIXME: this is not a complete unit test for the function as one did
-        # not exist at all I'm adding this to test one bit and we'll add more
-        # as we go.
+    def test_get_charm_networking_data(self):
         self.patch_object(openstack_utils, 'deprecated_external_networking')
         self.patch_object(openstack_utils, 'dvr_enabled')
         self.patch_object(openstack_utils, 'ovn_present')
         self.patch_object(openstack_utils, 'ngw_present')
+        self.patch_object(openstack_utils, 'get_ovs_uuids')
         self.patch_object(openstack_utils, 'get_gateway_uuids')
-        self.patch_object(openstack_utils, 'get_admin_net')
+        self.patch_object(openstack_utils, 'get_ovn_uuids')
+        self.patch_object(openstack_utils.model, 'get_application')
         self.dvr_enabled.return_value = False
         self.ovn_present.return_value = False
-        self.ngw_present.return_value = True
-        self.get_admin_net.return_value = {'id': 'fakeid'}
+        self.ngw_present.return_value = False
+        self.get_ovs_uuids.return_value = []
+        self.get_gateway_uuids.return_value = []
+        self.get_ovn_uuids.return_value = []
+        self.get_application.side_effect = KeyError
 
-        novaclient = mock.MagicMock()
-        neutronclient = mock.MagicMock()
-
-        def _fake_empty_generator(empty=True):
-            if empty:
-                return
-            yield
-
-        self.get_gateway_uuids.side_effect = _fake_empty_generator
         with self.assertRaises(RuntimeError):
-            openstack_utils.configure_gateway_ext_port(
-                novaclient, neutronclient)
-        # provide a uuid and check that we don't raise RuntimeError
-        self.get_gateway_uuids.side_effect = ['fake-uuid']
-        openstack_utils.configure_gateway_ext_port(
-            novaclient, neutronclient)
+            openstack_utils.get_charm_networking_data()
+        self.ngw_present.return_value = True
+        self.assertEquals(
+            openstack_utils.get_charm_networking_data(),
+            openstack_utils.CharmedOpenStackNetworkingData(
+                openstack_utils.OpenStackNetworkingTopology.ML2_OVS,
+                ['neutron-gateway'],
+                mock.ANY,
+                'data-port',
+                {}))
+        self.dvr_enabled.return_value = True
+        self.assertEquals(
+            openstack_utils.get_charm_networking_data(),
+            openstack_utils.CharmedOpenStackNetworkingData(
+                openstack_utils.OpenStackNetworkingTopology.ML2_OVS_DVR,
+                ['neutron-gateway', 'neutron-openvswitch'],
+                mock.ANY,
+                'data-port',
+                {}))
+        self.ngw_present.return_value = False
+        self.assertEquals(
+            openstack_utils.get_charm_networking_data(),
+            openstack_utils.CharmedOpenStackNetworkingData(
+                openstack_utils.OpenStackNetworkingTopology.ML2_OVS_DVR_SNAT,
+                ['neutron-openvswitch'],
+                mock.ANY,
+                'data-port',
+                {}))
+        self.dvr_enabled.return_value = False
+        self.ovn_present.return_value = True
+        self.assertEquals(
+            openstack_utils.get_charm_networking_data(),
+            openstack_utils.CharmedOpenStackNetworkingData(
+                openstack_utils.OpenStackNetworkingTopology.ML2_OVN,
+                ['ovn-chassis'],
+                mock.ANY,
+                'bridge-interface-mappings',
+                {'ovn-bridge-mappings': 'physnet1:br-ex'}))
+        self.get_application.side_effect = None
+        self.assertEquals(
+            openstack_utils.get_charm_networking_data(),
+            openstack_utils.CharmedOpenStackNetworkingData(
+                openstack_utils.OpenStackNetworkingTopology.ML2_OVN,
+                ['ovn-chassis', 'ovn-dedicated-chassis'],
+                mock.ANY,
+                'bridge-interface-mappings',
+                {'ovn-bridge-mappings': 'physnet1:br-ex'}))
+
+    def test_get_cacert_absolute_path(self):
+        self.patch_object(openstack_utils.deployment_env, 'get_tmpdir')
+        self.get_tmpdir.return_value = '/tmp/default'
+        self.assertEqual(
+            openstack_utils.get_cacert_absolute_path('filename'),
+            '/tmp/default/filename')
+
+    def test_get_cacert(self):
+        self.patch_object(openstack_utils.deployment_env, 'get_tmpdir')
+        self.get_tmpdir.return_value = '/tmp/default'
+        self.patch_object(openstack_utils.os.path, 'exists')
+        results = {
+            '/tmp/default/vault_juju_ca_cert.crt': True}
+        self.exists.side_effect = lambda x: results[x]
+        self.assertEqual(
+            openstack_utils.get_cacert(),
+            '/tmp/default/vault_juju_ca_cert.crt')
+
+        results = {
+            '/tmp/default/vault_juju_ca_cert.crt': False,
+            '/tmp/default/keystone_juju_ca_cert.crt': True}
+        self.assertEqual(
+            openstack_utils.get_cacert(),
+            '/tmp/default/keystone_juju_ca_cert.crt')
+
+        results = {
+            '/tmp/default/vault_juju_ca_cert.crt': False,
+            '/tmp/default/keystone_juju_ca_cert.crt': False}
+        self.assertIsNone(openstack_utils.get_cacert())
+
+    def test_get_remote_ca_cert_file(self):
+        self.patch_object(openstack_utils.model, 'get_first_unit_name')
+        self.patch_object(
+            openstack_utils,
+            '_get_remote_ca_cert_file_candidates')
+        self.patch_object(openstack_utils.model, 'scp_from_unit')
+        self.patch_object(openstack_utils.os.path, 'exists')
+        self.patch_object(openstack_utils.shutil, 'move')
+        self.patch_object(openstack_utils.os, 'chmod')
+        self.patch_object(openstack_utils.tempfile, 'NamedTemporaryFile')
+        self.patch_object(openstack_utils.deployment_env, 'get_tmpdir')
+        self.get_tmpdir.return_value = '/tmp/default'
+        enter_mock = mock.MagicMock()
+        enter_mock.__enter__.return_value.name = 'tempfilename'
+        self.NamedTemporaryFile.return_value = enter_mock
+        self.get_first_unit_name.return_value = 'neutron-api/0'
+        self._get_remote_ca_cert_file_candidates.return_value = [
+            '/tmp/ca1.cert']
+        self.exists.return_value = True
+
+        openstack_utils.get_remote_ca_cert_file('neutron-api')
+        self.scp_from_unit.assert_called_once_with(
+            'neutron-api/0',
+            '/tmp/ca1.cert',
+            'tempfilename')
+        self.chmod.assert_called_once_with('/tmp/default/ca1.cert', 0o644)
+        self.move.assert_called_once_with(
+            'tempfilename', '/tmp/default/ca1.cert')
+
+
+class TestAsyncOpenstackUtils(ut_utils.AioTestCase):
+
+    def setUp(self):
+        super(TestAsyncOpenstackUtils, self).setUp()
+        if sys.version_info < (3, 6, 0):
+            raise unittest.SkipTest("Can't AsyncMock in py35")
+        model_mock = mock.MagicMock()
+        test_mock = mock.MagicMock()
+
+        class AsyncContextManagerMock(test_mock):
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                pass
+
+        self.model_mock = model_mock
+        self.patch_object(openstack_utils.zaza.model, "async_block_until")
+
+        async def _block_until(f, timeout):
+            # Store the result of the call to _check_ca_present to validate
+            # tests
+            self.result = await f()
+        self.async_block_until.side_effect = _block_until
+        self.patch('zaza.model.run_in_model', name='_run_in_model')
+        self._run_in_model.return_value = AsyncContextManagerMock
+        self._run_in_model().__aenter__.return_value = self.model_mock
+
+    async def test_async_block_until_ca_exists(self):
+        def _get_action_output(stdout, code, stderr=None):
+            stderr = stderr or ''
+            action = mock.MagicMock()
+            action.data = {
+                'results': {
+                    'Code': code,
+                    'Stderr': stderr,
+                    'Stdout': stdout}}
+            return action
+        results = {
+            '/tmp/missing.cert': _get_action_output(
+                '',
+                '1',
+                'cat: /tmp/missing.cert: No such file or directory'),
+            '/tmp/good.cert': _get_action_output('CERTIFICATE', '0')}
+
+        async def _run(command, timeout=None):
+            return results[command.split()[-1]]
+        self.unit1 = mock.MagicMock()
+        self.unit2 = mock.MagicMock()
+        self.unit2.run.side_effect = _run
+        self.unit1.run.side_effect = _run
+        self.units = [self.unit1, self.unit2]
+        _units = mock.MagicMock()
+        _units.units = self.units
+        self.model_mock.applications = {
+            'keystone': _units
+        }
+        self.patch_object(
+            openstack_utils,
+            "_async_get_remote_ca_cert_file_candidates")
+
+        # Test a missing cert then a good cert.
+        self._async_get_remote_ca_cert_file_candidates.return_value = [
+            '/tmp/missing.cert',
+            '/tmp/good.cert']
+        await openstack_utils.async_block_until_ca_exists(
+            'keystone',
+            'CERTIFICATE')
+        self.assertTrue(self.result)
+
+        # Test a single missing
+        self._async_get_remote_ca_cert_file_candidates.return_value = [
+            '/tmp/missing.cert']
+        await openstack_utils.async_block_until_ca_exists(
+            'keystone',
+            'CERTIFICATE')
+        self.assertFalse(self.result)
+
+    async def test__async_get_remote_ca_cert_file_candidates(self):
+        self.patch_object(openstack_utils.zaza.model, "async_get_relation_id")
+        rel_id_out = {
+        }
+
+        def _get_relation_id(app, cert_app, model_name, remote_interface_name):
+            return rel_id_out[cert_app]
+        self.async_get_relation_id.side_effect = _get_relation_id
+
+        rel_id_out['vault'] = 'certs:1'
+        r = await openstack_utils._async_get_remote_ca_cert_file_candidates(
+            'neutron-api', 'mymodel')
+        self.assertEqual(
+            r,
+            ['/usr/local/share/ca-certificates/vault_juju_ca_cert.crt',
+             '/usr/local/share/ca-certificates/keystone_juju_ca_cert.crt'])
+
+        rel_id_out['vault'] = None
+        r = await openstack_utils._async_get_remote_ca_cert_file_candidates(
+            'neutron-api', 'mymodel')
+        self.assertEqual(
+            r,
+            ['/usr/local/share/ca-certificates/keystone_juju_ca_cert.crt'])

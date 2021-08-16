@@ -4,7 +4,6 @@ use_stderr = false
 log_file = tempest.log
 
 [auth]
-test_accounts_file = accounts.yaml
 default_credentials_domain_name = {{ default_credentials_domain_name }}
 admin_username = {{ admin_username }}
 admin_project_name = {{ admin_project_name }}
@@ -65,6 +64,7 @@ floating_network_name = {{ ext_net }}
 [network-feature-enabled]
 ipv6 = false
 api_extensions = {{ neutron_api_extensions }}
+port_security = true
 {% endif %}
 
 {% if 'heat' in enabled_services %}
@@ -103,4 +103,11 @@ catalog_type = {{ catalog_type }}
 
 [volume-feature-enabled]
 backup = false
+{% endif %}
+
+{% if 'octavia' in enabled_services %}
+[load_balancer]
+enable_security_groups = true
+test_with_ipv6 = false
+test_server_path = {{ workspace_path }}/test_server.bin
 {% endif %}

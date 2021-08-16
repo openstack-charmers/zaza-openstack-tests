@@ -19,6 +19,7 @@
 
 """Module to provide helper for writing unit tests."""
 
+import asyncio
 import contextlib
 import io
 import mock
@@ -96,3 +97,24 @@ class BaseTestCase(unittest.TestCase):
             started.return_value = return_value
         self._patches_start[name] = started
         setattr(self, name, started)
+
+
+class AioTestCase(BaseTestCase):
+    def __init__(self, methodName='runTest', loop=None):
+        self.loop = loop or asyncio.get_event_loop()
+        self._function_cache = {}
+        super(AioTestCase, self).__init__(methodName=methodName)
+
+    def coroutine_function_decorator(self, func):
+        def wrapper(*args, **kw):
+            return self.loop.run_until_complete(func(*args, **kw))
+        return wrapper
+
+    def __getattribute__(self, item):
+        attr = object.__getattribute__(self, item)
+        if asyncio.iscoroutinefunction(attr) and item.startswith('test_'):
+            if item not in self._function_cache:
+                self._function_cache[item] = (
+                    self.coroutine_function_decorator(attr))
+            return self._function_cache[item]
+        return attr

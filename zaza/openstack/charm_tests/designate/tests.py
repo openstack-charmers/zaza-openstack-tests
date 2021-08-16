@@ -23,7 +23,7 @@ import designateclient.v1.records as records
 import designateclient.v1.servers as servers
 
 import zaza.model
-import zaza.openstack.utilities.juju as zaza_juju
+import zaza.utilities.juju as juju_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.designate.utils as designate_utils
@@ -32,6 +32,8 @@ import zaza.charm_lifecycle.utils as lifecycle_utils
 
 class BaseDesignateTest(test_utils.OpenStackBaseTest):
     """Base for Designate charm tests."""
+
+    DESIGNATE_CONF = '/etc/designate/designate.conf'
 
     @classmethod
     def setUpClass(cls, application_name=None, model_alias=None):
@@ -119,6 +121,41 @@ class DesignateAPITests(BaseDesignateTest):
         self.server_delete(server_id)
         return wait()
 
+    def test_300_default_soa_config_options(self):
+        """Configure default SOA options."""
+        test_domain = "test_300_example.com."
+        DEFAULT_TTL = 60
+        alternate_config = {'default-soa-minimum': 600,
+                            'default-ttl': DEFAULT_TTL,
+                            'default-soa-refresh-min': 300,
+                            'default-soa-refresh-max': 400,
+                            'default-soa-retry': 30}
+        with self.config_change({}, alternate_config, "designate",
+                                reset_to_charm_default=True):
+            for key, value in alternate_config.items():
+                expected = "\n%s = %s\n" % (key.replace('-', '_'), value)
+                zaza.model.block_until_file_has_contents(self.application_name,
+                                                         self.DESIGNATE_CONF,
+                                                         expected)
+            logging.debug('Creating domain %s' % test_domain)
+            domain = domains.Domain(name=test_domain,
+                                    email="fred@amuletexample.com")
+
+            if self.post_xenial_queens:
+                new_domain = self.domain_create(
+                    name=domain.name, email=domain.email)
+                domain_id = new_domain['id']
+            else:
+                new_domain = self.domain_create(domain)
+                domain_id = new_domain.id
+
+            self.assertIsNotNone(new_domain)
+            self.assertEqual(new_domain['ttl'], DEFAULT_TTL)
+
+            logging.debug('Tidy up delete test record %s' % domain_id)
+            self._wait_on_domain_gone(domain_id)
+            logging.debug('Done with deletion of domain %s' % domain_id)
+
     def test_400_server_creation(self):
         """Simple api calls to create a server."""
         # Designate does not allow the last server to be deleted so ensure
@@ -170,7 +207,7 @@ class DesignateAPITests(BaseDesignateTest):
         reraise=True
     )
     def _wait_to_resolve_test_record(self):
-        dns_ip = zaza_juju.get_relation_from_unit(
+        dns_ip = juju_utils.get_relation_from_unit(
             'designate/0',
             'designate-bind/0',
             'dns-backend'

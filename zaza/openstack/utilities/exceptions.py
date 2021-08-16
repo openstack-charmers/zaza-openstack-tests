@@ -15,6 +15,12 @@
 """Module of exceptions that zaza may raise."""
 
 
+class InvalidTestConfig(Exception):
+    """Exception when the test configuration is invalid."""
+
+    pass
+
+
 class MissingOSAthenticationException(Exception):
     """Exception when some data needed to authenticate is missing."""
 

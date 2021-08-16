@@ -58,7 +58,9 @@ def app_config(charm_name):
     }
     exceptions = {
         'rabbitmq-server': {
-            'origin': 'source',
+            # NOTE: AJK disable config-changed on rabbitmq-server due to bug:
+            # #1896520
+            'origin': None,
             'pause_non_leader_subordinate': False,
             'post_application_upgrade_functions': [
                 ('zaza.openstack.charm_tests.rabbitmq_server.utils.'
@@ -94,7 +96,7 @@ def app_config(charm_name):
             'pause_non_leader_subordinate': True,
             'post_upgrade_functions': [
                 ('zaza.openstack.charm_tests.vault.setup.'
-                 'async_mojo_unseal_by_unit')]
+                 'async_mojo_or_default_unseal_by_unit')]
         },
         'mongodb': {
             'origin': None,
@@ -191,47 +193,62 @@ async def parallel_series_upgrade(
     status = (await model.async_get_status()).applications[application]
     logging.info(
         "Configuring leader / non leaders for {}".format(application))
-    leader, non_leaders = get_leader_and_non_leaders(status)
-    for leader_name, leader_unit in leader.items():
+    leaders, non_leaders = get_leader_and_non_leaders(status)
+    for leader_unit in leaders.values():
         leader_machine = leader_unit["machine"]
-        leader = leader_name
-    machines = [
-        unit["machine"] for name, unit
-        in non_leaders.items()
-        if unit['machine'] not in completed_machines]
+    machines = [unit["machine"] for name, unit in non_leaders.items()
+                if unit['machine'] not in completed_machines]
 
     await maybe_pause_things(
         status,
         non_leaders,
         pause_non_leader_subordinate,
         pause_non_leader_primary)
-    await series_upgrade_utils.async_set_series(
-        application, to_series=to_series)
-    app_idle = [
+    # wait for the entire application set to be idle before starting upgrades
+    await asyncio.gather(*[
         model.async_wait_for_unit_idle(unit, include_subordinates=True)
-        for unit in status["units"]
-    ]
-    await asyncio.gather(*app_idle)
+        for unit in status["units"]])
     await prepare_series_upgrade(leader_machine, to_series=to_series)
-    prepare_group = [
-        prepare_series_upgrade(machine, to_series=to_series)
-        for machine in machines]
-    await asyncio.gather(*prepare_group)
+    await asyncio.gather(*[
+        wait_for_idle_then_prepare_series_upgrade(
+            machine, to_series=to_series)
+        for machine in machines])
     if leader_machine not in completed_machines:
         machines.append(leader_machine)
-    upgrade_group = [
+    await asyncio.gather(*[
         series_upgrade_machine(
             machine,
             origin=origin,
             application=application,
             files=files, workaround_script=workaround_script,
             post_upgrade_functions=post_upgrade_functions)
-        for machine in machines
-    ]
-    await asyncio.gather(*upgrade_group)
+        for machine in machines])
     completed_machines.extend(machines)
+    await series_upgrade_utils.async_set_series(
+        application, to_series=to_series)
     await run_post_application_upgrade_functions(
         post_application_upgrade_functions)
+
+
+async def wait_for_idle_then_prepare_series_upgrade(
+        machine, to_series, model_name=None):
+    """Wait for the units to idle the do prepare_series_upgrade.
+
+    We need to be sure that all the units are idle prior to actually calling
+    prepare_series_upgrade() as otherwise the call will fail.  It has to be
+    checked because when the leader is paused it may kick off relation hooks in
+    the other units in an HA group.
+
+    :param machine: the machine that is going to be prepared
+    :type machine: str
+    :param to_series: The series to which to upgrade
+    :type to_series: str
+    :param model_name: Name of model to query.
+    :type model_name: str
+    """
+    await model.async_block_until_units_on_machine_are_idle(
+        machine, model_name=model_name)
+    await prepare_series_upgrade(machine, to_series=to_series)
 
 
 async def serial_series_upgrade(
@@ -307,8 +324,10 @@ async def serial_series_upgrade(
         non_leaders,
         pause_non_leader_subordinate,
         pause_non_leader_primary)
+    logging.info("Finishing pausing application: {}".format(application))
     await series_upgrade_utils.async_set_series(
         application, to_series=to_series)
+    logging.info("Finished set series for application: {}".format(application))
     if not follower_first and leader_machine not in completed_machines:
         await model.async_wait_for_unit_idle(leader, include_subordinates=True)
         await prepare_series_upgrade(leader_machine, to_series=to_series)
@@ -321,6 +340,8 @@ async def serial_series_upgrade(
             files=files, workaround_script=workaround_script,
             post_upgrade_functions=post_upgrade_functions)
         completed_machines.append(leader_machine)
+        logging.info("Finished upgrading of leader for application: {}"
+                     .format(application))
 
     # for machine in machines:
     for unit_name, unit in non_leaders.items():
@@ -339,6 +360,8 @@ async def serial_series_upgrade(
             files=files, workaround_script=workaround_script,
             post_upgrade_functions=post_upgrade_functions)
         completed_machines.append(machine)
+    logging.info("Finished upgrading non leaders for application: {}"
+                 .format(application))
 
     if follower_first and leader_machine not in completed_machines:
         await model.async_wait_for_unit_idle(leader, include_subordinates=True)
@@ -354,6 +377,7 @@ async def serial_series_upgrade(
         completed_machines.append(leader_machine)
     await run_post_application_upgrade_functions(
         post_application_upgrade_functions)
+    logging.info("Done series upgrade for: {}".format(application))
 
 
 async def series_upgrade_machine(
@@ -381,17 +405,16 @@ async def series_upgrade_machine(
     :returns: None
     :rtype: None
     """
-    logging.info(
-        "About to series-upgrade ({})".format(machine))
+    logging.info("About to series-upgrade ({})".format(machine))
     await run_pre_upgrade_functions(machine, pre_upgrade_functions)
     await add_confdef_file(machine)
     await async_dist_upgrade(machine)
     await async_do_release_upgrade(machine)
     await remove_confdef_file(machine)
     await reboot(machine)
+    await series_upgrade_utils.async_complete_series_upgrade(machine)
     if origin:
         await os_utils.async_set_origin(application, origin)
-    await series_upgrade_utils.async_complete_series_upgrade(machine)
     await run_post_upgrade_functions(post_upgrade_functions)
 
 
@@ -484,8 +507,7 @@ async def maybe_pause_things(
     :returns: Nothing
     :trype: None
     """
-    subordinate_pauses = []
-    leader_pauses = []
+    unit_pauses = []
     for unit in units:
         if pause_non_leader_subordinate:
             if status["units"][unit].get("subordinates"):
@@ -495,15 +517,19 @@ async def maybe_pause_things(
                         logging.info("Skipping pausing {} - blacklisted"
                                      .format(subordinate))
                     else:
-                        logging.info("Pausing {}".format(subordinate))
-                        subordinate_pauses.append(model.async_run_action(
-                            subordinate, "pause", action_params={}))
+                        unit_pauses.append(
+                            _pause_helper("subordinate", subordinate))
         if pause_non_leader_primary:
-            logging.info("Pausing {}".format(unit))
-            leader_pauses.append(
-                model.async_run_action(unit, "pause", action_params={}))
-    await asyncio.gather(*leader_pauses)
-    await asyncio.gather(*subordinate_pauses)
+            unit_pauses.append(_pause_helper("leader", unit))
+    if unit_pauses:
+        await asyncio.gather(*unit_pauses)
+
+
+async def _pause_helper(_type, unit):
+    """Pause helper to ensure that the log happens nearer to the action."""
+    logging.info("Pausing ({}) {}".format(_type, unit))
+    await model.async_run_action(unit, "pause", action_params={})
+    logging.info("Finished Pausing ({}) {}".format(_type, unit))
 
 
 def get_leader_and_non_leaders(status):
@@ -541,14 +567,14 @@ async def prepare_series_upgrade(machine, to_series):
     NOTE: This is a new feature in juju behind a feature flag and not yet in
     libjuju.
     export JUJU_DEV_FEATURE_FLAGS=upgrade-series
-    :param machine_num: Machine number
-    :type machine_num: str
+    :param machine: Machine number
+    :type machine: str
     :param to_series: The series to which to upgrade
     :type to_series: str
     :returns: None
     :rtype: None
     """
-    logging.info("Preparing series upgrade for: {}".format(machine))
+    logging.info("Preparing series upgrade for: %s", machine)
     await series_upgrade_utils.async_prepare_series_upgrade(
         machine, to_series=to_series)
 
@@ -564,9 +590,8 @@ async def reboot(machine):
     try:
         await model.async_run_on_machine(machine, 'sudo init 6 & exit')
         # await run_on_machine(unit, "sudo reboot && exit")
-    except subprocess.CalledProcessError as e:
-        logging.warn("Error doing reboot: {}".format(e))
-        pass
+    except subprocess.CalledProcessError as error:
+        logging.warning("Error doing reboot: %s", error)
 
 
 async def async_dist_upgrade(machine):
@@ -577,16 +602,31 @@ async def async_dist_upgrade(machine):
     :returns: None
     :rtype: None
     """
-    logging.info('Updating package db ' + machine)
+    logging.info('Updating package db %s', machine)
     update_cmd = 'sudo apt-get update'
     await model.async_run_on_machine(machine, update_cmd)
 
-    logging.info('Updating existing packages ' + machine)
+    logging.info('Updating existing packages %s', machine)
     dist_upgrade_cmd = (
         """yes | sudo DEBIAN_FRONTEND=noninteractive apt-get --assume-yes """
         """-o "Dpkg::Options::=--force-confdef" """
         """-o "Dpkg::Options::=--force-confold" dist-upgrade""")
     await model.async_run_on_machine(machine, dist_upgrade_cmd)
+    rdict = await model.async_run_on_machine(
+        machine,
+        "cat /var/run/reboot-required || true")
+    if "Stdout" in rdict and "restart" in rdict["Stdout"].lower():
+        logging.info("dist-upgrade required reboot machine: %s", machine)
+        await reboot(machine)
+        logging.info("Waiting for machine to come back afer reboot: %s",
+                     machine)
+        await model.async_block_until_file_missing_on_machine(
+            machine, "/var/run/reboot-required")
+        logging.info("Waiting for machine idleness on %s", machine)
+        await asyncio.sleep(5.0)
+        await model.async_block_until_units_on_machine_are_idle(machine)
+        # TODO: change this to wait on units on the machine
+        # await model.async_block_until_all_units_idle()
 
 
 async def async_do_release_upgrade(machine):
@@ -597,7 +637,7 @@ async def async_do_release_upgrade(machine):
     :returns: None
     :rtype: None
     """
-    logging.info('Upgrading ' + machine)
+    logging.info('Upgrading %s', machine)
     do_release_upgrade_cmd = (
         'yes | sudo DEBIAN_FRONTEND=noninteractive '
         'do-release-upgrade -f DistUpgradeViewNonInteractive')

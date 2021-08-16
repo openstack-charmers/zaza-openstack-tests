@@ -25,6 +25,9 @@ import zaza.openstack.charm_tests.glance.setup as glance_setup
 import zaza.openstack.utilities.openstack as openstack
 import zaza.openstack.configure.guest
 
+import zaza.openstack.charm_tests.nova.setup as nova_setup
+import zaza.openstack.charm_tests.nova.utils as nova_utils
+
 
 def ensure_lts_images():
     """Ensure that bionic and focal images are available for the tests."""
@@ -51,13 +54,32 @@ def add_amphora_image(image_url=None):
 
 
 def configure_octavia():
-    """Do mandatory post deployment configuration of Octavia."""
-    # Tell Octavia charm it is safe to create cloud resources
-    logging.info('Running `configure-resources` action on Octavia leader unit')
-    zaza.model.run_action_on_leader(
-        'octavia',
-        'configure-resources',
-        action_params={})
+    """Do post deployment configuration and initialization of Octavia.
+
+    Certificates for the private Octavia worker <-> Amphorae communication must
+    be generated and set trough charm configuration.
+
+    The optional SSH configuration options are set to enable debug and log
+    collection from Amphorae, we will use the same keypair as Zaza uses for
+    instance creation.
+
+    The `configure-resources` action must be run to have the charm create
+    in-cloud resources such as management network and associated ports and
+    security groups.
+    """
+    # Set up Nova client to create/retrieve keypair for Amphora debug purposes.
+    #
+    # We reuse the Nova setup code for this and in most cases the test
+    # declaration will already defined that the Nova manage_ssh_key setup
+    # helper to run before we get here. Re-run here to make sure this setup
+    # function can be used separately, manage_ssh_key is idempotent.
+    keystone_session = openstack.get_overcloud_keystone_session()
+    nova_client = openstack.get_nova_session_client(
+        keystone_session)
+    nova_setup.manage_ssh_key(nova_client)
+    ssh_public_key = openstack.get_public_key(
+        nova_client, nova_utils.KEYPAIR_NAME)
+
     # Generate certificates for controller/load balancer instance communication
     (issuing_cakey, issuing_cacert) = cert.generate_cert(
         'OSCI Zaza Issuer',
@@ -71,7 +93,7 @@ def configure_octavia():
         issuer_name='OSCI Zaza Octavia Controller',
         signing_key=controller_cakey)
     controller_bundle = controller_cert + controller_key
-    cert_config = {
+    charm_config = {
         'lb-mgmt-issuing-cacert': base64.b64encode(
             issuing_cacert).decode('utf-8'),
         'lb-mgmt-issuing-ca-private-key': base64.b64encode(
@@ -81,21 +103,44 @@ def configure_octavia():
             controller_cacert).decode('utf-8'),
         'lb-mgmt-controller-cert': base64.b64encode(
             controller_bundle).decode('utf-8'),
+        'amp-ssh-key-name': 'octavia',
+        'amp-ssh-pub-key': base64.b64encode(
+            bytes(ssh_public_key, 'utf-8')).decode('utf-8'),
     }
-    logging.info('Configuring certificates for mandatory Octavia '
-                 'client/server authentication '
-                 '(client being the ``Amphorae`` load balancer instances)')
+
+    # Tell Octavia charm it is safe to create cloud resources, we do this now
+    # because the workload status will be checked on config-change and it gets
+    # a bit complicated to augment test config to accept 'blocked' vs. 'active'
+    # in the various stages.
+    logging.info('Running `configure-resources` action on Octavia leader unit')
+    zaza.model.run_action_on_leader(
+        'octavia',
+        'configure-resources',
+        action_params={})
 
     # Our expected workload status will change after we have configured the
     # certificates
     test_config = zaza.charm_lifecycle.utils.get_charm_config()
     del test_config['target_deploy_status']['octavia']
 
+    logging.info('Configuring certificates for mandatory Octavia '
+                 'client/server authentication '
+                 '(client being the ``Amphorae`` load balancer instances)')
+
     _singleton = zaza.openstack.charm_tests.test_utils.OpenStackBaseTest()
     _singleton.setUpClass(application_name='octavia')
-    with _singleton.config_change(cert_config, cert_config):
+    with _singleton.config_change(charm_config, charm_config):
         # wait for configuration to be applied then return
         pass
+
+    # Should we consider making the charm attempt to create this key on
+    # config-change?
+    logging.info('Running `configure-resources` action again to ensure '
+                 'Octavia Nova SSH key pair is created after config change.')
+    zaza.model.run_action_on_leader(
+        'octavia',
+        'configure-resources',
+        action_params={})
 
 
 def centralized_fip_network():

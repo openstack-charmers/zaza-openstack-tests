@@ -18,6 +18,7 @@
 
 import logging
 import tenacity
+import unittest
 
 import zaza.model as zaza_model
 
@@ -262,7 +263,7 @@ class WorkloadmgrCLIHelper(object):
 
         retryer = tenacity.Retrying(
             wait=tenacity.wait_exponential(multiplier=1, max=30),
-            stop=tenacity.stop_after_delay(720),
+            stop=tenacity.stop_after_delay(1200),
             reraise=True,
         )
 
@@ -329,7 +330,7 @@ class TrilioBaseTest(test_utils.OpenStackBaseTest):
     @classmethod
     def setUpClass(cls):
         """Run class setup for running tests."""
-        super().setUpClass()
+        super().setUpClass(application_name=cls.application_name)
         cls.cinder_client = openstack_utils.get_cinder_session_client(
             cls.keystone_session
         )
@@ -424,6 +425,22 @@ class TrilioBaseTest(test_utils.OpenStackBaseTest):
         logging.info("Initiating restore")
         workloadmgrcli.oneclick_restore(snapshot_id)
 
+    def test_update_trilio_action(self):
+        """Test that the action runs succesfully."""
+        action_name = 'update-trilio'
+        actions = zaza_model.get_actions(
+            self.application_name)
+        if action_name not in actions:
+            raise unittest.SkipTest(
+                'Action {} not defined'.format(action_name))
+
+        generic_utils.assertActionRanOK(zaza_model.run_action(
+            self.lead_unit,
+            action_name,
+            action_params={},
+            model_name=self.model_name)
+        )
+
 
 class TrilioGhostNFSShareTest(TrilioBaseTest):
     """Tests for Trilio charms providing the ghost-share action."""
@@ -440,7 +457,7 @@ class TrilioGhostNFSShareTest(TrilioBaseTest):
         )
 
 
-class TrilioWLMTest(TrilioGhostNFSShareTest):
+class TrilioWLMBaseTest(TrilioBaseTest):
     """Tests for Trilio Workload Manager charm."""
 
     conf_file = "/etc/workloadmgr/workloadmgr.conf"
@@ -463,10 +480,34 @@ class TrilioDMAPITest(TrilioBaseTest):
     services = ["dmapi-api"]
 
 
-class TrilioDataMoverTest(TrilioGhostNFSShareTest):
+class TrilioDataMoverBaseTest(TrilioBaseTest):
     """Tests for Trilio Data Mover charm."""
 
     conf_file = "/etc/tvault-contego/tvault-contego.conf"
     application_name = "trilio-data-mover"
 
     services = ["tvault-contego"]
+
+
+class TrilioDataMoverNFSTest(TrilioDataMoverBaseTest, TrilioGhostNFSShareTest):
+    """Tests for Trilio Data Mover charm backed by NFS."""
+
+    application_name = "trilio-data-mover"
+
+
+class TrilioDataMoverS3Test(TrilioDataMoverBaseTest):
+    """Tests for Trilio Data Mover charm backed by S3."""
+
+    application_name = "trilio-data-mover"
+
+
+class TrilioWLMNFSTest(TrilioWLMBaseTest, TrilioGhostNFSShareTest):
+    """Tests for Trilio WLM charm backed by NFS."""
+
+    application_name = "trilio-wlm"
+
+
+class TrilioWLMS3Test(TrilioWLMBaseTest):
+    """Tests for Trilio WLM charm backed by S3."""
+
+    application_name = "trilio-wlm"

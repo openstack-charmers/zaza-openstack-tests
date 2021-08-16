@@ -15,6 +15,7 @@
 """Setup for Neutron deployments."""
 
 import functools
+import logging
 
 from zaza.openstack.configure import (
     network,
@@ -81,7 +82,7 @@ def basic_overcloud_network(limit_gws=None):
     # Get keystone session
     keystone_session = openstack_utils.get_overcloud_keystone_session()
 
-    # Get optional use_juju_wait for netw ork option
+    # Get optional use_juju_wait for network option
     options = (lifecycle_utils
                .get_charm_config(fatal=False)
                .get('configure_options', {}))
@@ -89,12 +90,25 @@ def basic_overcloud_network(limit_gws=None):
         'configure_gateway_ext_port_use_juju_wait', True)
 
     # Handle network for OpenStack-on-OpenStack scenarios
-    if juju_utils.get_provider_type() == "openstack":
+    provider_type = juju_utils.get_provider_type()
+    if provider_type == "openstack":
         undercloud_ks_sess = openstack_utils.get_undercloud_keystone_session()
         network.setup_gateway_ext_port(network_config,
                                        keystone_session=undercloud_ks_sess,
-                                       limit_gws=None,
+                                       limit_gws=limit_gws,
                                        use_juju_wait=use_juju_wait)
+    elif provider_type == "maas":
+        # NOTE(fnordahl): After validation of the MAAS+Netplan Open vSwitch
+        # integration support, we would most likely want to add multiple modes
+        # of operation with MAAS.
+        #
+        # Perform charm based OVS configuration
+        openstack_utils.configure_charmed_openstack_on_maas(
+            network_config, limit_gws=limit_gws)
+    else:
+        logging.warning('Unknown Juju provider type, "{}", will not perform'
+                        ' charm network configuration.'
+                        .format(provider_type))
 
     # Confugre the overcloud network
     network.setup_sdn(network_config, keystone_session=keystone_session)

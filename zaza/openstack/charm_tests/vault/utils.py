@@ -20,9 +20,9 @@ import base64
 import hvac
 import requests
 import tempfile
-import time
 import urllib3
 import yaml
+import tenacity
 
 import collections
 
@@ -137,6 +137,41 @@ def get_vip_client(cacert=None):
     return client
 
 
+def get_cluster_leader(clients):
+    """Get Vault cluster leader.
+
+    We have to make sure we run api calls against the actual leader.
+
+    :param clients: Clients list to get leader
+    :type clients: List of CharmVaultClient
+    :returns: CharmVaultClient
+    :rtype: CharmVaultClient or None
+    """
+    if len(clients) == 1:
+        return clients[0]
+
+    for client in clients:
+        if client.hvac_client.ha_status['is_self']:
+            return client
+    return None
+
+
+def get_running_config(client):
+    """Get Vault running config.
+
+    The hvac library does not support getting info from endpoint
+    /v1/sys/config/state/sanitized Therefore we implement it here
+
+    :param client: Client used to get config
+    :type client: CharmVaultClient
+    :returns: dict from Vault api response
+    :rtype: dict
+    """
+    return requests.get(
+        client.hvac_client.adapter.base_uri + '/v1/sys/config/state/sanitized',
+        headers={'X-Vault-Token': client.hvac_client.token}).json()
+
+
 def init_vault(client, shares=1, threshold=1):
     """Initialise vault.
 
@@ -205,6 +240,15 @@ def extract_lead_unit_client(
                        .format(application_name))
 
 
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type((
+        ConnectionRefusedError,
+        urllib3.exceptions.NewConnectionError,
+        urllib3.exceptions.MaxRetryError,
+        requests.exceptions.ConnectionError)),
+    reraise=True,  # if all retries failed, reraise the last exception
+    wait=tenacity.wait_fixed(2),  # interval between retries
+    stop=tenacity.stop_after_attempt(10))  # retry 10 times
 def is_initialized(client):
     """Check if vault is initialized.
 
@@ -212,23 +256,10 @@ def is_initialized(client):
     :type client: CharmVaultClient
     :returns: Whether vault is initialized
     :rtype: bool
+
+    Raise the last exception if no value returned after retries.
     """
-    initialized = False
-    for i in range(1, 10):
-        try:
-            initialized = client.hvac_client.is_initialized()
-        except (ConnectionRefusedError,
-                urllib3.exceptions.NewConnectionError,
-                urllib3.exceptions.MaxRetryError,
-                requests.exceptions.ConnectionError):
-            # XXX time.sleep roundup
-            # https://github.com/openstack-charmers/zaza-openstack-tests/issues/46
-            time.sleep(2)
-        else:
-            break
-    else:
-        raise Exception("Cannot connect")
-    return initialized
+    return client.hvac_client.is_initialized()
 
 
 def ensure_secret_backend(client):

@@ -118,7 +118,7 @@ class TestCephUtils(ut_utils.BaseTestCase):
                                     model_name='amodel')
 
     def test_pools_from_broker_req(self):
-        self.patch_object(ceph_utils.zaza_juju, 'get_relation_from_unit')
+        self.patch_object(ceph_utils.juju_utils, 'get_relation_from_unit')
         self.get_relation_from_unit.return_value = {
             'broker_req': (
                 '{"api-version": 1, "ops": ['
