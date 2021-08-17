@@ -318,13 +318,21 @@ packages:
     def test_manila_share(self):
         """Test that a Manila share can be accessed on two instances.
 
-        1. Spawn two servers
-        2. Create a share
-        3. Mount it on both
+        1. Create a share
+        2. Spawn two servers
+        3. Mount the share on both
         4. Write a file on one
         5. Read it on the other
         6. Profit
         """
+        # Create a share
+        share = self.manila_client.shares.create(
+            share_type=self.share_type_name,
+            name=self.share_name,
+            share_proto=self.share_protocol,
+            share_network=self.share_network,
+            size=1)
+
         # Spawn Servers
         instance_1 = self.launch_guest(
             guest_name='ins-1',
@@ -337,14 +345,6 @@ packages:
 
         fip_1 = neutron_tests.floating_ips_from_instance(instance_1)[0]
         fip_2 = neutron_tests.floating_ips_from_instance(instance_2)[0]
-
-        # Create a share
-        share = self.manila_client.shares.create(
-            share_type=self.share_type_name,
-            name=self.share_name,
-            share_proto=self.share_protocol,
-            share_network=self.share_network,
-            size=1)
 
         # Wait for the created share to become available before it gets used.
         openstack_utils.resource_reaches_status(
