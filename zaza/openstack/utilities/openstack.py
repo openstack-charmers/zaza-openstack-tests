@@ -1056,14 +1056,23 @@ def configure_charmed_openstack_on_maas(network_config, limit_gws=None):
     :type limit_gws: Optional[int]
     """
     networking_data = get_charm_networking_data(limit_gws=limit_gws)
-    macs = [
-        mim.mac
-        for mim in zaza.utilities.maas.get_macs_from_cidr(
+    macs = []
+    machines = set()
+    for mim in zaza.utilities.maas.get_macs_from_cidr(
             zaza.utilities.maas.get_maas_client_from_juju_cloud_data(
                 zaza.model.get_cloud_data()),
             network_config['external_net_cidr'],
-            link_mode=zaza.utilities.maas.LinkMode.LINK_UP)
-    ]
+            link_mode=zaza.utilities.maas.LinkMode.LINK_UP):
+        if mim.machine_id in machines:
+            logging.warning("Machine {} has multiple unconfigured interfaces, "
+                            "ignoring interface {} ({})."
+                            .format(mim.machine_id, mim.ifname, mim.mac))
+            continue
+        logging.info("Machine {} selected {} ({}) for external networking."
+                     .format(mim.machine_id, mim.ifname, mim.mac))
+        machines.add(mim.machine_id)
+        macs.append(mim.mac)
+
     if macs:
         configure_networking_charms(
             networking_data, macs, use_juju_wait=False)
