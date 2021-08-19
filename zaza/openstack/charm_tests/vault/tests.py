@@ -21,9 +21,7 @@ import json
 import logging
 import unittest
 import uuid
-import tempfile
 
-import requests
 import tenacity
 from hvac.exceptions import InternalServerError
 
@@ -64,7 +62,7 @@ class BaseVaultTest(test_utils.OpenStackBaseTest):
         cls.vip_client = vault_utils.get_vip_client()
         if cls.vip_client:
             cls.clients.append(cls.vip_client)
-        cls.vault_creds = vault_utils.get_credentails()
+        cls.vault_creds = vault_utils.get_credentials()
         vault_utils.unseal_all(cls.clients, cls.vault_creds['keys'][0])
         vault_utils.auth_all(cls.clients, cls.vault_creds['root_token'])
         vault_utils.ensure_secret_backend(cls.clients[0])
@@ -180,26 +178,10 @@ class VaultTest(BaseVaultTest):
         except KeyError:
             # Already removed
             pass
-        zaza.openstack.utilities.openstack.block_until_ca_exists(
-            'keystone',
-            cacert.decode().strip())
         zaza.model.wait_for_application_states(
             states=test_config.get('target_deploy_status', {}))
-        ip = zaza.model.get_app_ips(
-            'keystone')[0]
 
-        with tempfile.NamedTemporaryFile(mode='w') as fp:
-            fp.write(cacert.decode())
-            fp.flush()
-            # Avoid race condition and retry
-            for attempt in tenacity.Retrying(
-                stop=tenacity.stop_after_attempt(3),
-                wait=tenacity.wait_exponential(
-                    multiplier=2, min=2, max=10)):
-                with attempt:
-                    logging.info(
-                        "Attempting to connect to https://{}:5000".format(ip))
-                    requests.get('https://{}:5000'.format(ip), verify=fp.name)
+        vault_utils.validate_ca(cacert)
 
     def test_all_clients_authenticated(self):
         """Check all vault clients are authenticated."""

@@ -18,6 +18,7 @@
 
 import base64
 import hvac
+import logging
 import requests
 import tempfile
 import urllib3
@@ -27,6 +28,7 @@ import tenacity
 import collections
 
 import zaza.model
+import zaza.openstack.utilities.openstack
 import zaza.utilities.networking as network_utils
 
 AUTH_FILE = "vault_tests.yaml"
@@ -70,10 +72,10 @@ class VaultFacade:
     def initialize(self):
         """Initialise vault and store resulting credentials."""
         if self.is_initialized:
-            self.vault_creds = get_credentails()
+            self.vault_creds = get_credentials()
         else:
             self.vault_creds = init_vault(self.unseal_client)
-            store_credentails(self.vault_creds)
+            store_credentials(self.vault_creds)
         self.initialized = is_initialized(self.unseal_client)
 
     def unseal(self):
@@ -294,7 +296,7 @@ def find_unit_with_creds():
     return unit
 
 
-def get_credentails():
+def get_credentials():
     """Retrieve vault token and keys from unit.
 
     Retrieve vault token and keys from unit. These are stored on a unit
@@ -315,7 +317,7 @@ def get_credentails():
     return creds
 
 
-def store_credentails(creds):
+def store_credentials(creds):
     """Store the supplied credentials.
 
     Store the supplied credentials on a vault unit. ONLY USE FOR FUNCTIONAL
@@ -334,7 +336,7 @@ def store_credentails(creds):
             '~/{}'.format(AUTH_FILE))
 
 
-def get_credentails_from_file(auth_file):
+def get_credentials_from_file(auth_file):
     """Read the vault credentials from the auth_file.
 
     :param auth_file: Path to file with credentials
@@ -347,7 +349,7 @@ def get_credentails_from_file(auth_file):
     return vault_creds
 
 
-def write_credentails(auth_file, vault_creds):
+def write_credentials(auth_file, vault_creds):
     """Write the vault credentials to the auth_file.
 
     :param auth_file: Path to file to write credentials
@@ -434,3 +436,37 @@ def run_upload_signed_csr(pem, root_ca, allowed_domains):
             'root-ca': base64.b64encode(root_ca).decode(),
             'allowed-domains=': allowed_domains,
             'ttl': '24h'})
+
+
+@tenacity.retry(
+    reraise=True,
+    wait=tenacity.wait_exponential(multiplier=2, min=2, max=10),
+    stop=tenacity.stop_after_attempt(3))
+def validate_ca(cacertificate, application="keystone", port=5000):
+    """Validate Certificate Authority against application.
+
+    :param cacertificate: PEM formatted CA certificate
+    :type cacertificate: str
+    :param application: Which application to validate against.
+    :type application: str
+    :param port: Port to validate against.
+    :type port: int
+    :returns: None
+    :rtype: None
+    """
+    zaza.openstack.utilities.openstack.block_until_ca_exists(
+        application,
+        cacertificate.decode().strip())
+    vip = (zaza.model.get_application_config(application)
+           .get("vip").get("value"))
+    if vip:
+        ip = vip
+    else:
+        ip = zaza.model.get_app_ips(application)[0]
+    with tempfile.NamedTemporaryFile(mode='w') as fp:
+        fp.write(cacertificate.decode())
+        fp.flush()
+        keystone_url = 'https://{}:{}'.format(ip, str(port))
+        logging.info(
+            'Attempting to connect to {}'.format(keystone_url))
+        requests.get(keystone_url, verify=fp.name)
