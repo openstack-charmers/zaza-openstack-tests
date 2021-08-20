@@ -27,6 +27,7 @@ import tenacity
 
 from neutronclient.common import exceptions as neutronexceptions
 
+import yaml
 import zaza
 import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
@@ -285,12 +286,11 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
 
         # extract data from juju action
         action_data = action_result.data.get('results', {}).get(resource_name)
-        resources_from_action = json.loads(action_data)
+        resources_from_action = yaml.load(action_data)
 
         # pull resource IDs from expected resource list and juju action data
         expected_resource_ids = {resource['id'] for resource in resource_list}
-        result_resource_ids = {resource['id'] for resource in
-                               resources_from_action}
+        result_resource_ids = resources_from_action.keys()
 
         # assert that juju action returned expected resources
         self.assertEqual(result_resource_ids, expected_resource_ids)
@@ -310,8 +310,7 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
         # fetch neutron routers using juju-action
         result = zaza.model.run_action(ngw_unit.entity_id,
                                        'get-status-routers',
-                                       model_name=self.model_name,
-                                       action_params={"format": "json"})
+                                       model_name=self.model_name)
 
         # assert that data from neutron client match data from juju action
         self._assert_result_match(result, routers_from_client, 'router-list')
@@ -331,8 +330,7 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
         # fetch DHCP networks using juju-action
         result = zaza.model.run_action(ngw_unit.entity_id,
                                        'get-status-dhcp',
-                                       model_name=self.model_name,
-                                       action_params={"format": "json"})
+                                       model_name=self.model_name)
 
         # assert that data from neutron client match data from juju action
         self._assert_result_match(result, networks_from_client,
@@ -372,8 +370,7 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
 
             result = zaza.model.run_action(ngw_unit.entity_id,
                                            'get-status-lb',
-                                           model_name=self.model_name,
-                                           action_params={"format": "json"})
+                                           model_name=self.model_name)
 
             self._assert_result_match(result, lbaas_from_client,
                                       'load-balancers')
