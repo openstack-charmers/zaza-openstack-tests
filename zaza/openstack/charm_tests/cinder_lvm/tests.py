@@ -25,6 +25,7 @@ import zaza.openstack.utilities.openstack as openstack_utils
 
 
 def with_conf(key, value):
+    """Temporarily set a configuration option for the cinder-lvm unit."""
     def patched(f):
         def inner(*args, **kwargs):
             prev = openstack_utils.get_application_config_option(
@@ -54,6 +55,7 @@ class CinderLVMTest(test_utils.OpenStackBaseTest):
 
     @classmethod
     def tearDown(cls):
+        """Remove tests resources."""
         volumes = cls.cinder_client.volumes
         for volume in volumes.list():
             if volume.name.startswith('zaza'):
@@ -64,6 +66,7 @@ class CinderLVMTest(test_utils.OpenStackBaseTest):
                     pass
 
     def test_cinder_config(self):
+        """Test that configuration options match our expectations."""
         logging.info('cinder-lvm')
         expected_contents = {
             'LVM-zaza-lvm': {
@@ -86,6 +89,7 @@ class CinderLVMTest(test_utils.OpenStackBaseTest):
             timeout=10)
 
     def _tst_create_volume(self):
+        """Create a volume via the LVM backend."""
         test_vol_name = "zaza{}".format(uuid.uuid1().fields[0])
         vol_new = self.cinder_client.volumes.create(
             name=test_vol_name,
@@ -100,6 +104,7 @@ class CinderLVMTest(test_utils.OpenStackBaseTest):
         return self.cinder_client.volumes.find(name=test_vol_name)
 
     def test_create_volume(self):
+        """Test creating a volume with basic configuration."""
         test_vol = self._tst_create_volume()
         self.assertTrue(test_vol)
 
@@ -109,16 +114,20 @@ class CinderLVMTest(test_utils.OpenStackBaseTest):
     @with_conf('overwrite', 'true')
     @with_conf('block-device', '/dev/vdc')
     def test_volume_overwrite(self):
+        """Test creating a volume by overwriting one on the /dev/vdc device."""
         self._tst_create_volume()
 
     @with_conf('block-device', 'none')
     def test_device_none(self):
+        """Test creating a volume in a dummy device (set as 'none')."""
         self._tst_create_volume()
 
     @with_conf('remove-missing', 'true')
     def test_remove_missing_volume(self):
+        """Test creating a volume after removing missing ones in a group."""
         self._tst_create_volume()
 
     @with_conf('remove-missing-force', 'true')
     def test_remove_missing_force(self):
+        """Test volume creation by forcefully removing missing ones."""
         self._tst_create_volume()
