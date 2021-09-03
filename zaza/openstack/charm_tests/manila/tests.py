@@ -86,13 +86,6 @@ class ManilaTests(test_utils.OpenStackBaseTest):
     def _list_shares(self):
         return self.manila_client.shares.list()
 
-    @tenacity.retry(
-        retry=tenacity.retry_if_result(lambda ret: ret is not None),
-        wait=tenacity.wait_fixed(120),
-        stop=tenacity.stop_after_attempt(2))
-    def _retry_check_commands_on_units(self, cmds, units):
-        return generic_utils.check_commands_on_units(cmds, units)
-
     def test_902_nrpe_service_checks(self):
         """Confirm that the NRPE service check files are created."""
         units = zaza.model.get_units('manila')
@@ -105,11 +98,16 @@ class ManilaTests(test_utils.OpenStackBaseTest):
                 'check_{}.cfg'.format(check_name)
             )
 
-        ret = self._retry_check_commands_on_units(cmds, units)
-        if ret:
-            logging.info(ret)
-
-        self.assertIsNone(ret, msg=ret)
+        for attempt in tenacity.Retrying(
+            retry=tenacity.retry_if_result(lambda ret: ret is not None),
+            wait=tenacity.wait_fixed(120),
+            stop=tenacity.stop_after_attempt(2)
+        ):
+            with attempt:
+                ret = generic_utils.check_commands_on_units(cmds, units)
+                if ret:
+                    logging.info(ret)
+                self.assertIsNone(ret, msg=ret)
 
 
 class ManilaBaseTest(test_utils.OpenStackBaseTest):
