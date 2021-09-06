@@ -24,28 +24,6 @@ import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 
 
-def with_conf(application, config, model_name=None):
-    """Temporarily change the config options for an application in a model."""
-    prev = {}
-    for key in config.keys():
-        prev[key] = str(openstack_utils.get_application_config_option(
-            application, key, model_name=model_name))
-
-    def patched(f):
-        def inner(*args, **kwargs):
-            try:
-                zaza.model.set_application_config(
-                    application, config, model_name=model_name)
-                zaza.model.wait_for_agent_status(model_name=model_name)
-                return f(*args, **kwargs)
-            finally:
-                zaza.model.set_application_config(
-                    application, prev, model_name=model_name)
-                zaza.model.wait_for_agent_status(model_name=model_name)
-        return inner
-    return patched
-
-
 class CinderLVMTest(test_utils.OpenStackBaseTest):
     """Encapsulate cinder-lvm tests."""
 
@@ -56,6 +34,8 @@ class CinderLVMTest(test_utils.OpenStackBaseTest):
         cls.model_name = zaza.model.get_juju_model()
         cls.cinder_client = openstack_utils.get_cinder_session_client(
             cls.keystone_session)
+        cls.block_device = openstack_utils.get_application_config_option(
+            'cinder-lvm', 'block-device', model_name=cls.model_name)
 
     @classmethod
     def tearDown(cls):
@@ -83,13 +63,11 @@ class CinderLVMTest(test_utils.OpenStackBaseTest):
 
         zaza.model.run_on_leader(
             'cinder',
-            'sudo cp /etc/cinder/cinder.conf /tmp/',
-            model_name=self.model_name)
+            'sudo cp /etc/cinder/cinder.conf /tmp/')
         zaza.model.block_until_oslo_config_entries_match(
             'cinder',
             '/tmp/cinder.conf',
             expected_contents,
-            model_name=self.model_name,
             timeout=10)
 
     def _create_volume(self):
@@ -115,22 +93,28 @@ class CinderLVMTest(test_utils.OpenStackBaseTest):
         host = getattr(test_vol, 'os-vol-host-attr:host').split('#')[0]
         self.assertTrue(host.startswith('cinder@LVM'))
 
-    @with_conf('cinder-lvm', {'overwrite': 'true', 'block-device': '/dev/vdc'})
     def test_volume_overwrite(self):
         """Test creating a volume by overwriting one on the /dev/vdc device."""
-        self._create_volume()
+        with self.config_change({'overwrite': 'false',
+                                 'block-device': self.block_device},
+                                {'overwrite': 'true',
+                                 'block-device': '/dev/vdc'}):
+            self._create_volume()
 
-    @with_conf('cinder-lvm', {'block-device': 'none'})
     def test_device_none(self):
         """Test creating a volume in a dummy device (set as 'none')."""
-        self._create_volume()
+        with self.config_change({'block-device': self.block_device},
+                                {'block-device': 'none'}):
+            self._create_volume()
 
-    @with_conf('cinder-lvm', {'remove-missing': 'true'})
     def test_remove_missing_volume(self):
         """Test creating a volume after remove missing ones in a group."""
-        self._create_volume()
+        with self.config_change({'remove-missing': 'false'},
+                                {'remove-missing': 'true'}):
+            self._create_volume()
 
-    @with_conf('cinder-lvm', {'remove-missing-force': 'true'})
     def test_remove_missing_force(self):
         """Test creating a volume by forcefully removing missing ones."""
-        self._create_volume()
+        with self.config_change({'remove-missing-force': 'false'},
+                                {'remove-missing-force': 'true'}):
+            self._create_volume()
