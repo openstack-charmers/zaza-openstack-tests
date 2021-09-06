@@ -99,14 +99,12 @@ class ManilaTests(test_utils.OpenStackBaseTest):
             )
 
         for attempt in tenacity.Retrying(
-            retry=tenacity.retry_if_result(lambda ret: ret is not None),
-            wait=tenacity.wait_fixed(120),
-            stop=tenacity.stop_after_attempt(2)
+            wait=tenacity.wait_fixed(20),
+            stop=tenacity.stop_after_attempt(2),
+            reraise=True
         ):
             with attempt:
                 ret = generic_utils.check_commands_on_units(cmds, units)
-                if ret:
-                    logging.info(ret)
                 self.assertIsNone(ret, msg=ret)
 
 
