@@ -1000,7 +1000,7 @@ def configure_networking_charms(networking_data, macs, use_juju_wait=True):
     # to deal with all the non ['active', 'idle', 'Unit is ready.']
     # workload/agent states and msgs that our mojo specs are exposed to.
     if use_juju_wait:
-        juju_wait.wait(wait_for_workload=True)
+        juju_wait.wait(wait_for_workload=True, max_wait=2700)
     else:
         zaza.model.wait_for_agent_status()
         # TODO: shouldn't access get_charm_config() here as it relies on
