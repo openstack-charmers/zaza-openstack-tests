@@ -117,7 +117,9 @@ class CephDashboardTest(test_utils.BaseCharmTest):
         self.assertEqual(action.status, "completed")
         password = action.data['results']['password']
         path = "api/auth"
-        headers = {'Content-type': 'application/json'}
+        headers = {
+            'Content-type': 'application/json',
+            'Accept': 'application/vnd.ceph.api.v1.0'}
         payload = {"username": user, "password": password}
         verify = self.local_ca_cert
         r = requests.post(
