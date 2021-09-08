@@ -15,12 +15,11 @@
 """Encapsulating `ceph-dashboard` testing."""
 
 import collections
-import os
 import requests
 
 import zaza
 import zaza.openstack.charm_tests.test_utils as test_utils
-import zaza.utilities.deployment_env as deployment_env
+import zaza.openstack.utilities.openstack as openstack_utils
 
 
 class CephDashboardTest(test_utils.BaseCharmTest):
@@ -34,21 +33,8 @@ class CephDashboardTest(test_utils.BaseCharmTest):
         """Run class setup for running ceph dashboard tests."""
         super().setUpClass()
         cls.application_name = 'ceph-dashboard'
-        cls.local_ca_cert = cls.collect_ca()
-
-    @classmethod
-    def collect_ca(cls):
-        """Collect CA from ceph-dashboard unit."""
-        local_ca_cert = os.path.join(
-            deployment_env.get_tmpdir(),
-            os.path.basename(cls.REMOTE_CERT_FILE))
-        if not os.path.isfile(local_ca_cert):
-            units = zaza.model.get_units(cls.application_name)
-            zaza.model.scp_from_unit(
-                units[0].entity_id,
-                cls.REMOTE_CERT_FILE,
-                local_ca_cert)
-        return local_ca_cert
+        cls.local_ca_cert = openstack_utils.get_remote_ca_cert_file(
+            cls.application_name)
 
     def test_dashboard_units(self):
         """Check dashboard units are configured correctly."""

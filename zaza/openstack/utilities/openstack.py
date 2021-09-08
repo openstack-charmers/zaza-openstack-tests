@@ -986,8 +986,11 @@ def configure_networking_charms(networking_data, macs, use_juju_wait=True):
         current_data_port = get_application_config_option(
             application_name,
             networking_data.port_config_key)
-        if current_data_port == config[networking_data.port_config_key]:
-            logging.info('Config already set to value')
+        if current_data_port:
+            logging.info("Skip update of external network data port config."
+                         "Config '{}' already set to value: {}".format(
+                             networking_data.port_config_key,
+                             current_data_port))
             return
 
         model.set_application_config(
