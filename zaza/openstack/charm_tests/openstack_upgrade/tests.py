@@ -49,7 +49,6 @@ class OpenStackUpgradeVMLaunchBase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Run setup for OpenStack Upgrades."""
-        print("Running OpenStackUpgradeMixin setUpClass")
         super().setUpClass()
         cls.lts = LTSGuestCreateTest()
         cls.lts.setUpClass()
@@ -76,7 +75,6 @@ class WaitForMySQL(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Set up class."""
-        print("Running OpenstackUpgradeTests setUpClass")
         super().setUpClass()
         cli_utils.setup_logging()
 
@@ -93,7 +91,6 @@ class OpenStackUpgradeTestsFocalUssuri(OpenStackUpgradeVMLaunchBase):
     @classmethod
     def setUpClass(cls):
         """Run setup for OpenStack Upgrades."""
-        print("Running OpenstackUpgradeTests setUpClass")
         super().setUpClass()
         cli_utils.setup_logging()
 
@@ -120,7 +117,6 @@ class OpenStackUpgradeTestsByOption(OpenStackUpgradeVMLaunchBase):
     @classmethod
     def setUpClass(cls):
         """Run setup for OpenStack Upgrades."""
-        print("Running OpenstackUpgradeTests setUpClass")
         super().setUpClass()
         cli_utils.setup_logging()
 
