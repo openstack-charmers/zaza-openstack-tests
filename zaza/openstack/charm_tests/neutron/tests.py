@@ -25,6 +25,7 @@ import logging
 import tenacity
 
 from neutronclient.common import exceptions as neutronexceptions
+from time import sleep
 
 import zaza
 import zaza.openstack.charm_tests.nova.utils as nova_utils
@@ -590,6 +591,100 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
         with self.pause_resume(['neutron-openvswitch-agent'],
                                pgrep_full=self.pgrep_full):
             logging.info('Testing pause resume')
+
+
+class NeutronOpenvSwitchAgentsTest(test_utils.OpenStackBaseTest):
+    """Test actions to register and unregister neutron agents."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running Neutron Openvswitch Agents tests."""
+        super(NeutronOpenvSwitchAgentsTest, cls).setUpClass()
+
+        # set up client
+        cls.neutron_client = (
+            openstack_utils.get_neutron_session_client(cls.keystone_session))
+
+    def test_enable_disable_actions(self):
+        """Test disable/enable actions on neutron-openvswitch units."""
+        neutron_ovs_units = zaza.model.get_units(
+            'neutron-openvswitch',
+            model_name=self.model_name
+        )
+
+        # Check that neutron-openvswitch services are enabled before testing
+        for agent in self.neutron_client.list_agents().get('agents'):
+            self.assertTrue(agent.get('admin_state_up'))
+
+        # Run 'disable' action on units
+        zaza.model.run_action_on_units(
+            [unit.name for unit in neutron_ovs_units], 'disable'
+        )
+
+        # Check action results via neutron API
+        for agent in self.neutron_client.list_agents().get('agents'):
+            self.assertFalse(agent.get('admin_state_up'))
+
+        # Run 'enable' action on units
+        zaza.model.run_action_on_units(
+            [unit.name for unit in neutron_ovs_units], 'enable'
+        )
+
+        # Check action results via neutron API
+        for agent in self.neutron_client.list_agents().get('agents'):
+            self.assertTrue(agent.get('admin_state_up'))
+
+    def check_neutron_agents(self, host, n_agents, err_msg):
+        """
+        Check if agents if are sucessfully registered or unregistered.
+
+        :param host: host name of the unit
+        :type host: str
+        :param n_agents: number of agents expected
+        :type n_agents: int
+        :param err_msg: error message of the actions to register or unregister
+        :type err_msg: str
+        """
+        sleep_timeout = 1  # don't waste 10 seconds on the first run
+        for _ in range(31):
+            sleep(sleep_timeout)
+            agents_list = self.neutron_client.list_agents(host=host).get(
+                "agents"
+            )
+            if len(agents_list) == n_agents:
+                break
+            sleep_timeout = 10
+        else:
+            self.fail("neutron agents was not {} as expected.".format(err_msg))
+
+    def test_cloud_actions(self):
+        """Test actions remove-from-cloud and register-to-cloud."""
+        neutron_ovs_units = zaza.model.get_units(
+            "neutron-openvswitch", model_name=self.model_name
+        )
+
+        unit_to_remove = neutron_ovs_units[0]
+        service_name = zaza.model.run_on_unit(
+            unit_to_remove.name,
+            "hostname --fqdn",
+        )["Stdout"].rstrip("\n")
+
+        agents = self.neutron_client.list_agents(host=service_name).get(
+            "agents"
+        )
+
+        # Run 'disable' action on unit to be removed
+        zaza.model.run_action_on_units([unit_to_remove.name], 'disable')
+
+        zaza.model.run_action_on_units(
+            [unit_to_remove.name], "remove-from-cloud", raise_on_failure=True
+        )
+        self.check_neutron_agents(service_name, 0, 'unregistered')
+
+        zaza.model.run_action_on_units(
+            [unit_to_remove.name], "register-to-cloud", raise_on_failure=True
+        )
+        self.check_neutron_agents(service_name, len(agents), 're-registered')
 
 
 class NeutronBridgePortMappingTest(NeutronPluginApiSharedTests):
