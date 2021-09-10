@@ -25,7 +25,6 @@ import logging
 import tenacity
 
 from neutronclient.common import exceptions as neutronexceptions
-from time import sleep
 
 import zaza
 import zaza.openstack.charm_tests.nova.utils as nova_utils
@@ -594,7 +593,7 @@ class NeutronOpenvSwitchTest(NeutronPluginApiSharedTests):
 
 
 class NeutronOpenvSwitchAgentsTest(test_utils.OpenStackBaseTest):
-    """Test actions to register and unregister neutron agents."""
+    """Test actions to enable, disable, register and unregister agents."""
 
     @classmethod
     def setUpClass(cls):
@@ -604,58 +603,92 @@ class NeutronOpenvSwitchAgentsTest(test_utils.OpenStackBaseTest):
         # set up client
         cls.neutron_client = (
             openstack_utils.get_neutron_session_client(cls.keystone_session))
+        cls.dhcp_and_metadata = (
+            zaza.model.get_application_config("neutron-openvswitch")
+            .get("enable-local-dhcp-and-metadata")
+            .get("value")
+        )
 
     def test_enable_disable_actions(self):
         """Test disable/enable actions on neutron-openvswitch units."""
-        neutron_ovs_units = zaza.model.get_units(
+        neutron_ovs = zaza.model.get_units(
             'neutron-openvswitch',
             model_name=self.model_name
-        )
+        )[0]
+
+        host = zaza.model.run_on_unit(
+            neutron_ovs.name,
+            "hostname --fqdn",
+        )["Stdout"].rstrip("\n")
 
         # Check that neutron-openvswitch services are enabled before testing
-        for agent in self.neutron_client.list_agents().get('agents'):
-            self.assertTrue(agent.get('admin_state_up'))
+        self.check_admin_state_up(True, host)
 
-        # Run 'disable' action on units
-        zaza.model.run_action_on_units(
-            [unit.name for unit in neutron_ovs_units], 'disable'
-        )
+        # Run 'disable' action on unit
+        zaza.model.run_action_on_units([neutron_ovs.name], 'disable')
 
         # Check action results via neutron API
-        for agent in self.neutron_client.list_agents().get('agents'):
-            self.assertFalse(agent.get('admin_state_up'))
+        self.check_admin_state_up(False, host)
 
-        # Run 'enable' action on units
-        zaza.model.run_action_on_units(
-            [unit.name for unit in neutron_ovs_units], 'enable'
-        )
+        # Run 'enable' action on unit
+        zaza.model.run_action_on_units([neutron_ovs.name], 'enable')
 
         # Check action results via neutron API
-        for agent in self.neutron_client.list_agents().get('agents'):
-            self.assertTrue(agent.get('admin_state_up'))
+        self.check_admin_state_up(True, host)
 
-    def check_neutron_agents(self, host, n_agents, err_msg):
+    @tenacity.retry(
+        wait=tenacity.wait_exponential(max=60),
+        stop=tenacity.stop_after_attempt(8)
+    )
+    def check_admin_state_up(self, state, host):
+        """Check admin_state_up of agents.
+
+        :param state: desired state of admin_state_up
+        :type state: bool
+        :param host: host name of the unit
+        :type host: str
         """
-        Check if agents if are sucessfully registered or unregistered.
+        for agent in self.neutron_client.list_agents(host=host).get('agents'):
+            if agent.get('binary') in self.get_agents_binaries():
+                self.assertEqual(agent.get('admin_state_up'), state)
+
+    def get_agents_binaries(self):
+        """Get valid binary agents services.
+
+        Values depends on the charm config for enable-local-dhcp-and-metadata.
+
+        :return: set of binary agents services
+        :rtype: set
+        """
+        agents_binaries = {"neutron-openvswitch-agent", "neutron-l3-agent"}
+        if self.dhcp_and_metadata:
+            agents_binaries.update(
+                ["neutron-metadata-agent", "neutron-dhcp-agent"]
+            )
+        return agents_binaries
+
+    @tenacity.retry(
+        wait=tenacity.wait_exponential(max=60),
+        stop=tenacity.stop_after_attempt(8)
+    )
+    def check_neutron_agents(self, host, n_agents):
+        """
+        Check if agents are sucessfully registered or unregistered.
 
         :param host: host name of the unit
         :type host: str
         :param n_agents: number of agents expected
         :type n_agents: int
-        :param err_msg: error message of the actions to register or unregister
-        :type err_msg: str
         """
-        sleep_timeout = 1  # don't waste 10 seconds on the first run
-        for _ in range(31):
-            sleep(sleep_timeout)
-            agents_list = self.neutron_client.list_agents(host=host).get(
-                "agents"
-            )
-            if len(agents_list) == n_agents:
-                break
-            sleep_timeout = 10
-        else:
-            self.fail("neutron agents was not {} as expected.".format(err_msg))
+        agents_binaries = self.get_agents_binaries()
+        agents = self.neutron_client.list_agents(host=host).get(
+            "agents"
+        )
+        check_agents = {agent['binary'] for agent in agents}
+        self.assertEqual(
+            len(agents_binaries.intersection(check_agents)),
+            n_agents
+        )
 
     def test_cloud_actions(self):
         """Test actions remove-from-cloud and register-to-cloud."""
@@ -664,14 +697,17 @@ class NeutronOpenvSwitchAgentsTest(test_utils.OpenStackBaseTest):
         )
 
         unit_to_remove = neutron_ovs_units[0]
-        service_name = zaza.model.run_on_unit(
+        host = zaza.model.run_on_unit(
             unit_to_remove.name,
             "hostname --fqdn",
         )["Stdout"].rstrip("\n")
 
-        agents = self.neutron_client.list_agents(host=service_name).get(
-            "agents"
-        )
+        agents = self.neutron_client.list_agents(host=host).get("agents")
+        agents_binaries = self.get_agents_binaries()
+
+        agents_ovs = [
+            agent for agent in agents if agent["binary"] in agents_binaries
+        ]
 
         # Run 'disable' action on unit to be removed
         zaza.model.run_action_on_units([unit_to_remove.name], 'disable')
@@ -679,12 +715,12 @@ class NeutronOpenvSwitchAgentsTest(test_utils.OpenStackBaseTest):
         zaza.model.run_action_on_units(
             [unit_to_remove.name], "remove-from-cloud", raise_on_failure=True
         )
-        self.check_neutron_agents(service_name, 0, 'unregistered')
+        self.check_neutron_agents(host, 0)
 
         zaza.model.run_action_on_units(
             [unit_to_remove.name], "register-to-cloud", raise_on_failure=True
         )
-        self.check_neutron_agents(service_name, len(agents), 're-registered')
+        self.check_neutron_agents(host, len(agents_ovs))
 
 
 class NeutronBridgePortMappingTest(NeutronPluginApiSharedTests):
