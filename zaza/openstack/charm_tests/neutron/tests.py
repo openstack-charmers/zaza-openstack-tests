@@ -249,13 +249,13 @@ class NeutronGatewayTest(NeutronPluginApiSharedTests):
         return services
 
 
-class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
-    """Test status actions of Neutron Gateway Charm.
+class NeutronGatewayShowActionsTest(test_utils.OpenStackBaseTest):
+    """Test "show" actions of Neutron Gateway Charm.
 
     actions:
-      * get-status-routers
-      * get-status-dhcp
-      * get-status-lb
+      * show-routers
+      * show-dhcp-networks
+      * show-loadbalancers
     """
 
     SKIP_LBAAS_TESTS = True
@@ -263,7 +263,7 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
     @classmethod
     def setUpClass(cls, application_name='neutron-gateway', model_alias=None):
         """Run class setup for running Neutron Gateway tests."""
-        super(NeutronGatewayStatusActionsTest, cls).setUpClass(
+        super(NeutronGatewayShowActionsTest, cls).setUpClass(
             application_name, model_alias)
         # set up clients
         cls.neutron_client = (
@@ -294,8 +294,8 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
         # assert that juju action returned expected resources
         self.assertEqual(result_resource_ids, expected_resource_ids)
 
-    def test_get_status_routers(self):
-        """Test that get-status-routers reports correct neutron routers."""
+    def test_show_routers(self):
+        """Test that show-routers action reports correct neutron routers."""
         # fetch neutron routers using neutron client
         ngw_unit = zaza.model.get_units(self.application_name,
                                         model_name=self.model_name)[0]
@@ -308,14 +308,14 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
 
         # fetch neutron routers using juju-action
         result = zaza.model.run_action(ngw_unit.entity_id,
-                                       'get-status-routers',
+                                       'show-routers',
                                        model_name=self.model_name)
 
         # assert that data from neutron client match data from juju action
         self._assert_result_match(result, routers_from_client, 'router-list')
 
-    def test_get_status_dhcp(self):
-        """Test that get-status-dhcp reports correct DHCP networks."""
+    def test_show_dhcp_networks(self):
+        """Test that show-dhcp-networks reports correct DHCP networks."""
         # fetch DHCP networks using neutron client
         ngw_unit = zaza.model.get_units(self.application_name,
                                         model_name=self.model_name)[0]
@@ -328,15 +328,15 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
 
         # fetch DHCP networks using juju-action
         result = zaza.model.run_action(ngw_unit.entity_id,
-                                       'get-status-dhcp',
+                                       'show-dhcp-networks',
                                        model_name=self.model_name)
 
         # assert that data from neutron client match data from juju action
         self._assert_result_match(result, networks_from_client,
                                   'dhcp-networks')
 
-    def test_get_status_load_balancers(self):
-        """Test that get-status-lb reports correct loadbalancers."""
+    def test_show_load_balancers(self):
+        """Test that show-loadbalancers reports correct loadbalancers."""
         if self.SKIP_LBAAS_TESTS:
             self.skipTest('LBaasV2 is not supported in this version.')
 
@@ -368,7 +368,7 @@ class NeutronGatewayStatusActionsTest(test_utils.OpenStackBaseTest):
                 'loadbalancers', [])
 
             result = zaza.model.run_action(ngw_unit.entity_id,
-                                           'get-status-lb',
+                                           'show-load-balancers',
                                            model_name=self.model_name)
 
             self._assert_result_match(result, lbaas_from_client,
