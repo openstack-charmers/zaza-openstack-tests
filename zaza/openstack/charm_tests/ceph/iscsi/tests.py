@@ -15,6 +15,7 @@
 """Encapsulating `ceph-iscsi` testing."""
 
 import logging
+import os
 import tempfile
 
 import zaza
@@ -82,7 +83,8 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
                 'ip': u.public_address,
                 'hostname': host_names[u.entity_id]}
             for u in zaza.model.get_units('ceph-iscsi')]
-        ctxt['gw_ip'] = sorted([g['ip'] for g in ctxt['gateway_units']])[0]
+        print(ctxt['gateway_units'])
+        ctxt['gw_ip'] = sorted([g['ip'] for g in ctxt['gateway_units'] if g['ip']])[0]
         return ctxt
 
     def run_commands(self, unit_name, commands, ctxt):
@@ -248,12 +250,23 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
         :param test_ctxt: Test context.
         :type test_ctxt: Dict
         """
-        self.create_iscsi_target(test_ctxt)
+        try:
+            self.create_iscsi_target(test_ctxt)
+        except:
+            self.logCollector()
+            raise
+        self.logCollector()
         self.login_iscsi_target(test_ctxt)
         self.check_client_device(test_ctxt, init_client=True)
         self.logout_iscsi_targets(test_ctxt)
         self.login_iscsi_target(test_ctxt)
         self.check_client_device(test_ctxt, init_client=False)
+
+    def logCollector(self):
+        for unit in zaza.model.get_units("ceph-mon"):
+            zaza.model.run_on_unit(
+               unit.name,
+               'cp /var/log/ceph/* /var/log/juju/')
 
     def test_create_and_mount_volume(self):
         """Test creating a target and mounting it on a client."""
