@@ -32,3 +32,20 @@ def check_dashboard_cert(model_name=None):
         'CERTIFICATE',
         model_name=model_name)
     zaza.model.block_until_all_units_idle(model_name=model_name)
+
+
+def set_grafana_url(model_name=None):
+    """Set the url for the grafana api.
+
+    :param model_name: Name of model to query.
+    :type model_name: str
+    """
+    try:
+        unit = zaza.model.get_units('grafana')[0]
+    except KeyError:
+        return
+    zaza.model.set_application_config(
+        'ceph-dashboard',
+        {
+            'grafana-api-url': "https://{}:3000".format(
+                unit.public_address)})
