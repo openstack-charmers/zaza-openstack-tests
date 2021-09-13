@@ -24,7 +24,7 @@ import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 
 
-class CindernetappTest(test_utils.OpenStackBaseTest):
+class CinderNetAppTest(test_utils.OpenStackBaseTest):
     """Encapsulate netapp tests."""
 
     @classmethod
