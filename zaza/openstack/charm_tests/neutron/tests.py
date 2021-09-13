@@ -671,23 +671,29 @@ class NeutronOpenvSwitchAgentsTest(test_utils.OpenStackBaseTest):
         wait=tenacity.wait_exponential(max=60),
         stop=tenacity.stop_after_attempt(8)
     )
-    def check_neutron_agents(self, host, n_agents):
+    def check_neutron_agents(self, host, agents_binaries, remove=False):
         """
         Check if agents are sucessfully registered or unregistered.
 
         :param host: host name of the unit
         :type host: str
-        :param n_agents: number of agents expected
-        :type n_agents: int
+        :param agents_binaries: agents binaries expected to be in the unit
+        :type agents_binaries: set
+        :param remove: boolean flag for remove action
+        :type remove: bool
         """
-        agents_binaries = self.get_agents_binaries()
         agents = self.neutron_client.list_agents(host=host).get(
             "agents"
         )
-        check_agents = {agent['binary'] for agent in agents}
+        unit_binaries = {agent['binary'] for agent in agents}
+
+        n_binaries = len(agents_binaries)
+        if remove:
+            n_binaries = 0
+
         self.assertEqual(
-            len(agents_binaries.intersection(check_agents)),
-            n_agents
+            len(agents_binaries.intersection(unit_binaries)),
+            n_binaries
         )
 
     def test_cloud_actions(self):
@@ -703,11 +709,12 @@ class NeutronOpenvSwitchAgentsTest(test_utils.OpenStackBaseTest):
         )["Stdout"].rstrip("\n")
 
         agents = self.neutron_client.list_agents(host=host).get("agents")
-        agents_binaries = self.get_agents_binaries()
 
-        agents_ovs = [
-            agent for agent in agents if agent["binary"] in agents_binaries
-        ]
+        agents_binaries = {
+            agent["binary"]
+            for agent in agents
+            if agent["binary"] in self.get_agents_binaries()
+        }
 
         # Run 'disable' action on unit to be removed
         zaza.model.run_action_on_units([unit_to_remove.name], 'disable')
@@ -715,12 +722,12 @@ class NeutronOpenvSwitchAgentsTest(test_utils.OpenStackBaseTest):
         zaza.model.run_action_on_units(
             [unit_to_remove.name], "remove-from-cloud", raise_on_failure=True
         )
-        self.check_neutron_agents(host, 0)
+        self.check_neutron_agents(host, agents_binaries, True)
 
         zaza.model.run_action_on_units(
             [unit_to_remove.name], "register-to-cloud", raise_on_failure=True
         )
-        self.check_neutron_agents(host, len(agents_ovs))
+        self.check_neutron_agents(host, agents_binaries)
 
 
 class NeutronBridgePortMappingTest(NeutronPluginApiSharedTests):
