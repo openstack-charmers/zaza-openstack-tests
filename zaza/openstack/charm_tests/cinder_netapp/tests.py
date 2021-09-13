@@ -30,7 +30,7 @@ class CinderNetAppTest(test_utils.OpenStackBaseTest):
     @classmethod
     def setUpClass(cls):
         """Run class setup for running tests."""
-        super(CindernetappTest, cls).setUpClass()
+        super(CinderNetAppTest, cls).setUpClass()
         cls.keystone_session = openstack_utils.get_overcloud_keystone_session()
         cls.model_name = zaza.model.get_juju_model()
         cls.cinder_client = openstack_utils.get_cinder_session_client(
