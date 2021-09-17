@@ -14,6 +14,7 @@
 
 """Code for running tempest tests."""
 
+import logging
 import os
 import subprocess
 
@@ -24,8 +25,8 @@ import zaza.openstack.charm_tests.tempest.utils as tempest_utils
 import tempfile
 
 
-class TempestTest():
-    """Tempest test class."""
+class TempestTestBase():
+    """Tempest test base class."""
 
     test_runner = zaza.charm_lifecycle.test.DIRECT
 
@@ -89,3 +90,54 @@ class TempestTest():
         if not keep_workspace or keep_workspace is not True:
             tempest_utils.destroy_workspace(workspace_name, workspace_path)
         return result
+
+
+class TempestTestWithKeystoneV2(TempestTestBase):
+    """Tempest test class to validate an OpenStack setup with Keystone V2."""
+
+    def run(self):
+        """Run tempest tests as specified in tests/tests.yaml.
+
+        See TempestTestBase.run() for the available test options.
+
+        :returns: Status of tempest run
+        :rtype: bool
+        """
+        tempest_utils.render_tempest_config_keystone_v2()
+        return super().run()
+
+
+class TempestTestWithKeystoneV3(TempestTestBase):
+    """Tempest test class to validate an OpenStack setup with Keystone V2."""
+
+    def run(self):
+        """Run tempest tests as specified in tests/tests.yaml.
+
+        See TempestTestBase.run() for the available test options.
+
+        :returns: Status of tempest run
+        :rtype: bool
+        """
+        tempest_utils.render_tempest_config_keystone_v3()
+        return super().run()
+
+
+class TempestTest(TempestTestBase):
+    """Tempest test class.
+
+    Requires running one of the render_tempest_config_keystone_v? Zaza
+    configuration steps before.
+    """
+
+    def run(self):
+        """Run tempest tests as specified in tests/tests.yaml.
+
+        See TempestTestBase.run() for the available test options.
+
+        :returns: Status of tempest run
+        :rtype: bool
+        """
+        logging.warning(
+            'The TempestTest test class is deprecated. Please use one of the '
+            'TempestTestWithKeystoneV? test classes instead.')
+        return super().run()
