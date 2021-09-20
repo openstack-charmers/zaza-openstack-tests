@@ -94,11 +94,11 @@ class CinderLVMTest(test_utils.OpenStackBaseTest):
         self.assertTrue(host.startswith('cinder@LVM'))
 
     def test_volume_overwrite(self):
-        """Test creating a volume by overwriting one on the /dev/vdc device."""
+        """Test creating a volume by overwriting one on a loop device."""
         with self.config_change({'overwrite': 'false',
                                  'block-device': self.block_device},
                                 {'overwrite': 'true',
-                                 'block-device': '/dev/vdc'}):
+                                 'block-device': '/tmp/vol|2G'}):
             self._create_volume()
 
     def test_device_none(self):
