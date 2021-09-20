@@ -63,15 +63,17 @@ class CinderNetAppTest(test_utils.OpenStackBaseTest):
         vol_new = self.cinder_client.volumes.create(
             name=test_vol_name,
             size='1')
-        openstack_utils.resource_reaches_status(
-            self.cinder_client.volumes,
-            vol_new.id,
-            wait_iteration_max_time=12000,
-            stop_after_attempt=5,
-            expected_status='available',
-            msg='Volume status wait')
-        test_vol = self.cinder_client.volumes.find(name=test_vol_name)
-        self.assertEqual(
-            getattr(test_vol, 'os-vol-host-attr:host').split('#')[0],
-            'cinder@cinder-netapp')
-        self.cinder_client.volumes.delete(vol_new)
+        try:
+            openstack_utils.resource_reaches_status(
+                self.cinder_client.volumes,
+                vol_new.id,
+                wait_iteration_max_time=12000,
+                stop_after_attempt=5,
+                expected_status='available',
+                msg='Volume status wait')
+            test_vol = self.cinder_client.volumes.find(name=test_vol_name)
+            self.assertEqual(
+                getattr(test_vol, 'os-vol-host-attr:host').split('#')[0],
+                'cinder@cinder-netapp')
+        finally:
+            self.cinder_client.volumes.delete(vol_new)
