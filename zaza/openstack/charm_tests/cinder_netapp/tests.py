@@ -16,7 +16,6 @@
 
 """Encapsulate cinder-netapp testing."""
 
-import logging
 import uuid
 
 import zaza.model
@@ -38,7 +37,6 @@ class CinderNetAppTest(test_utils.OpenStackBaseTest):
 
     def test_cinder_config(self):
         """Test that configuration options match our expectations."""
-        logging.info('cinder-netapp')
         expected_contents = {
             'cinder-netapp': {
                 'netapp_storage_family': ['ontap_cluster'],
