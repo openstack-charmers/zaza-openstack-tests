@@ -40,15 +40,19 @@ class ManilaGaneshaTests(manila_tests.ManilaBaseTest):
     def _restart_share_instance(self):
         logging.info('Restarting manila-share and nfs-ganesha')
         # It would be better for thie to derive the application name,
-        # manila-ganesha-az1, from deployed instances fo the manila-ganesha
+        # manila-ganesha-az1, from deployed instances of the manila-ganesha
         # charm; however, that functionality isn't present yet in zaza, so
-        # this is hard coded to the application name used in that charm's
-        # test bundles.
-        for unit in zaza.model.get_units('manila-ganesha-az1'):
-            # While we really only need to run this on the machine hosting
-            # nfs-ganesha and manila-share, running it everywhere isn't
-            # harmful. Pacemaker handles restarting the services
-            zaza.model.run_on_unit(
-                unit.entity_id,
-                "systemctl stop manila-share nfs-ganesha")
+        # this is a best-guestimate arrived at by looking for applications
+        # with the word 'ganesha' in their names.
+        ganeshas = [
+            app for app in zaza.model.sync_deployed()
+            if 'ganesha' in app and 'mysql' not in app]
+        for ganesha in ganeshas:
+            for unit in zaza.model.get_units(ganesha):
+                # While we really only need to run this on the machine hosting
+                # nfs-ganesha and manila-share, running it everywhere isn't
+                # harmful. Pacemaker handles restarting the services
+                zaza.model.run_on_unit(
+                    unit.entity_id,
+                    "systemctl stop manila-share nfs-ganesha")
         return True
