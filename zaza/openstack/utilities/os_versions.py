@@ -61,6 +61,8 @@ OPENSTACK_CODENAMES = OrderedDict([
     ('2019.2', 'train'),
     ('2020.1', 'ussuri'),
     ('2020.2', 'victoria'),
+    ('2021.1', 'wallaby'),
+    ('2021.2', 'xena'),
 ])
 
 OPENSTACK_RELEASES_PAIRS = [
@@ -274,6 +276,11 @@ PACKAGE_CODENAMES = {
         ('3', 'ussuri'),
         ('4', 'victoria'),
     ]),
+    'octavia-common': OrderedDict([
+        ('5', 'train'),
+        ('6', 'ussuri'),
+        ('7', 'victoria'),
+    ]),
 }
 
 
@@ -394,4 +401,3 @@ class CompareOpenStack(BasicStringComparator):
     """
 
     _list = list(OPENSTACK_CODENAMES.values())
-
