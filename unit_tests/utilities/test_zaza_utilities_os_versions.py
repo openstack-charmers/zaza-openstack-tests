@@ -20,13 +20,12 @@ from zaza.openstack.utilities import os_versions
 class TestOpenStackUtils(ut_utils.BaseTestCase):
 
     def test_compare_openstack(self):
-        yoga = os_versions.CompareOpenStack('yoga')
-        xena = os_versions.CompareOpenStack('xena')
-        wallaby = os_versions.CompareOpenStack('wallaby')
-        self.assertGreater(yoga, xena)
-        self.assertLess(xena, yoga)
-        self.assertGreaterEqual(xena, xena)
-        self.assertGreaterEqual(yoga, yoga)
-        self.assertGreaterEqual(yoga, wallaby)
+        victoria = os_versions.CompareOpenStack('victoria')
+        ussuri = os_versions.CompareOpenStack('ussuri')
+        self.assertGreater(victoria, ussuri)
+        self.assertLess(ussuri, victoria)
+        self.assertGreaterEqual(victoria, victoria)
+        self.assertGreaterEqual(ussuri, ussuri)
+        self.assertGreaterEqual(victoria, ussuri)
 
-        self.assertEqual("CompareOpenStack<xena>", repr(xena))
+        self.assertEqual("CompareOpenStack<victoria>", repr(victoria))
