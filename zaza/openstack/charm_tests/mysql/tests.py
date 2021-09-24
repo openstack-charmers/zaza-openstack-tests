@@ -223,7 +223,7 @@ class MySQLCommonTests(MySQLBaseTest):
         logging.info("Wait till model is idle ...")
         zaza.model.block_until_all_units_idle()
 
-        # If there are any blocekd mysql routers restart them.
+        # If there are any blocked mysql routers restart them.
         self.restart_blocked_mysql_routers()
         assert not self.get_blocked_mysql_routers(), (
             "Should no longer be blocked mysql-router units")

@@ -426,7 +426,7 @@ class TrilioBaseTest(test_utils.OpenStackBaseTest):
         workloadmgrcli.oneclick_restore(snapshot_id)
 
     def test_update_trilio_action(self):
-        """Test that the action runs succesfully."""
+        """Test that the action runs successfully."""
         action_name = 'update-trilio'
         actions = zaza_model.get_actions(
             self.application_name)
