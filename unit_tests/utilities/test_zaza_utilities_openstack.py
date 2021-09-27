@@ -58,11 +58,12 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
 
         self.network = {
             "network": {"id": "network_id",
-                              "name": self.ext_net,
-                              "tenant_id": self.project_id,
-                              "router:external": True,
-                              "provider:physical_network": "physnet1",
-                              "provider:network_type": "flat"}}
+                        "name": self.ext_net,
+                        "router:external": True,
+                        "shared": False,
+                        "tenant_id": self.project_id,
+                        "provider:physical_network": "physnet1",
+                        "provider:network_type": "flat"}}
 
         self.networks = {
             "networks": [self.network["network"]]}
@@ -157,12 +158,12 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.neutronclient.create_address_scope.assert_called_once_with(
             address_scope_msg)
 
-    def test_create_external_network(self):
+    def test_create_provider_network(self):
         self.patch_object(openstack_utils, "get_net_uuid")
         self.get_net_uuid.return_value = self.net_uuid
 
         # Already exists
-        network = openstack_utils.create_external_network(
+        network = openstack_utils.create_provider_network(
             self.neutronclient, self.project_id)
         self.assertEqual(network, self.network["network"])
         self.neutronclient.create_network.assert_not_called()
@@ -172,7 +173,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             "networks": []}
         network_msg = copy.deepcopy(self.network)
         network_msg["network"].pop("id")
-        network = openstack_utils.create_external_network(
+        network = openstack_utils.create_provider_network(
             self.neutronclient, self.project_id)
         self.assertEqual(network, self.network["network"])
         self.neutronclient.create_network.assert_called_once_with(
