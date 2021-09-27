@@ -2832,7 +2832,7 @@ def ssh_test(username, ip, vm_name, password=None, privkey=None, retry=True):
         return_string = stdout.readlines()[0].strip()
 
         if return_string == vm_name:
-            logging.info('SSH to %s(%s) succesfull' % (vm_name, ip))
+            logging.info('SSH to %s(%s) successful' % (vm_name, ip))
         else:
             logging.info('SSH to %s(%s) failed (%s != %s)' % (vm_name, ip,
                                                               return_string,

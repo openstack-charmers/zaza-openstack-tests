@@ -108,7 +108,7 @@ class OpenStackUpgradeTestsByOption(OpenStackUpgradeVMLaunchBase):
 
         tests_options:
           openstack-upgrade:
-            detect-charm: keystone
+            detect-using-charm: keystone
 
     This will use the octavia application, detect the ubuntu version and then
     read the config to discover the current OpenStack version.
@@ -135,7 +135,8 @@ class OpenStackUpgradeTestsByOption(OpenStackUpgradeVMLaunchBase):
                 .openstack_upgrade.detect_using_charm)
         except KeyError:
             raise exceptions.InvalidTestConfig(
-                "Missing tests_options.openstack-upgrade.detect-charm config.")
+                "Missing tests_options.openstack-upgrade.detect-using-charm "
+                "config.")
 
         unit = zaza.model.get_lead_unit(detect_charm)
         ubuntu_version = generic.get_series(unit)
