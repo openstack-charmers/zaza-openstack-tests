@@ -14,11 +14,15 @@
 
 """Code for configuring nova."""
 
+import logging
 import tenacity
 
+from zaza import model
+import zaza.charm_lifecycle.utils as lifecycle_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 from zaza.openstack.utilities import (
     cli as cli_utils,
+    generic as generic_utils,
 )
 import zaza.openstack.charm_tests.nova.utils as nova_utils
 
@@ -71,3 +75,20 @@ def manage_ssh_key(nova_client=None):
         openstack_utils.write_private_key(
             nova_utils.KEYPAIR_NAME,
             key.private_key)
+
+
+def reboot_sriov_computes():
+    """Reboot nova-compute SR-IOV units."""
+    options = (lifecycle_utils
+               .get_charm_config(fatal=False)
+               .get('configure_options', {}))
+    sriov_compute = options.get('sriov_compute_application_name', None)
+
+    for unit in model.get_units(sriov_compute):
+        generic_utils.reboot(unit.entity_id)
+    logging.info("Waiting for {} units to reboot".format(sriov_compute))
+    model.block_until_wl_status_info_starts_with(sriov_compute,
+                                                 'Unit is ready')
+    logging.info("Waiting for all units to be idle")
+    model.block_until_all_units_idle()
+    logging.info("All units are idle")
