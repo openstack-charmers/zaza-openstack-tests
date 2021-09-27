@@ -182,6 +182,58 @@ class TestOpenStackUpgradeUtils(ut_utils.BaseTestCase):
         self.block_until_mysql_innodb_cluster_has_rw.assert_called_once_with(
             None)
 
+    def test_upgrade_to_proposed(self):
+        self.patch_object(
+            openstack_upgrade,
+            'get_current_source_config')
+        self.patch_object(
+            openstack_upgrade.generic_utils,
+            "set_origin")
+        self.patch_object(
+            openstack_upgrade.zaza.model,
+            "get_units")
+        self.patch_object(
+            openstack_upgrade.series_upgrade_utils,
+            "dist_upgrade")
+        self.get_current_source_config.return_value = 'source', 'old-src'
+
+        mock_nova_compute_0 = mock.MagicMock()
+        mock_nova_compute_0.entity_id = 'nova-compute/0'
+        mock_ceph_mon_0 = mock.MagicMock()
+        mock_ceph_mon_0.entity_id = 'ceph-mon/0'
+        units = {
+            'nova-compute': [mock_nova_compute_0],
+            'ceph-mon': [mock_ceph_mon_0]}
+        self.get_units.side_effect = lambda app: units[app]
+
+        openstack_upgrade.upgrade_to_proposed('nova-compute')
+
+        self.set_origin.assert_called_once_with(
+            'nova-compute', origin='source', pocket='old-src/proposed')
+
+    def test_get_current_source_config(self):
+        self.patch_object(
+            openstack_upgrade.zaza.model,
+            'get_application_config')
+
+        def _get_application_config(app, model_name=None):
+            app_config = {
+                'ceph-mon': {'source': {'value': 'old-src'}},
+                'nova-compute': {'openstack-origin': {'value': 'old-src'}},
+            }
+            return app_config[app]
+
+        self.get_application_config.side_effect = _get_application_config
+
+        option, value = openstack_upgrade.get_current_source_config('ceph-mon')
+        self.assertEqual(option, 'source')
+        self.assertEqual(value, 'old-src')
+
+        option, value = openstack_upgrade.get_current_source_config(
+            'nova-compute')
+        self.assertEqual(option, 'openstack-origin')
+        self.assertEqual(value, 'old-src')
+
     def test_set_upgrade_application_config(self):
         openstack_upgrade.set_upgrade_application_config(
             ['neutron-api', 'cinder'],

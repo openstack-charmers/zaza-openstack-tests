@@ -866,11 +866,13 @@ async def async_wrap_do_release_upgrade(unit_name, from_series="trusty",
     await async_do_release_upgrade(unit_name)
 
 
-def dist_upgrade(unit_name):
+def dist_upgrade(unit_name, reboot="always"):
     """Run dist-upgrade on unit after update package db.
 
     :param unit_name: Unit Name
     :type unit_name: str
+    :param reboot: Can be "always", "default, or "never"
+    :type reboot: str
     :returns: None
     :rtype: None
     """
@@ -884,8 +886,15 @@ def dist_upgrade(unit_name):
         """-o "Dpkg::Options::=--force-confdef" """
         """-o "Dpkg::Options::=--force-confold" dist-upgrade""")
     model.run_on_unit(unit_name, dist_upgrade_cmd)
-    rdict = model.run_on_unit(unit_name,
-                              "cat /var/run/reboot-required || true")
+
+    if reboot == "always":
+        cmd = "cat /var/run/reboot-required || true"
+    elif reboot == "default":
+        cmd = "cat /var/run/reboot-required"
+    elif reboot == "never":
+        return
+
+    rdict = model.run_on_unit(unit_name, cmd)
     if "Stdout" in rdict and "restart" in rdict["Stdout"].lower():
         logging.info("dist-upgrade required reboot {}".format(unit_name))
         os_utils.reboot(unit_name)
@@ -902,11 +911,13 @@ def dist_upgrade(unit_name):
         model.block_until_all_units_idle()
 
 
-async def async_dist_upgrade(unit_name):
+async def async_dist_upgrade(unit_name, reboot="always"):
     """Run dist-upgrade on unit after update package db.
 
     :param unit_name: Unit Name
     :type unit_name: str
+    :param reboot: Can be "always", "default, or "never"
+    :type reboot: str
     :returns: None
     :rtype: None
     """
@@ -920,8 +931,15 @@ async def async_dist_upgrade(unit_name):
         """-o "Dpkg::Options::=--force-confdef" """
         """-o "Dpkg::Options::=--force-confold" dist-upgrade""")
     await model.async_run_on_unit(unit_name, dist_upgrade_cmd)
-    rdict = await model.async_run_on_unit(
-        unit_name, "cat /var/run/reboot-required || true")
+
+    if reboot == "always":
+        cmd = "cat /var/run/reboot-required || true"
+    elif reboot == "default":
+        cmd = "cat /var/run/reboot-required"
+    elif reboot == "never":
+        return
+
+    rdict = await model.run_on_unit(unit_name, cmd)
     if "Stdout" in rdict and "restart" in rdict["Stdout"].lower():
         logging.info("dist-upgrade required reboot {}".format(unit_name))
         await os_utils.async_reboot(unit_name)
