@@ -16,6 +16,7 @@
 
 import collections
 import json
+import logging
 import requests
 import uuid
 
@@ -132,3 +133,26 @@ class CephDashboardTest(test_utils.BaseCharmTest):
     def test_access_dashboard(self):
         """Test logging in to the dashboard."""
         self.access_dashboard(self.get_master_dashboard_url())
+
+    def test_ceph_keys(self):
+        """Check that ceph services are properly registered."""
+        status = zaza.model.get_status()
+        applications = status.applications.keys()
+        dashboard_keys = []
+        ceph_keys = []
+        if 'ceph-radosgw' in applications:
+            dashboard_keys.extend(['RGW_API_ACCESS_KEY', 'RGW_API_SECRET_KEY'])
+        if 'grafana' in applications:
+            dashboard_keys.append('GRAFANA_API_URL')
+        if 'prometheus' in applications:
+            dashboard_keys.append('PROMETHEUS_API_HOST')
+        ceph_keys.extend(
+            ['config/mgr/mgr/dashboard/{}'.format(k) for k in dashboard_keys])
+        if 'ceph-iscsi' in applications:
+            ceph_keys.append('mgr/dashboard/_iscsi_config')
+        for key in ceph_keys:
+            logging.info("Checking key {} exists".format(key))
+            check_out = zaza.model.run_on_leader(
+                'ceph-dashboard',
+                'ceph config-key exists {}'.format(key))
+            self.assertEqual(check_out['Code'], '0')
