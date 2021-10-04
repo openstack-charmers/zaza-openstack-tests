@@ -18,6 +18,7 @@ import collections
 import json
 import logging
 import requests
+import tenacity
 import uuid
 
 import zaza
@@ -39,6 +40,57 @@ class CephDashboardTest(test_utils.BaseCharmTest):
         cls.local_ca_cert = openstack_utils.get_remote_ca_cert_file(
             cls.application_name)
 
+    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1,
+                                                   min=5, max=10),
+                    retry=tenacity.retry_if_exception_type(
+                        requests.exceptions.ConnectionError),
+                    reraise=True)
+    def _run_request_get(self, url, verify, allow_redirects):
+        """Run a GET request against `url` with tenacity retries.
+
+        :param url: url to access
+        :type url: str
+        :param verify: Path to a CA_BUNDLE file or directory with certificates
+                       of trusted CAs or False to ignore verifying the SSL
+                       certificate.
+        :type verify: Union[str, bool]
+        :param allow_redirects: Set to True if redirect following is allowed.
+        :type allow_redirects: bool
+        :returns: Request response
+        :rtype: requests.models.Response
+        """
+        return requests.get(
+            url,
+            verify=verify,
+            allow_redirects=allow_redirects)
+
+    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1,
+                                                   min=5, max=10),
+                    retry=tenacity.retry_if_exception_type(
+                        requests.exceptions.ConnectionError),
+                    reraise=True)
+    def _run_request_post(self, url, verify, data, headers):
+        """Run a POST request against `url` with tenacity retries.
+
+        :param url: url to access
+        :type url: str
+        :param verify: Path to a CA_BUNDLE file or directory with certificates
+                       of trusted CAs or False to ignore verifying the SSL
+                       certificate.
+        :type verify: Union[str, bool]
+        :param data: Data to post to url
+        :type data: str
+        :param headers: Headers to set when posting
+        :type headers: dict
+        :returns: Request response
+        :rtype: requests.models.Response
+        """
+        return requests.post(
+            url,
+            data=data,
+            headers=headers,
+            verify=verify)
+
     def get_master_dashboard_url(self):
         """Get the url of the dashboard servicing requests.
 
@@ -50,7 +102,7 @@ class CephDashboardTest(test_utils.BaseCharmTest):
         """
         units = zaza.model.get_units(self.application_name)
         for unit in units:
-            r = requests.get(
+            r = self._run_request_get(
                 'https://{}:8443'.format(unit.public_address),
                 verify=self.local_ca_cert,
                 allow_redirects=False)
@@ -63,7 +115,7 @@ class CephDashboardTest(test_utils.BaseCharmTest):
         units = zaza.model.get_units(self.application_name)
         rcs = collections.defaultdict(list)
         for unit in units:
-            r = requests.get(
+            r = self._run_request_get(
                 'https://{}:8443'.format(unit.public_address),
                 verify=verify,
                 allow_redirects=False)
@@ -123,11 +175,11 @@ class CephDashboardTest(test_utils.BaseCharmTest):
             'Accept': 'application/vnd.ceph.api.v1.0'}
         payload = {"username": user, "password": password}
         verify = self.local_ca_cert
-        r = requests.post(
+        r = self._run_request_post(
             "{}/{}".format(dashboard_url, path),
+            verify=verify,
             data=json.dumps(payload),
-            headers=headers,
-            verify=verify)
+            headers=headers)
         self.assertEqual(r.status_code, requests.codes.created)
 
     def test_access_dashboard(self):
