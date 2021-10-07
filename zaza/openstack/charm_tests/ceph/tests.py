@@ -21,6 +21,7 @@ from os import (
     listdir,
     path
 )
+import re
 import requests
 import tempfile
 
@@ -1014,3 +1015,40 @@ class BlueStoreCompressionCharmOperation(test_utils.BaseCharmTest):
                          'configuration')
             self.test_config[
                 'target_deploy_status'] = stored_target_deploy_status
+
+
+class CephDepartureTest(test_utils.OpenStackBaseTest):
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running ceph departure tests."""
+        super(CephDepartureTest, cls).setUpClass()
+
+    def get_mon_count(self):
+        unit = zaza_model.get_units('ceph-mon')[0].entity_id
+        result = zaza_model.run_on_unit(unit, 'ceph mon stat')
+        rx = re.compile('(\d)* mons')
+        match = rx.search(result['Stdout'])
+        return int(match.group(1))
+
+    def get_mon_unit(self):
+        status = zaza_model.get_status().applications['ceph-mon']
+        for unit in status['units']:
+            if not status['units'][unit].get('leader'):
+                return unit
+
+    def test_departure(self):
+        mon_count = self.get_mon_count()
+        logging.info('Monitor count is {}'.format(mon_count))
+        # We add a new unit so that the ceph-mon count remains
+        # above the 'monitor-count' specified in the bundle.
+        zaza_model.add_unit('ceph-mon')
+        logging.info('Waiting for new ceph-mon unit to settle')
+        zaza_model.block_until_unit_count('ceph-mon', mon_count + 1)
+        zaza_model.block_until_all_units_idle()
+
+        # Now remove a ceph-mon unit and test for cluster consistency.
+        zaza_model.destroy_unit('ceph-mon', self.get_mon_unit())
+        logging.info('Waiting until monitor count reaches {}'
+                     .format(mon_count))
+        zaza_model.block_until_unit_count('ceph-mon', mon_count)
+        self.assertEqual(mon_count, self.get_mon_count())
