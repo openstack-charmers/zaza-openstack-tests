@@ -1018,25 +1018,30 @@ class BlueStoreCompressionCharmOperation(test_utils.BaseCharmTest):
 
 
 class CephDepartureTest(test_utils.OpenStackBaseTest):
+    """Test charm handling of a departing unit."""
+
     @classmethod
     def setUpClass(cls):
         """Run class setup for running ceph departure tests."""
         super(CephDepartureTest, cls).setUpClass()
 
     def get_mon_count(self):
+        """Compute the number of active ceph monitors."""
         unit = zaza_model.get_units('ceph-mon')[0].entity_id
         result = zaza_model.run_on_unit(unit, 'ceph mon stat')
-        rx = re.compile('(\d)* mons')
+        rx = re.compile('(\\d)* mons')
         match = rx.search(result['Stdout'])
         return int(match.group(1))
 
     def get_mon_unit(self):
+        """Pick a non-leader ceph-mon unit to run a command on."""
         status = zaza_model.get_status().applications['ceph-mon']
         for unit in status['units']:
             if not status['units'][unit].get('leader'):
                 return unit
 
     def test_departure(self):
+        """Test descaling of a ceph-mon unit."""
         mon_count = self.get_mon_count()
         logging.info('Monitor count is {}'.format(mon_count))
         # We add a new unit so that the ceph-mon count remains
