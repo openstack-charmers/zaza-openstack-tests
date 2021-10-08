@@ -91,7 +91,7 @@ class CinderLVMTest(test_utils.OpenStackBaseTest):
         self.assertTrue(test_vol)
 
         host = getattr(test_vol, 'os-vol-host-attr:host').split('#')[0]
-        self.assertTrue(host.startswith('cinder@LVM'))
+        self.assertIn('@LVM', host)
 
     def test_volume_overwrite(self):
         """Test creating a volume by overwriting one on a loop device."""
