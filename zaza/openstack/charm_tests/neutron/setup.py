@@ -44,6 +44,13 @@ OVERCLOUD_NETWORK_CONFIG = {
     "subnetpool_prefix": "192.168.0.0/16",
 }
 
+OVERCLOUD_PROVIDER_VLAN_NETWORK_CONFIG = {
+    "provider_vlan_net_name": "provider_vlan",
+    "provider_vlan_subnet_name": "provider_vlan_subnet",
+    "provider_vlan_cidr": "10.42.33.0/24",
+    "provider_vlan_id": "2933",
+}
+
 # The undercloud network configuration settings are substrate specific to
 # the environment where the tests are being executed. These settings may be
 # overridden by environment variables. See the doc string documentation for
@@ -110,8 +117,29 @@ def basic_overcloud_network(limit_gws=None):
                         ' charm network configuration.'
                         .format(provider_type))
 
-    # Confugre the overcloud network
+    # Configure the overcloud network
     network.setup_sdn(network_config, keystone_session=keystone_session)
+
+
+def vlan_provider_overcloud_network():
+    """Run setup to create a VLAN provider network."""
+    cli_utils.setup_logging()
+
+    # Get network configuration settings
+    network_config = {}
+    # Declared overcloud settings
+    network_config.update(OVERCLOUD_NETWORK_CONFIG)
+    # Declared provider vlan overcloud settings
+    network_config.update(OVERCLOUD_PROVIDER_VLAN_NETWORK_CONFIG)
+    # Environment specific settings
+    network_config.update(generic_utils.get_undercloud_env_vars())
+
+    # Get keystone session
+    keystone_session = openstack_utils.get_overcloud_keystone_session()
+
+    # Configure the overcloud network
+    network.setup_sdn_provider_vlan(network_config,
+                                    keystone_session=keystone_session)
 
 
 # Configure function to get one gateway with external network
