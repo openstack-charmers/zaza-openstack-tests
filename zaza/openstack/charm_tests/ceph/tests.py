@@ -1025,32 +1025,21 @@ class CephDepartureTest(test_utils.OpenStackBaseTest):
         """Run class setup for running ceph departure tests."""
         super(CephDepartureTest, cls).setUpClass(application_name='ceph-mon')
 
-    def get_mon_count(self):
+    def get_mon_count(self, unit):
         """Compute the number of active ceph monitors."""
-        unit = zaza_model.get_units('ceph-mon')[0].entity_id
         result = zaza_model.run_on_unit(unit, 'ceph mon stat')
         rx = re.compile('(\\d)* mons')
         match = rx.search(result['Stdout'])
         return int(match.group(1))
 
-    def get_mon_unit(self):
-        """Pick a ceph-mon unit to run a command on."""
-        status = zaza_model.get_status().applications['ceph-mon']
-        return next(iter(status['units']))
-
     def test_departure(self):
         """Test descaling of a ceph-mon unit."""
-        mon_count = self.get_mon_count()
+        mons = list(x.entity_id for x in zaza_model.get_units('ceph-mon'))
+        mon_count = len(mons)
         logging.info('Monitor count is {}'.format(mon_count))
-        prev_conf = zaza_openstack.get_application_config_option(
-            'ceph-mon', 'monitor-count')
-
-        # Temporarily lower the required monitor count so that
-        # existing ceph-mon units aren't blocked.
-        with self.config_change({'monitor-count': prev_conf},
-                                {'monitor-count': str(mon_count - 1)},
-                                application_name='ceph-mon'):
-            zaza_model.destroy_unit('ceph-mon', self.get_mon_unit())
-            zaza_model.block_until_unit_count('ceph-mon', mon_count - 1)
-            self.assertEqual(mon_count - 1, self.get_mon_count())
-            zaza_model.add_unit('ceph-mon')
+        zaza_model.add_unit('ceph-mon')
+        zaza_model.block_until_unit_count('ceph-mon', mon_count + 1)
+        zaza_model.block_until_all_units_idle(model_name=self.model_name)
+        zaza_model.destroy_unit('ceph-mon', mons[0])
+        zaza_model.block_until_unit_count('ceph-mon', mon_count)
+        self.assertEqual(mon_count, self.get_mon_count(mons[1]))
