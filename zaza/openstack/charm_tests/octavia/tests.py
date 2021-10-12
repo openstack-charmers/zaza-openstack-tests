@@ -114,9 +114,6 @@ class CharmOperationTest(test_utils.OpenStackBaseTest):
         resp = neutron_client.list_ports(tags='charm-octavia')
         neutron_ip_list = []
         for port in resp['ports']:
-            # one new DOWN port may be created when deleting one octavia unit
-            if port['status'] == 'DOWN':
-                continue
             for ip_info in port['fixed_ips']:
                 neutron_ip_list.append(ip_info['ip_address'])
         return neutron_ip_list
