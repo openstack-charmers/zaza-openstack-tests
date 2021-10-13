@@ -1040,6 +1040,7 @@ class CephDepartureTest(test_utils.OpenStackBaseTest):
         zaza_model.add_unit('ceph-mon')
         zaza_model.block_until_unit_count('ceph-mon', mon_count + 1)
         zaza_model.block_until_all_units_idle(model_name=self.model_name)
+        self.assertEqual(mon_count + 1, self.get_mon_count(mons[0]))
         zaza_model.destroy_unit('ceph-mon', mons[0])
         zaza_model.block_until_unit_count('ceph-mon', mon_count)
         self.assertEqual(mon_count, self.get_mon_count(mons[1]))
