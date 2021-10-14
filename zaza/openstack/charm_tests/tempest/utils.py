@@ -286,7 +286,8 @@ def _add_cinder_config(ctxt, keystone_session):
     :returns: None
     :rtype: None
     """
-    volume_types = ['volumev2', 'volumev3']
+    # The most most recent API version must be listed first.
+    volume_types = ['volumev3', 'volumev2']
     keystone_client = openstack_utils.get_keystone_session_client(
         keystone_session)
     for volume_type in volume_types:
