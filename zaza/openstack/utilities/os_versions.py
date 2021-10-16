@@ -38,6 +38,7 @@ UBUNTU_OPENSTACK_RELEASE = OrderedDict([
     ('groovy', 'victoria'),
     ('hirsute', 'wallaby'),
     ('impish', 'xena'),
+    ('jammy', 'yoga'),
 ])
 
 
@@ -61,6 +62,9 @@ OPENSTACK_CODENAMES = OrderedDict([
     ('2019.2', 'train'),
     ('2020.1', 'ussuri'),
     ('2020.2', 'victoria'),
+    ('2021.1', 'wallaby'),
+    ('2021.2', 'xena'),
+    ('2022.1', 'yoga'),
 ])
 
 OPENSTACK_RELEASES_PAIRS = [
@@ -74,7 +78,7 @@ OPENSTACK_RELEASES_PAIRS = [
     'focal_victoria', 'groovy_victoria',
     'focal_wallaby', 'hirsute_wallaby',
     'focal_xena', 'impish_xena',
-    'focal_yoga'
+    'focal_yoga', 'jammy_yoga',
 ]
 
 SWIFT_CODENAMES = OrderedDict([
