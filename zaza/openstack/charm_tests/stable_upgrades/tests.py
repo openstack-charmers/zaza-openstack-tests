@@ -127,9 +127,9 @@ class StableUpgradeToPPATest(test_utils.OpenStackBaseTest):
             'swift-storage-z3',
             'octavia',
         ]
-        options= (lifecycle_utils
-                  .get_charm_config(fatal=False)
-                  .get('tests_options', {}))
+        options = (lifecycle_utils
+                   .get_charm_config(fatal=False)
+                   .get('tests_options', {}))
         ppa = options.get('upgrade_ppa', None)
         deployed_applications = model.sync_deployed()
         for application in applications:

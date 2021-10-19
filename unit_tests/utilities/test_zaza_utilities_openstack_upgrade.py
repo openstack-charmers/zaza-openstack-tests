@@ -211,6 +211,35 @@ class TestOpenStackUpgradeUtils(ut_utils.BaseTestCase):
         self.set_origin.assert_called_once_with(
             'nova-compute', origin='source', pocket='old-src/proposed')
 
+    def test_upgrade_to_ppa(self):
+        self.patch_object(
+            openstack_upgrade,
+            'get_current_source_config')
+        self.patch_object(
+            openstack_upgrade.generic_utils,
+            "set_origin")
+        self.patch_object(
+            openstack_upgrade.zaza.model,
+            "get_units")
+        self.patch_object(
+            openstack_upgrade.series_upgrade_utils,
+            "dist_upgrade")
+        self.get_current_source_config.return_value = 'source', 'old-src'
+
+        mock_nova_compute_0 = mock.MagicMock()
+        mock_nova_compute_0.entity_id = 'nova-compute/0'
+        mock_ceph_mon_0 = mock.MagicMock()
+        mock_ceph_mon_0.entity_id = 'ceph-mon/0'
+        units = {
+            'nova-compute': [mock_nova_compute_0],
+            'ceph-mon': [mock_ceph_mon_0]}
+        self.get_units.side_effect = lambda app: units[app]
+
+        openstack_upgrade.upgrade_to_ppa('nova-compute', 'ppa:new-ppa')
+
+        self.set_origin.assert_called_once_with(
+            'nova-compute', origin='source', pocket='ppa:new-ppa')
+
     def test_get_current_source_config(self):
         self.patch_object(
             openstack_upgrade.zaza.model,
