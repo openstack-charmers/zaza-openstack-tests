@@ -92,4 +92,3 @@ def reboot_sriov_computes():
     logging.info("Waiting for all units to be idle")
     model.block_until_all_units_idle()
     logging.info("All units are idle")
-
