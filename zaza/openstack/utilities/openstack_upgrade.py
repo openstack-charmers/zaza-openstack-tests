@@ -187,6 +187,32 @@ def upgrade_to_proposed(application):
     else:
         new_value = "{}/proposed".format(value)
 
+    logging.info("Upgrading {} to {}".format(application, new_value))
+    generic_utils.set_origin(application, origin=option, pocket=new_value)
+    for unit in zaza.model.get_units(application):
+        series_upgrade_utils.dist_upgrade(unit.entity_id, reboot="never")
+    zaza.model.block_until_all_units_idle()
+    logging.info("All units are idle")
+
+
+def upgrade_to_ppa(application, ppa):
+    """Dist-upgrade a charm payload to a PPA.
+
+    Updates openstack-origin or source config option for the application
+    and dist-upgrades to the specified PPA.
+
+    :param application: The application to upgrade
+    :type application: str
+    :returns: None
+    :rtype: None
+    """
+    option, value = get_current_source_config(application)
+    assert ppa is not value, (
+        "Source is already {}. Can't upgrade to PPA.".format(value))
+
+    new_value = ppa
+
+    logging.info("Upgrading {} to {}".format(application, new_value))
     generic_utils.set_origin(application, origin=option, pocket=new_value)
     for unit in zaza.model.get_units(application):
         series_upgrade_utils.dist_upgrade(unit.entity_id, reboot="never")

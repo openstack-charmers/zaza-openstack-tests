@@ -20,12 +20,13 @@
 import logging
 
 from zaza import model
+import zaza.charm_lifecycle.utils as lifecycle_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 from zaza.openstack.utilities import openstack_upgrade
 
 
 class StableUpgradeToProposedTest(test_utils.OpenStackBaseTest):
-    """Stable dist-upgrade of charm payloads."""
+    """Stable dist-upgrade of charm payloads proposed pocket."""
 
     @classmethod
     def setUpClass(cls):
@@ -52,14 +53,11 @@ class StableUpgradeToProposedTest(test_utils.OpenStackBaseTest):
             'ceph-radosgw',
             'cinder',
             'designate',
-            'designate-bind',
             'glance',
             'gnocchi',
             'heat',
             'manila',
-            'manila-generic',
             'neutron-api',
-            'neutron-api-plugin-ovn',
             'neutron-gateway',
             'ovn-central',
             'placement',
@@ -73,7 +71,6 @@ class StableUpgradeToProposedTest(test_utils.OpenStackBaseTest):
             'swift-storage-z2',
             'swift-storage-z3',
             'octavia',
-            'neutron-openvswitch-octavia',
         ]
         deployed_applications = model.sync_deployed()
         for application in applications:
@@ -81,3 +78,62 @@ class StableUpgradeToProposedTest(test_utils.OpenStackBaseTest):
                 continue
             logging.info("Running apt dist-upgrade on {}".format(application))
             openstack_upgrade.upgrade_to_proposed(application)
+
+
+class StableUpgradeToPPATest(test_utils.OpenStackBaseTest):
+    """Stable dist-upgrade of charm payloads to PPA."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running stable upgrades to PPA."""
+        super(StableUpgradeToPPATest, cls).setUpClass()
+
+    def test_upgrade_to_ppa(self):
+        """Upgrade to PPA.
+
+        Updates openstack-origin or source charm config option for the
+        specified applications, if they exist in the model, and
+        dist-upgrades to the PPA.
+        """
+        # Upgrade order matters here. See the order documented in the
+        # charm deploy guide.
+        applications = [
+            'rabbitmq-server',
+            'ceph-mon',
+            'keystone',
+            'aodh',
+            'barbican',
+            'ceilometer',
+            'ceph-fs',
+            'ceph-radosgw',
+            'cinder',
+            'designate',
+            'glance',
+            'gnocchi',
+            'heat',
+            'manila',
+            'neutron-api',
+            'neutron-gateway',
+            'ovn-central',
+            'placement',
+            'nova-cloud-controller',
+            'openstack-dashboard',
+            'nova-compute',
+            'nova-compute-sriov',
+            'ceph-osd',
+            'swift-proxy',
+            'swift-storage-z1',
+            'swift-storage-z2',
+            'swift-storage-z3',
+            'octavia',
+        ]
+        options= (lifecycle_utils
+                  .get_charm_config(fatal=False)
+                  .get('tests_options', {}))
+        ppa = options.get('upgrade_ppa', None)
+        deployed_applications = model.sync_deployed()
+        for application in applications:
+            if application not in deployed_applications:
+                continue
+            logging.info("Running apt dist-upgrade on {}".format(application))
+            openstack_upgrade.upgrade_to_ppa(application, ppa)
