@@ -188,7 +188,12 @@ def upgrade_to_proposed(application):
         new_value = "{}/proposed".format(value)
 
     logging.info("Upgrading {} to {}".format(application, new_value))
+
+    # TODO(coreycb): This next line (set_origin) doesn't do anything because
+    # the charm payload's repo sources won't get updated unless a new OpenStack
+    # release is specified for openstack-origin/source.
     generic_utils.set_origin(application, origin=option, pocket=new_value)
+
     for unit in zaza.model.get_units(application):
         series_upgrade_utils.dist_upgrade(unit.entity_id, reboot="never")
     zaza.model.block_until_all_units_idle()
@@ -213,8 +218,18 @@ def upgrade_to_ppa(application, ppa):
     new_value = ppa
 
     logging.info("Upgrading {} to {}".format(application, new_value))
+
+    # TODO(coreycb): This next line (set_origin) doesn't do anything because
+    # the charm payload's repo sources won't get updated unless a new OpenStack
+    # release is specified for openstack-origin/source.
     generic_utils.set_origin(application, origin=option, pocket=new_value)
+
     for unit in zaza.model.get_units(application):
+        # NOTE(coreycb): The next 2 lines are a work-around for the
+        # proof-of-concept to deal with dist-upgrading from train to a
+        # train snapshot PPA.
+        add_ppa_cmd = 'sudo add-apt-repository ppa:corey.bryant/bionic-train-snapshots --yes'
+        zaza.model.run_on_unit(unit.entity_id, add_ppa_cmd)
         series_upgrade_utils.dist_upgrade(unit.entity_id, reboot="never")
     zaza.model.block_until_all_units_idle()
     logging.info("All units are idle")
