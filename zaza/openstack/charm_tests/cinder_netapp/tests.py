@@ -35,13 +35,23 @@ class CinderNetAppTest(test_utils.OpenStackBaseTest):
         cls.cinder_client = openstack_utils.get_cinder_session_client(
             cls.keystone_session)
 
+    @classmethod
+    def tearDown(cls):
+        """Remove test resources."""
+        volumes = cls.cinder_client.volumes
+        for volume in volumes.list():
+            if volume.name.startswith('zaza'):
+                try:
+                    volumes.delete(volume)
+                except Exception:
+                    pass
+
     def test_cinder_config(self):
         """Test that configuration options match our expectations."""
         expected_contents = {
             'cinder-netapp': {
                 'netapp_storage_family': ['ontap_cluster'],
                 'netapp_storage_protocol': ['iscsi'],
-                'volume_backend_name': ['cinder_netapp'],
                 'volume_driver':
                 ['cinder.volume.drivers.netapp.common.NetAppDriver'],
             }}
@@ -70,8 +80,7 @@ class CinderNetAppTest(test_utils.OpenStackBaseTest):
                 expected_status='available',
                 msg='Volume status wait')
             test_vol = self.cinder_client.volumes.find(name=test_vol_name)
-            self.assertEqual(
-                getattr(test_vol, 'os-vol-host-attr:host').split('#')[0],
-                'cinder@cinder-netapp')
+            host = getattr(test_vol, 'os-vol-host-attr:host').split('#')[0]
+            self.assertIn('cinder-netapp', host)
         finally:
             self.cinder_client.volumes.delete(vol_new)
