@@ -92,6 +92,26 @@ class SwiftProxyTests(test_utils.OpenStackBaseTest):
         self.assertEqual(action.status, "completed")
 
 
+class SwiftProxyMultiZoneTests(test_utils.OpenStackBaseTest):
+    """Tests specific to swift proxy in multi zone environment."""
+
+    def test_900_remove_device_action(self):
+        """Check remove-device action runs.
+
+        This tests destroys the environment and should be run as last.
+        """
+        logging.info('Running remove-devices action on leader')
+        action = zaza.model.run_action_on_leader(
+            'swift-proxy-region1',
+            'remove-devices',
+            action_params={
+                'ring': 'account',
+                'search-value': 'r1z3'
+            })
+        logging.info(action)
+        self.assertEqual(action.status, "completed")
+
+
 class SwiftStorageTests(test_utils.OpenStackBaseTest):
     """Tests specific to swift storage."""
 
