@@ -34,17 +34,17 @@ class CinderNetAppTest(test_utils.OpenStackBaseTest):
         cls.model_name = zaza.model.get_juju_model()
         cls.cinder_client = openstack_utils.get_cinder_session_client(
             cls.keystone_session)
+        cls.zaza_volumes = []
 
     @classmethod
     def tearDown(cls):
         """Remove test resources."""
-        volumes = cls.cinder_client.volumes
-        for volume in volumes.list():
-            if volume.name.startswith('zaza'):
-                try:
-                    volumes.delete(volume)
-                except Exception:
-                    pass
+        for volume in cls.zaza_volumes:
+            try:
+                volume.detach()
+                volume.force_delete()
+            except Exception as e:
+                pass
 
     def test_cinder_config(self):
         """Test that configuration options match our expectations."""
@@ -52,8 +52,7 @@ class CinderNetAppTest(test_utils.OpenStackBaseTest):
             'cinder-netapp': {
                 'netapp_storage_family': ['ontap_cluster'],
                 'netapp_storage_protocol': ['iscsi'],
-                'volume_driver':
-                ['cinder.volume.drivers.netapp.common.NetAppDriver'],
+                'volume_driver': ['cinder.volume.drivers.netapp.common.NetAppDriver'],
             }}
 
         zaza.model.run_on_leader(
@@ -65,22 +64,28 @@ class CinderNetAppTest(test_utils.OpenStackBaseTest):
             expected_contents,
             timeout=2)
 
+    def _create_volumes(self, n):
+        """Create N volumes."""
+        for _ in range(n):
+            name = "zaza{}".format(uuid.uuid1().fields[0])
+            vol = self.cinder_client.volumes.create(
+                name=name,
+                size='1')
+            vol.reset_state('available')
+            self.zaza_volumes.append(vol)
+
     def test_create_volume(self):
-        """Test creating a volume with basic configuration."""
-        test_vol_name = "zaza{}".format(uuid.uuid1().fields[0])
-        vol_new = self.cinder_client.volumes.create(
-            name=test_vol_name,
-            size='1')
-        try:
+        """Test creating volumes with basic configuration."""
+        self._create_volumes(2)
+        for vol in self.cinder_client.volumes.list():
+            self.assertTrue(vol)
             openstack_utils.resource_reaches_status(
                 self.cinder_client.volumes,
-                vol_new.id,
+                vol.id,
                 wait_iteration_max_time=12000,
                 stop_after_attempt=5,
                 expected_status='available',
                 msg='Volume status wait')
-            test_vol = self.cinder_client.volumes.find(name=test_vol_name)
+            test_vol = self.cinder_client.volumes.find(name=vol.name)
             host = getattr(test_vol, 'os-vol-host-attr:host').split('#')[0]
             self.assertIn('cinder-netapp', host)
-        finally:
-            self.cinder_client.volumes.delete(vol_new)
