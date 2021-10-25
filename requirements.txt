@@ -2,6 +2,7 @@
 # This is necessary for Xenial builders
 # BUG: https://github.com/openstack-charmers/zaza-openstack-tests/issues/530
 lxml<4.6.3
+pyparsing<3.0.0  # pin for aodhclient which is held for py35
 aiounittest
 async_generator
 boto3
