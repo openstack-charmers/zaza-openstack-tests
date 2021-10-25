@@ -43,7 +43,7 @@ class CinderNetAppTest(test_utils.OpenStackBaseTest):
             try:
                 volume.detach()
                 volume.force_delete()
-            except Exception as e:
+            except Exception:
                 pass
 
     def test_cinder_config(self):
@@ -52,7 +52,8 @@ class CinderNetAppTest(test_utils.OpenStackBaseTest):
             'cinder-netapp': {
                 'netapp_storage_family': ['ontap_cluster'],
                 'netapp_storage_protocol': ['iscsi'],
-                'volume_driver': ['cinder.volume.drivers.netapp.common.NetAppDriver'],
+                'volume_driver':
+                    ['cinder.volume.drivers.netapp.common.NetAppDriver'],
             }}
 
         zaza.model.run_on_leader(
