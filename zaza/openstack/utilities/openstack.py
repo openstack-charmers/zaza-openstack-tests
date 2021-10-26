@@ -2225,6 +2225,20 @@ def get_images_by_name(glance, image_name):
     return [i for i in glance.images.list() if image_name == i.name]
 
 
+def get_volumes_by_name(cinder, volume_name):
+    """Get all cinder volume objects with the given name.
+
+    :param cinder: Authenticated cinderclient
+    :type cinder: cinderclient.Client
+    :param image_name: Name of volume
+    :type image_name: str
+
+    :returns: List of cinder volumes
+    :rtype: [cinderclient.v3.volume, ...]
+    """
+    return [i for i in cinder.volumes.list() if volume_name == i.name]
+
+
 def find_cirros_image(arch):
     """Return the url for the latest cirros image for the given architecture.
 
