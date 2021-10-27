@@ -17,6 +17,7 @@
 """Encapsulate Cinder testing."""
 
 import logging
+import unittest
 
 import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
@@ -213,6 +214,46 @@ class CinderTests(test_utils.OpenStackBaseTest):
             self.cinder_client.volumes,
             vol_new.id,
             msg="Volume")
+
+    def test_130_encrypted_volumes(self):
+        """Test creating an encrypted volume."""
+        status = zaza.model.get_status()
+        if 'carbican' not in status.applications.keys():
+            raise unittest.SkipTest(
+                "Skipping encryption test, Barbican not present")
+        vol_types = [
+            v
+            for v in self.cinder_client.volume_types.list()
+            if v.name == 'LUKS']
+        if vol_types:
+            luks_vol_type = vol_types[0]
+        else:
+            luks_vol_type = self.cinder_client.volume_types.create('LUKS')
+        vol_encrypt_types = [
+            v
+            for v in self.cinder_client.volume_encryption_types.list()
+            if v.volume_type_id == luks_vol_type.id]
+        if not vol_encrypt_types:
+            specs = {
+                'cipher': 'aes-xts-plain64',
+                'key_size': 512,
+                'control_location': 'front-end',
+                'provider': 'nova.volume.encryptors.luks.LuksEncryptor'}
+            self.cinder_client.volume_encryption_types.create(
+                luks_vol_type,
+                specs=specs)
+        vol_new = self.cinder_client.volumes.create(
+            name='{}-130-encrypted-vol'.format(self.RESOURCE_PREFIX),
+            volume_type='LUKS',
+            size='1')
+        openstack_utils.resource_reaches_status(
+            self.cinder_client.volumes,
+            vol_new.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
+            expected_status="available",
+            msg="Volume status wait")
+        self.assertTrue(vol_new.encrypted)
 
     @property
     def services(self):
