@@ -135,7 +135,8 @@ async def async_unseal_by_unit(cacert=None):
                 unit_name, './hooks/update-status')
 
 
-def auto_initialize(cacert=None, validation_application='keystone', wait=True):
+def auto_initialize(cacert=None, validation_application='keystone', wait=True,
+                    skip_on_absent=False):
     """Auto initialize vault for testing.
 
     Generate a csr and uploading a signed certificate.
@@ -147,9 +148,16 @@ def auto_initialize(cacert=None, validation_application='keystone', wait=True):
     :param validation_application: Name of application to be used as a
                                    client for validation.
     :type validation_application: str
+    :param skip_on_absent: Non-fatal skip initialise if vault absent.
+    :type validation_application: bool
     :returns: None
     :rtype: None
     """
+    if skip_on_absent:
+        status = zaza.model.get_status()
+        if 'vault' not in status.applications.keys():
+            logging.info('Skipping auto_initialize, vault not in model')
+            return
     logging.info('Running auto_initialize')
     basic_setup(cacert=cacert, unseal_and_authorize=True)
 
@@ -195,6 +203,11 @@ def auto_initialize(cacert=None, validation_application='keystone', wait=True):
             except KeyError:
                 # Nothing todo if there are no app units
                 pass
+
+
+auto_initialize_opportunistic = functools.partial(
+    auto_initialize,
+    skip_on_absent=True)
 
 
 auto_initialize_no_validation = functools.partial(
