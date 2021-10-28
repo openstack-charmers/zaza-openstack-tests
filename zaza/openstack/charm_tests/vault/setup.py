@@ -210,6 +210,19 @@ auto_initialize_opportunistic = functools.partial(
     skip_on_absent=True)
 
 
+auto_initialize_opportunistic_no_validation = functools.partial(
+    auto_initialize,
+    validation_application=None,
+    skip_on_absent=True)
+
+
+auto_initialize_opportunistic_no_validation_no_wait = functools.partial(
+    auto_initialize,
+    validation_application=None,
+    wait=False,
+    skip_on_absent=True)
+
+
 auto_initialize_no_validation = functools.partial(
     auto_initialize,
     validation_application=None)
