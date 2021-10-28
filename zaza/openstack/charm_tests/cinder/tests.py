@@ -218,7 +218,7 @@ class CinderTests(test_utils.OpenStackBaseTest):
     def test_130_encrypted_volumes(self):
         """Test creating an encrypted volume."""
         status = zaza.model.get_status()
-        if 'carbican' not in status.applications.keys():
+        if 'barbican' not in status.applications.keys():
             raise unittest.SkipTest(
                 "Skipping encryption test, Barbican not present")
         vol_types = [
