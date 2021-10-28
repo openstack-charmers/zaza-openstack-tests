@@ -125,6 +125,9 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
         nova_client.servers,
         instance.id,
         expected_status='ACTIVE',
+        # NOTE(lourot): in some models this may sometimes take more than 15
+        # minutes. See lp:1945991
+        wait_iteration_max_time=120,
         stop_after_attempt=16)
 
     logging.info('Checking cloud init is complete')

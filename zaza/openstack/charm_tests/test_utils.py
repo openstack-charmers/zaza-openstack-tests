@@ -635,7 +635,7 @@ class OpenStackBaseTest(BaseCharmTest):
 
     def launch_guest(self, guest_name, userdata=None, use_boot_volume=False,
                      instance_key=None):
-        """Launch two guests to use in tests.
+        """Launch one guest to use in tests.
 
         Note that it is up to the caller to have set the RESOURCE_PREFIX class
         variable prior to calling this method.

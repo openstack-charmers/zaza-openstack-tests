@@ -14,6 +14,7 @@
 
 """Code for running tempest tests."""
 
+import logging
 import os
 import subprocess
 
@@ -24,8 +25,8 @@ import zaza.openstack.charm_tests.tempest.utils as tempest_utils
 import tempfile
 
 
-class TempestTest():
-    """Tempest test class."""
+class TempestTestBase():
+    """Tempest test base class."""
 
     test_runner = zaza.charm_lifecycle.test.DIRECT
 
@@ -33,8 +34,13 @@ class TempestTest():
         """Run tempest tests as specified in tests/tests.yaml.
 
         Test keys are parsed from ['tests_options']['tempest']['model'], where
-        valid test keys are: smoke (bool), whitelist (list of tests), blacklist
-        (list of tests), regex (list of regex's), and keep-workspace (bool).
+        valid test keys are:
+          - smoke (bool)
+          - include-list (list of tests)
+          - exclude-list (list of tests)
+          - regex (list of regex's)
+          - exclude-regex (list of regex's)
+          - keep-workspace (bool)
 
         :returns: Status of tempest run
         :rtype: bool
@@ -57,23 +63,23 @@ class TempestTest():
                 tempest_options.extend(
                     ['--regex',
                      ' '.join([reg for reg in config.get('regex')])])
-            if config.get('black-regex'):
+            if config.get('exclude-regex'):
                 tempest_options.extend(
-                    ['--black-regex',
-                     ' '.join([reg for reg in config.get('black-regex')])])
+                    ['--exclude-regex',
+                     ' '.join([reg for reg in config.get('exclude-regex')])])
             with tempfile.TemporaryDirectory() as tmpdirname:
-                if config.get('whitelist'):
-                    white_file = os.path.join(tmpdirname, 'white.cfg')
-                    with open(white_file, 'w') as f:
-                        f.write('\n'.join(config.get('whitelist')))
+                if config.get('include-list'):
+                    include_file = os.path.join(tmpdirname, 'include.cfg')
+                    with open(include_file, 'w') as f:
+                        f.write('\n'.join(config.get('include-list')))
                         f.write('\n')
-                    tempest_options.extend(['--whitelist-file', white_file])
-                if config.get('blacklist'):
-                    black_file = os.path.join(tmpdirname, 'black.cfg')
-                    with open(black_file, 'w') as f:
-                        f.write('\n'.join(config.get('blacklist')))
+                    tempest_options.extend(['--include-list', include_file])
+                if config.get('exclude-list'):
+                    exclude_file = os.path.join(tmpdirname, 'exclude.cfg')
+                    with open(exclude_file, 'w') as f:
+                        f.write('\n'.join(config.get('exclude-list')))
                         f.write('\n')
-                    tempest_options.extend(['--blacklist-file', black_file])
+                    tempest_options.extend(['--exclude-list', exclude_file])
                 print(tempest_options)
                 try:
                     subprocess.check_call(tempest_options)
@@ -84,3 +90,54 @@ class TempestTest():
         if not keep_workspace or keep_workspace is not True:
             tempest_utils.destroy_workspace(workspace_name, workspace_path)
         return result
+
+
+class TempestTestWithKeystoneV2(TempestTestBase):
+    """Tempest test class to validate an OpenStack setup with Keystone V2."""
+
+    def run(self):
+        """Run tempest tests as specified in tests/tests.yaml.
+
+        See TempestTestBase.run() for the available test options.
+
+        :returns: Status of tempest run
+        :rtype: bool
+        """
+        tempest_utils.render_tempest_config_keystone_v2()
+        return super().run()
+
+
+class TempestTestWithKeystoneV3(TempestTestBase):
+    """Tempest test class to validate an OpenStack setup with Keystone V2."""
+
+    def run(self):
+        """Run tempest tests as specified in tests/tests.yaml.
+
+        See TempestTestBase.run() for the available test options.
+
+        :returns: Status of tempest run
+        :rtype: bool
+        """
+        tempest_utils.render_tempest_config_keystone_v3()
+        return super().run()
+
+
+class TempestTest(TempestTestBase):
+    """Tempest test class.
+
+    Requires running one of the render_tempest_config_keystone_v? Zaza
+    configuration steps before.
+    """
+
+    def run(self):
+        """Run tempest tests as specified in tests/tests.yaml.
+
+        See TempestTestBase.run() for the available test options.
+
+        :returns: Status of tempest run
+        :rtype: bool
+        """
+        logging.warning(
+            'The TempestTest test class is deprecated. Please use one of the '
+            'TempestTestWithKeystoneV? test classes instead.')
+        return super().run()

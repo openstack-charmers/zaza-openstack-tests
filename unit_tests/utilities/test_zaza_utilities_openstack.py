@@ -24,6 +24,7 @@ import tenacity
 import unit_tests.utils as ut_utils
 from zaza.openstack.utilities import openstack as openstack_utils
 from zaza.openstack.utilities import exceptions
+from zaza.utilities.maas import LinkMode, MachineInterfaceMac
 
 
 class TestOpenStackUtils(ut_utils.BaseTestCase):
@@ -57,11 +58,12 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
 
         self.network = {
             "network": {"id": "network_id",
-                              "name": self.ext_net,
-                              "tenant_id": self.project_id,
-                              "router:external": True,
-                              "provider:physical_network": "physnet1",
-                              "provider:network_type": "flat"}}
+                        "name": self.ext_net,
+                        "router:external": True,
+                        "shared": False,
+                        "tenant_id": self.project_id,
+                        "provider:physical_network": "physnet1",
+                        "provider:network_type": "flat"}}
 
         self.networks = {
             "networks": [self.network["network"]]}
@@ -156,12 +158,12 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.neutronclient.create_address_scope.assert_called_once_with(
             address_scope_msg)
 
-    def test_create_external_network(self):
+    def test_create_provider_network(self):
         self.patch_object(openstack_utils, "get_net_uuid")
         self.get_net_uuid.return_value = self.net_uuid
 
         # Already exists
-        network = openstack_utils.create_external_network(
+        network = openstack_utils.create_provider_network(
             self.neutronclient, self.project_id)
         self.assertEqual(network, self.network["network"])
         self.neutronclient.create_network.assert_not_called()
@@ -171,7 +173,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             "networks": []}
         network_msg = copy.deepcopy(self.network)
         network_msg["network"].pop("id")
-        network = openstack_utils.create_external_network(
+        network = openstack_utils.create_provider_network(
             self.neutronclient, self.project_id)
         self.assertEqual(network, self.network["network"])
         self.neutronclient.create_network.assert_called_once_with(
@@ -1427,6 +1429,34 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.chmod.assert_called_once_with('/tmp/default/ca1.cert', 0o644)
         self.move.assert_called_once_with(
             'tempfilename', '/tmp/default/ca1.cert')
+
+    def test_configure_charmed_openstack_on_maas(self):
+        self.patch_object(openstack_utils, 'get_charm_networking_data')
+        self.patch_object(openstack_utils.zaza.utilities.maas,
+                          'get_macs_from_cidr')
+        self.patch_object(openstack_utils.zaza.utilities.maas,
+                          'get_maas_client_from_juju_cloud_data')
+        self.patch_object(openstack_utils.zaza.model, 'get_cloud_data')
+        self.patch_object(openstack_utils, 'configure_networking_charms')
+        self.get_charm_networking_data.return_value = 'fakenetworkingdata'
+        self.get_macs_from_cidr.return_value = [
+            MachineInterfaceMac('id_a', 'ens6', '00:53:00:00:00:01',
+                                '192.0.2.0/24', LinkMode.LINK_UP),
+            MachineInterfaceMac('id_a', 'ens7', '00:53:00:00:00:02',
+                                '192.0.2.0/24', LinkMode.LINK_UP),
+            MachineInterfaceMac('id_b', 'ens6', '00:53:00:00:01:01',
+                                '192.0.2.0/24', LinkMode.LINK_UP),
+
+        ]
+        network_config = {'external_net_cidr': '192.0.2.0/24'}
+        expect = [
+            '00:53:00:00:00:01',
+            '00:53:00:00:01:01',
+        ]
+        openstack_utils.configure_charmed_openstack_on_maas(
+            network_config)
+        self.configure_networking_charms.assert_called_once_with(
+            'fakenetworkingdata', expect, use_juju_wait=False)
 
 
 class TestAsyncOpenstackUtils(ut_utils.AioTestCase):

@@ -168,6 +168,28 @@ class ChassisCharmOperationTest(BaseCharmOperationTest):
                 '{}: "{}" no longer present'
                 .format(unit.entity_id, expected_key))
 
+    def test_wrong_bridge_config(self):
+        """Confirm that ovn-chassis units block with wrong bridge config."""
+        stored_target_deploy_status = self.test_config.get(
+            'target_deploy_status', {})
+        new_target_deploy_status = stored_target_deploy_status.copy()
+        new_target_deploy_status[self.application_name] = {
+            'ovn-chassis': 'blocked',
+        }
+        if 'target_deploy_status' in self.test_config:
+            self.test_config['target_deploy_status'].update(
+                new_target_deploy_status)
+        else:
+            self.test_config['target_deploy_status'] = new_target_deploy_status
+
+        with self.config_change(
+                {'bridge-interface-mappings': ''},
+                {'bridge-interface-mappings': 'incorrect'}):
+            logging.info('Charm went into blocked state as expected, restore '
+                         'configuration')
+            self.test_config[
+                'target_deploy_status'] = stored_target_deploy_status
+
 
 class OVSOVNMigrationTest(test_utils.BaseCharmTest):
     """OVS to OVN migration tests."""

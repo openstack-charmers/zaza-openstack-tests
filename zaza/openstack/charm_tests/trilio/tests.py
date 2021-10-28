@@ -18,6 +18,7 @@
 
 import logging
 import tenacity
+import unittest
 
 import zaza.model as zaza_model
 
@@ -262,7 +263,7 @@ class WorkloadmgrCLIHelper(object):
 
         retryer = tenacity.Retrying(
             wait=tenacity.wait_exponential(multiplier=1, max=30),
-            stop=tenacity.stop_after_delay(900),
+            stop=tenacity.stop_after_delay(1200),
             reraise=True,
         )
 
@@ -423,6 +424,22 @@ class TrilioBaseTest(test_utils.OpenStackBaseTest):
 
         logging.info("Initiating restore")
         workloadmgrcli.oneclick_restore(snapshot_id)
+
+    def test_update_trilio_action(self):
+        """Test that the action runs successfully."""
+        action_name = 'update-trilio'
+        actions = zaza_model.get_actions(
+            self.application_name)
+        if action_name not in actions:
+            raise unittest.SkipTest(
+                'Action {} not defined'.format(action_name))
+
+        generic_utils.assertActionRanOK(zaza_model.run_action(
+            self.lead_unit,
+            action_name,
+            action_params={},
+            model_name=self.model_name)
+        )
 
 
 class TrilioGhostNFSShareTest(TrilioBaseTest):
