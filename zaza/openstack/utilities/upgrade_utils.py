@@ -42,7 +42,8 @@ SERVICE_GROUPS = (
         'ceph-radosgw', 'cinder', 'designate',
         'designate-bind', 'glance', 'gnocchi', 'heat', 'manila',
         'manila-generic', 'neutron-api', 'neutron-gateway', 'ovn-central',
-        'placement', 'nova-cloud-controller', 'openstack-dashboard']),
+        'ovn-dedicated-chassis', 'placement', 'nova-cloud-controller',
+        'openstack-dashboard']),
     ('Data Plane', [
         'nova-compute', 'ceph-osd',
         'swift-proxy', 'swift-storage']))
