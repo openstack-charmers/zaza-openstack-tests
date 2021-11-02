@@ -1032,15 +1032,22 @@ class CephDepartureTest(test_utils.OpenStackBaseTest):
         match = rx.search(result['Stdout'])
         return int(match.group(1))
 
+    def get_mon_units(self):
+        """Get a list of the ceph-mon units."""
+        return list(x.entity_id for x in zaza_model.get_units('ceph-mon'))
+
     def test_departure(self):
         """Test descaling of a ceph-mon unit."""
-        mons = list(x.entity_id for x in zaza_model.get_units('ceph-mon'))
+        mons = self.get_mon_units()
         mon_count = len(mons)
         logging.info('Monitor count is {}'.format(mon_count))
-        zaza_model.add_unit('ceph-mon')
-        zaza_model.block_until_unit_count('ceph-mon', mon_count + 1)
-        zaza_model.block_until_all_units_idle(model_name=self.model_name)
-        self.assertEqual(mon_count + 1, self.get_mon_count(mons[0]))
-        zaza_model.destroy_unit('ceph-mon', mons[0])
-        zaza_model.block_until_unit_count('ceph-mon', mon_count)
-        self.assertEqual(mon_count, self.get_mon_count(mons[1]))
+        zaza_model.add_unit('ceph-mon', wait_appear=True)
+        try:
+            logging.info('New monitor has been added')
+            new_mon = next(iter(set(self.get_mon_units()) - set(mons)))
+            zaza_model.wait_for_unit_idle(new_mon)
+            self.assertEqual(mon_count + 1, self.get_mon_count(mons[0]))
+            zaza_model.destroy_unit('ceph-mon', mons[0], wait_disappear=True)
+            self.assertEqual(mon_count, self.get_mon_count(mons[1]))
+        except Exception:
+            zaza_model.destroy_unit('ceph-mon', mons[0])
