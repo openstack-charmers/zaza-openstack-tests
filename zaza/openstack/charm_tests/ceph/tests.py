@@ -1051,3 +1051,4 @@ class CephDepartureTest(test_utils.OpenStackBaseTest):
             self.assertEqual(mon_count, self.get_mon_count(mons[1]))
         except Exception:
             zaza_model.destroy_unit('ceph-mon', mons[0])
+            raise
