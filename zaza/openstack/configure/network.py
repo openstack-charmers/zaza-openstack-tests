@@ -126,19 +126,19 @@ def setup_sdn(network_config, keystone_session=None):
 
     logging.info("Configuring overcloud network")
     # Create the external network
-    ext_network = openstack_utils.create_external_network(
+    ext_network = openstack_utils.create_provider_network(
         neutron_client,
         project_id,
         network_config["external_net_name"])
-    openstack_utils.create_external_subnet(
+    openstack_utils.create_provider_subnet(
         neutron_client,
         project_id,
         ext_network,
+        network_config["external_subnet_name"],
         network_config["default_gateway"],
         network_config["external_net_cidr"],
         network_config["start_floating_ip"],
-        network_config["end_floating_ip"],
-        network_config["external_subnet_name"])
+        network_config["end_floating_ip"])
     provider_router = (
         openstack_utils.create_provider_router(neutron_client, project_id))
     openstack_utils.plug_extnet_into_router(
@@ -180,6 +180,61 @@ def setup_sdn(network_config, keystone_session=None):
         network_config["router_name"],
         project_network,
         project_subnet)
+    openstack_utils.add_neutron_secgroup_rules(neutron_client, project_id)
+
+
+def setup_sdn_provider_vlan(network_config, keystone_session=None):
+    """Perform setup for Software Defined Network, specifically a provider VLAN.
+
+    :param network_config: Network configuration settings dictionary
+    :type network_config: dict
+    :param keystone_session: Keystone session object for overcloud
+    :type keystone_session: keystoneauth1.session.Session object
+    :returns: None
+    :rtype: None
+    """
+    # If a session has not been provided, acquire one
+    if not keystone_session:
+        keystone_session = openstack_utils.get_overcloud_keystone_session()
+
+    # Get authenticated clients
+    keystone_client = openstack_utils.get_keystone_session_client(
+        keystone_session)
+    neutron_client = openstack_utils.get_neutron_session_client(
+        keystone_session)
+
+    admin_domain = None
+    if openstack_utils.get_keystone_api_version() > 2:
+        admin_domain = "admin_domain"
+    # Resolve the project name from the overcloud openrc into a project id
+    project_id = openstack_utils.get_project_id(
+        keystone_client,
+        "admin",
+        domain_name=admin_domain,
+    )
+
+    logging.info("Configuring VLAN provider network")
+    # Create the external network
+    provider_vlan_network = openstack_utils.create_provider_network(
+        neutron_client,
+        project_id,
+        net_name=network_config["provider_vlan_net_name"],
+        external=False,
+        shared=True,
+        network_type='vlan',
+        vlan_id=network_config["provider_vlan_id"])
+    provider_vlan_subnet = openstack_utils.create_provider_subnet(
+        neutron_client,
+        project_id,
+        provider_vlan_network,
+        network_config["provider_vlan_subnet_name"],
+        cidr=network_config["provider_vlan_cidr"],
+        dhcp=True)
+    openstack_utils.plug_subnet_into_router(
+        neutron_client,
+        network_config["router_name"],
+        provider_vlan_network,
+        provider_vlan_subnet)
     openstack_utils.add_neutron_secgroup_rules(neutron_client, project_id)
 
 
