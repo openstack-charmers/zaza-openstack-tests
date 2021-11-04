@@ -986,7 +986,19 @@ def configure_networking_charms(networking_data, macs, use_juju_wait=True):
         current_data_port = get_application_config_option(
             application_name,
             networking_data.port_config_key)
-        if current_data_port:
+
+        # NOTE(lourot): in
+        # https://github.com/openstack-charmers/openstack-bundles we have made
+        # the conscious choice to use 'to-be-set' instead of 'null' for the
+        # following reasons:
+        # * With 'to-be-set' (rather than 'null') it is clearer for the reader
+        #   that some action is required and the value can't just be left as
+        #   is.
+        # * Some of our tooling doesn't work with 'null', see
+        #   https://github.com/openstack-charmers/openstack-bundles/pull/228
+        # This nonetheless supports both by exiting early if the value is
+        # neither 'null' nor 'to-be-set':
+        if current_data_port and current_data_port != 'to-be-set':
             logging.info("Skip update of external network data port config."
                          "Config '{}' already set to value: {}".format(
                              networking_data.port_config_key,
