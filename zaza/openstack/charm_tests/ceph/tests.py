@@ -267,6 +267,14 @@ class CephTest(test_utils.OpenStackBaseTest):
         Create a pool, add a text file to it and retrieve its content.
         Verify that the content matches the original file.
         """
+        issue = 'github.com/openstack-charmers/zaza-openstack-tests/issues/647'
+        current_release = zaza_openstack.get_os_release()
+        focal_victoria = zaza_openstack.get_os_release('focal_victoria')
+        if current_release >= focal_victoria:
+            logging.warn('Skipping test_ceph_pool_creation_with_text_file due'
+                         ' to issue {}'.format(issue))
+            return
+
         unit_name = 'ceph-mon/0'
         cmd = 'sudo ceph osd pool create test 128; \
                echo 123456789 > /tmp/input.txt; \
