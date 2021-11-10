@@ -165,7 +165,7 @@ class SwiftProxyMultiZoneTests(test_utils.OpenStackBaseTest):
             self.storage_topology,
             self.RESOURCE_PREFIX,
             model_name=self.region1_model_name)
-        # Check object is accessible from other regions proxy.
+        # Check object is accessible from the region proxy.
         response = self.swift_region1.head_object(container_name, obj_name)
         self.assertIsNotNone(response)
 
