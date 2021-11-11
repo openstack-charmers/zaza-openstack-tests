@@ -81,7 +81,7 @@ class CinderNetAppTest(test_utils.OpenStackBaseTest):
     def test_create_volume(self):
         """Test creating volumes with basic configuration."""
         for vol in self._create_volumes(2):
-            self.assertTrue(vol)
+            self.assertIsNotNone(vol)
             openstack_utils.resource_reaches_status(
                 self.cinder_client.volumes,
                 vol.id,
