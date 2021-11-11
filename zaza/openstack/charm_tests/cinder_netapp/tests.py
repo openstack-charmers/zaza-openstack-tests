@@ -67,18 +67,20 @@ class CinderNetAppTest(test_utils.OpenStackBaseTest):
 
     def _create_volumes(self, n):
         """Create N volumes."""
+        volumes = []
         for _ in range(n):
             name = "zaza{}".format(uuid.uuid1().fields[0])
             vol = self.cinder_client.volumes.create(
                 name=name,
                 size='1')
             vol.reset_state('available')
-            self.zaza_volumes.append(vol)
+            volumes.append(vol)
+        self.zaza_volumes.extend(volumes)
+        return volumes
 
     def test_create_volume(self):
         """Test creating volumes with basic configuration."""
-        self._create_volumes(2)
-        for vol in self.cinder_client.volumes.list():
+        for vol in self._create_volumes(2):
             self.assertTrue(vol)
             openstack_utils.resource_reaches_status(
                 self.cinder_client.volumes,
