@@ -285,7 +285,7 @@ class NeutronGatewayShowActionsTest(test_utils.OpenStackBaseTest):
 
         # extract data from juju action
         action_data = action_result.data.get('results', {}).get(resource_name)
-        resources_from_action = yaml.load(action_data)
+        resources_from_action = yaml.safe_load(action_data)
 
         # pull resource IDs from expected resource list and juju action data
         expected_resource_ids = {resource['id'] for resource in resource_list}
