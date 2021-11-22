@@ -407,7 +407,7 @@ def get_heat_session_client(session, version=1):
     return heatclient.Client(session=session, version=version)
 
 
-def get_cinder_session_client(session, version=2):
+def get_cinder_session_client(session, version=3):
     """Return cinderclient authenticated by keystone session.
 
     :param session: Keystone session object
