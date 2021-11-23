@@ -17,6 +17,7 @@
 import logging
 import subprocess
 import tenacity
+import unittest
 
 from keystoneauth1 import exceptions as keystone_exceptions
 import octaviaclient.api.v2.octavia
@@ -124,6 +125,7 @@ class CharmOperationTest(test_utils.OpenStackBaseTest):
         Add a unit and then delete a unit, then query the list of ports to
         check that the port has been deleted.
         """
+        raise unittest.SkipTest("Skipping because of lp:1951858")
         app = self.test_config['charm_name']
         logging.info("test_update_controller_ip_port_list: start test")
         logging.info("Wait till model is idle ...")
