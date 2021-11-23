@@ -78,6 +78,16 @@ class CinderNetAppTest(test_utils.OpenStackBaseTest):
         self.zaza_volumes.extend(volumes)
         return volumes
 
+    def _volume_host(self, vol):
+        ret = getattr(vol, 'os-vol-host-attr:host', None)
+        if ret is not None:
+            return ret
+        # A bit more roundabout, but also works when the attribute
+        # hasn't been set yet, for whatever reason.
+        for service in vol.manager.api.services.list():
+            if 'cinder-volume' in service.binary:
+                return service.host
+
     def test_create_volume(self):
         """Test creating volumes with basic configuration."""
         for vol in self._create_volumes(2):
@@ -90,5 +100,5 @@ class CinderNetAppTest(test_utils.OpenStackBaseTest):
                 expected_status='available',
                 msg='Volume status wait')
             test_vol = self.cinder_client.volumes.find(name=vol.name)
-            host = getattr(test_vol, 'os-vol-host-attr:host').split('#')[0]
+            host = self._volume_host(test_vol)
             self.assertIn('cinder-netapp', host)
