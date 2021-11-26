@@ -22,6 +22,7 @@ from os import (
     path
 )
 import requests
+import subprocess
 import tempfile
 
 import tenacity
@@ -35,6 +36,33 @@ import zaza.openstack.utilities.exceptions as zaza_exceptions
 import zaza.openstack.utilities.generic as zaza_utils
 import zaza.utilities.juju as juju_utils
 import zaza.openstack.utilities.openstack as zaza_openstack
+
+
+def add_storage(unit, label, pool, size):
+    rv = subprocess.check_output(['juju', 'add-storage', unit,
+                                  '{}={},{}'.format(label, pool,
+                                                    str(size) + 'GB')],
+                                  stderr=subprocess.STDOUT)
+    return rv.decode('UTF-8').replace('added storage ', '').split(' ')[0]
+
+
+def detach_storage(storage_name):
+    subprocess.check_call(['juju', 'detach-storage', storage_name])
+
+
+def remove_storage(storage_name, force=False):
+    cmd = ['juju', 'remove-storage', storage_name]
+    if force:
+        cmd.append('--force')
+    subprocess.check_call(cmd)
+
+def add_loop_device(unit, size=10):
+    loop_name = '/home/ubuntu/loop.img'
+    truncate = 'truncate --size {}GB {}'.format(size, loop_name)
+    losetup = 'losetup --find {}'.format(loop_name)
+    lofind = 'losetup -a | grep {} | cut -f1 -d ":"'.format(loop_name)
+    cmd = "sudo sh -c '{} && {} && {}'".format(truncate, losetup, lofind)
+    return zaza_model.run_on_unit(unit, cmd)
 
 
 class CephLowLevelTest(test_utils.OpenStackBaseTest):
@@ -463,7 +491,7 @@ class CephTest(test_utils.OpenStackBaseTest):
 
         The blacklist actions execute and behave as expected.
         """
-        logging.info('Checking blacklist-add-disk and'
+        logging.info('Checking blacklist-add-disk and '
                      'blacklist-remove-disk actions...')
         unit_name = 'ceph-osd/0'
 
@@ -544,6 +572,20 @@ class CephTest(test_utils.OpenStackBaseTest):
             'active'
         )
         logging.debug('OK')
+
+    def test_cache_device(self):
+        logging.info('Running add-disk action with a caching device')
+        osds = [x.entity_id for x in zaza_model.get_units('ceph-osd')]
+        for unit in osds:
+            add_storage(unit, 'cache-devices', 'cinder', 10)
+            loop_dev = add_loop_device(unit, 10)
+            action_obj = zaza_model.run_action(
+                unit_name=unit,
+                action_name='add-disk',
+                action_params={'osd-devices': loop_dev.get('Stdout'),
+                               'partition-size': 5}
+            )
+            zaza_utils.assertActionRanOK(action_obj)
 
 
 class CephRGWTest(test_utils.OpenStackBaseTest):
