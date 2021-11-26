@@ -39,24 +39,61 @@ import zaza.openstack.utilities.openstack as zaza_openstack
 
 
 def add_storage(unit, label, pool, size):
+    """Add storage to a Juju unit.
+
+    :param unit: The unit name (i.e: ceph-osd/0)
+    :type unit: str
+
+    :param label: The storage label (i.e: osd-devices)
+    :type label: str
+
+    :param pool: The pool on which to allocate the storage (i.e: cinder)
+    :type pool: str
+
+    :size: The size in GB of the storage to attach.
+    :type size: int
+
+    :returns: The name of the allocated storage.
+    """
     rv = subprocess.check_output(['juju', 'add-storage', unit,
                                   '{}={},{}'.format(label, pool,
                                                     str(size) + 'GB')],
-                                  stderr=subprocess.STDOUT)
+                                 stderr=subprocess.STDOUT)
     return rv.decode('UTF-8').replace('added storage ', '').split(' ')[0]
 
 
 def detach_storage(storage_name):
+    """Detach previously allocated Juju storage."""
     subprocess.check_call(['juju', 'detach-storage', storage_name])
 
 
 def remove_storage(storage_name, force=False):
+    """Remove Juju storage.
+
+    :param storage_name: The name of the previously allocated Juju storage.
+    :type storage_name: str
+
+    :param force: If False (default), require that the storage be detached
+                  before it can be removed.
+    :type force: bool
+    """
     cmd = ['juju', 'remove-storage', storage_name]
     if force:
         cmd.append('--force')
     subprocess.check_call(cmd)
 
+
 def add_loop_device(unit, size=10):
+    """Add a loopback device to a Juju unit.
+
+    :param unit: The unit name on which to create the device.
+    :type unit: str
+
+    :param size: The size in GB of the device.
+    :type size: int
+
+    :returns: The device name.
+    """
     loop_name = '/home/ubuntu/loop.img'
     truncate = 'truncate --size {}GB {}'.format(size, loop_name)
     losetup = 'losetup --find {}'.format(loop_name)
@@ -574,6 +611,7 @@ class CephTest(test_utils.OpenStackBaseTest):
         logging.debug('OK')
 
     def test_cache_device(self):
+        """Test adding a new disk with a caching device."""
         logging.info('Running add-disk action with a caching device')
         osds = [x.entity_id for x in zaza_model.get_units('ceph-osd')]
         for unit in osds:
