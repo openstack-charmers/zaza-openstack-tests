@@ -417,6 +417,8 @@ def get_cinder_session_client(session, version=3):
     :returns: Authenticated cinderclient
     :rtype: cinderclient.Client object
     """
+    if (get_os_release() < get_os_release('xenial_pike')):
+        version = 2
     return cinderclient.Client(session=session, version=version)
 
 
