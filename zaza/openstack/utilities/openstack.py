@@ -418,7 +418,8 @@ def get_cinder_session_client(session, version=None):
     :rtype: cinderclient.Client object
     """
     if version is None:
-        version = 2 if (get_os_release() < get_os_release('xenial_pike')) else 3
+        version = (
+            2 if (get_os_release() < get_os_release('xenial_pike')) else 3)
     return cinderclient.Client(session=session, version=version)
 
 
