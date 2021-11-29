@@ -407,7 +407,7 @@ def get_heat_session_client(session, version=1):
     return heatclient.Client(session=session, version=version)
 
 
-def get_cinder_session_client(session, version=3):
+def get_cinder_session_client(session, version=None):
     """Return cinderclient authenticated by keystone session.
 
     :param session: Keystone session object
@@ -417,8 +417,8 @@ def get_cinder_session_client(session, version=3):
     :returns: Authenticated cinderclient
     :rtype: cinderclient.Client object
     """
-    if (get_os_release() < get_os_release('xenial_pike')):
-        version = 2
+    if version is None:
+        version = 2 if (get_os_release() < get_os_release('xenial_pike')) else 3
     return cinderclient.Client(session=session, version=version)
 
 
