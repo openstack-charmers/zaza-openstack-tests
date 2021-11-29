@@ -228,3 +228,11 @@ class MasakariTest(test_utils.OpenStackBaseTest):
         logging.info('{} pid is now {}'.format(vm_name, new_guest_pid))
         assert new_guest_pid and new_guest_pid != guest_pid, (
             "Restart failed or never happened")
+
+    def test_transport_url(self):
+        zaza.model.block_until_file_matches_re(
+            'masakari',
+            '/etc/masakari/masakari.conf',
+            'transport_url = rabbit://(masakari:\w+@[\d.]+:\d+,?){3}/masakari',
+            model_name=zaza.model.get_juju_model(),
+            timeout=300)
