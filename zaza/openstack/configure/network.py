@@ -85,9 +85,10 @@ import sys
 from zaza.openstack.utilities import (
     cli as cli_utils,
     generic as generic_utils,
-    juju as juju_utils,
     openstack as openstack_utils,
 )
+
+import zaza.utilities.juju as juju_utils
 
 
 def setup_sdn(network_config, keystone_session=None):

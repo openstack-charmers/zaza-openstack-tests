@@ -17,7 +17,7 @@
 This module contains a number of functions for upgrading OpenStack.
 """
 import logging
-import zaza.openstack.utilities.juju as juju_utils
+import zaza.utilities.juju as juju_utils
 
 import zaza.model
 from zaza import sync_wrapper
