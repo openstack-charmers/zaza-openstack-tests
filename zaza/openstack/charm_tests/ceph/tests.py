@@ -22,7 +22,6 @@ from os import (
     path
 )
 import requests
-import subprocess
 import tempfile
 
 import tenacity
