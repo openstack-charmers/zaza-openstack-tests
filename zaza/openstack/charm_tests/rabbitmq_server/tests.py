@@ -26,8 +26,8 @@ import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.generic as generic_utils
 
-from charmhelpers.core.host import CompareHostReleases
 from zaza.openstack.utilities.generic import get_series
+from zaza.openstack.utilities.os_versions import CompareHostReleases
 
 from . import utils as rmq_utils
 from .utils import RmqNoMessageException
