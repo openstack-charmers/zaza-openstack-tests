@@ -2216,6 +2216,19 @@ def get_images_by_name(glance, image_name):
     return [i for i in glance.images.list() if image_name == i.name]
 
 
+def get_volumes_by_name(cinder, volume_name):
+    """Get all cinder volume objects with the given name.
+
+    :param cinder: Authenticated cinderclient
+    :type cinder: cinderclient.Client
+    :param image_name: Name of volume
+    :type image_name: str
+    :returns: List of cinder volumes
+    :rtype: List[cinderclient.v3.volume, ...]
+    """
+    return [i for i in cinder.volumes.list() if volume_name == i.name]
+
+
 @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
                 reraise=True,
                 retry=tenacity.retry_if_exception_type(urllib.error.URLError))
