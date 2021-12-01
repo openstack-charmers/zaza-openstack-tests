@@ -226,11 +226,11 @@ class GlanceExternalS3Test(test_utils.OpenStackBaseTest):
 
 
 class GlanceCinderBackendTest(test_utils.OpenStackBaseTest):
-    """Encapsulate glance tests using an external S3 backend."""
+    """Encapsulate glance tests using cinder backend."""
 
     @classmethod
     def setUpClass(cls):
-        """Run class setup for running glance tests with S3 backend."""
+        """Run class setup for running glance tests with cinder backend."""
         super(GlanceCinderBackendTest, cls).setUpClass()
         cls.glance_client = openstack_utils.get_glance_session_client(
             cls.keystone_session
