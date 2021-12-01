@@ -160,5 +160,10 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
         Pause service and check services are stopped then resume and check
         they are started.
         """
+        if self.application_name == 'ceilometer-agent':
+            logging.info("ceilometer-agent doesn't have pause/resume actions "
+                         "anymore, skipping")
+            return
+
         with self.pause_resume(self.restartable_services):
             logging.info("Testing pause and resume")
