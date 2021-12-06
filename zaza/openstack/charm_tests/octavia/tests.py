@@ -26,6 +26,10 @@ import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 
 from zaza.openstack.utilities import ObjectRetrierWraps
+from zaza.openstack.utilities.exception import (
+    LoadBalancerUnexpectedState,
+    LoadBalancerUnrecoverableError,
+)
 
 LBAAS_ADMIN_ROLE = 'load-balancer_admin'
 
@@ -228,9 +232,10 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         super(LBAASv2Test, self).resource_cleanup()
 
     @staticmethod
-    @tenacity.retry(retry=tenacity.retry_if_exception_type(AssertionError),
-                    wait=tenacity.wait_fixed(1), reraise=True,
-                    stop=tenacity.stop_after_delay(900))
+    @tenacity.retry(
+        retry=tenacity.retry_if_exception_type(LoadBalancerUnexpectedState),
+        wait=tenacity.wait_fixed(1), reraise=True,
+        stop=tenacity.stop_after_delay(900))
     def wait_for_lb_resource(octavia_show_func, resource_id,
                              provisioning_status=None, operating_status=None):
         """Wait for loadbalancer resource to reach expected status."""
@@ -245,15 +250,16 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         # ERROR is a final state, once it's reached there is no reason to keep
         # retrying and delaying the failure.
         if resp['provisioning_status'] == 'ERROR':
-            raise ValueError(msg)
+            raise LoadBalancerUnrecoverableError(msg)
 
         assert resp['provisioning_status'] == provisioning_status, msg
         if operating_status:
             logging.info('Current operating status: {}, waiting for {}'
                          .format(resp['operating_status'], operating_status))
-            assert resp['operating_status'] == operating_status, (
-                'load balancer resource has not reached '
-                'expected operating status: {}'.format(resp))
+            if not resp['operating_status'] == operating_status:
+                raise LoadBalancerUnexpectedState((
+                    'load balancer resource has not reached '
+                    'expected operating status: {}'.format(resp)))
 
         return resp
 
