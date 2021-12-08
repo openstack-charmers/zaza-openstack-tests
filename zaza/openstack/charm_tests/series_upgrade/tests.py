@@ -193,7 +193,8 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
         os.environ["JUJU_DEV_FEATURE_FLAGS"] = "upgrade-series"
         upgrade_groups = upgrade_utils.get_series_upgrade_groups(
             extra_filters=[upgrade_utils._filter_etcd,
-                           upgrade_utils._filter_easyrsa])
+                           upgrade_utils._filter_easyrsa],
+            target_series=self.to_series)
         applications = model.get_status().applications
         completed_machines = []
         for group_name, group in upgrade_groups:
