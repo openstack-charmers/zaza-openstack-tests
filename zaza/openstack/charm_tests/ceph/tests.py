@@ -549,7 +549,6 @@ class CephTest(test_utils.OpenStackBaseTest):
     def _get_local_osd_id(self, unit):
         ret = zaza_model.run_on_unit(unit,
                                      'ceph-volume lvm list --format=json')
-        osds = json.loads(ret['Stdout'])
         local = list(json.loads(ret['Stdout']))[-1]
         return local if local.startswith('osd.') else 'osd.' + local
 
