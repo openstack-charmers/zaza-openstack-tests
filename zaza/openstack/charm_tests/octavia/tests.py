@@ -17,14 +17,17 @@
 import logging
 import subprocess
 import tenacity
+import unittest
 
 from keystoneauth1 import exceptions as keystone_exceptions
 import octaviaclient.api.v2.octavia
 import osc_lib.exceptions
 
+import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 
+from zaza.openstack.utilities import generic as generic_utils
 from zaza.openstack.utilities import ObjectRetrierWraps
 
 LBAAS_ADMIN_ROLE = 'load-balancer_admin'
@@ -103,6 +106,54 @@ class CharmOperationTest(test_utils.OpenStackBaseTest):
     def setUpClass(cls):
         """Run class setup for running Octavia charm operation tests."""
         super(CharmOperationTest, cls).setUpClass()
+
+    def get_port_ips(self):
+        """Extract IP info from Neutron ports tagged with charm-octavia."""
+        keystone_session = openstack_utils.get_overcloud_keystone_session()
+        neutron_client = openstack_utils.get_neutron_session_client(
+            keystone_session)
+        resp = neutron_client.list_ports(tags='charm-octavia')
+        neutron_ip_list = []
+        for port in resp['ports']:
+            for ip_info in port['fixed_ips']:
+                neutron_ip_list.append(ip_info['ip_address'])
+        return neutron_ip_list
+
+    def test_update_controller_ip_port_list(self):
+        """Test update_controller_ip_port_list.
+
+        Add a unit and then delete a unit, then query the list of ports to
+        check that the port has been deleted.
+        """
+        raise unittest.SkipTest("Skipping because of lp:1951858")
+        app = self.test_config['charm_name']
+        logging.info("test_update_controller_ip_port_list: start test")
+        logging.info("Wait till model is idle ...")
+        zaza.model.block_until_all_units_idle()
+        ips = self.get_port_ips()
+        num = len(ips)
+        logging.info('initial hm port num is {}: {}'.format(num, ips))
+
+        logging.info("test_update_controller_ip_port_list: add one unit")
+        logging.info("Adding one unit ...")
+        zaza.model.add_unit(app)
+        logging.info("Wait until one unit is added ...")
+        zaza.model.block_until_unit_count(app, num+1)
+        zaza.model.wait_for_application_states()
+        ips = self.get_port_ips()
+        logging.info('hm ports are {} after adding one unit'.format(ips))
+        self.assertTrue(len(ips) == num+1)
+
+        logging.info("test_update_controller_ip_port_list: remove one unit")
+        logging.info("Removing one unit ...")
+        _, nons = generic_utils.get_leaders_and_non_leaders(app)
+        zaza.model.destroy_unit(app, nons[0])
+        logging.info("Wait until one unit is deleted ...")
+        zaza.model.block_until_unit_count(app, num)
+        zaza.model.wait_for_application_states()
+        ips = self.get_port_ips()
+        logging.info('hm ports are {} after deleting one unit'.format(ips))
+        self.assertTrue(len(ips) == num)
 
     def test_pause_resume(self):
         """Run pause and resume tests.

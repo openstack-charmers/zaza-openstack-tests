@@ -73,7 +73,8 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
         # Set Feature Flag
         os.environ["JUJU_DEV_FEATURE_FLAGS"] = "upgrade-series"
         upgrade_groups = upgrade_utils.get_series_upgrade_groups(
-            extra_filters=[_filter_etcd, _filter_easyrsa])
+            extra_filters=[_filter_etcd, _filter_easyrsa],
+            target_series=self.to_series)
         from_series = self.from_series
         to_series = self.to_series
         completed_machines = []

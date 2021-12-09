@@ -66,7 +66,7 @@ def _login(dashboard_url, domain, username, password, cafile=None):
 
     # start session, get csrftoken
     client = requests.session()
-    client.get(auth_url, verify=cafile)
+    client.get(auth_url, verify=cafile, timeout=30)
     if 'csrftoken' in client.cookies:
         csrftoken = client.cookies['csrftoken']
     else:
@@ -495,17 +495,17 @@ class OpenStackDashboardPolicydTests(policyd.BasePolicydSpecialization,
             zaza_model.get_lead_unit_name(self.application_name))
         logging.info("Dashboard is at {}".format(unit.public_address))
         overcloud_auth = openstack_utils.get_overcloud_auth()
-        password = overcloud_auth['OS_PASSWORD'],
+        password = overcloud_auth['OS_PASSWORD']
         logging.info("admin password is {}".format(password))
         # try to get the url which will either pass or fail with a 403
-        overcloud_auth = openstack_utils.get_overcloud_auth()
-        domain = 'admin_domain',
-        username = 'admin',
-        password = overcloud_auth['OS_PASSWORD'],
+        domain = 'admin_domain'
+        username = 'admin'
         client, response = _login(
-            self.get_horizon_url(), domain, username, password)
+            self.get_horizon_url(), domain, username, password,
+            cafile=self.cacert)
         # now attempt to get the domains page
         _url = self.url.format(unit.public_address)
+        logging.info("URL is {}".format(_url))
         result = client.get(_url)
         if result.status_code == 403:
             raise policyd.PolicydOperationFailedException("Not authenticated")

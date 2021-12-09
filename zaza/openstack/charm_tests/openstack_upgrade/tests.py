@@ -49,7 +49,6 @@ class OpenStackUpgradeVMLaunchBase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Run setup for OpenStack Upgrades."""
-        print("Running OpenStackUpgradeMixin setUpClass")
         super().setUpClass()
         cls.lts = LTSGuestCreateTest()
         cls.lts.setUpClass()
@@ -76,7 +75,6 @@ class WaitForMySQL(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Set up class."""
-        print("Running OpenstackUpgradeTests setUpClass")
         super().setUpClass()
         cli_utils.setup_logging()
 
@@ -93,7 +91,6 @@ class OpenStackUpgradeTestsFocalUssuri(OpenStackUpgradeVMLaunchBase):
     @classmethod
     def setUpClass(cls):
         """Run setup for OpenStack Upgrades."""
-        print("Running OpenstackUpgradeTests setUpClass")
         super().setUpClass()
         cli_utils.setup_logging()
 
@@ -111,7 +108,7 @@ class OpenStackUpgradeTestsByOption(OpenStackUpgradeVMLaunchBase):
 
         tests_options:
           openstack-upgrade:
-            detect-charm: keystone
+            detect-using-charm: keystone
 
     This will use the octavia application, detect the ubuntu version and then
     read the config to discover the current OpenStack version.
@@ -120,7 +117,6 @@ class OpenStackUpgradeTestsByOption(OpenStackUpgradeVMLaunchBase):
     @classmethod
     def setUpClass(cls):
         """Run setup for OpenStack Upgrades."""
-        print("Running OpenstackUpgradeTests setUpClass")
         super().setUpClass()
         cli_utils.setup_logging()
 
@@ -139,7 +135,8 @@ class OpenStackUpgradeTestsByOption(OpenStackUpgradeVMLaunchBase):
                 .openstack_upgrade.detect_using_charm)
         except KeyError:
             raise exceptions.InvalidTestConfig(
-                "Missing tests_options.openstack-upgrade.detect-charm config.")
+                "Missing tests_options.openstack-upgrade.detect-using-charm "
+                "config.")
 
         unit = zaza.model.get_lead_unit(detect_charm)
         ubuntu_version = generic.get_series(unit)

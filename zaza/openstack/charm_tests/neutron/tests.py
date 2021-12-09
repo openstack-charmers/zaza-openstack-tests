@@ -26,6 +26,7 @@ import tenacity
 
 from neutronclient.common import exceptions as neutronexceptions
 
+import yaml
 import zaza
 import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
@@ -246,6 +247,135 @@ class NeutronGatewayTest(NeutronPluginApiSharedTests):
             services.append('neutron-lbaasv2-agent')
 
         return services
+
+
+class NeutronGatewayShowActionsTest(test_utils.OpenStackBaseTest):
+    """Test "show" actions of Neutron Gateway Charm.
+
+    actions:
+      * show-routers
+      * show-dhcp-networks
+      * show-loadbalancers
+    """
+
+    SKIP_LBAAS_TESTS = True
+
+    @classmethod
+    def setUpClass(cls, application_name='neutron-gateway', model_alias=None):
+        """Run class setup for running Neutron Gateway tests."""
+        super(NeutronGatewayShowActionsTest, cls).setUpClass(
+            application_name, model_alias)
+        # set up clients
+        cls.neutron_client = (
+            openstack_utils.get_neutron_session_client(cls.keystone_session))
+
+        # Loadbalancer tests not supported on Train and above and on
+        # releases Mitaka and below
+        current = openstack_utils.get_os_release()
+        bionic_train = openstack_utils.get_os_release('bionic_train')
+        xenial_mitaka = openstack_utils.get_os_release('xenial_mitaka')
+        cls.SKIP_LBAAS_TESTS = not (xenial_mitaka > current < bionic_train)
+
+    def _assert_result_match(self, action_result, resource_list,
+                             resource_name):
+        """Assert that action_result contains same data as resource_list."""
+        # make sure that action completed successfully
+        if action_result.status != 'completed':
+            self.fail('Juju Action failed: {}'.format(action_result.message))
+
+        # extract data from juju action
+        action_data = action_result.data.get('results', {}).get(resource_name)
+        resources_from_action = yaml.safe_load(action_data)
+
+        # pull resource IDs from expected resource list and juju action data
+        expected_resource_ids = {resource['id'] for resource in resource_list}
+        result_resource_ids = resources_from_action.keys()
+
+        # assert that juju action returned expected resources
+        self.assertEqual(result_resource_ids, expected_resource_ids)
+
+    def test_show_routers(self):
+        """Test that show-routers action reports correct neutron routers."""
+        # fetch neutron routers using neutron client
+        ngw_unit = zaza.model.get_units(self.application_name,
+                                        model_name=self.model_name)[0]
+        routers_from_client = self.neutron_client.list_routers().get(
+            'routers', [])
+
+        if not routers_from_client:
+            self.fail('At least one router must be configured for this test '
+                      'to pass.')
+
+        # fetch neutron routers using juju-action
+        result = zaza.model.run_action(ngw_unit.entity_id,
+                                       'show-routers',
+                                       model_name=self.model_name)
+
+        # assert that data from neutron client match data from juju action
+        self._assert_result_match(result, routers_from_client, 'router-list')
+
+    def test_show_dhcp_networks(self):
+        """Test that show-dhcp-networks reports correct DHCP networks."""
+        # fetch DHCP networks using neutron client
+        ngw_unit = zaza.model.get_units(self.application_name,
+                                        model_name=self.model_name)[0]
+        networks_from_client = self.neutron_client.list_networks().get(
+            'networks', [])
+
+        if not networks_from_client:
+            self.fail('At least one network must be configured for this test '
+                      'to pass.')
+
+        # fetch DHCP networks using juju-action
+        result = zaza.model.run_action(ngw_unit.entity_id,
+                                       'show-dhcp-networks',
+                                       model_name=self.model_name)
+
+        # assert that data from neutron client match data from juju action
+        self._assert_result_match(result, networks_from_client,
+                                  'dhcp-networks')
+
+    def test_show_load_balancers(self):
+        """Test that show-loadbalancers reports correct loadbalancers."""
+        if self.SKIP_LBAAS_TESTS:
+            self.skipTest('LBaasV2 is not supported in this version.')
+
+        loadbalancer_id = None
+
+        try:
+            # create LBaasV2 for the purpose of this test
+            lbaas_name = 'test_lbaas'
+            subnet_list = self.neutron_client.list_subnets(
+                name='private_subnet').get('subnets', [])
+
+            if not subnet_list:
+                raise RuntimeError('Expected subnet "private_subnet" is not '
+                                   'configured.')
+
+            subnet = subnet_list[0]
+            loadbalancer_data = {'loadbalancer': {'name': lbaas_name,
+                                                  'vip_subnet_id': subnet['id']
+                                                  }
+                                 }
+            loadbalancer = self.neutron_client.create_loadbalancer(
+                body=loadbalancer_data)
+            loadbalancer_id = loadbalancer['loadbalancer']['id']
+
+            # test that client and action report same data
+            ngw_unit = zaza.model.get_units(self.application_name,
+                                            model_name=self.model_name)[0]
+            lbaas_from_client = self.neutron_client.list_loadbalancers().get(
+                'loadbalancers', [])
+
+            result = zaza.model.run_action(ngw_unit.entity_id,
+                                           'show-load-balancers',
+                                           model_name=self.model_name)
+
+            self._assert_result_match(result, lbaas_from_client,
+                                      'load-balancers')
+        finally:
+            if loadbalancer_id:
+                self.neutron_client.delete_loadbalancer(loadbalancer_id)
 
 
 class NeutronCreateNetworkTest(test_utils.OpenStackBaseTest):

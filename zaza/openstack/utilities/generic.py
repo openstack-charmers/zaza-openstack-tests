@@ -706,3 +706,20 @@ def attach_file_resource(application_name, resource_name,
         fp.flush()
         model.attach_resource(
             application_name, resource_name, fp.name)
+
+
+def get_leaders_and_non_leaders(application_name):
+    """Get leader node and non-leader nodes.
+
+    :returns: leader, list of non-leader
+    :rtype: str, list of str
+    """
+    status = model.get_status().applications[application_name]
+    leader = None
+    non_leaders = []
+    for unit in status["units"]:
+        if status["units"][unit].get("leader"):
+            leader = unit
+        else:
+            non_leaders.append(unit)
+    return leader, non_leaders

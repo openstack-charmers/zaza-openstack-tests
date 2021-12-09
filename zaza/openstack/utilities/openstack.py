@@ -407,7 +407,7 @@ def get_heat_session_client(session, version=1):
     return heatclient.Client(session=session, version=version)
 
 
-def get_cinder_session_client(session, version=2):
+def get_cinder_session_client(session, version=3):
     """Return cinderclient authenticated by keystone session.
 
     :param session: Keystone session object
@@ -986,7 +986,19 @@ def configure_networking_charms(networking_data, macs, use_juju_wait=True):
         current_data_port = get_application_config_option(
             application_name,
             networking_data.port_config_key)
-        if current_data_port:
+
+        # NOTE(lourot): in
+        # https://github.com/openstack-charmers/openstack-bundles we have made
+        # the conscious choice to use 'to-be-set' instead of 'null' for the
+        # following reasons:
+        # * With 'to-be-set' (rather than 'null') it is clearer for the reader
+        #   that some action is required and the value can't just be left as
+        #   is.
+        # * Some of our tooling doesn't work with 'null', see
+        #   https://github.com/openstack-charmers/openstack-bundles/pull/228
+        # This nonetheless supports both by exiting early if the value is
+        # neither 'null' nor 'to-be-set':
+        if current_data_port and current_data_port != 'to-be-set':
             logging.info("Skip update of external network data port config."
                          "Config '{}' already set to value: {}".format(
                              networking_data.port_config_key,
@@ -1000,7 +1012,7 @@ def configure_networking_charms(networking_data, macs, use_juju_wait=True):
     # to deal with all the non ['active', 'idle', 'Unit is ready.']
     # workload/agent states and msgs that our mojo specs are exposed to.
     if use_juju_wait:
-        juju_wait.wait(wait_for_workload=True)
+        juju_wait.wait(wait_for_workload=True, max_wait=2700)
     else:
         zaza.model.wait_for_agent_status()
         # TODO: shouldn't access get_charm_config() here as it relies on
@@ -1139,8 +1151,10 @@ def create_project_network(neutron_client, project_id, net_name='private',
     return network
 
 
-def create_external_network(neutron_client, project_id, net_name='ext_net'):
-    """Create the external network.
+def create_provider_network(neutron_client, project_id, net_name='ext_net',
+                            external=True, shared=False, network_type='flat',
+                            vlan_id=None):
+    """Create a provider network.
 
     :param neutron_client: Authenticated neutronclient
     :type neutron_client: neutronclient.Client object
@@ -1148,25 +1162,35 @@ def create_external_network(neutron_client, project_id, net_name='ext_net'):
     :type project_id: string
     :param net_name: Network name
     :type net_name: string
+    :param shared: The network should be external
+    :type shared: boolean
+    :param shared: The network should be shared between projects
+    :type shared: boolean
+    :param net_type: Network type: GRE, VXLAN, local, VLAN
+    :type net_type: string
+    :param net_name: VLAN ID
+    :type net_name: string
     :returns: Network object
     :rtype: dict
     """
     networks = neutron_client.list_networks(name=net_name)
     if len(networks['networks']) == 0:
-        logging.info('Configuring external network')
+        logging.info('Creating %s %s network: %s', network_type,
+                     'external' if external else 'provider', net_name)
         network_msg = {
             'name': net_name,
-            'router:external': True,
+            'router:external': external,
+            'shared': shared,
             'tenant_id': project_id,
             'provider:physical_network': 'physnet1',
-            'provider:network_type': 'flat',
+            'provider:network_type': network_type,
         }
 
-        logging.info('Creating new external network definition: %s',
-                     net_name)
+        if network_type == 'vlan':
+            network_msg['provider:segmentation_id'] = int(vlan_id)
         network = neutron_client.create_network(
             {'network': network_msg})['network']
-        logging.info('New external network created: %s', network['id'])
+        logging.info('Network %s created: %s', net_name, network['id'])
     else:
         logging.warning('Network %s already exists.', net_name)
         network = networks['networks'][0]
@@ -1226,11 +1250,12 @@ def create_project_subnet(neutron_client, project_id, network, cidr, dhcp=True,
     return subnet
 
 
-def create_external_subnet(neutron_client, project_id, network,
+def create_provider_subnet(neutron_client, project_id, network,
+                           subnet_name='ext_net_subnet',
                            default_gateway=None, cidr=None,
                            start_floating_ip=None, end_floating_ip=None,
-                           subnet_name='ext_net_subnet'):
-    """Create the external subnet.
+                           dhcp=False):
+    """Create the provider subnet.
 
     :param neutron_client: Authenticated neutronclient
     :type neutron_client: neutronclient.Client object
@@ -1240,14 +1265,16 @@ def create_external_subnet(neutron_client, project_id, network,
     :type network: dict
     :param default_gateway: Deafault gateway IP address
     :type default_gateway: string
+    :param subnet_name: Subnet name
+    :type subnet_name: string
     :param cidr: Network CIDR
     :type cidr: string
     :param start_floating_ip: Start of floating IP range: IP address
     :type start_floating_ip: string or None
     :param end_floating_ip: End of floating IP range: IP address
     :type end_floating_ip: string or None
-    :param subnet_name: Subnet name
-    :type subnet_name: string
+    :param dhcp: Run DHCP on this subnet
+    :type dhcp: boolean
     :returns: Subnet object
     :rtype: dict
     """
@@ -1256,7 +1283,7 @@ def create_external_subnet(neutron_client, project_id, network,
         subnet_msg = {
             'name': subnet_name,
             'network_id': network['id'],
-            'enable_dhcp': False,
+            'enable_dhcp': dhcp,
             'ip_version': 4,
             'tenant_id': project_id
         }
@@ -2198,6 +2225,19 @@ def get_images_by_name(glance, image_name):
     return [i for i in glance.images.list() if image_name == i.name]
 
 
+def get_volumes_by_name(cinder, volume_name):
+    """Get all cinder volume objects with the given name.
+
+    :param cinder: Authenticated cinderclient
+    :type cinder: cinderclient.Client
+    :param image_name: Name of volume
+    :type image_name: str
+    :returns: List of cinder volumes
+    :rtype: List[cinderclient.v3.volume, ...]
+    """
+    return [i for i in cinder.volumes.list() if volume_name == i.name]
+
+
 def find_cirros_image(arch):
     """Return the url for the latest cirros image for the given architecture.
 
@@ -2832,7 +2872,7 @@ def ssh_test(username, ip, vm_name, password=None, privkey=None, retry=True):
         return_string = stdout.readlines()[0].strip()
 
         if return_string == vm_name:
-            logging.info('SSH to %s(%s) succesfull' % (vm_name, ip))
+            logging.info('SSH to %s(%s) successful' % (vm_name, ip))
         else:
             logging.info('SSH to %s(%s) failed (%s != %s)' % (vm_name, ip,
                                                               return_string,

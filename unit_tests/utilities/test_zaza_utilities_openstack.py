@@ -58,11 +58,12 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
 
         self.network = {
             "network": {"id": "network_id",
-                              "name": self.ext_net,
-                              "tenant_id": self.project_id,
-                              "router:external": True,
-                              "provider:physical_network": "physnet1",
-                              "provider:network_type": "flat"}}
+                        "name": self.ext_net,
+                        "router:external": True,
+                        "shared": False,
+                        "tenant_id": self.project_id,
+                        "provider:physical_network": "physnet1",
+                        "provider:network_type": "flat"}}
 
         self.networks = {
             "networks": [self.network["network"]]}
@@ -157,12 +158,12 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.neutronclient.create_address_scope.assert_called_once_with(
             address_scope_msg)
 
-    def test_create_external_network(self):
+    def test_create_provider_network(self):
         self.patch_object(openstack_utils, "get_net_uuid")
         self.get_net_uuid.return_value = self.net_uuid
 
         # Already exists
-        network = openstack_utils.create_external_network(
+        network = openstack_utils.create_provider_network(
             self.neutronclient, self.project_id)
         self.assertEqual(network, self.network["network"])
         self.neutronclient.create_network.assert_not_called()
@@ -172,7 +173,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             "networks": []}
         network_msg = copy.deepcopy(self.network)
         network_msg["network"].pop("id")
-        network = openstack_utils.create_external_network(
+        network = openstack_utils.create_provider_network(
             self.neutronclient, self.project_id)
         self.assertEqual(network, self.network["network"])
         self.neutronclient.create_network.assert_called_once_with(
@@ -342,6 +343,20 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             [image_mock1])
         self.assertEqual(
             openstack_utils.get_images_by_name(glance_client, 'frank'),
+            [])
+
+    def test_get_volumes_by_name(self):
+        volume_mock1 = mock.MagicMock()
+        volume_mock1.name = 'bob'
+        volume_mock2 = mock.MagicMock()
+        volume_mock2.name = 'bill'
+        cinder_client = mock.MagicMock()
+        cinder_client.volumes.list.return_value = [volume_mock1, volume_mock2]
+        self.assertEqual(
+            openstack_utils.get_volumes_by_name(cinder_client, 'bob'),
+            [volume_mock1])
+        self.assertEqual(
+            openstack_utils.get_volumes_by_name(cinder_client, 'frank'),
             [])
 
     def test_find_cirros_image(self):
