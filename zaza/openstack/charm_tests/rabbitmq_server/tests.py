@@ -58,8 +58,6 @@ class RmqTests(test_utils.OpenStackBaseTest):
                                                   ssl=ssl,
                                                   port=port)
 
-    @tenacity.retry(reraise=True, stop=tenacity.stop_after_attempt(30),
-                    retry=tenacity.retry_if_exception_type(AssertionError))
     def _search_for_message(self, amqp_msg, check_unit, ssl, port,
                             amqp_msg_counter):
         """Search for message in message queue.
@@ -78,20 +76,21 @@ class RmqTests(test_utils.OpenStackBaseTest):
         :type amqp_msg: int
         :raises: RmqNoMessageException
         """
-        amqp_msg_rcvd = self._retry_get_amqp_message(
-            check_unit,
-            ssl=ssl,
-            port=port)
-
-        try:
-            logging.info('Looking for message {}'.format(amqp_msg))
-            # Validate amqp message content
-            assert amqp_msg == amqp_msg_rcvd
-            logging.info('Message {} received OK.'.format(amqp_msg_counter))
-        except AssertionError as err:
-            logging.info('Expected: {}'.format(amqp_msg))
-            logging.info('Actual:   {}'.format(amqp_msg_rcvd))
-            raise err
+        for i in range(100):
+            amqp_msg_rcvd = self._retry_get_amqp_message(
+                check_unit,
+                ssl=ssl,
+                port=port)
+            if amqp_msg == amqp_msg_rcvd:
+                logging.info(
+                    'Message {} received OK.'.format(amqp_msg_counter))
+                break
+            else:
+                logging.info('Expected: {}'.format(amqp_msg))
+                logging.info('Actual:   {}'.format(amqp_msg_rcvd))
+        else:
+            msg = 'Message {} not found.'.format(amqp_msg_counter)
+            raise RmqNoMessageException(msg)
 
     def _test_rmq_amqp_messages_all_units(self, units,
                                           ssl=False, port=None):
@@ -160,7 +159,8 @@ class RmqTests(test_utils.OpenStackBaseTest):
                         port,
                         amqp_msg_counter)
                 except RmqNoMessageException:
-                    msg = 'Message {} not found.'.format(amqp_msg_counter)
+                    msg = 'Failed to retrieve message {}.'.format(
+                        amqp_msg_counter)
                     raise Exception(msg)
                 amqp_msg_counter += 1
 
