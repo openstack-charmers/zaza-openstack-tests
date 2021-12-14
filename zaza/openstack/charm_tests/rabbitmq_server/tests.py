@@ -49,6 +49,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
         return '[{}-{}]'.format(uuid.uuid4(), time.time())
 
     @tenacity.retry(
+        reraise=True,
         retry=tenacity.retry_if_exception_type(RmqNoMessageException),
         wait=tenacity.wait_fixed(10),
         stop=tenacity.stop_after_attempt(2))
@@ -75,7 +76,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
         :type port: Union[int, None]
         :param amqp_msg_counter: Number in test sequence of this message.
         :type amqp_msg: int
-        :raises: tenacity.RetryError
+        :raises: RmqNoMessageException
         """
         amqp_msg_rcvd = self._retry_get_amqp_message(
             check_unit,
@@ -158,7 +159,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
                         ssl,
                         port,
                         amqp_msg_counter)
-                except tenacity.RetryError:
+                except RmqNoMessageException:
                     msg = 'Message {} not found.'.format(amqp_msg_counter)
                     raise Exception(msg)
                 amqp_msg_counter += 1
