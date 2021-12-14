@@ -506,9 +506,9 @@ def get_amqp_message_by_unit(unit, queue="test",
                                       password=password)
     channel = connection.channel()
     method_frame, _, body = channel.basic_get(queue)
-    body = body.decode()
 
     if method_frame:
+        body = body.decode()
         logging.debug('Retreived message from {} queue:\n{}'.format(queue,
                                                                     body))
         channel.basic_ack(method_frame.delivery_tag)
