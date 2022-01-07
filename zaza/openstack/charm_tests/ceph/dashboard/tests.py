@@ -103,11 +103,13 @@ class CephDashboardTest(test_utils.BaseCharmTest):
         units = zaza.model.get_units(self.application_name)
         for unit in units:
             r = self._run_request_get(
-                'https://{}:8443'.format(unit.public_address),
+                'https://{}:8443'.format(
+                    zaza.model.get_unit_public_address(unit)),
                 verify=self.local_ca_cert,
                 allow_redirects=False)
             if r.status_code == requests.codes.ok:
-                return 'https://{}:8443'.format(unit.public_address)
+                return 'https://{}:8443'.format(
+                    zaza.model.get_unit_public_address(unit))
 
     def test_dashboard_units(self):
         """Check dashboard units are configured correctly."""
@@ -116,10 +118,11 @@ class CephDashboardTest(test_utils.BaseCharmTest):
         rcs = collections.defaultdict(list)
         for unit in units:
             r = self._run_request_get(
-                'https://{}:8443'.format(unit.public_address),
+                'https://{}:8443'.format(
+                    zaza.model.get_unit_public_address(unit)),
                 verify=verify,
                 allow_redirects=False)
-            rcs[r.status_code].append(unit.public_address)
+            rcs[r.status_code].append(zaza.model.get_unit_public_address(unit))
         self.assertEqual(len(rcs[requests.codes.ok]), 1)
         self.assertEqual(len(rcs[requests.codes.see_other]), len(units) - 1)
 

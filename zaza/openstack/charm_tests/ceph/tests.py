@@ -123,7 +123,7 @@ class CephRelationTest(test_utils.OpenStackBaseTest):
         remote_unit_name = 'ceph-mon/0'
         relation_name = 'osd'
         remote_unit = zaza_model.get_unit_from_name(remote_unit_name)
-        remote_ip = remote_unit.public_address
+        remote_ip = zaza_model.get_unit_public_address(remote_unit)
         relation = juju_utils.get_relation_from_unit(
             unit_name,
             remote_unit_name,
@@ -144,7 +144,7 @@ class CephRelationTest(test_utils.OpenStackBaseTest):
         unit_name = 'ceph-osd/0'
         relation_name = 'osd'
         remote_unit = zaza_model.get_unit_from_name(remote_unit_name)
-        remote_ip = remote_unit.public_address
+        remote_ip = zaza_model.get_unit_public_address(remote_unit)
         cmd = 'leader-get fsid'
         result = zaza_model.run_on_unit(remote_unit_name, cmd)
         fsid = result.get('Stdout').strip()
@@ -798,7 +798,9 @@ class CephPrometheusTest(unittest.TestCase):
         unit = zaza_model.get_unit_from_name(
             zaza_model.get_lead_unit_name('prometheus2'))
         self.assertEqual(
-            '3', _get_mon_count_from_prometheus(unit.public_address))
+            '3',
+            _get_mon_count_from_prometheus(
+                zaza_model.get_unit_public_address(unit)))
 
 
 class CephPoolConfig(Exception):
