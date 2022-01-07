@@ -956,6 +956,31 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.assertEqual(expected, result)
         self._get_os_rel_pair.assert_called_once_with(application='myapp')
 
+    def test_get_keystone_ip__vip(self):
+        self.patch_object(openstack_utils, "get_application_config_option")
+        self.patch_object(openstack_utils.model, "get_units")
+        unit1 = mock.Mock(public_address='5.6.7.8')
+        self.get_application_config_option.return_value = "1.2.3.4"
+        self.get_units.return_value = [unit1]
+
+        self.assertEqual(
+            openstack_utils.get_keystone_ip(model_name='some-model'),
+            '1.2.3.4')
+        self.get_application_config_option.assert_called_once_with(
+            'keystone', 'vip', model_name='some-model')
+        self.get_application_config_option.return_value = "    1.2.3.4    11"
+        self.assertEqual(openstack_utils.get_keystone_ip(), '1.2.3.4')
+
+    def test_get_keystone_ip__from_unit(self):
+        self.patch_object(openstack_utils, "get_application_config_option")
+        self.patch_object(openstack_utils.model, "get_units")
+        unit1 = mock.Mock(public_address='5.6.7.8')
+        self.get_application_config_option.return_value = None
+        self.get_units.return_value = [unit1]
+
+        self.assertEqual(openstack_utils.get_keystone_ip(), '5.6.7.8')
+        self.get_units.assert_called_once_with('keystone', model_name=None)
+
     def test_get_keystone_api_version(self):
         self.patch_object(openstack_utils, "get_current_os_versions")
         self.patch_object(openstack_utils, "get_application_config_option")

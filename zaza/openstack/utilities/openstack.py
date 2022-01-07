@@ -2019,6 +2019,9 @@ def get_undercloud_auth():
 def get_keystone_ip(model_name=None):
     """Return the IP address to use when communicating with keystone api.
 
+    If there are multiple VIP addresses specified in the 'vip' option for the
+    keystone unit, then ONLY the first one is returned.
+
     :param model_name: Name of model to query.
     :type model_name: str
     :returns: IP address
@@ -2029,7 +2032,8 @@ def get_keystone_ip(model_name=None):
         'vip',
         model_name=model_name)
     if vip_option:
-        return vip_option
+        # strip the option, splits on whitespace and return the first one.
+        return vip_option.strip().split()[0]
     unit = model.get_units('keystone', model_name=model_name)[0]
     return unit.public_address
 
