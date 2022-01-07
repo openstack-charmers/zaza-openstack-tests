@@ -726,7 +726,7 @@ class OpenStackBaseTest(BaseCharmTest):
         instance_1 = self.retrieve_guest(
             '{}-ins-1'.format(self.RESOURCE_PREFIX))
         instance_2 = self.retrieve_guest(
-            '{}-ins-1'.format(self.RESOURCE_PREFIX))
+            '{}-ins-2'.format(self.RESOURCE_PREFIX))
         return instance_1, instance_2
 
 
