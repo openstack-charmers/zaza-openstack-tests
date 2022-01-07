@@ -837,6 +837,11 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
         floating_1 = floating_ips_from_instance(instance_1)[0]
         floating_2 = floating_ips_from_instance(instance_2)[0]
         address_2 = fixed_ips_from_instance(instance_2)[0]
+        use_dns = zaza.model.get_application_config(
+            'neutron-api')['enable-ml2-dns']['value']
+        if use_dns:
+            name_2 = name_from_instance(instance_2)
+            fqdn_2 = fqdn_from_instance(instance_2, self.neutron_client)
 
         username = guest.boot_tests['bionic']['username']
         password = guest.boot_tests['bionic'].get('password')
@@ -862,6 +867,17 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
                 username, floating_1, 'instance-1',
                 '{} {}'.format(cmd, floating_2),
                 password=password, privkey=privkey, verify=verify)
+
+            if use_dns:
+                openstack_utils.ssh_command(
+                    username, floating_1, 'instance-1',
+                    '{} {}'.format(cmd, name_2),
+                    password=password, privkey=privkey, verify=verify)
+
+                openstack_utils.ssh_command(
+                    username, floating_1, 'instance-1',
+                    '{} {}'.format(cmd, fqdn_2),
+                    password=password, privkey=privkey, verify=verify)
 
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
                     reraise=True, stop=tenacity.stop_after_attempt(8))
@@ -1063,6 +1079,35 @@ def ips_from_instance(instance, ip_type):
         ip['addr'] for ip in instance.addresses[
             network_name_from_instance(instance)]
         if ip['OS-EXT-IPS:type'] == ip_type])
+
+
+def name_from_instance(instance):
+    """Retrieve name of instance.
+
+    :param instance: The instance to fetch name from
+    :type instance: nova_client.Server
+    :returns: Name of instance.
+    :rtype: str
+    """
+    return instance.name
+
+
+def fqdn_from_instance(instance, neutron_client):
+    """Retrieve FQDN of instance.
+
+    :param instance: The instance to fetch name from
+    :type instance: nova_client.Server
+    :returns: FQDN of instance.
+    :rtype: str
+    :raises: ValueError
+    """
+    for iface in instance.interface_list():
+        port = neutron_client.show_port(iface.id)
+        dns_assignment = next(iter(port['port']['dns_assignment']))
+        return dns_assignment['fqdn'].rstrip('.')
+        break
+    else:
+        raise ValueError
 
 
 class NeutronNetworkingTest(NeutronNetworkingBase):
