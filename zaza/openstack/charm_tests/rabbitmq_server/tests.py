@@ -120,7 +120,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
 
         for dest_unit in units:
             dest_unit_name = dest_unit.entity_id
-            dest_unit_host = dest_unit.public_address
+            dest_unit_host = zaza.model.get_unit_public_address(dest_unit)
             dest_unit_host_name = host_names[dest_unit_name]
 
             for check_unit in units:
@@ -128,7 +128,8 @@ class RmqTests(test_utils.OpenStackBaseTest):
                 if dest_unit_name == check_unit_name:
                     logging.info("Skipping check for this unit to itself.")
                     continue
-                check_unit_host = check_unit.public_address
+                check_unit_host = zaza.model.get_unit_public_address(
+                    check_unit)
                 check_unit_host_name = host_names[check_unit_name]
 
                 amqp_msg_stamp = self._get_uuid_epoch_stamp()

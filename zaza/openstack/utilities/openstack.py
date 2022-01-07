@@ -1554,7 +1554,7 @@ def create_bgp_peer(neutron_client, peer_application_name='quagga',
     :rtype: dict
     """
     peer_unit = model.get_units(peer_application_name)[0]
-    peer_ip = peer_unit.public_address
+    peer_ip = model.get_unit_public_address(peer_unit)
     bgp_peers = neutron_client.list_bgp_peers(name=peer_application_name)
     if len(bgp_peers['bgp_peers']) == 0:
         logging.info('Creating BGP Peer')
@@ -2035,7 +2035,7 @@ def get_keystone_ip(model_name=None):
         # strip the option, splits on whitespace and return the first one.
         return vip_option.strip().split()[0]
     unit = model.get_units('keystone', model_name=model_name)[0]
-    return unit.public_address
+    return model.get_unit_public_address(unit)
 
 
 def get_keystone_api_version(model_name=None):
