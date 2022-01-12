@@ -49,7 +49,7 @@ SERVICE_GROUPS = (
         'nova-compute', 'ceph-osd',
         'swift-proxy', 'swift-storage']))
 
-UPGRADE_EXCLUDE_LIST = ['rabbitmq-server', 'percona-cluster']
+UPGRADE_EXCLUDE_LIST = ['rabbitmq-server', 'percona-cluster', 'glance-simplestreams-sync']
 
 
 def get_upgrade_candidates(model_name=None, filters=None):
