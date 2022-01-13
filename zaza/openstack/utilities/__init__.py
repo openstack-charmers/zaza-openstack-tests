@@ -15,9 +15,14 @@
 """Collection of utilities to support zaza tests etc."""
 
 
+import enum
 import time
 
+import zaza.charm_lifecycle.utils
+
+from keystoneauth1.exceptions.base import ClientException
 from keystoneauth1.exceptions.connection import ConnectFailure
+from keystoneauth1.exceptions.connection import RetriableConnectionFailure
 
 
 class ObjectRetrierWraps(object):
@@ -164,4 +169,60 @@ def retry_on_connect_failure(client, **kwargs):
         kwcopy['retry_exceptions'] = []
     if ConnectFailure not in kwcopy['retry_exceptions']:
         kwcopy['retry_exceptions'].append(ConnectFailure)
+    return ObjectRetrierWraps(client, **kwcopy)
+
+
+TEST_CONFIG_ACCEPTANCE_LEVEL_KEY = 'acceptance_level'
+
+
+class AcceptanceLevel(str, enum.Enum):
+    """Enum describing available acceptance level options."""
+
+    LENIENT = 'lenient'
+    PERMISSIVE = 'permissive'
+    STRICT = 'strict'
+
+
+def get_acceptance_level():
+    """Retrieve acceptance level from charm config.
+
+    :returns: Configured or default acceptance level.
+    :rtype: AcceptanceLevel
+    """
+    level = AcceptanceLevel.STRICT
+    config_level = zaza.charm_lifecycle.utils.get_charm_config(
+        fatal=False).get(TEST_CONFIG_ACCEPTANCE_LEVEL_KEY, level)
+
+    if config_level == AcceptanceLevel.PERMISSIVE:
+        level = AcceptanceLevel.PERMISSIVE
+    elif config_level == AcceptanceLevel.LENIENT:
+        level = AcceptanceLevel.LENIENT
+
+    return level
+
+
+def retry_to_configured_acceptance_level(client, **kwargs):
+    """Retry an object that eventually gets resolved to a call.
+
+    Specifically, this uses ObjectRetrierWraps, but only against the
+    exceptions listed towards the configured acceptance level.
+
+    :params client: the object that may throw and exception when called.
+    :type client: Any
+    :params **kwargs: the arguments supplied to the ObjectRetrierWraps init
+                      method
+    :type **kwargs: Dict[Any]
+    :returns: client wrapped in an ObjectRetrierWraps instance
+    :rtype: ObjectRetrierWraps[client]
+    """
+    kwcopy = kwargs.copy()
+    if 'retry_exceptions' not in kwcopy:
+        kwcopy['retry_exceptions'] = []
+
+    acceptance_level = get_acceptance_level()
+    if acceptance_level == AcceptanceLevel.PERMISSIVE:
+        kwcopy['retry_exceptions'].append(RetriableConnectionFailure)
+    elif acceptance_level == AcceptanceLevel.LENIENT:
+        kwcopy['retry_exceptions'].append(ClientException)
+
     return ObjectRetrierWraps(client, **kwcopy)
