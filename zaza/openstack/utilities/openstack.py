@@ -37,6 +37,8 @@ import textwrap
 import urllib
 
 
+from . import retry_to_configured_acceptance_level
+
 from .os_versions import (
     OPENSTACK_CODENAMES,
     SWIFT_CODENAMES,
@@ -311,7 +313,8 @@ def get_glance_session_client(session):
     :returns: Authenticated glanceclient
     :rtype: glanceclient.Client
     """
-    return GlanceClient('2', session=session)
+    return retry_to_configured_acceptance_level(
+        GlanceClient('2', session=session))
 
 
 def get_designate_session_client(**kwargs):
@@ -322,8 +325,8 @@ def get_designate_session_client(**kwargs):
     :rtype: DesignateClient
     """
     version = kwargs.pop('version', None) or 2
-    return DesignateClient(version=str(version),
-                           **kwargs)
+    return retry_to_configured_acceptance_level(
+        DesignateClient(version=str(version), **kwargs))
 
 
 def get_nova_session_client(session, version=2):
@@ -336,7 +339,8 @@ def get_nova_session_client(session, version=2):
     :returns: Authenticated novaclient
     :rtype: novaclient.Client object
     """
-    return novaclient_client.Client(version, session=session)
+    return retry_to_configured_acceptance_level(
+        novaclient_client.Client(version, session=session))
 
 
 def get_neutron_session_client(session):
@@ -347,7 +351,8 @@ def get_neutron_session_client(session):
     :returns: Authenticated neutronclient
     :rtype: neutronclient.Client object
     """
-    return neutronclient.Client(session=session)
+    return retry_to_configured_acceptance_level(
+        neutronclient.Client(session=session))
 
 
 def get_swift_session_client(session,
@@ -364,9 +369,10 @@ def get_swift_session_client(session,
     :returns: Authenticated swiftclient
     :rtype: swiftclient.Client object
     """
-    return swiftclient.Connection(session=session,
-                                  os_options={'region_name': region_name},
-                                  cacert=cacert)
+    return retry_to_configured_acceptance_level(
+        swiftclient.Connection(session=session,
+                               os_options={'region_name': region_name},
+                               cacert=cacert))
 
 
 def get_octavia_session_client(session, service_type='load-balancer',
@@ -389,9 +395,10 @@ def get_octavia_session_client(session, service_type='load-balancer',
                                                         interface='internal')
         for endpoint in lbaas_endpoint:
             break
-    return octaviaclient.OctaviaAPI(session=session,
-                                    service_type=service_type,
-                                    endpoint=endpoint.url)
+    return retry_to_configured_acceptance_level(
+        octaviaclient.OctaviaAPI(session=session,
+                                 service_type=service_type,
+                                 endpoint=endpoint.url))
 
 
 def get_heat_session_client(session, version=1):
@@ -404,7 +411,8 @@ def get_heat_session_client(session, version=1):
     :returns: Authenticated cinderclient
     :rtype: heatclient.Client object
     """
-    return heatclient.Client(session=session, version=version)
+    return retry_to_configured_acceptance_level(
+        heatclient.Client(session=session, version=version))
 
 
 def get_cinder_session_client(session, version=3):
@@ -417,7 +425,8 @@ def get_cinder_session_client(session, version=3):
     :returns: Authenticated cinderclient
     :rtype: cinderclient.Client object
     """
-    return cinderclient.Client(session=session, version=version)
+    return retry_to_configured_acceptance_level(
+        cinderclient.Client(session=session, version=version))
 
 
 def get_masakari_session_client(session, interface='internal',
@@ -433,9 +442,10 @@ def get_masakari_session_client(session, interface='internal',
     :returns: Authenticated masakari client
     :rtype: openstack.instance_ha.v1._proxy.Proxy
     """
-    conn = connection.Connection(session=session,
-                                 interface=interface,
-                                 region_name=region_name)
+    conn = retry_to_configured_acceptance_level(
+        connection.Connection(session=session,
+                              interface=interface,
+                              region_name=region_name))
     return conn.instance_ha
 
 
@@ -447,7 +457,8 @@ def get_aodh_session_client(session):
     :returns: Authenticated aodh client
     :rtype: openstack.instance_ha.v1._proxy.Proxy
     """
-    return aodh_client.Client(session=session)
+    return retry_to_configured_acceptance_level(
+        aodh_client.Client(session=session))
 
 
 def get_manila_session_client(session, version='2'):
@@ -460,7 +471,8 @@ def get_manila_session_client(session, version='2'):
     :returns: Authenticated manilaclient
     :rtype: manilaclient.Client
     """
-    return manilaclient.Client(session=session, client_version=version)
+    return retry_to_configured_acceptance_level(
+        manilaclient.Client(session=session, client_version=version))
 
 
 def get_keystone_scope(model_name=None):
@@ -504,7 +516,8 @@ def get_keystone_session(openrc_creds, scope='PROJECT', verify=None):
         auth = v2.Password(**keystone_creds)
     else:
         auth = v3.Password(**keystone_creds)
-    return session.Session(auth=auth, verify=verify)
+    return retry_to_configured_acceptance_level(
+        session.Session(auth=auth, verify=verify))
 
 
 def get_overcloud_keystone_session(verify=None, model_name=None):
@@ -546,9 +559,11 @@ def get_keystone_session_client(session, client_api_version=3):
     :rtype: keystoneclient.v3.Client object
     """
     if client_api_version == 2:
-        return keystoneclient_v2.Client(session=session)
+        return retry_to_configured_acceptance_level(
+            keystoneclient_v2.Client(session=session))
     else:
-        return keystoneclient_v3.Client(session=session)
+        return retry_to_configured_acceptance_level(
+            keystoneclient_v3.Client(session=session))
 
 
 def get_keystone_client(openrc_creds, verify=None):
