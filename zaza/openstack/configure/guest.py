@@ -45,10 +45,32 @@ boot_tests = {
         'bootstring': 'finished at'}}
 
 
+def create_server_group(name, policy=None):
+    """Create a server group for influencing instance placement.
+
+    :param name: Name of server group.
+    :type name: str
+    :param policy: Policy for group, one of ('affinity', 'anti-affinity',
+                   'soft-affinity', 'soft-anti-affinity').  Default: 'affinity'
+    :type policy: Optional[str]
+    :param rules
+    :returns: ServerGroup resource.
+    :rtype: novaclient.v2.server_groups.ServerGroup
+    :raises: ValueError
+    """
+    if policy and policy not in ('affinity', 'anti-affinity', 'soft-affinity',
+                                 'soft-anti-affinity'):
+        raise ValueError
+
+    keystone_session = openstack_utils.get_overcloud_keystone_session()
+    nova_client = openstack_utils.get_nova_session_client(keystone_session)
+    return nova_client.server_groups.create(name, policy)
+
+
 def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
                     private_network_name=None, image_name=None,
                     flavor_name=None, external_network_name=None, meta=None,
-                    userdata=None):
+                    userdata=None, scheduler_hints=None):
     """Launch an instance.
 
     :param instance_key: Key to collect associated config data with.
@@ -71,6 +93,9 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
     :type meta: dict
     :param userdata: Configuration to use upon launch, used by cloud-init.
     :type userdata: str
+    :param scheduler_hints: arbitrary key-value pairs specified by the client
+                            to help boot an instance.
+    :type scheduler_hints: Optional[Dict[str,str]]
     :returns: the created instance
     :rtype: novaclient.Server
     """
@@ -117,7 +142,8 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
         key_name=nova_utils.KEYPAIR_NAME,
         meta=meta,
         nics=nics,
-        userdata=userdata)
+        userdata=userdata,
+        scheduler_hints=scheduler_hints)
 
     # Test Instance is ready.
     logging.info('Checking instance is active')

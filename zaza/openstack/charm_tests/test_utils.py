@@ -616,7 +616,7 @@ class OpenStackBaseTest(BaseCharmTest):
     def resource_cleanup(self):
         """Remove test resources."""
         try:
-            logging.info('Removing instances launched by test ({}*)'
+            logging.info('Removing resources created by test ({}*)'
                          .format(self.RESOURCE_PREFIX))
             for server in self.nova_client.servers.list():
                 if server.name.startswith(self.RESOURCE_PREFIX):
@@ -624,6 +624,12 @@ class OpenStackBaseTest(BaseCharmTest):
                         self.nova_client.servers,
                         server.id,
                         msg="server")
+            for server_group in self.nova_client.server_groups.list():
+                if server_group.name.startswith(self.RESOURCE_PREFIX):
+                    openstack_utils.delete_resource(
+                        self.nova_client.server_groups,
+                        server_group.id,
+                        msg="server group")
         except AssertionError as e:
             # Resource failed to be removed within the expected time frame,
             # log this fact and carry on.
@@ -634,7 +640,7 @@ class OpenStackBaseTest(BaseCharmTest):
             pass
 
     def launch_guest(self, guest_name, userdata=None, use_boot_volume=False,
-                     instance_key=None):
+                     instance_key=None, scheduler_hints=None):
         """Launch one guest to use in tests.
 
         Note that it is up to the caller to have set the RESOURCE_PREFIX class
@@ -651,6 +657,9 @@ class OpenStackBaseTest(BaseCharmTest):
         :type use_boot_volume: boolean
         :param instance_key: Key to collect associated config data with.
         :type instance_key: Optional[str]
+        :param scheduler_hints: arbitrary key-value pairs specified by the
+                                client to help boot an instance.
+        :type scheduler_hints: Optional[Dict[str,str]]
         :returns: Nova instance objects
         :rtype: Server
         """
@@ -678,7 +687,8 @@ class OpenStackBaseTest(BaseCharmTest):
                     instance_key,
                     vm_name=instance_name,
                     use_boot_volume=use_boot_volume,
-                    userdata=userdata)
+                    userdata=userdata,
+                    scheduler_hints=scheduler_hints)
 
     def launch_guests(self, userdata=None):
         """Launch two guests to use in tests.
@@ -691,12 +701,16 @@ class OpenStackBaseTest(BaseCharmTest):
         :returns: List of launched Nova instance objects
         :rtype: List[Server]
         """
+        server_group = configure_guest.create_server_group(
+            self.RESOURCE_PREFIX, policy='anti-affinity')
+
         launched_instances = []
         for guest_number in range(1, 2+1):
             launched_instances.append(
                 self.launch_guest(
                     guest_name='ins-{}'.format(guest_number),
-                    userdata=userdata))
+                    userdata=userdata,
+                    scheduler_hints={'group': server_group.id}))
         return launched_instances
 
     def retrieve_guest(self, guest_name):
