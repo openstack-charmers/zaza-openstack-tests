@@ -79,7 +79,7 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
         ctxt['gateway_units'] = [
             {
                 'entity_id': u.entity_id,
-                'ip': u.public_address,
+                'ip': zaza.model.get_unit_public_address(u),
                 'hostname': host_names[u.entity_id]}
             for u in zaza.model.get_units('ceph-iscsi')]
         ctxt['gw_ip'] = sorted([g['ip'] for g in ctxt['gateway_units']])[0]

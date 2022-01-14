@@ -622,7 +622,7 @@ def port_knock_units(units, port=22, expect_success=True):
     :returns: None if successful, Failure message otherwise
     """
     for u in units:
-        host = u.public_address
+        host = model.get_unit_public_address(u)
         connected = is_port_open(port, host)
         if not connected and expect_success:
             return 'Socket connect failed.'
