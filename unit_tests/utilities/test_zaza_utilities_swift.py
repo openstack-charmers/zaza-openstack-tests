@@ -103,7 +103,6 @@ class TestSwiftUtils(ut_utils.BaseTestCase):
         self.get_full_juju_status.return_value = juju_status
 
         for app_name, units in app_units.items():
-            # ip = zaza.model.get_unit_public_address(units[0])
             ip = units[0].public_address
             expected_topology[ip]['unit'] = units[0]
 
