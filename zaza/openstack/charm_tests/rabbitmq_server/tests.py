@@ -39,7 +39,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
     @classmethod
     def setUpClass(cls):
         """Run class setup for running tests."""
-        super(RmqTests, cls).setUpClass()
+        super().setUpClass(application_name='rabbitmq-server')
 
     def _get_uuid_epoch_stamp(self):
         """Return a string based on uuid4 and epoch time.
@@ -460,6 +460,63 @@ class RmqTests(test_utils.OpenStackBaseTest):
         check_units(all_units)
 
         logging.info('OK')
+
+    def test_policies(self):
+        """Test config policies."""
+        app_config = zaza.model.get_application_config(self.application_name)
+        policies_config = json.loads(
+            app_config.get('policies')
+            .get('default')
+            .replace("\n", "")
+            .replace(" ", "")
+        )
+
+        # check policies implemented in the clusterer match with config
+        self._check_policies(policies_config)
+
+        # add a new policy
+        new_policy = {
+            'vhost': '/',
+            'name': 'test',
+            'pattern': 'foo',
+            'type': 'ttl'
+        }
+        policies_config_changed = policies_config + [new_policy]
+        zaza.model.set_application_config(
+            'rabbitmq-server',
+            {'policies': json.dumps(policies_config_changed)}
+        )
+        zaza.model.block_until_all_units_idle()
+
+        # check again after adding a new policy
+        self._check_policies(policies_config_changed)
+
+    # NOTE(gabrielcocenza) Policies may take a little time
+    # to show up in RabbitMQ cluster
+    @tenacity.retry(
+        wait=tenacity.wait_exponential(max=60),
+        stop=tenacity.stop_after_attempt(8)
+    )
+    def _check_policies(self, policies_config):
+        """Compare cluster policies with the juju config.
+
+        :param policies_config: Policies from juju config
+        :type policies_config: List[Dict[str, str]]
+        """
+        units = zaza.model.get_units(self.application_name)
+        policies_cluster = rmq_utils.list_policies(units[0])
+        vhosts = set()
+        for policy in policies_cluster:
+            vhosts.add(policy['vhost'])
+
+        n_policies = 0
+        for policy in policies_config:
+            if policy['vhost'] == '*':
+                n_policies += len(vhosts)
+            else:
+                n_policies += 1
+
+        self.assertEqual(len(policies_cluster), n_policies)
 
 
 class RabbitMQDeferredRestartTest(test_utils.BaseDeferredRestartTest):
