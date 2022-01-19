@@ -351,7 +351,7 @@ def configure_ssl_off(units, model_name=None, max_wait=60):
 
 def is_ssl_enabled_on_unit(unit, port=None):
     """Check a single juju rmq unit for ssl and port in the config file."""
-    host = unit.public_address
+    host = zaza.model.get_unit_public_address(unit)
     unit_name = unit.entity_id
 
     conf_file = '/etc/rabbitmq/rabbitmq.config'
@@ -400,7 +400,7 @@ def connect_amqp_by_unit(unit, ssl=False,
     :param password: amqp user password
     :returns: pika amqp connection pointer or None if failed and non-fatal
     """
-    host = unit.public_address
+    host = zaza.model.get_unit_public_address(unit)
     unit_name = unit.entity_id
 
     if ssl:

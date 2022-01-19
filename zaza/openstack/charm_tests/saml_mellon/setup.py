@@ -228,7 +228,7 @@ def keystone_federation_setup_idp1():
     """Configure Keystone Federation for the local IdP #1."""
     test_saml_idp_unit = zaza.model.get_units("test-saml-idp1")[0]
     idp_remote_id = LOCAL_IDP_REMOTE_ID.format(
-        test_saml_idp_unit.public_address)
+        zaza.model.get_unit_public_address(test_saml_idp_unit))
 
     keystone_federation_setup(
         federated_domain="federated_domain_idp1",
@@ -241,7 +241,7 @@ def keystone_federation_setup_idp2():
     """Configure Keystone Federation for the local IdP #2."""
     test_saml_idp_unit = zaza.model.get_units("test-saml-idp2")[0]
     idp_remote_id = LOCAL_IDP_REMOTE_ID.format(
-        test_saml_idp_unit.public_address)
+        zaza.model.get_unit_public_address(test_saml_idp_unit))
 
     keystone_federation_setup(
         federated_domain="federated_domain_idp2",

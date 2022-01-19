@@ -207,7 +207,7 @@ def get_swift_storage_topology(model_name=None):
             region = app_config['storage-region']['value']
             zone = app_config['zone']['value']
             for unit in zaza.model.get_units(app_name, model_name=model_name):
-                topology[unit.public_address] = {
+                topology[zaza.model.get_unit_public_address(unit)] = {
                     'app_name': app_name,
                     'unit': unit,
                     'region': region,

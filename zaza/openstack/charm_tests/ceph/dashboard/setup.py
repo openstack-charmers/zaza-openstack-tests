@@ -48,4 +48,5 @@ def set_grafana_url(model_name=None):
         'ceph-dashboard',
         {
             'grafana-api-url': "https://{}:3000".format(
-                unit.public_address)})
+                zaza.model.get_unit_public_address(unit))
+        })

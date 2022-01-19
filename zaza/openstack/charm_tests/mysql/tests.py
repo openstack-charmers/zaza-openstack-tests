@@ -110,7 +110,7 @@ class MySQLBaseTest(test_utils.OpenStackBaseTest):
             _primary_ip = _primary_ip.split(':')[0]
         units = zaza.model.get_units(self.application_name)
         for unit in units:
-            if _primary_ip in unit.public_address:
+            if _primary_ip in zaza.model.get_unit_public_address(unit):
                 return unit
 
     def get_blocked_mysql_routers(self):
@@ -839,12 +839,12 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
 
         logging.info(
             "Removing old unit from cluster: {} "
-            .format(leader_unit.public_address))
+            .format(zaza.model.get_unit_public_address(leader_unit)))
         action = zaza.model.run_action(
             nons[0],
             "remove-instance",
             action_params={
-                "address": leader_unit.public_address,
+                "address": zaza.model.get_unit_public_address(leader_unit),
                 "force": True})
         assert action.data.get("results") is not None, (
             "Remove instance action failed: No results: {}"
@@ -914,12 +914,12 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
 
         logging.info(
             "Removing old unit from cluster: {} "
-            .format(non_leader_unit.public_address))
+            .format(zaza.model.get_unit_public_address(non_leader_unit)))
         action = zaza.model.run_action(
             leader,
             "remove-instance",
             action_params={
-                "address": non_leader_unit.public_address,
+                "address": zaza.model.get_unit_public_address(non_leader_unit),
                 "force": True})
         assert action.data.get("results") is not None, (
             "Remove instance action failed: No results: {}"
@@ -942,7 +942,7 @@ class MySQLInnoDBClusterPartitionTest(MySQLBaseTest):
         no_of_units = len(mysql_units)
         for index, unit in enumerate(mysql_units):
             next_unit = mysql_units[(index+1) % no_of_units]
-            ip_address = next_unit.public_address
+            ip_address = zaza.model.get_unit_public_address(next_unit)
             cmd = "sudo iptables -A INPUT -s {} -j DROP".format(ip_address)
             zaza.model.async_run_on_unit(unit, cmd)
 
@@ -966,7 +966,7 @@ class MySQLInnoDBClusterPartitionTest(MySQLBaseTest):
             leader_unit.entity_id,
             "force-quorum-using-partition-of",
             action_params={
-                "address": leader_unit.public_address,
+                "address": zaza.model.get_unit_public_address(leader_unit),
                 'i-really-mean-it': True
             })
 
