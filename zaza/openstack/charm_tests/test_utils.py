@@ -1093,6 +1093,9 @@ class BaseDeferredRestartTest(BaseCharmTest):
                     ','.join(broken_units),
                     restart_package_svc)
             raise Exception(msg)
+        else:
+            logging.info(
+                "Service was {} not restarted.".format(restart_package_svc))
         self.check_show_deferred_restarts_wlm(restart_package_svc)
         self.check_show_deferred_events_action_restart(
             restart_package_svc,
