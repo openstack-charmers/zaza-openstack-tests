@@ -954,8 +954,6 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             '1.2.3.4')
         self.get_application_config_option.assert_called_once_with(
             'keystone', 'vip', model_name='some-model')
-        self.get_application_config_option.return_value = "    1.2.3.4    11"
-        self.assertEqual(openstack_utils.get_keystone_ip(), '1.2.3.4')
 
     def test_get_keystone_ip__from_unit(self):
         self.patch_object(openstack_utils, "get_application_config_option")
