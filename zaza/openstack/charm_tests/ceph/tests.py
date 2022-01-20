@@ -546,10 +546,17 @@ class CephTest(test_utils.OpenStackBaseTest):
         )
         logging.debug('OK')
 
+    def get_num_osds(self, osd):
+        """Compute the number of active OSD's."""
+        result = zaza_model.run_on_unit(osd, 'ceph osd stat --format=json')
+        result = json.loads(result['Stdout'])
+        return int(result['num_osds'])
+
     def test_cache_device(self):
         """Test adding a new disk with a caching device."""
         logging.info('Running add-disk action with a caching device')
         osds = [x.entity_id for x in zaza_model.get_units('ceph-osd')]
+        num_osds = self.get_num_osds(osds[0])
         for unit in osds:
             zaza_juju.add_storage(unit, 'cache-devices', 'cinder', 10)
             loop_dev = zaza_juju.add_loop_device(unit, 10)
@@ -560,6 +567,7 @@ class CephTest(test_utils.OpenStackBaseTest):
                                'partition-size': 5}
             )
             zaza_utils.assertActionRanOK(action_obj)
+        self.assertEqual(num_osds + len(osds), self.get_num_osds(osds[0]))
 
 
 class CephRGWTest(test_utils.OpenStackBaseTest):
