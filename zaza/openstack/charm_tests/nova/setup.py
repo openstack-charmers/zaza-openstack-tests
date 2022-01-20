@@ -40,12 +40,14 @@ def create_flavors(nova_client=None):
     names = [flavor.name for flavor in nova_client.flavors.list()]
     for flavor in nova_utils.FLAVORS.keys():
         if flavor not in names:
-            nova_client.flavors.create(
+            nova_flavor = nova_client.flavors.create(
                 name=flavor,
                 ram=nova_utils.FLAVORS[flavor]['ram'],
                 vcpus=nova_utils.FLAVORS[flavor]['vcpus'],
                 disk=nova_utils.FLAVORS[flavor]['disk'],
                 flavorid=nova_utils.FLAVORS[flavor]['flavorid'])
+            if 'extra-specs' in nova_utils.FLAVORS[flavor]:
+                nova_flavor.set_keys(nova_utils.FLAVORS[flavor]['extra-specs'])
 
 
 @tenacity.retry(stop=tenacity.stop_after_attempt(3),

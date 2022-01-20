@@ -167,6 +167,27 @@ def add_lts_image(glance_client=None, image_name=None, release=None,
               properties=properties)
 
 
+def add_uefi_image(glance_client=None, image_name=None, release=None,
+                   properties=None):
+    """Add an Ubuntu Focal LTS image to the current deployment.
+
+    :param glance: Authenticated glanceclient
+    :type glance: glanceclient.Client
+    :param image_name: Label for the image in glance
+    :type image_name: str
+    :param release: Name of Ubuntu release.
+    :type release: str
+    :param properties: Custom image properties
+    :type properties: dict
+    """
+    props = {'hw_firmware_type': 'uefi'}
+    if properties:
+        props.update(properties)
+    add_lts_image(glance_client, image_name=image_name or 'focal',
+                  release=release or 'focal',
+                  properties=props)
+
+
 def configure_external_s3_backend():
     """Set up Ceph-radosgw as an external S3 backend for Glance."""
     logging.info("Creating a test S3 user and credentials for Glance")

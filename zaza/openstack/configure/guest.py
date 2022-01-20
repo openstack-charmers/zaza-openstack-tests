@@ -42,6 +42,11 @@ boot_tests = {
         'image_name': 'bionic',
         'flavor_name': 'm1.small',
         'username': 'ubuntu',
+        'bootstring': 'finished at'},
+    'focal': {
+        'image_name': 'focal',
+        'flavor_name': 'm1.small',
+        'username': 'ubuntu',
         'bootstring': 'finished at'}}
 
 
