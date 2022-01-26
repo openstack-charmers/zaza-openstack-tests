@@ -24,8 +24,6 @@ import zaza.model
 import ssl as libssl
 import zaza.openstack.utilities.generic as generic_utils
 
-from collections import OrderedDict
-
 
 class RmqNoMessageException(Exception):
     """Message retrieval from Rmq resulted in no message."""
@@ -55,59 +53,6 @@ def wait_for_cluster(model_name=None, timeout=1200):
     zaza.model.wait_for_application_states(model_name=model_name,
                                            states=states,
                                            timeout=timeout)
-
-
-def list_vhosts(unit):
-    """Return a list of all the available vhosts.
-
-    :returns: List of vhosts
-    :rtype: List[str]
-    """
-    if is_rabbitmq_version_ge_382(unit):
-        cmd = 'rabbitmqctl list_vhosts --formatter=json'
-        cmd_result = zaza.model.run_on_unit(unit.entity_id, cmd)
-        output = json.loads(cmd_result['Stdout'].strip())
-        return [ll['name'] for ll in output]
-
-    else:
-        cmd = 'rabbitmqctl list_vhosts'
-        cmd_result = zaza.model.run_on_unit(unit.entity_id, cmd)
-        output = cmd_result['Stdout'].strip()
-        if '...done' in output:
-            return output.split('\n')[1:-2]
-
-        return output.split('\n')[1:-1]
-
-
-def list_policies(unit):
-    """Return a list of all the available policies.
-
-    :returns: List of policies
-    :rtype: List[Dict[str, str]] or List[OrderedDict[str, str]]
-    """
-    policies = []
-    vhosts = list_vhosts(unit)
-    if is_rabbitmq_version_ge_382(unit):
-        for vhost in vhosts:
-            cmd = 'rabbitmqctl list_policies -p {} --formatter=json'.format(
-                vhost
-            )
-            cmd_result = zaza.model.run_on_unit(unit.entity_id, cmd)
-            output = json.loads(cmd_result['Stdout'].strip())
-            for policy in output:
-                policy["apply_to"] = policy.pop("apply-to")
-                policies = policies + [policy]
-    else:
-        for vhost in vhosts:
-            cmd = 'rabbitmqctl list_policies -p {}'.format(vhost)
-            cmd_result = zaza.model.run_on_unit(unit.entity_id, cmd)
-            output = cmd_result['Stdout'].strip()
-            keys = "vhost name apply_to pattern definition priority".split()
-            policies = policies + [
-                OrderedDict(zip(keys, line.split("\t")))
-                for line in output.splitlines()[1:]
-            ]
-    return policies
 
 
 def add_user(units, username="testuser1", password="changeme"):
