@@ -2216,6 +2216,9 @@ def get_images_by_name(glance, image_name):
     return [i for i in glance.images.list() if image_name == i.name]
 
 
+@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
+                reraise=True,
+                retry=tenacity.retry_if_exception_type(urllib.error.URLError))
 def find_cirros_image(arch):
     """Return the url for the latest cirros image for the given architecture.
 
@@ -2242,7 +2245,7 @@ def download_image(image_url, target_file):
 
     :param image_url: URL to download image from
     :type image_url: str
-    :param target_file: Local file to savee image to
+    :param target_file: Local file to save image to
     :type target_file: str
     """
     opener = get_urllib_opener()
