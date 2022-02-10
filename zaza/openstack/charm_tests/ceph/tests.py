@@ -35,7 +35,6 @@ import zaza.openstack.utilities.exceptions as zaza_exceptions
 import zaza.openstack.utilities.generic as zaza_utils
 import zaza.utilities.juju as juju_utils
 import zaza.openstack.utilities.openstack as zaza_openstack
-import zaza.openstack.utilities.juju as zaza_juju
 
 
 class CephLowLevelTest(test_utils.OpenStackBaseTest):
@@ -558,8 +557,8 @@ class CephTest(test_utils.OpenStackBaseTest):
         osds = [x.entity_id for x in zaza_model.get_units('ceph-osd')]
         num_osds = self.get_num_osds(osds[0])
         for unit in osds:
-            zaza_juju.add_storage(unit, 'cache-devices', 'cinder', 10)
-            loop_dev = zaza_juju.add_loop_device(unit, 10)
+            zaza_model.add_storage(unit, 'cache-devices', 'cinder', 10)
+            loop_dev = zaza_utils.add_loop_device(unit, 10)
             action_obj = zaza_model.run_action(
                 unit_name=unit,
                 action_name='add-disk',
