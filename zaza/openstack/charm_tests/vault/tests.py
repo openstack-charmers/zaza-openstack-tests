@@ -143,20 +143,9 @@ class VaultTest(BaseVaultTest):
         """Run setup for Vault tests."""
         super(VaultTest, cls).setUpClass()
 
-    def test_csr(self):
-        """Test generating a csr and uploading a signed certificate."""
-        vault_actions = zaza.model.get_actions(
-            'vault')
-        if 'get-csr' not in vault_actions:
-            raise unittest.SkipTest('Action not defined')
-        try:
-            zaza.model.get_application(
-                'keystone')
-        except KeyError:
-            raise unittest.SkipTest('No client to test csr')
-        action = vault_utils.run_charm_authorize(
-            self.vault_creds['root_token'])
-        action = vault_utils.run_get_csr()
+    def update_intermediate_csr(self, force=False):
+        """Get a intermediate csr from vault, sign it and upload."""
+        action = vault_utils.run_get_csr(force=force)
 
         intermediate_csr = action.data['results']['output']
         (cakey, cacert) = zaza.openstack.utilities.cert.generate_cert(
@@ -182,6 +171,29 @@ class VaultTest(BaseVaultTest):
             states=test_config.get('target_deploy_status', {}))
 
         vault_utils.validate_ca(cacert)
+
+    def test_csr(self):
+        """Test generating a csr and uploading a signed certificate."""
+        vault_actions = zaza.model.get_actions(
+            'vault')
+        if 'get-csr' not in vault_actions:
+            raise unittest.SkipTest('Action not defined')
+        try:
+            zaza.model.get_application(
+                'keystone')
+        except KeyError:
+            raise unittest.SkipTest('No client to test csr')
+        action = vault_utils.run_charm_authorize(
+            self.vault_creds['root_token'])
+        self.update_intermediate_csr()
+
+        # Now that a valid CA is present the get_csr action should require
+        # a force option.
+        logging.info("Re-issuing get-csr and checking it fails")
+        action = vault_utils.run_get_csr()
+        self.assertEqual(action.status, 'failed')
+        logging.info("Re-issuing get-csr with force=True")
+        self.update_intermediate_csr(force=True)
 
     def test_all_clients_authenticated(self):
         """Check all vault clients are authenticated."""
