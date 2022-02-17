@@ -237,7 +237,8 @@ def setup_sdn_provider_vlan(network_config, keystone_session=None):
 
 def setup_gateway_ext_port(network_config, keystone_session=None,
                            limit_gws=None,
-                           use_juju_wait=True):
+                           use_juju_wait=True,
+                           dns_servers=None):
     """Perform setup external port on Neutron Gateway.
 
     For OpenStack on OpenStack scenarios.
@@ -250,6 +251,8 @@ def setup_gateway_ext_port(network_config, keystone_session=None,
     :type limit_gws: Optional[int]
     :param use_juju_wait: Use juju wait (default True) for model to settle
     :type use_juju_wait: boolean
+    :param dns_servers: External DNS servers to configure for networking charms
+    :type dns_servers: Optional[str]
     :returns: None
     :rtype: None
     """
@@ -286,7 +289,8 @@ def setup_gateway_ext_port(network_config, keystone_session=None,
         net_id=net_id,
         add_dataport_to_netplan=add_dataport_to_netplan,
         limit_gws=limit_gws,
-        use_juju_wait=use_juju_wait)
+        use_juju_wait=use_juju_wait,
+        dns_servers=dns_servers)
 
 
 def run_from_cli(**kwargs):

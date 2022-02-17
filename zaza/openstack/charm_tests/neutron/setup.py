@@ -104,7 +104,9 @@ def basic_overcloud_network(limit_gws=None):
         network.setup_gateway_ext_port(network_config,
                                        keystone_session=undercloud_ks_sess,
                                        limit_gws=limit_gws,
-                                       use_juju_wait=use_juju_wait)
+                                       use_juju_wait=use_juju_wait,
+                                       dns_servers=network_config[
+                                           "external_dns"])
     elif provider_type == "maas":
         # NOTE(fnordahl): After validation of the MAAS+Netplan Open vSwitch
         # integration support, we would most likely want to add multiple modes
