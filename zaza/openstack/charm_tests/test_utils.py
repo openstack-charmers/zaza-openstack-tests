@@ -713,6 +713,62 @@ class OpenStackBaseTest(BaseCharmTest):
                     scheduler_hints={'group': server_group.id}))
         return launched_instances
 
+    @staticmethod
+    def network_name_from_instance(instance):
+        """Retrieve name of primary network the instance is attached to.
+
+        :param instance: The instance to fetch name of network from.
+        :type instance: nova_client.Server
+        :returns: Name of primary network the instance is attached to.
+        :rtype: str
+        """
+        return next(iter(instance.addresses))
+
+    def ips_from_instance(self, instance, ip_type):
+        """
+        Retrieve IPs of a certain type from an instance.
+
+        :param instance: The instance to fetch IPs from
+        :type instance: nova_client.Server
+        :param ip_type: the type of IP to fetch, floating or fixed
+        :type ip_type: str
+
+        :returns: A list of IPs for the specified server
+        :rtype: list[str]
+        """
+        if ip_type not in ['floating', 'fixed']:
+            raise RuntimeError(
+                "Only 'floating' and 'fixed' are valid IP types to search for"
+            )
+        return list([
+            ip['addr'] for ip in instance.addresses[
+                self.network_name_from_instance(instance)]
+            if ip['OS-EXT-IPS:type'] == ip_type])
+
+    def floating_ips_from_instance(self, instance):
+        """
+        Retrieve floating IPs from an instance.
+
+        :param instance: The instance to fetch floating IPs from
+        :type instance: nova_client.Server
+
+        :returns: A list of floating IPs for the specified server
+        :rtype: list[str]
+        """
+        return self.ips_from_instance(instance, 'floating')
+
+    def fixed_ips_from_instance(self, instance):
+        """
+        Retrieve fixed IPs from an instance.
+
+        :param instance: The instance to fetch fixed IPs from
+        :type instance: nova_client.Server
+
+        :returns: A list of fixed IPs for the specified server
+        :rtype: list[str]
+        """
+        return self.ips_from_instance(instance, 'fixed')
+
     def retrieve_guest(self, guest_name):
         """Return guest matching name.
 
