@@ -552,7 +552,7 @@ class CephTest(test_utils.OpenStackBaseTest):
         return int(result['num_osds'])
 
     def test_cache_device(self):
-    """Test adding a new disk with a caching device."""
+        """Test adding a new disk with a caching device."""
         logging.info('Running add-disk action with a caching device')
         mon = next(iter(zaza_model.get_units('ceph-mon'))).entity_id
         osds = [x.entity_id for x in zaza_model.get_units('ceph-osd')]
