@@ -1395,7 +1395,9 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 ['neutron-gateway'],
                 mock.ANY,
                 'data-port',
-                {}))
+                {},
+                ['neutron-gateway'],
+                'dns-servers'))
         self.dvr_enabled.return_value = True
         self.assertEquals(
             openstack_utils.get_charm_networking_data(),
@@ -1404,7 +1406,9 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 ['neutron-gateway', 'neutron-openvswitch'],
                 mock.ANY,
                 'data-port',
-                {}))
+                {},
+                ['neutron-gateway', 'neutron-openvswitch'],
+                'dns-servers'))
         self.ngw_present.return_value = False
         self.assertEquals(
             openstack_utils.get_charm_networking_data(),
@@ -1413,7 +1417,9 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 ['neutron-openvswitch'],
                 mock.ANY,
                 'data-port',
-                {}))
+                {},
+                ['neutron-openvswitch'],
+                'dns-servers'))
         self.dvr_enabled.return_value = False
         self.ovn_present.return_value = True
         self.assertEquals(
@@ -1423,7 +1429,9 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 ['ovn-chassis'],
                 mock.ANY,
                 'bridge-interface-mappings',
-                {'ovn-bridge-mappings': 'physnet1:br-ex'}))
+                {'ovn-bridge-mappings': 'physnet1:br-ex'},
+                ['neutron-api-plugin-ovn'],
+                'dns-servers'))
         self.get_application.side_effect = None
         self.assertEquals(
             openstack_utils.get_charm_networking_data(),
@@ -1432,7 +1440,9 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 ['ovn-chassis', 'ovn-dedicated-chassis'],
                 mock.ANY,
                 'bridge-interface-mappings',
-                {'ovn-bridge-mappings': 'physnet1:br-ex'}))
+                {'ovn-bridge-mappings': 'physnet1:br-ex'},
+                ['neutron-api-plugin-ovn'],
+                'dns-servers'))
 
     def test_get_cacert_absolute_path(self):
         self.patch_object(openstack_utils.deployment_env, 'get_tmpdir')

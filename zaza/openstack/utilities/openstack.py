@@ -839,6 +839,8 @@ CharmedOpenStackNetworkingData = collections.namedtuple(
         'unit_machine_ids',
         'port_config_key',
         'other_config',
+        'dns_application_names',
+        'dns_config_key',
     ])
 
 
@@ -852,14 +854,20 @@ def get_charm_networking_data(limit_gws=None):
                 List[str],
                 Iterator[str],
                 str,
-                Dict[str,str]]
+                Dict[str,str],
+                List[str],
+                str,
+                ]
     :returns: Named Tuple with networking data, example:
         CharmedOpenStackNetworkingData(
             OpenStackNetworkingTopology.ML2_OVN,
             ['ovn-chassis', 'ovn-dedicated-chassis'],
             ['machine-id-1', 'machine-id-2'],         # generator object
             'bridge-interface-mappings',
-            {'ovn-bridge-mappings': 'physnet1:br-ex'})
+            {'ovn-bridge-mappings': 'physnet1:br-ex'},
+            ['neutron-api-plugin-ovn'],
+            'dns-servers',
+        )
     :raises: RuntimeError
     """
     # Initialize defaults, these will be amended to fit the reality of the
@@ -870,6 +878,8 @@ def get_charm_networking_data(limit_gws=None):
         'data-port' if not deprecated_external_networking() else 'ext-port')
     unit_machine_ids = []
     application_names = []
+    dns_application_names = []
+    dns_config_key = 'dns-servers'
 
     if dvr_enabled():
         if ngw_present():
@@ -878,6 +888,7 @@ def get_charm_networking_data(limit_gws=None):
         else:
             application_names = ['neutron-openvswitch']
             topology = OpenStackNetworkingTopology.ML2_OVS_DVR_SNAT
+        dns_application_names = application_names
         unit_machine_ids = itertools.islice(
             itertools.chain(
                 get_ovs_uuids(),
@@ -887,10 +898,12 @@ def get_charm_networking_data(limit_gws=None):
         unit_machine_ids = itertools.islice(
             get_gateway_uuids(), limit_gws)
         application_names = ['neutron-gateway']
+        dns_application_names = application_names
     elif ovn_present():
         topology = OpenStackNetworkingTopology.ML2_OVN
         unit_machine_ids = itertools.islice(get_ovn_uuids(), limit_gws)
         application_names = ['ovn-chassis']
+        dns_application_names = ['neutron-api-plugin-ovn']
         try:
             ovn_dc_name = 'ovn-dedicated-chassis'
             model.get_application(ovn_dc_name)
@@ -908,7 +921,9 @@ def get_charm_networking_data(limit_gws=None):
         application_names,
         unit_machine_ids,
         port_config_key,
-        other_config)
+        other_config,
+        dns_application_names,
+        dns_config_key)
 
 
 def create_additional_port_for_machines(novaclient, neutronclient, net_id,
@@ -978,7 +993,8 @@ def create_additional_port_for_machines(novaclient, neutronclient, net_id,
     ]
 
 
-def configure_networking_charms(networking_data, macs, use_juju_wait=True):
+def configure_networking_charms(networking_data, macs, use_juju_wait=True,
+                                dns_servers=None):
     """Configure external networking for networking charms.
 
     :param networking_data: Data on networking charm topology.
@@ -997,6 +1013,8 @@ def configure_networking_charms(networking_data, macs, use_juju_wait=True):
 
     config = copy.deepcopy(networking_data.other_config)
     config.update({networking_data.port_config_key: ' '.join(sorted(br_mac))})
+
+    config_changed = False
 
     for application_name in networking_data.application_names:
         logging.info('Setting {} on {}'.format(
@@ -1021,11 +1039,33 @@ def configure_networking_charms(networking_data, macs, use_juju_wait=True):
                          "Config '{}' already set to value: {}".format(
                              networking_data.port_config_key,
                              current_data_port))
-            return
-
-        model.set_application_config(
-            application_name,
-            configuration=config)
+        else:
+            model.set_application_config(
+                application_name,
+                configuration=config)
+            config_changed = True
+    if dns_servers and networking_data.dns_application_names:
+        for application_name in networking_data.dns_application_names:
+            config = {
+                networking_data.dns_config_key: dns_servers,
+            }
+            logging.info('Setting {} on {}'.format(
+                config, application_name))
+            current_dns_servers = get_application_config_option(
+                application_name,
+                networking_data.dns_config_key)
+            if current_dns_servers == dns_servers:
+                logging.info("Skip update of DNS servers. "
+                             "Config '{}' already set to value: {}"
+                             .format(networking_data.dns_config_key,
+                                     current_dns_servers))
+            else:
+                model.set_application_config(
+                    application_name,
+                    configuration=config)
+                config_changed = True
+    if not config_changed:
+        return
     # NOTE(fnordahl): We are stuck with juju_wait until we figure out how
     # to deal with all the non ['active', 'idle', 'Unit is ready.']
     # workload/agent states and msgs that our mojo specs are exposed to.
@@ -1045,7 +1085,8 @@ def configure_networking_charms(networking_data, macs, use_juju_wait=True):
 def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
                                add_dataport_to_netplan=False,
                                limit_gws=None,
-                               use_juju_wait=True):
+                               use_juju_wait=True,
+                               dns_servers=None):
     """Configure the neturong-gateway external port.
 
     :param novaclient: Authenticated novaclient
@@ -1059,6 +1100,8 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
     :param use_juju_wait: Whether to use juju wait to wait for the model to
         settle once the gateway has been configured. Default is True
     :type use_juju_wait: boolean
+    :param dns_servers: External DNS servers to configure for networking charms
+    :type dns_servers: Optional[str]
     """
     networking_data = get_charm_networking_data(limit_gws=limit_gws)
     if networking_data.topology in (
@@ -1077,7 +1120,8 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
 
     if macs:
         configure_networking_charms(
-            networking_data, macs, use_juju_wait=use_juju_wait)
+            networking_data, macs, use_juju_wait=use_juju_wait,
+            dns_servers=dns_servers)
 
 
 def configure_charmed_openstack_on_maas(network_config, limit_gws=None):
