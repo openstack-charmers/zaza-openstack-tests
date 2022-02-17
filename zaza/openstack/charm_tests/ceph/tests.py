@@ -557,8 +557,8 @@ class CephTest(test_utils.OpenStackBaseTest):
         mon = next(iter(zaza_model.get_units('ceph-mon'))).entity_id
         osds = [x.entity_id for x in zaza_model.get_units('ceph-osd')]
         for unit in osds:
-            add_storage(unit, 'cache-devices', 'cinder', 10)
-            loop_dev = add_loop_device(unit, 10)
+            zaza_model.add_storage(unit, 'cache-devices', 'cinder', 10)
+            loop_dev = zaza_utils.add_loop_device(unit, 10)
             action_obj = zaza_model.run_action(
                 unit_name=unit,
                 action_name='add-disk',
