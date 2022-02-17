@@ -17,6 +17,7 @@ import logging
 import subprocess
 import sys
 import tenacity
+import time
 import unittest
 import yaml
 
@@ -776,9 +777,29 @@ class OpenStackBaseTest(BaseCharmTest):
         :type nova_client: Nova client
         :returns: the matching guest
         :rtype: Union[novaclient.Server, None]
+        :raises: RuntimeError
         """
         try:
-            return self.nova_client.servers.find(name=guest_name)
+            # When querying the Nova API networking details are some times
+            # missing. Check the response for expected information and retry
+            # the operation if something is missing.
+            #
+            # Note that we can not use tenacity here as this method is already
+            # called from within Retry contexts.
+            retries = 3
+            while retries:
+                instance = self.nova_client.servers.find(name=guest_name)
+                if (self.fixed_ips_from_instance(instance) and
+                        self.floating_ips_from_instance(instance)):
+                    return instance
+                time.sleep(retries)
+                retries -= 1
+            raise RuntimeError(
+                'Instance object from Nova does not contain the expected'
+                'information: {} {} {}'
+                .format(instance,
+                        self.fixed_ips_from_instance(instance),
+                        self.floating_ips_from_instance(instance)))
         except novaclient.exceptions.NotFound:
             return None
 
