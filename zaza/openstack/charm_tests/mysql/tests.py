@@ -802,6 +802,7 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
         leader, nons = generic_utils.get_leaders_and_non_leaders(
             self.application_name)
         leader_unit = zaza.model.get_unit_from_name(leader)
+        leader_unit_ip = zaza.model.get_unit_public_address(leader_unit)
 
         # Wait until we are idle in the hopes clients are not running
         # update-status hooks
@@ -821,12 +822,12 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
 
         logging.info(
             "Removing old unit from cluster: {} "
-            .format(zaza.model.get_unit_public_address(leader_unit)))
+            .format(leader_unit_ip))
         action = zaza.model.run_action(
             nons[0],
             "remove-instance",
             action_params={
-                "address": zaza.model.get_unit_public_address(leader_unit),
+                "address": leader_unit_ip,
                 "force": True})
         assert action.data.get("results") is not None, (
             "Remove instance action failed: No results: {}"
@@ -877,6 +878,8 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
         leader, nons = generic_utils.get_leaders_and_non_leaders(
             self.application_name)
         non_leader_unit = zaza.model.get_unit_from_name(nons[0])
+        non_leader_unit_ip = zaza.model.get_unit_public_address(
+            non_leader_unit)
 
         # Wait until we are idle in the hopes clients are not running
         # update-status hooks
@@ -897,12 +900,12 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
 
         logging.info(
             "Removing old unit from cluster: {} "
-            .format(zaza.model.get_unit_public_address(non_leader_unit)))
+            .format(non_leader_unit_ip))
         action = zaza.model.run_action(
             leader,
             "remove-instance",
             action_params={
-                "address": zaza.model.get_unit_public_address(non_leader_unit),
+                "address": non_leader_unit_ip,
                 "force": True})
         assert action.data.get("results") is not None, (
             "Remove instance action failed: No results: {}"
