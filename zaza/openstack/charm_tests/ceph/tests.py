@@ -463,7 +463,7 @@ class CephTest(test_utils.OpenStackBaseTest):
 
         The blacklist actions execute and behave as expected.
         """
-        logging.info('Checking blacklist-add-disk and'
+        logging.info('Checking blacklist-add-disk and '
                      'blacklist-remove-disk actions...')
         unit_name = 'ceph-osd/0'
 
@@ -544,6 +544,29 @@ class CephTest(test_utils.OpenStackBaseTest):
             'active'
         )
         logging.debug('OK')
+
+    def get_num_osds(self, osd):
+        """Compute the number of active OSD's."""
+        result = zaza_model.run_on_unit(osd, 'ceph osd stat --format=json')
+        result = json.loads(result['Stdout'])
+        return int(result['num_osds'])
+
+    def test_cache_device(self):
+        """Test adding a new disk with a caching device."""
+        logging.info('Running add-disk action with a caching device')
+        mon = next(iter(zaza_model.get_units('ceph-mon'))).entity_id
+        osds = [x.entity_id for x in zaza_model.get_units('ceph-osd')]
+        for unit in osds:
+            zaza_model.add_storage(unit, 'cache-devices', 'cinder', 10)
+            loop_dev = zaza_utils.add_loop_device(unit, 10)
+            action_obj = zaza_model.run_action(
+                unit_name=unit,
+                action_name='add-disk',
+                action_params={'osd-devices': loop_dev.get('Stdout'),
+                               'partition-size': 5}
+            )
+            zaza_utils.assertActionRanOK(action_obj)
+        self.assertEqual(len(osds) * 2, self.get_num_osds(mon))
 
 
 class CephRGWTest(test_utils.OpenStackBaseTest):
