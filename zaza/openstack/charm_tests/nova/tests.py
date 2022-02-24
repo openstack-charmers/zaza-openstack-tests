@@ -26,6 +26,7 @@ import zaza.model
 import zaza.openstack.charm_tests.glance.setup as glance_setup
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.configure.guest
+import zaza.openstack.utilities.generic as generic_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 
 
@@ -432,6 +433,25 @@ class NovaComputeActionTest(test_utils.OpenStackBaseTest):
             if "failed" in action.data["status"]:
                 raise Exception(
                     "The action failed: {}".format(action.data["message"]))
+
+
+class NovaComputeNvidiaVgpuTest(test_utils.OpenStackBaseTest):
+    """Run nova-compute-nvidia-vgpu specific tests."""
+
+    def test_vgpu_in_nova_conf(self):
+        """Test that nova.conf contains vGPU-related settings."""
+        for unit in zaza.model.get_units('nova-compute',
+                                         model_name=self.model_name):
+            nova_conf_file = '/etc/nova/nova.conf'
+            nova_conf = str(generic_utils.get_file_contents(unit,
+                                                            nova_conf_file))
+
+            # See
+            # https://docs.openstack.org/nova/queens/admin/virtual-gpu.html
+            # https://docs.openstack.org/nova/ussuri/admin/virtual-gpu.html
+            # https://docs.openstack.org/releasenotes/nova/xena.html#deprecation-notes
+            self.assertTrue(('enabled_vgpu_types' in nova_conf) or
+                            ('enabled_mdev_types' in nova_conf))
 
 
 class NovaCloudControllerActionTest(test_utils.OpenStackBaseTest):
