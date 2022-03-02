@@ -47,7 +47,7 @@ paramiko
 # Documentation requirements
 sphinx
 sphinxcontrib-asyncio
-git+https://github.com/openstack-charmers/zaza@stable/21.10#egg=zaza
+git+https://github.com/openstack-charmers/zaza@stable/train#egg=zaza
 
 # Newer versions require a Rust compiler to build, see
 # * https://github.com/openstack-charmers/zaza/issues/421
