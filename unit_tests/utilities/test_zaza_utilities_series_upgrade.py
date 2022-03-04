@@ -201,14 +201,28 @@ class TestSeriesUpgrade(ut_utils.BaseTestCase):
 
     def test_dist_upgrade(self):
         _unit = "app/2"
-        series_upgrade_utils.dist_upgrade(_unit)
         dist_upgrade_cmd = (
             """sudo DEBIAN_FRONTEND=noninteractive apt --assume-yes """
             """-o "Dpkg::Options::=--force-confdef" """
             """-o "Dpkg::Options::=--force-confold" dist-upgrade""")
+
+        series_upgrade_utils.dist_upgrade(_unit, reboot="never")
         self.model.run_on_unit.assert_has_calls([
             mock.call(_unit, 'sudo apt update'),
             mock.call(_unit, dist_upgrade_cmd)])
+        self.assertEqual(self.model.run_on_unit.call_count, 2)
+
+        series_upgrade_utils.dist_upgrade(_unit)
+        self.model.run_on_unit.assert_has_calls([
+            mock.call(_unit, 'sudo apt update'),
+            mock.call(_unit, dist_upgrade_cmd),
+            mock.call(_unit, 'cat /var/run/reboot-required || true')])
+
+        series_upgrade_utils.dist_upgrade(_unit, reboot="default")
+        self.model.run_on_unit.assert_has_calls([
+            mock.call(_unit, 'sudo apt update'),
+            mock.call(_unit, dist_upgrade_cmd),
+            mock.call(_unit, 'cat /var/run/reboot-required')])
 
     def test_do_release_upgrade(self):
         _unit = "app/2"

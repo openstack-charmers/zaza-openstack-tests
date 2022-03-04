@@ -24,6 +24,10 @@ from zaza import sync_wrapper
 from zaza.openstack.utilities.upgrade_utils import (
     get_upgrade_groups,
 )
+from zaza.openstack.utilities import (
+    series_upgrade as series_upgrade_utils,
+    generic as generic_utils,
+)
 
 
 async def async_pause_units(units, model_name=None):
@@ -163,6 +167,74 @@ def action_upgrade_apps(applications, model_name=None):
     zaza.model.block_until_all_units_idle(model_name)
 
 
+def upgrade_to_proposed(application):
+    """Dist-upgrade a charm payload to proposed pocket.
+
+    Updates openstack-origin or source config option for the application
+    and dist-upgrades to proposed.
+
+    :param application: The application to upgrade
+    :type application: str
+    :returns: None
+    :rtype: None
+    """
+    option, value = get_current_source_config(application)
+    assert 'proposed' not in value, (
+        "Source is already {}. Can't upgrade to proposed.".format(value))
+
+    if value == 'distro':
+        new_value = 'distro-proposed'
+    else:
+        new_value = "{}/proposed".format(value)
+
+    logging.info("Upgrading {} to {}".format(application, new_value))
+
+    # TODO(coreycb): This next line (set_origin) doesn't do anything because
+    # the charm payload's repo sources won't get updated unless a new OpenStack
+    # release is specified for openstack-origin/source.
+    generic_utils.set_origin(application, origin=option, pocket=new_value)
+
+    for unit in zaza.model.get_units(application):
+        series_upgrade_utils.dist_upgrade(unit.entity_id, reboot="never")
+    zaza.model.block_until_all_units_idle()
+    logging.info("All units are idle")
+
+
+def upgrade_to_ppa(application, ppa):
+    """Dist-upgrade a charm payload to a PPA.
+
+    Updates openstack-origin or source config option for the application
+    and dist-upgrades to the specified PPA.
+
+    :param application: The application to upgrade
+    :type application: str
+    :returns: None
+    :rtype: None
+    """
+    option, value = get_current_source_config(application)
+    assert ppa is not value, (
+        "Source is already {}. Can't upgrade to PPA.".format(value))
+
+    new_value = ppa
+
+    logging.info("Upgrading {} to {}".format(application, new_value))
+
+    # TODO(coreycb): This next line (set_origin) doesn't do anything because
+    # the charm payload's repo sources won't get updated unless a new OpenStack
+    # release is specified for openstack-origin/source.
+    generic_utils.set_origin(application, origin=option, pocket=new_value)
+
+    for unit in zaza.model.get_units(application):
+        # NOTE(coreycb): The next 2 lines are a work-around for the
+        # proof-of-concept to deal with dist-upgrading from train to a
+        # train snapshot PPA.
+        add_ppa_cmd = 'sudo add-apt-repository ppa:corey.bryant/bionic-train-snapshots --yes'
+        zaza.model.run_on_unit(unit.entity_id, add_ppa_cmd)
+        series_upgrade_utils.dist_upgrade(unit.entity_id, reboot="never")
+    zaza.model.block_until_all_units_idle()
+    logging.info("All units are idle")
+
+
 async def async_block_until_mysql_innodb_cluster_has_rw(model=None,
                                                         timeout=None):
     """Block until the mysql-innodb-cluster is in a healthy state.
@@ -191,6 +263,28 @@ async def async_block_until_mysql_innodb_cluster_has_rw(model=None,
 
 block_until_mysql_innodb_cluster_has_rw = sync_wrapper(
     async_block_until_mysql_innodb_cluster_has_rw)
+
+
+def get_current_source_config(application, model_name=None):
+    """Get an application's openstack-origin or source charm config.
+
+    :param applications: Application name
+    :type applications: str
+    :param model_name: Name of model to query
+    :type model_name: str
+    :returns: Source config option name, value
+    :rtype: tuple
+    """
+    src_option = 'openstack-origin'
+    charm_options = zaza.model.get_application_config(
+        application, model_name=model_name)
+    try:
+        charm_options[src_option]
+    except KeyError:
+        src_option = 'source'
+    logging.info("Current {} source config: {}={}".format(
+        application, src_option, charm_options[src_option]['value']))
+    return src_option, charm_options[src_option]['value']
 
 
 def set_upgrade_application_config(applications, new_source,

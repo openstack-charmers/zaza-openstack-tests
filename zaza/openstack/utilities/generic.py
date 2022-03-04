@@ -248,7 +248,7 @@ def set_origin(application, origin='openstack-origin', pocket='distro'):
     :returns: None
     :rtype: None
     """
-    logging.info("Set origin on {} to {}".format(application, origin))
+    logging.info("Set {} on {} to {}".format(origin, application, pocket))
     model.set_application_config(application, {origin: pocket})
 
 
@@ -267,7 +267,7 @@ async def async_set_origin(application, origin='openstack-origin',
     :returns: None
     :rtype: None
     """
-    logging.info("Set origin on {} to {}".format(application, origin))
+    logging.info("Set {} on {} to {}".format(origin, application, pocket))
     await model.async_set_application_config(application, {origin: pocket})
 
 
