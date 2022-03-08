@@ -208,3 +208,15 @@ class CACERTNotFound(Exception):
     """Could not find cacert."""
 
     pass
+
+
+class LoadBalancerUnexpectedState(Exception):
+    """The LoadBalancer is in a unexpected state."""
+
+    pass
+
+
+class LoadBalancerUnrecoverableError(Exception):
+    """The LoadBalancer has reached to an unrecoverable error state."""
+
+    pass
