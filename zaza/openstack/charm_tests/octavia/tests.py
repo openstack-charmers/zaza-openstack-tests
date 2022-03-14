@@ -26,7 +26,7 @@ import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 
 from zaza.openstack.utilities import ObjectRetrierWraps
-from zaza.openstack.utilities.exception import (
+from zaza.openstack.utilities.exceptions import (
     LoadBalancerUnexpectedState,
     LoadBalancerUnrecoverableError,
 )
