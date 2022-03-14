@@ -29,7 +29,7 @@ import zaza.openstack.utilities.openstack as openstack_utils
 
 from zaza.openstack.utilities import generic as generic_utils
 from zaza.openstack.utilities import ObjectRetrierWraps
-from zaza.openstack.utilities.exception import (
+from zaza.openstack.utilities.exceptions import (
     LoadBalancerUnexpectedState,
     LoadBalancerUnrecoverableError,
 )
