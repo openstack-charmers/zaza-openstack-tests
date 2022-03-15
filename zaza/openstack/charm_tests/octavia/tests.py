@@ -302,8 +302,9 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         # retrying and delaying the failure.
         if resp['provisioning_status'] == 'ERROR':
             raise LoadBalancerUnrecoverableError(msg)
+        elif resp['provisioning_status'] != provisioning_status:
+            raise LoadBalancerUnexpectedState(msg)
 
-        assert resp['provisioning_status'] == provisioning_status, msg
         if operating_status:
             logging.info('Current operating status: {}, waiting for {}'
                          .format(resp['operating_status'], operating_status))
