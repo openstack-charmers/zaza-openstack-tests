@@ -15,6 +15,7 @@
 """Code for configuring octavia."""
 
 import os
+import re
 import base64
 import logging
 
@@ -141,6 +142,59 @@ def configure_octavia():
         'octavia',
         'configure-resources',
         action_params={})
+    # When bug #1964117 is fix released for all affected releases this call can
+    # be removed.
+    bug_1964117_workaround()
+
+
+def disable_ohm_port_security():
+    """Disable port security on the health manager ports on octavia units."""
+    keystone_session = openstack.get_overcloud_keystone_session()
+    neutron_client = openstack.get_neutron_session_client(
+        keystone_session)
+    ports = [
+        p
+        for p in neutron_client.list_ports()['ports']
+        if re.match('octavia-health-manager-.*-listen-port', p['name'])]
+    for port in ports:
+        neutron_client.update_port(
+            port['id'],
+            {
+                'port':
+                    {
+                        'port_security_enabled': False,
+                        'security_groups': []}})
+
+
+def bug_1964117_workaround():
+    """Apply Bug #1964117 if allowed."""
+    allow_pkg_list = ['2.16.0-0ubuntu2.1~cloud0']
+    allow_release_list = ['focal_xena']
+    _allow_release_list = [
+        openstack.get_os_release(r)
+        for r in allow_release_list
+    ]
+    current_release = openstack.get_os_release()
+    if current_release in _allow_release_list:
+        cmd_out = zaza.model.run_on_leader(
+            'octavia',
+            """dpkg -l | awk '/openvswitch-switch/ {print $3;}'""")
+        pkg_version = cmd_out['Stdout'].strip()
+        if pkg_version in allow_pkg_list:
+            logging.info('Disabling port security to work around bug #1964117')
+            disable_ohm_port_security()
+        else:
+            msg = (
+                "Detected Xena deploy and package version {} is not in the "
+                "allow list {}. If you believe that bug #1964117 has been "
+                "resolved please remove the call to this function. If the "
+                "new package does not resolve bug #1964117 then please add "
+                "the new package version to the 'allow_pkg_list' defined at "
+                "the start of this function. If changes are required please "
+                "raise a PR againt "
+                "https://github.com/openstack-charmers/zaza-openstack-tests"
+                "".format(pkg_version, allow_pkg_list))
+            raise Exception(msg)
 
 
 def centralized_fip_network():
