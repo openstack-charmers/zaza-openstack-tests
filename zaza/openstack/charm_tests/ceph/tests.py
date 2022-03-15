@@ -123,7 +123,7 @@ class CephRelationTest(test_utils.OpenStackBaseTest):
         remote_unit_name = 'ceph-mon/0'
         relation_name = 'osd'
         remote_unit = zaza_model.get_unit_from_name(remote_unit_name)
-        remote_ip = remote_unit.public_address
+        remote_ip = zaza_model.get_unit_public_address(remote_unit)
         relation = juju_utils.get_relation_from_unit(
             unit_name,
             remote_unit_name,
@@ -144,7 +144,7 @@ class CephRelationTest(test_utils.OpenStackBaseTest):
         unit_name = 'ceph-osd/0'
         relation_name = 'osd'
         remote_unit = zaza_model.get_unit_from_name(remote_unit_name)
-        remote_ip = remote_unit.public_address
+        remote_ip = zaza_model.get_unit_public_address(remote_unit)
         cmd = 'leader-get fsid'
         result = zaza_model.run_on_unit(remote_unit_name, cmd)
         fsid = result.get('Stdout').strip()
@@ -267,6 +267,14 @@ class CephTest(test_utils.OpenStackBaseTest):
         Create a pool, add a text file to it and retrieve its content.
         Verify that the content matches the original file.
         """
+        issue = 'github.com/openstack-charmers/zaza-openstack-tests/issues/647'
+        current_release = zaza_openstack.get_os_release()
+        focal_victoria = zaza_openstack.get_os_release('focal_victoria')
+        if current_release >= focal_victoria:
+            logging.warn('Skipping test_ceph_pool_creation_with_text_file due'
+                         ' to issue {}'.format(issue))
+            return
+
         unit_name = 'ceph-mon/0'
         cmd = 'sudo ceph osd pool create test 128; \
                echo 123456789 > /tmp/input.txt; \
@@ -455,7 +463,7 @@ class CephTest(test_utils.OpenStackBaseTest):
 
         The blacklist actions execute and behave as expected.
         """
-        logging.info('Checking blacklist-add-disk and'
+        logging.info('Checking blacklist-add-disk and '
                      'blacklist-remove-disk actions...')
         unit_name = 'ceph-osd/0'
 
@@ -536,6 +544,29 @@ class CephTest(test_utils.OpenStackBaseTest):
             'active'
         )
         logging.debug('OK')
+
+    def get_num_osds(self, osd):
+        """Compute the number of active OSD's."""
+        result = zaza_model.run_on_unit(osd, 'ceph osd stat --format=json')
+        result = json.loads(result['Stdout'])
+        return int(result['num_osds'])
+
+    def test_cache_device(self):
+        """Test adding a new disk with a caching device."""
+        logging.info('Running add-disk action with a caching device')
+        mon = next(iter(zaza_model.get_units('ceph-mon'))).entity_id
+        osds = [x.entity_id for x in zaza_model.get_units('ceph-osd')]
+        for unit in osds:
+            zaza_model.add_storage(unit, 'cache-devices', 'cinder', 10)
+            loop_dev = zaza_utils.add_loop_device(unit, 10)
+            action_obj = zaza_model.run_action(
+                unit_name=unit,
+                action_name='add-disk',
+                action_params={'osd-devices': loop_dev.get('Stdout'),
+                               'partition-size': 5}
+            )
+            zaza_utils.assertActionRanOK(action_obj)
+        self.assertEqual(len(osds) * 2, self.get_num_osds(mon))
 
 
 class CephRGWTest(test_utils.OpenStackBaseTest):
@@ -798,7 +829,9 @@ class CephPrometheusTest(unittest.TestCase):
         unit = zaza_model.get_unit_from_name(
             zaza_model.get_lead_unit_name('prometheus2'))
         self.assertEqual(
-            '3', _get_mon_count_from_prometheus(unit.public_address))
+            '3',
+            _get_mon_count_from_prometheus(
+                zaza_model.get_unit_public_address(unit)))
 
 
 class CephPoolConfig(Exception):

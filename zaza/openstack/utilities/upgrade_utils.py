@@ -24,6 +24,7 @@ from zaza.openstack.utilities.os_versions import (
     OPENSTACK_CODENAMES,
     UBUNTU_OPENSTACK_RELEASE,
     OPENSTACK_RELEASES_PAIRS,
+    CompareHostReleases,
 )
 
 """
@@ -48,7 +49,11 @@ SERVICE_GROUPS = (
         'nova-compute', 'ceph-osd',
         'swift-proxy', 'swift-storage']))
 
-UPGRADE_EXCLUDE_LIST = ['rabbitmq-server', 'percona-cluster']
+UPGRADE_EXCLUDE_LIST = [
+    'rabbitmq-server',
+    'percona-cluster',
+    'glance-simplestreams-sync',
+]
 
 
 def get_upgrade_candidates(model_name=None, filters=None):
@@ -94,6 +99,25 @@ def _filter_openstack_upgrade_list(app, app_config, model_name=None):
             "Excluding {} from upgrade, on the exclude list".format(app))
         return True
     return False
+
+
+def _make_filter_percona_cluster_at(target_series):
+    def _filter_percona_cluster(app, app_config, model_name=None):
+        charm_name = extract_charm_name_from_url(app_config['charm'])
+        if charm_name == "percona-cluster":
+            logging.warning(
+                "Excluding percona-cluster from upgrade, "
+                "as no candidate in %s", target_series)
+            return True
+        return False
+
+    def _noop_filter(*args, **kwargs):
+        return False
+
+    if target_series and CompareHostReleases(target_series) >= "focal":
+        return _filter_percona_cluster
+
+    return _noop_filter
 
 
 def _filter_non_openstack_services(app, app_config, model_name=None):
@@ -168,7 +192,8 @@ def get_upgrade_groups(model_name=None, extra_filters=None):
     return _build_service_groups(apps_in_model)
 
 
-def get_series_upgrade_groups(model_name=None, extra_filters=None):
+def get_series_upgrade_groups(model_name=None, extra_filters=None,
+                              target_series=None):
     """Place apps in the model into their upgrade groups.
 
     Place apps in the model into their upgrade groups. If an app is deployed
@@ -176,10 +201,17 @@ def get_series_upgrade_groups(model_name=None, extra_filters=None):
 
     :param model_name: Name of model to query.
     :type model_name: str
+    :param extra_filters: filters to apply to the upgrade groups
+    :type extra_filters: Callable
+    :param target_series: The series that will be series upgraded to.
+    :type target_series: Optional[str]
     :returns: List of tuples(group name, applications)
     :rtype: List[Tuple[str, Dict[str, ANY]]]
     """
-    filters = [_filter_subordinates]
+    filters = [
+        _filter_subordinates,
+        _make_filter_percona_cluster_at(target_series),
+    ]
     filters = _apply_extra_filters(filters, extra_filters)
     apps_in_model = get_upgrade_candidates(
         model_name=model_name,

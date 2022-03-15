@@ -54,26 +54,6 @@ class MySQLBaseTest(test_utils.OpenStackBaseTest):
             self.application,
             "leader-get root-password")["Stdout"].strip()
 
-    def get_leaders_and_non_leaders(self):
-        """Get leader node and non-leader nodes of percona.
-
-        Update and set on the object the leader node and list of non-leader
-        nodes.
-
-        :returns: None
-        :rtype: None
-        """
-        status = zaza.model.get_status().applications[self.application]
-        # Reset
-        self.leader = None
-        self.non_leaders = []
-        for unit in status["units"]:
-            if status["units"][unit].get("leader"):
-                self.leader = unit
-            else:
-                self.non_leaders.append(unit)
-        return self.leader, self.non_leaders
-
     def get_cluster_status(self):
         """Get cluster status.
 
@@ -110,7 +90,7 @@ class MySQLBaseTest(test_utils.OpenStackBaseTest):
             _primary_ip = _primary_ip.split(':')[0]
         units = zaza.model.get_units(self.application_name)
         for unit in units:
-            if _primary_ip in unit.public_address:
+            if _primary_ip in zaza.model.get_unit_public_address(unit):
                 return unit
 
     def get_blocked_mysql_routers(self):
@@ -445,7 +425,8 @@ class PerconaClusterColdStartTest(PerconaClusterBaseTest):
         zaza.model.wait_for_application_states(states=states)
 
         # Update which node is the leader and which are not
-        _leader, _non_leaders = self.get_leaders_and_non_leaders()
+        _leader, _non_leaders = generic_utils.get_leaders_and_non_leaders(
+            self.application_name)
         # We want to test the worst possible scenario which is the
         # non-leader with the highest sequence number. We will use the leader
         # for the notify-bootstrapped after. They just need to be different
@@ -818,8 +799,10 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
         The cluster will be in waiting state.
         """
         logging.info("Scale in test: remove leader")
-        leader, nons = self.get_leaders_and_non_leaders()
+        leader, nons = generic_utils.get_leaders_and_non_leaders(
+            self.application_name)
         leader_unit = zaza.model.get_unit_from_name(leader)
+        leader_unit_ip = zaza.model.get_unit_public_address(leader_unit)
 
         # Wait until we are idle in the hopes clients are not running
         # update-status hooks
@@ -839,12 +822,12 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
 
         logging.info(
             "Removing old unit from cluster: {} "
-            .format(leader_unit.public_address))
+            .format(leader_unit_ip))
         action = zaza.model.run_action(
             nons[0],
             "remove-instance",
             action_params={
-                "address": leader_unit.public_address,
+                "address": leader_unit_ip,
                 "force": True})
         assert action.data.get("results") is not None, (
             "Remove instance action failed: No results: {}"
@@ -892,8 +875,11 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
         We start with a four node full cluster, remove one, down to a three
         node full cluster.
         """
-        leader, nons = self.get_leaders_and_non_leaders()
+        leader, nons = generic_utils.get_leaders_and_non_leaders(
+            self.application_name)
         non_leader_unit = zaza.model.get_unit_from_name(nons[0])
+        non_leader_unit_ip = zaza.model.get_unit_public_address(
+            non_leader_unit)
 
         # Wait until we are idle in the hopes clients are not running
         # update-status hooks
@@ -914,12 +900,12 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
 
         logging.info(
             "Removing old unit from cluster: {} "
-            .format(non_leader_unit.public_address))
+            .format(non_leader_unit_ip))
         action = zaza.model.run_action(
             leader,
             "remove-instance",
             action_params={
-                "address": non_leader_unit.public_address,
+                "address": non_leader_unit_ip,
                 "force": True})
         assert action.data.get("results") is not None, (
             "Remove instance action failed: No results: {}"
@@ -942,7 +928,7 @@ class MySQLInnoDBClusterPartitionTest(MySQLBaseTest):
         no_of_units = len(mysql_units)
         for index, unit in enumerate(mysql_units):
             next_unit = mysql_units[(index+1) % no_of_units]
-            ip_address = next_unit.public_address
+            ip_address = zaza.model.get_unit_public_address(next_unit)
             cmd = "sudo iptables -A INPUT -s {} -j DROP".format(ip_address)
             zaza.model.async_run_on_unit(unit, cmd)
 
@@ -966,7 +952,7 @@ class MySQLInnoDBClusterPartitionTest(MySQLBaseTest):
             leader_unit.entity_id,
             "force-quorum-using-partition-of",
             action_params={
-                "address": leader_unit.public_address,
+                "address": zaza.model.get_unit_public_address(leader_unit),
                 'i-really-mean-it': True
             })
 

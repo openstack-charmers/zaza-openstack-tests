@@ -461,7 +461,7 @@ class NovaCloudControllerActionTest(test_utils.OpenStackBaseTest):
                 if juju_az:
                     zone = juju_az
 
-            juju_units_az_map[unit.public_address] = zone
+            juju_units_az_map[zaza.model.get_unit_public_address(unit)] = zone
             continue
 
         session = openstack_utils.get_overcloud_keystone_session()

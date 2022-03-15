@@ -16,14 +16,10 @@
 
 """Encapsulate cinder-netapp testing."""
 
-import uuid
-
-import zaza.model
-import zaza.openstack.charm_tests.test_utils as test_utils
-import zaza.openstack.utilities.openstack as openstack_utils
+from zaza.openstack.charm_tests.cinder_backend.tests import CinderBackendTest
 
 
-class CinderNetAppTest(test_utils.OpenStackBaseTest):
+class CinderNetAppTest(CinderBackendTest):
     """Encapsulate netapp tests."""
 
     @classmethod

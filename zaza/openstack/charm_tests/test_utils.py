@@ -1043,6 +1043,21 @@ class BaseDeferredRestartTest(BaseCharmTest):
         # clear status message.
         self.clear_hooks()
 
+    def get_service_timestamps(self, service):
+        """For units of self.application_name get start time of service.
+
+        :param service: Service to check, must be a systemd service
+        :type service: str
+        :returns: A dict timestamps keyed on unit name.
+        :rtype: dict
+        """
+        timestamps = {}
+        for unit in model.get_units(self.application_name):
+            timestamps[unit.entity_id] = model.get_systemd_service_active_time(
+                unit.entity_id,
+                service)
+        return timestamps
+
     def run_package_change_test(self, restart_package, restart_package_svc):
         """Trigger a deferred restart by updating a package.
 
@@ -1055,8 +1070,32 @@ class BaseDeferredRestartTest(BaseCharmTest):
                                         after restart_package has changed.
         :type restart_package_service: str
         """
+        pre_timestamps = self.get_service_timestamps(
+            restart_package_svc)
         self.trigger_deferred_restart_via_package(restart_package)
-
+        post_timestamps = self.get_service_timestamps(
+            restart_package_svc)
+        broken_units = []
+        for unit_name in post_timestamps.keys():
+            if pre_timestamps[unit_name] != post_timestamps[unit_name]:
+                logging.error(
+                    "Service {} on unit {} should have start time of {} but"
+                    " it has {}".format(
+                        restart_package_svc,
+                        unit_name,
+                        pre_timestamps[unit_name],
+                        post_timestamps[unit_name]))
+                broken_units.append(unit_name)
+        if broken_units:
+            msg = (
+                "Units {} restarted service {} when disallowed by "
+                "deferred_restarts").format(
+                    ','.join(broken_units),
+                    restart_package_svc)
+            raise Exception(msg)
+        else:
+            logging.info(
+                "Service was {} not restarted.".format(restart_package_svc))
         self.check_show_deferred_restarts_wlm(restart_package_svc)
         self.check_show_deferred_events_action_restart(
             restart_package_svc,

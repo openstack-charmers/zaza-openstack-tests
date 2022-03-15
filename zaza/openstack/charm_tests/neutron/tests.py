@@ -285,7 +285,7 @@ class NeutronGatewayShowActionsTest(test_utils.OpenStackBaseTest):
 
         # extract data from juju action
         action_data = action_result.data.get('results', {}).get(resource_name)
-        resources_from_action = yaml.load(action_data)
+        resources_from_action = yaml.safe_load(action_data)
 
         # pull resource IDs from expected resource list and juju action data
         expected_resource_ids = {resource['id'] for resource in resource_list}
@@ -492,14 +492,11 @@ class NeutronApiTest(NeutronCreateNetworkTest):
         Pause service and check services are stopped then resume and check
         they are started
         """
-        bionic_stein = openstack_utils.get_os_release('bionic_stein')
-        if openstack_utils.get_os_release() >= bionic_stein:
-            pgrep_full = True
-        else:
-            pgrep_full = False
         with self.pause_resume(
-                ["neutron-server", "apache2", "haproxy"],
-                pgrep_full=pgrep_full):
+                ["/usr/bin/neutron-server",
+                 "/usr/sbin/apache2",
+                 "/usr/sbin/haproxy"],
+                pgrep_full=True):
             logging.info("Testing pause resume")
 
 

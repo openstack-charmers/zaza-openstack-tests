@@ -622,7 +622,7 @@ def port_knock_units(units, port=22, expect_success=True):
     :returns: None if successful, Failure message otherwise
     """
     for u in units:
-        host = u.public_address
+        host = model.get_unit_public_address(u)
         connected = is_port_open(port, host)
         if not connected and expect_success:
             return 'Socket connect failed.'
@@ -706,3 +706,39 @@ def attach_file_resource(application_name, resource_name,
         fp.flush()
         model.attach_resource(
             application_name, resource_name, fp.name)
+
+
+def get_leaders_and_non_leaders(application_name):
+    """Get leader node and non-leader nodes.
+
+    :returns: leader, list of non-leader
+    :rtype: str, list of str
+    """
+    status = model.get_status().applications[application_name]
+    leader = None
+    non_leaders = []
+    for unit in status["units"]:
+        if status["units"][unit].get("leader"):
+            leader = unit
+        else:
+            non_leaders.append(unit)
+    return leader, non_leaders
+
+
+def add_loop_device(unit, size=10):
+    """Add a loopback device to a Juju unit.
+
+    :param unit: The unit name on which to create the device.
+    :type unit: str
+
+    :param size: The size in GB of the device.
+    :type size: int
+
+    :returns: The device name.
+    """
+    loop_name = '/home/ubuntu/loop.img'
+    truncate = 'truncate --size {}GB {}'.format(size, loop_name)
+    losetup = 'losetup --find {}'.format(loop_name)
+    lofind = 'losetup -a | grep {} | cut -f1 -d ":"'.format(loop_name)
+    cmd = "sudo sh -c '{} && {} && {}'".format(truncate, losetup, lofind)
+    return model.run_on_unit(unit, cmd)

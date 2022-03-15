@@ -25,7 +25,8 @@ PLUGIN_APP_NAME = 'neutron-api-plugin-arista'
 
 def fixture_ip_addr():
     """Return the public IP address of the Arista test fixture."""
-    return zaza.model.get_units(FIXTURE_APP_NAME)[0].public_address
+    return zaza.model.get_unit_public_address(
+        zaza.model.get_units(FIXTURE_APP_NAME)[0])
 
 
 _FIXTURE_LOGIN = 'admin'
