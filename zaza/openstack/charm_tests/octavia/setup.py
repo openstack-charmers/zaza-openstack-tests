@@ -168,6 +168,10 @@ def disable_ohm_port_security():
 
 def bug_1964117_workaround():
     """Apply Bug #1964117 if allowed."""
+    if openstack.ovn_present():
+        # Issue only known to affect ml2 ovs so if do not apply work around
+        # to ovn deploys.
+        return
     allow_pkg_list = ['2.16.0-0ubuntu2.1~cloud0']
     allow_release_list = ['focal_xena']
     _allow_release_list = [
