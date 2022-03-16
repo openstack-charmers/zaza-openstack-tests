@@ -28,7 +28,7 @@ class CinderNetAppTest(CinderBackendTest):
         'cinder-netapp': {
             'netapp_storage_family': ['ontap_cluster'],
             'netapp_storage_protocol': ['iscsi'],
-            'volume_backend_name': ['cinder_netapp'],
+            'volume_backend_name': ['NETAPP'],
             'volume_driver':
                 ['cinder.volume.drivers.netapp.common.NetAppDriver'],
         }}
