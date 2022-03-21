@@ -29,6 +29,10 @@ import zaza.openstack.utilities.openstack as openstack_utils
 
 from zaza.openstack.utilities import generic as generic_utils
 from zaza.openstack.utilities import ObjectRetrierWraps
+from zaza.openstack.utilities.exceptions import (
+    LoadBalancerUnexpectedState,
+    LoadBalancerUnrecoverableError,
+)
 
 LBAAS_ADMIN_ROLE = 'load-balancer_admin'
 
@@ -279,24 +283,35 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         super(LBAASv2Test, self).resource_cleanup()
 
     @staticmethod
-    @tenacity.retry(retry=tenacity.retry_if_exception_type(AssertionError),
-                    wait=tenacity.wait_fixed(1), reraise=True,
-                    stop=tenacity.stop_after_delay(900))
+    @tenacity.retry(
+        retry=tenacity.retry_if_exception_type(LoadBalancerUnexpectedState),
+        wait=tenacity.wait_fixed(1), reraise=True,
+        stop=tenacity.stop_after_delay(900))
     def wait_for_lb_resource(octavia_show_func, resource_id,
                              provisioning_status=None, operating_status=None):
         """Wait for loadbalancer resource to reach expected status."""
         provisioning_status = provisioning_status or 'ACTIVE'
         resp = octavia_show_func(resource_id)
-        logging.info(resp['provisioning_status'])
-        assert resp['provisioning_status'] == provisioning_status, (
-            'load balancer resource has not reached '
-            'expected provisioning status: {}'
-            .format(resp))
+        logging.info("Current provisioning status: {}, waiting for {}"
+                     .format(resp['provisioning_status'], provisioning_status))
+
+        msg = ('load balancer resource has not reached '
+               'expected provisioning status: {}'.format(resp))
+
+        # ERROR is a final state, once it's reached there is no reason to keep
+        # retrying and delaying the failure.
+        if resp['provisioning_status'] == 'ERROR':
+            raise LoadBalancerUnrecoverableError(msg)
+        elif resp['provisioning_status'] != provisioning_status:
+            raise LoadBalancerUnexpectedState(msg)
+
         if operating_status:
-            logging.info(resp['operating_status'])
-            assert resp['operating_status'] == operating_status, (
-                'load balancer resource has not reached '
-                'expected operating status: {}'.format(resp))
+            logging.info('Current operating status: {}, waiting for {}'
+                         .format(resp['operating_status'], operating_status))
+            if not resp['operating_status'] == operating_status:
+                raise LoadBalancerUnexpectedState((
+                    'load balancer resource has not reached '
+                    'expected operating status: {}'.format(resp)))
 
         return resp
 

@@ -178,7 +178,7 @@ class OpenStackDashboardBase():
         else:
             unit = zaza_model.get_unit_from_name(
                 zaza_model.get_lead_unit_name(self.application_name))
-            ip = unit.public_address
+            ip = zaza_model.get_unit_public_address(unit)
 
         logging.debug("Dashboard ip is:{}".format(ip))
         scheme = 'http'
@@ -272,7 +272,8 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest,
         logging.info('Checking dashboard HAProxy settings...')
         unit = zaza_model.get_unit_from_name(
             zaza_model.get_lead_unit_name(self.application_name))
-        logging.debug("... dashboard_ip is:{}".format(unit.public_address))
+        logging.debug("... dashboard_ip is:{}".format(
+            zaza_model.get_unit_public_address(unit)))
         conf = '/etc/haproxy/haproxy.cfg'
         port = '8888'
         set_alternate = {
@@ -280,13 +281,18 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest,
         }
 
         request = urllib.request.Request(
-            'http://{}:{}'.format(unit.public_address, port))
+            'http://{}:{}'.format(
+                zaza_model.get_unit_public_address(unit), port))
 
         output = str(generic_utils.get_file_contents(unit, conf))
 
+        password = None
         for line in output.split('\n'):
             if "stats auth" in line:
                 password = line.split(':')[1]
+                break
+        else:
+            raise ValueError("'stats auth' not found in output'")
         base64string = base64.b64encode(
             bytes('{}:{}'.format('admin', password), 'ascii'))
         request.add_header(
@@ -493,7 +499,8 @@ class OpenStackDashboardPolicydTests(policyd.BasePolicydSpecialization,
         """
         unit = zaza_model.get_unit_from_name(
             zaza_model.get_lead_unit_name(self.application_name))
-        logging.info("Dashboard is at {}".format(unit.public_address))
+        logging.info("Dashboard is at {}".format(
+            zaza_model.get_unit_public_address(unit)))
         overcloud_auth = openstack_utils.get_overcloud_auth()
         password = overcloud_auth['OS_PASSWORD']
         logging.info("admin password is {}".format(password))
@@ -504,7 +511,7 @@ class OpenStackDashboardPolicydTests(policyd.BasePolicydSpecialization,
             self.get_horizon_url(), domain, username, password,
             cafile=self.cacert)
         # now attempt to get the domains page
-        _url = self.url.format(unit.public_address)
+        _url = self.url.format(zaza_model.get_unit_public_address(unit))
         logging.info("URL is {}".format(_url))
         result = client.get(_url)
         if result.status_code == 403:

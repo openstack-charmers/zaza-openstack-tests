@@ -35,7 +35,6 @@ import zaza.openstack.utilities.exceptions as zaza_exceptions
 import zaza.openstack.utilities.generic as zaza_utils
 import zaza.utilities.juju as juju_utils
 import zaza.openstack.utilities.openstack as zaza_openstack
-import zaza.openstack.utilities.juju as zaza_juju
 
 
 class CephLowLevelTest(test_utils.OpenStackBaseTest):
@@ -124,7 +123,7 @@ class CephRelationTest(test_utils.OpenStackBaseTest):
         remote_unit_name = 'ceph-mon/0'
         relation_name = 'osd'
         remote_unit = zaza_model.get_unit_from_name(remote_unit_name)
-        remote_ip = remote_unit.public_address
+        remote_ip = zaza_model.get_unit_public_address(remote_unit)
         relation = juju_utils.get_relation_from_unit(
             unit_name,
             remote_unit_name,
@@ -145,7 +144,7 @@ class CephRelationTest(test_utils.OpenStackBaseTest):
         unit_name = 'ceph-osd/0'
         relation_name = 'osd'
         remote_unit = zaza_model.get_unit_from_name(remote_unit_name)
-        remote_ip = remote_unit.public_address
+        remote_ip = zaza_model.get_unit_public_address(remote_unit)
         cmd = 'leader-get fsid'
         result = zaza_model.run_on_unit(remote_unit_name, cmd)
         fsid = result.get('Stdout').strip()
@@ -546,20 +545,28 @@ class CephTest(test_utils.OpenStackBaseTest):
         )
         logging.debug('OK')
 
-    def _get_local_osd_id(self, unit):
+    def get_local_osd_id(self, unit):
+        """Get the OSD id for a unit."""
         ret = zaza_model.run_on_unit(unit,
                                      'ceph-volume lvm list --format=json')
         local = list(json.loads(ret['Stdout']))[-1]
         return local if local.startswith('osd.') else 'osd.' + local
 
+    def get_num_osds(self, osd):
+        """Compute the number of active OSD's."""
+        result = zaza_model.run_on_unit(osd, 'ceph osd stat --format=json')
+        result = json.loads(result['Stdout'])
+        return int(result['num_osds'])
+
     def test_cache_device(self):
         """Test replacing a disk in use."""
         logging.info('Running add-disk action with a caching device')
+        mon = next(iter(zaza_model.get_units('ceph-mon'))).entity_id
         osds = [x.entity_id for x in zaza_model.get_units('ceph-osd')]
         params = []
         for unit in osds:
-            zaza_juju.add_storage(unit, 'cache-devices', 'cinder', 10)
-            loop_dev = zaza_juju.add_loop_device(unit, 10).get('Stdout')
+            zaza_model.add_storage(unit, 'cache-devices', 'cinder', 10)
+            loop_dev = zaza_utils.add_loop_device(unit, 10)
             params.append({'unit': unit})
             action_obj = zaza_model.run_action(
                 unit_name=unit,
@@ -572,13 +579,13 @@ class CephTest(test_utils.OpenStackBaseTest):
 
         logging.info('Removing previously added disks')
         for param in params:
-            osd_id = self._get_local_osd_id(param['unit'])
+            osd_id = self.get_local_osd_id(param['unit'])
             param.update({'osd-id': osd_id})
             action_obj = zaza_model.run_action(
                 unit_name=param['unit'],
                 action_name='remove-disk',
                 action_params={'osd-ids': osd_id, 'timeout': 5,
-                               'format': 'json', 'purge': True}
+                               'format': 'json', 'purge': False}
             )
             zaza_utils.assertActionRanOK(action_obj)
             results = json.loads(action_obj.data['results']['message'])
@@ -599,6 +606,7 @@ class CephTest(test_utils.OpenStackBaseTest):
             )
             zaza_utils.assertActionRanOK(action_obj)
         zaza_model.wait_for_application_states()
+        self.assertEqual(len(osds) * 2, self.get_num_osds(mon))
 
 
 class CephRGWTest(test_utils.OpenStackBaseTest):
@@ -861,7 +869,9 @@ class CephPrometheusTest(unittest.TestCase):
         unit = zaza_model.get_unit_from_name(
             zaza_model.get_lead_unit_name('prometheus2'))
         self.assertEqual(
-            '3', _get_mon_count_from_prometheus(unit.public_address))
+            '3',
+            _get_mon_count_from_prometheus(
+                zaza_model.get_unit_public_address(unit)))
 
 
 class CephPoolConfig(Exception):

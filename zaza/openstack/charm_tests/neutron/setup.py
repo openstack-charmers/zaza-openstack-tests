@@ -23,9 +23,10 @@ from zaza.openstack.configure import (
 from zaza.openstack.utilities import (
     cli as cli_utils,
     generic as generic_utils,
-    juju as juju_utils,
     openstack as openstack_utils,
 )
+
+import zaza.utilities.juju as juju_utils
 
 import zaza.charm_lifecycle.utils as lifecycle_utils
 

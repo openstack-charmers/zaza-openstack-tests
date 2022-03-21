@@ -207,7 +207,7 @@ def get_swift_storage_topology(model_name=None):
             region = app_config['storage-region']['value']
             zone = app_config['zone']['value']
             for unit in zaza.model.get_units(app_name, model_name=model_name):
-                topology[unit.public_address] = {
+                topology[zaza.model.get_unit_public_address(unit)] = {
                     'app_name': app_name,
                     'unit': unit,
                     'region': region,
@@ -298,3 +298,69 @@ def create_object(swift_client, proxy_app, storage_topology, resource_prefix,
         storage_topology,
         model_name=model_name)
     return container_name, object_name, obj_replicas
+
+
+def search_builder(proxy_app, ring, search_target, model_name=None):
+    """Run a swift-ring-builder search.
+
+    :param proxy_app: Name of proxy application
+    :type proxy_app: str
+    :param ring: Name of ring (one of: object, account, container)
+    :type ring: str
+    :param search_target: device search string (see: man swift-ring-builder)
+    :type search_target: str
+    :param model_name: Model to point environment at
+    :type model_name: str
+    :returns: stdout - full stdout output from swift-ring-builder cmd
+    :rtype: str
+    """
+    cmd = ('swift-ring-builder /etc/swift/{}.builder search {}'
+           ''.format(ring, search_target))
+    result = zaza.model.run_on_leader(proxy_app, cmd,
+                                      model_name=model_name)
+    return result['Stdout']
+
+
+def is_proxy_ring_up_to_date(proxy_app, ring, model_name=None):
+    """Check if the ring file is up-to-date with changes of the builder.
+
+    :param proxy_app: Name of proxy application
+    :type proxy_app: str
+    :param ring: Name of ring (one of: object, account, container)
+    :type ring: str
+    :param model_name: Model to point environment at
+    :type model_name: str
+    :returns: True if swift-ring-builder denotes ring.gz file is up-to-date
+    :rtype: str
+    """
+    logging.info('Checking ring file matches builder file')
+    cmd = ('swift-ring-builder /etc/swift/{}.builder | '
+           'grep "Ring file .* is"'.format(ring))
+    result = zaza.model.run_on_leader(proxy_app, cmd, model_name=model_name)
+    expected = ('Ring file /etc/swift/{}.ring.gz is up-to-date'
+                ''.format(ring))
+    return bool(result['Stdout'].strip('\n') == expected)
+
+
+def is_ring_synced(proxy_app, ring, expected_hosts, model_name=None):
+    """Check if md5sums of rings on swift-storage are synced to this proxy.
+
+    :param proxy_app: Name of proxy application
+    :type proxy_app: str
+    :param ring: Name of ring (one of: object, account, container)
+    :type ring: str
+    :param expoected_hosts: Number of swift-storage hosts in test environment
+    :type search_target: int
+    :param model_name: Model to point environment at
+    :type model_name: str
+    :returns: True if all expected_hosts matched md5sum of proxy ring file
+    :rtype: bool
+    """
+    logging.info('Checking ring md5sums on storage unit(s) against proxy')
+    zaza.model.block_until_all_units_idle()
+    cmd = ('swift-recon {} --md5 | '
+           'grep -A1 "ring md5" | tail -1'.format(ring))
+    result = zaza.model.run_on_leader(proxy_app, cmd, model_name=model_name)
+    expected = ('{num}/{num} hosts matched, 0 error[s] while checking hosts.'
+                ''.format(num=expected_hosts))
+    return bool(result['Stdout'].strip('\n') == expected)

@@ -72,6 +72,12 @@ class SwiftImageCreateTest(test_utils.OpenStackBaseTest):
 class SwiftProxyTests(test_utils.OpenStackBaseTest):
     """Tests specific to swift proxy."""
 
+    TEST_SEARCH_TARGET = 'd0'
+    TEST_REMOVE_TARGET = 'd1'
+    TEST_EXPECTED_RING_HOSTS = 1
+    TEST_WEIGHT_TARGET = 999
+    TEST_WEIGHT_INITIAL = 100
+
     def test_901_pause_resume(self):
         """Run pause and resume tests.
 
@@ -90,6 +96,59 @@ class SwiftProxyTests(test_utils.OpenStackBaseTest):
             'diskusage',
             action_params={})
         self.assertEqual(action.status, "completed")
+
+    def test_904_set_weight_action_and_validate_rebalance(self):
+        """Set weight of device in object ring."""
+        logging.info('Running set-weight action on leader')
+        action = zaza.model.run_action_on_leader(
+            'swift-proxy',
+            'set-weight',
+            action_params={'ring': 'object',
+                           'search-value': self.TEST_SEARCH_TARGET,
+                           'weight': self.TEST_WEIGHT_TARGET})
+        self.assertEqual(action.status, "completed")
+
+        logging.info('Validating builder updated as expected')
+        result = swift_utils.search_builder('swift-proxy', 'object',
+                                            self.TEST_SEARCH_TARGET)
+        # disk weight is the 9th field of the second line and is a float
+        disk_weight = int(result.split('\n')[1].split()[8].split('.')[0])
+        self.assertEqual(disk_weight, self.TEST_WEIGHT_TARGET)
+        self.assertTrue(swift_utils.is_proxy_ring_up_to_date('swift-proxy',
+                                                             'object'))
+
+        logging.info('Running set-weight on leader to reset weight back')
+        action = zaza.model.run_action_on_leader(
+            'swift-proxy',
+            'set-weight',
+            action_params={'ring': 'object',
+                           'search-value': self.TEST_SEARCH_TARGET,
+                           'weight': self.TEST_WEIGHT_INITIAL})
+        self.assertEqual(action.status, "completed")
+        self.assertTrue(
+            swift_utils.is_ring_synced('swift-proxy', 'object',
+                                       self.TEST_EXPECTED_RING_HOSTS))
+
+    def test_905_remove_device_action_and_validate_rebalance(self):
+        """Remove device from object ring."""
+        logging.info('Running remove-devices action on leader')
+        action = zaza.model.run_action_on_leader(
+            'swift-proxy',
+            'remove-devices',
+            action_params={'ring': 'object',
+                           'search-value': self.TEST_REMOVE_TARGET})
+        self.assertEqual(action.status, "completed")
+
+        logging.info('Validating builder updated as expected')
+        result = swift_utils.search_builder('swift-proxy', 'object',
+                                            self.TEST_REMOVE_TARGET)
+        expected = 'No matching devices found'
+        self.assertEqual(result.strip('\n'), expected)
+        self.assertTrue(swift_utils.is_proxy_ring_up_to_date('swift-proxy',
+                                                             'object'))
+        self.assertTrue(
+            swift_utils.is_ring_synced('swift-proxy', 'object',
+                                       self.TEST_EXPECTED_RING_HOSTS))
 
 
 class SwiftProxyMultiZoneTests(test_utils.OpenStackBaseTest):

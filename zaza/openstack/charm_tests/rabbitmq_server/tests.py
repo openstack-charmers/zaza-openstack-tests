@@ -26,8 +26,8 @@ import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.generic as generic_utils
 
-from charmhelpers.core.host import CompareHostReleases
 from zaza.openstack.utilities.generic import get_series
+from zaza.openstack.utilities.os_versions import CompareHostReleases
 
 from . import utils as rmq_utils
 from .utils import RmqNoMessageException
@@ -49,6 +49,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
         return '[{}-{}]'.format(uuid.uuid4(), time.time())
 
     @tenacity.retry(
+        reraise=True,
         retry=tenacity.retry_if_exception_type(RmqNoMessageException),
         wait=tenacity.wait_fixed(10),
         stop=tenacity.stop_after_attempt(2))
@@ -56,6 +57,40 @@ class RmqTests(test_utils.OpenStackBaseTest):
         return rmq_utils.get_amqp_message_by_unit(check_unit,
                                                   ssl=ssl,
                                                   port=port)
+
+    def _search_for_message(self, amqp_msg, check_unit, ssl, port,
+                            amqp_msg_counter):
+        """Search for message in message queue.
+
+        WARNING: This will consume messages until it finds the target message.
+
+        :param amqp_msg: Message to search for
+        :type amqp_msg: string
+        :param check_unit: Unit to retrieve messages from
+        :type check_unit: juju.unit.Unit
+        :param ssl: Whether to use SSL when connecting to rabbit
+        :type ssl: bool
+        :param port: Port to use when connecting to rabbit
+        :type port: Union[int, None]
+        :param amqp_msg_counter: Number in test sequence of this message.
+        :type amqp_msg: int
+        :raises: RmqNoMessageException
+        """
+        for i in range(100):
+            amqp_msg_rcvd = self._retry_get_amqp_message(
+                check_unit,
+                ssl=ssl,
+                port=port)
+            if amqp_msg == amqp_msg_rcvd:
+                logging.info(
+                    'Message {} received OK.'.format(amqp_msg_counter))
+                break
+            else:
+                logging.info('Expected: {}'.format(amqp_msg))
+                logging.info('Actual:   {}'.format(amqp_msg_rcvd))
+        else:
+            msg = 'Message {} not found.'.format(amqp_msg_counter)
+            raise RmqNoMessageException(msg)
 
     def _test_rmq_amqp_messages_all_units(self, units,
                                           ssl=False, port=None):
@@ -85,7 +120,7 @@ class RmqTests(test_utils.OpenStackBaseTest):
 
         for dest_unit in units:
             dest_unit_name = dest_unit.entity_id
-            dest_unit_host = dest_unit.public_address
+            dest_unit_host = zaza.model.get_unit_public_address(dest_unit)
             dest_unit_host_name = host_names[dest_unit_name]
 
             for check_unit in units:
@@ -93,7 +128,8 @@ class RmqTests(test_utils.OpenStackBaseTest):
                 if dest_unit_name == check_unit_name:
                     logging.info("Skipping check for this unit to itself.")
                     continue
-                check_unit_host = check_unit.public_address
+                check_unit_host = zaza.model.get_unit_public_address(
+                    check_unit)
                 check_unit_host_name = host_names[check_unit_name]
 
                 amqp_msg_stamp = self._get_uuid_epoch_stamp()
@@ -111,25 +147,22 @@ class RmqTests(test_utils.OpenStackBaseTest):
                                                        port=port)
 
                 # Get amqp message
-                logging.info('Get message from:   {} '
+                logging.info('Get messages from:   {} '
                              '({} {})'.format(check_unit_host,
                                               check_unit_name,
                                               check_unit_host_name))
 
-                amqp_msg_rcvd = self._retry_get_amqp_message(check_unit,
-                                                             ssl=ssl,
-                                                             port=port)
-
-                # Validate amqp message content
-                if amqp_msg == amqp_msg_rcvd:
-                    logging.info('Message {} received '
-                                 'OK.'.format(amqp_msg_counter))
-                else:
-                    logging.error('Expected: {}'.format(amqp_msg))
-                    logging.error('Actual:   {}'.format(amqp_msg_rcvd))
-                    msg = 'Message {} mismatch.'.format(amqp_msg_counter)
+                try:
+                    self._search_for_message(
+                        amqp_msg,
+                        check_unit,
+                        ssl,
+                        port,
+                        amqp_msg_counter)
+                except RmqNoMessageException:
+                    msg = 'Failed to retrieve message {}.'.format(
+                        amqp_msg_counter)
                     raise Exception(msg)
-
                 amqp_msg_counter += 1
 
         # Delete the test user

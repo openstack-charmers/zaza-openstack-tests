@@ -1554,7 +1554,7 @@ def create_bgp_peer(neutron_client, peer_application_name='quagga',
     :rtype: dict
     """
     peer_unit = model.get_units(peer_application_name)[0]
-    peer_ip = peer_unit.public_address
+    peer_ip = model.get_unit_public_address(peer_unit)
     bgp_peers = neutron_client.list_bgp_peers(name=peer_application_name)
     if len(bgp_peers['bgp_peers']) == 0:
         logging.info('Creating BGP Peer')
@@ -2019,6 +2019,9 @@ def get_undercloud_auth():
 def get_keystone_ip(model_name=None):
     """Return the IP address to use when communicating with keystone api.
 
+    If there are multiple VIP addresses specified in the 'vip' option for the
+    keystone unit, then ONLY the first one is returned.
+
     :param model_name: Name of model to query.
     :type model_name: str
     :returns: IP address
@@ -2029,9 +2032,10 @@ def get_keystone_ip(model_name=None):
         'vip',
         model_name=model_name)
     if vip_option:
-        return vip_option
+        # strip the option, splits on whitespace and return the first one.
+        return vip_option.strip().split()[0]
     unit = model.get_units('keystone', model_name=model_name)[0]
-    return unit.public_address
+    return model.get_unit_public_address(unit)
 
 
 def get_keystone_api_version(model_name=None):
@@ -2225,6 +2229,22 @@ def get_images_by_name(glance, image_name):
     return [i for i in glance.images.list() if image_name == i.name]
 
 
+def get_volumes_by_name(cinder, volume_name):
+    """Get all cinder volume objects with the given name.
+
+    :param cinder: Authenticated cinderclient
+    :type cinder: cinderclient.Client
+    :param image_name: Name of volume
+    :type image_name: str
+    :returns: List of cinder volumes
+    :rtype: List[cinderclient.v3.volume, ...]
+    """
+    return [i for i in cinder.volumes.list() if volume_name == i.name]
+
+
+@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
+                reraise=True,
+                retry=tenacity.retry_if_exception_type(urllib.error.URLError))
 def find_cirros_image(arch):
     """Return the url for the latest cirros image for the given architecture.
 
@@ -2251,7 +2271,7 @@ def download_image(image_url, target_file):
 
     :param image_url: URL to download image from
     :type image_url: str
-    :param target_file: Local file to savee image to
+    :param target_file: Local file to save image to
     :type target_file: str
     """
     opener = get_urllib_opener()
