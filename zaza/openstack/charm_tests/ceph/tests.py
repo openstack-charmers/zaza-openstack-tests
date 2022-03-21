@@ -566,8 +566,8 @@ class CephTest(test_utils.OpenStackBaseTest):
         params = []
         for unit in osds:
             zaza_model.add_storage(unit, 'cache-devices', 'cinder', 10)
-            loop_dev = zaza_utils.add_loop_device(unit, 10)
-            params.append({'unit': unit})
+            loop_dev = zaza_utils.add_loop_device(unit, 10).get('Stdout')
+            params.append({'unit': unit, 'device': loop_dev})
             action_obj = zaza_model.run_action(
                 unit_name=unit,
                 action_name='add-disk',
@@ -595,14 +595,12 @@ class CephTest(test_utils.OpenStackBaseTest):
 
         logging.info('Recycling previously removed OSDs')
         for param in params:
-            device = zaza_utils.add_loop_device(
-                param['unit'], 10, 'l2')
             action_obj = zaza_model.run_action(
                 unit_name=param['unit'],
                 action_name='add-disk',
-                action_params={'osd-devices': device,
+                action_params={'osd-devices': param['device'],
                                'osd-ids': param['osd-id'],
-                               'partition-size': 5}
+                               'partition-size': 4}
             )
             zaza_utils.assertActionRanOK(action_obj)
         zaza_model.wait_for_application_states()
