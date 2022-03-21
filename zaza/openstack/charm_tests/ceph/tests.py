@@ -595,8 +595,8 @@ class CephTest(test_utils.OpenStackBaseTest):
 
         logging.info('Recycling previously removed OSDs')
         for param in params:
-            device = zaza_juju.add_loop_device(
-                param['unit'], 10, 'l2').get('Stdout')
+            device = zaza_utils.add_loop_device(
+                param['unit'], 10, 'l2')
             action_obj = zaza_model.run_action(
                 unit_name=param['unit'],
                 action_name='add-disk',
