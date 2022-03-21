@@ -17,6 +17,7 @@ import logging
 import subprocess
 import sys
 import tenacity
+import time
 import unittest
 import yaml
 
@@ -616,7 +617,7 @@ class OpenStackBaseTest(BaseCharmTest):
     def resource_cleanup(self):
         """Remove test resources."""
         try:
-            logging.info('Removing instances launched by test ({}*)'
+            logging.info('Removing resources created by test ({}*)'
                          .format(self.RESOURCE_PREFIX))
             for server in self.nova_client.servers.list():
                 if server.name.startswith(self.RESOURCE_PREFIX):
@@ -624,6 +625,12 @@ class OpenStackBaseTest(BaseCharmTest):
                         self.nova_client.servers,
                         server.id,
                         msg="server")
+            for server_group in self.nova_client.server_groups.list():
+                if server_group.name.startswith(self.RESOURCE_PREFIX):
+                    openstack_utils.delete_resource(
+                        self.nova_client.server_groups,
+                        server_group.id,
+                        msg="server group")
         except AssertionError as e:
             # Resource failed to be removed within the expected time frame,
             # log this fact and carry on.
@@ -634,7 +641,7 @@ class OpenStackBaseTest(BaseCharmTest):
             pass
 
     def launch_guest(self, guest_name, userdata=None, use_boot_volume=False,
-                     instance_key=None):
+                     instance_key=None, scheduler_hints=None):
         """Launch one guest to use in tests.
 
         Note that it is up to the caller to have set the RESOURCE_PREFIX class
@@ -651,6 +658,9 @@ class OpenStackBaseTest(BaseCharmTest):
         :type use_boot_volume: boolean
         :param instance_key: Key to collect associated config data with.
         :type instance_key: Optional[str]
+        :param scheduler_hints: arbitrary key-value pairs specified by the
+                                client to help boot an instance.
+        :type scheduler_hints: Optional[Dict[str,str]]
         :returns: Nova instance objects
         :rtype: Server
         """
@@ -678,7 +688,8 @@ class OpenStackBaseTest(BaseCharmTest):
                     instance_key,
                     vm_name=instance_name,
                     use_boot_volume=use_boot_volume,
-                    userdata=userdata)
+                    userdata=userdata,
+                    scheduler_hints=scheduler_hints)
 
     def launch_guests(self, userdata=None):
         """Launch two guests to use in tests.
@@ -691,13 +702,73 @@ class OpenStackBaseTest(BaseCharmTest):
         :returns: List of launched Nova instance objects
         :rtype: List[Server]
         """
+        server_group = configure_guest.create_server_group(
+            self.RESOURCE_PREFIX, policy='anti-affinity')
+
         launched_instances = []
         for guest_number in range(1, 2+1):
             launched_instances.append(
                 self.launch_guest(
                     guest_name='ins-{}'.format(guest_number),
-                    userdata=userdata))
+                    userdata=userdata,
+                    scheduler_hints={'group': server_group.id}))
         return launched_instances
+
+    @staticmethod
+    def network_name_from_instance(instance):
+        """Retrieve name of primary network the instance is attached to.
+
+        :param instance: The instance to fetch name of network from.
+        :type instance: nova_client.Server
+        :returns: Name of primary network the instance is attached to.
+        :rtype: str
+        """
+        return next(iter(instance.addresses))
+
+    def ips_from_instance(self, instance, ip_type):
+        """
+        Retrieve IPs of a certain type from an instance.
+
+        :param instance: The instance to fetch IPs from
+        :type instance: nova_client.Server
+        :param ip_type: the type of IP to fetch, floating or fixed
+        :type ip_type: str
+
+        :returns: A list of IPs for the specified server
+        :rtype: list[str]
+        """
+        if ip_type not in ['floating', 'fixed']:
+            raise RuntimeError(
+                "Only 'floating' and 'fixed' are valid IP types to search for"
+            )
+        return list([
+            ip['addr'] for ip in instance.addresses[
+                self.network_name_from_instance(instance)]
+            if ip['OS-EXT-IPS:type'] == ip_type])
+
+    def floating_ips_from_instance(self, instance):
+        """
+        Retrieve floating IPs from an instance.
+
+        :param instance: The instance to fetch floating IPs from
+        :type instance: nova_client.Server
+
+        :returns: A list of floating IPs for the specified server
+        :rtype: list[str]
+        """
+        return self.ips_from_instance(instance, 'floating')
+
+    def fixed_ips_from_instance(self, instance):
+        """
+        Retrieve fixed IPs from an instance.
+
+        :param instance: The instance to fetch fixed IPs from
+        :type instance: nova_client.Server
+
+        :returns: A list of fixed IPs for the specified server
+        :rtype: list[str]
+        """
+        return self.ips_from_instance(instance, 'fixed')
 
     def retrieve_guest(self, guest_name):
         """Return guest matching name.
@@ -706,9 +777,29 @@ class OpenStackBaseTest(BaseCharmTest):
         :type nova_client: Nova client
         :returns: the matching guest
         :rtype: Union[novaclient.Server, None]
+        :raises: RuntimeError
         """
         try:
-            return self.nova_client.servers.find(name=guest_name)
+            # When querying the Nova API networking details are some times
+            # missing. Check the response for expected information and retry
+            # the operation if something is missing.
+            #
+            # Note that we can not use tenacity here as this method is already
+            # called from within Retry contexts.
+            retries = 3
+            while retries:
+                instance = self.nova_client.servers.find(name=guest_name)
+                if (self.fixed_ips_from_instance(instance) and
+                        self.floating_ips_from_instance(instance)):
+                    return instance
+                time.sleep(retries)
+                retries -= 1
+            raise RuntimeError(
+                'Instance object from Nova does not contain the expected'
+                'information: {} {} {}'
+                .format(instance,
+                        self.fixed_ips_from_instance(instance),
+                        self.floating_ips_from_instance(instance)))
         except novaclient.exceptions.NotFound:
             return None
 
@@ -726,7 +817,7 @@ class OpenStackBaseTest(BaseCharmTest):
         instance_1 = self.retrieve_guest(
             '{}-ins-1'.format(self.RESOURCE_PREFIX))
         instance_2 = self.retrieve_guest(
-            '{}-ins-1'.format(self.RESOURCE_PREFIX))
+            '{}-ins-2'.format(self.RESOURCE_PREFIX))
         return instance_1, instance_2
 
 

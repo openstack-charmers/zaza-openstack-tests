@@ -37,6 +37,8 @@ import textwrap
 import urllib
 
 
+from . import retry_to_configured_acceptance_level
+
 from .os_versions import (
     OPENSTACK_CODENAMES,
     SWIFT_CODENAMES,
@@ -311,7 +313,8 @@ def get_glance_session_client(session):
     :returns: Authenticated glanceclient
     :rtype: glanceclient.Client
     """
-    return GlanceClient('2', session=session)
+    return retry_to_configured_acceptance_level(
+        GlanceClient('2', session=session))
 
 
 def get_designate_session_client(**kwargs):
@@ -322,8 +325,8 @@ def get_designate_session_client(**kwargs):
     :rtype: DesignateClient
     """
     version = kwargs.pop('version', None) or 2
-    return DesignateClient(version=str(version),
-                           **kwargs)
+    return retry_to_configured_acceptance_level(
+        DesignateClient(version=str(version), **kwargs))
 
 
 def get_nova_session_client(session, version=2):
@@ -336,7 +339,8 @@ def get_nova_session_client(session, version=2):
     :returns: Authenticated novaclient
     :rtype: novaclient.Client object
     """
-    return novaclient_client.Client(version, session=session)
+    return retry_to_configured_acceptance_level(
+        novaclient_client.Client(version, session=session))
 
 
 def get_neutron_session_client(session):
@@ -347,7 +351,8 @@ def get_neutron_session_client(session):
     :returns: Authenticated neutronclient
     :rtype: neutronclient.Client object
     """
-    return neutronclient.Client(session=session)
+    return retry_to_configured_acceptance_level(
+        neutronclient.Client(session=session))
 
 
 def get_swift_session_client(session,
@@ -364,9 +369,10 @@ def get_swift_session_client(session,
     :returns: Authenticated swiftclient
     :rtype: swiftclient.Client object
     """
-    return swiftclient.Connection(session=session,
-                                  os_options={'region_name': region_name},
-                                  cacert=cacert)
+    return retry_to_configured_acceptance_level(
+        swiftclient.Connection(session=session,
+                               os_options={'region_name': region_name},
+                               cacert=cacert))
 
 
 def get_octavia_session_client(session, service_type='load-balancer',
@@ -389,9 +395,10 @@ def get_octavia_session_client(session, service_type='load-balancer',
                                                         interface='internal')
         for endpoint in lbaas_endpoint:
             break
-    return octaviaclient.OctaviaAPI(session=session,
-                                    service_type=service_type,
-                                    endpoint=endpoint.url)
+    return retry_to_configured_acceptance_level(
+        octaviaclient.OctaviaAPI(session=session,
+                                 service_type=service_type,
+                                 endpoint=endpoint.url))
 
 
 def get_heat_session_client(session, version=1):
@@ -404,7 +411,8 @@ def get_heat_session_client(session, version=1):
     :returns: Authenticated cinderclient
     :rtype: heatclient.Client object
     """
-    return heatclient.Client(session=session, version=version)
+    return retry_to_configured_acceptance_level(
+        heatclient.Client(session=session, version=version))
 
 
 def get_cinder_session_client(session, version=3):
@@ -417,7 +425,8 @@ def get_cinder_session_client(session, version=3):
     :returns: Authenticated cinderclient
     :rtype: cinderclient.Client object
     """
-    return cinderclient.Client(session=session, version=version)
+    return retry_to_configured_acceptance_level(
+        cinderclient.Client(session=session, version=version))
 
 
 def get_masakari_session_client(session, interface='internal',
@@ -433,9 +442,10 @@ def get_masakari_session_client(session, interface='internal',
     :returns: Authenticated masakari client
     :rtype: openstack.instance_ha.v1._proxy.Proxy
     """
-    conn = connection.Connection(session=session,
-                                 interface=interface,
-                                 region_name=region_name)
+    conn = retry_to_configured_acceptance_level(
+        connection.Connection(session=session,
+                              interface=interface,
+                              region_name=region_name))
     return conn.instance_ha
 
 
@@ -447,7 +457,8 @@ def get_aodh_session_client(session):
     :returns: Authenticated aodh client
     :rtype: openstack.instance_ha.v1._proxy.Proxy
     """
-    return aodh_client.Client(session=session)
+    return retry_to_configured_acceptance_level(
+        aodh_client.Client(session=session))
 
 
 def get_manila_session_client(session, version='2'):
@@ -460,7 +471,8 @@ def get_manila_session_client(session, version='2'):
     :returns: Authenticated manilaclient
     :rtype: manilaclient.Client
     """
-    return manilaclient.Client(session=session, client_version=version)
+    return retry_to_configured_acceptance_level(
+        manilaclient.Client(session=session, client_version=version))
 
 
 def get_keystone_scope(model_name=None):
@@ -504,7 +516,8 @@ def get_keystone_session(openrc_creds, scope='PROJECT', verify=None):
         auth = v2.Password(**keystone_creds)
     else:
         auth = v3.Password(**keystone_creds)
-    return session.Session(auth=auth, verify=verify)
+    return retry_to_configured_acceptance_level(
+        session.Session(auth=auth, verify=verify))
 
 
 def get_overcloud_keystone_session(verify=None, model_name=None):
@@ -546,9 +559,11 @@ def get_keystone_session_client(session, client_api_version=3):
     :rtype: keystoneclient.v3.Client object
     """
     if client_api_version == 2:
-        return keystoneclient_v2.Client(session=session)
+        return retry_to_configured_acceptance_level(
+            keystoneclient_v2.Client(session=session))
     else:
-        return keystoneclient_v3.Client(session=session)
+        return retry_to_configured_acceptance_level(
+            keystoneclient_v3.Client(session=session))
 
 
 def get_keystone_client(openrc_creds, verify=None):
@@ -821,6 +836,8 @@ CharmedOpenStackNetworkingData = collections.namedtuple(
         'unit_machine_ids',
         'port_config_key',
         'other_config',
+        'dns_application_names',
+        'dns_config_key',
     ])
 
 
@@ -834,14 +851,20 @@ def get_charm_networking_data(limit_gws=None):
                 List[str],
                 Iterator[str],
                 str,
-                Dict[str,str]]
+                Dict[str,str],
+                List[str],
+                str,
+                ]
     :returns: Named Tuple with networking data, example:
         CharmedOpenStackNetworkingData(
             OpenStackNetworkingTopology.ML2_OVN,
             ['ovn-chassis', 'ovn-dedicated-chassis'],
             ['machine-id-1', 'machine-id-2'],         # generator object
             'bridge-interface-mappings',
-            {'ovn-bridge-mappings': 'physnet1:br-ex'})
+            {'ovn-bridge-mappings': 'physnet1:br-ex'},
+            ['neutron-api-plugin-ovn'],
+            'dns-servers',
+        )
     :raises: RuntimeError
     """
     # Initialize defaults, these will be amended to fit the reality of the
@@ -852,6 +875,8 @@ def get_charm_networking_data(limit_gws=None):
         'data-port' if not deprecated_external_networking() else 'ext-port')
     unit_machine_ids = []
     application_names = []
+    dns_application_names = []
+    dns_config_key = 'dns-servers'
 
     if dvr_enabled():
         if ngw_present():
@@ -860,6 +885,7 @@ def get_charm_networking_data(limit_gws=None):
         else:
             application_names = ['neutron-openvswitch']
             topology = OpenStackNetworkingTopology.ML2_OVS_DVR_SNAT
+        dns_application_names = application_names
         unit_machine_ids = itertools.islice(
             itertools.chain(
                 get_ovs_uuids(),
@@ -869,10 +895,12 @@ def get_charm_networking_data(limit_gws=None):
         unit_machine_ids = itertools.islice(
             get_gateway_uuids(), limit_gws)
         application_names = ['neutron-gateway']
+        dns_application_names = application_names
     elif ovn_present():
         topology = OpenStackNetworkingTopology.ML2_OVN
         unit_machine_ids = itertools.islice(get_ovn_uuids(), limit_gws)
         application_names = ['ovn-chassis']
+        dns_application_names = ['neutron-api-plugin-ovn']
         try:
             ovn_dc_name = 'ovn-dedicated-chassis'
             model.get_application(ovn_dc_name)
@@ -890,7 +918,9 @@ def get_charm_networking_data(limit_gws=None):
         application_names,
         unit_machine_ids,
         port_config_key,
-        other_config)
+        other_config,
+        dns_application_names,
+        dns_config_key)
 
 
 def create_additional_port_for_machines(novaclient, neutronclient, net_id,
@@ -960,7 +990,8 @@ def create_additional_port_for_machines(novaclient, neutronclient, net_id,
     ]
 
 
-def configure_networking_charms(networking_data, macs, use_juju_wait=True):
+def configure_networking_charms(networking_data, macs, use_juju_wait=True,
+                                dns_servers=None):
     """Configure external networking for networking charms.
 
     :param networking_data: Data on networking charm topology.
@@ -979,6 +1010,8 @@ def configure_networking_charms(networking_data, macs, use_juju_wait=True):
 
     config = copy.deepcopy(networking_data.other_config)
     config.update({networking_data.port_config_key: ' '.join(sorted(br_mac))})
+
+    config_changed = False
 
     for application_name in networking_data.application_names:
         logging.info('Setting {} on {}'.format(
@@ -1003,11 +1036,33 @@ def configure_networking_charms(networking_data, macs, use_juju_wait=True):
                          "Config '{}' already set to value: {}".format(
                              networking_data.port_config_key,
                              current_data_port))
-            return
-
-        model.set_application_config(
-            application_name,
-            configuration=config)
+        else:
+            model.set_application_config(
+                application_name,
+                configuration=config)
+            config_changed = True
+    if dns_servers and networking_data.dns_application_names:
+        for application_name in networking_data.dns_application_names:
+            config = {
+                networking_data.dns_config_key: dns_servers,
+            }
+            logging.info('Setting {} on {}'.format(
+                config, application_name))
+            current_dns_servers = get_application_config_option(
+                application_name,
+                networking_data.dns_config_key)
+            if current_dns_servers == dns_servers:
+                logging.info("Skip update of DNS servers. "
+                             "Config '{}' already set to value: {}"
+                             .format(networking_data.dns_config_key,
+                                     current_dns_servers))
+            else:
+                model.set_application_config(
+                    application_name,
+                    configuration=config)
+                config_changed = True
+    if not config_changed:
+        return
     # NOTE(fnordahl): We are stuck with juju_wait until we figure out how
     # to deal with all the non ['active', 'idle', 'Unit is ready.']
     # workload/agent states and msgs that our mojo specs are exposed to.
@@ -1027,7 +1082,8 @@ def configure_networking_charms(networking_data, macs, use_juju_wait=True):
 def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
                                add_dataport_to_netplan=False,
                                limit_gws=None,
-                               use_juju_wait=True):
+                               use_juju_wait=True,
+                               dns_servers=None):
     """Configure the neturong-gateway external port.
 
     :param novaclient: Authenticated novaclient
@@ -1041,6 +1097,8 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
     :param use_juju_wait: Whether to use juju wait to wait for the model to
         settle once the gateway has been configured. Default is True
     :type use_juju_wait: boolean
+    :param dns_servers: External DNS servers to configure for networking charms
+    :type dns_servers: Optional[str]
     """
     networking_data = get_charm_networking_data(limit_gws=limit_gws)
     if networking_data.topology in (
@@ -1059,7 +1117,8 @@ def configure_gateway_ext_port(novaclient, neutronclient, net_id=None,
 
     if macs:
         configure_networking_charms(
-            networking_data, macs, use_juju_wait=use_juju_wait)
+            networking_data, macs, use_juju_wait=use_juju_wait,
+            dns_servers=dns_servers)
 
 
 def configure_charmed_openstack_on_maas(network_config, limit_gws=None):
