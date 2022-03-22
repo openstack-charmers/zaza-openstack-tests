@@ -150,6 +150,47 @@ class CharmOperationTest(BaseKeystoneTest):
                              .format(pprint.pformat(unit_repo),
                                      pprint.pformat(lead_repo)))
 
+    def test_rotate_admin_password(self):
+        """Verify action used to rotate admin user's password."""
+        ADMIN_PASSWD = 'admin_passwd'
+        old_passwd = juju_utils.leader_get(self.application_name, ADMIN_PASSWD)
+
+        # test access using the old password
+        with self.v3_keystone_preferred():
+            for ip in self.keystone_ips:
+                try:
+                    ks_session = openstack_utils.get_keystone_session(
+                        openstack_utils.get_overcloud_auth(address=ip))
+                    ks_client = openstack_utils.get_keystone_session_client(
+                        ks_session)
+                    ks_client.users.list()
+                except keystoneauth1.exceptions.http.Forbidden:
+                    raise zaza_exceptions.KeystoneAuthorizationStrict(
+                        'Keystone auth with old password FAILED.')
+
+        # run the action to rotate the password
+        zaza.model.run_action_on_leader(
+            self.application_name,
+            'rotate-admin-password',
+        )
+
+        # test access using the new password
+        with self.v3_keystone_preferred():
+            for ip in self.keystone_ips:
+                try:
+                    ks_session = openstack_utils.get_keystone_session(
+                        openstack_utils.get_overcloud_auth(address=ip))
+                    ks_client = openstack_utils.get_keystone_session_client(
+                        ks_session)
+                    ks_client.users.list()
+                except keystoneauth1.exceptions.http.Forbidden:
+                    raise zaza_exceptions.KeystoneAuthorizationStrict(
+                        'Keystone auth with new password FAILED.')
+
+        # make sure the password was actually changed
+        new_passwd = juju_utils.leader_get(self.application_name, ADMIN_PASSWD)
+        assert old_passwd != new_passwd
+
 
 class AuthenticationAuthorizationTest(BaseKeystoneTest):
     """Keystone authentication and authorization tests."""
