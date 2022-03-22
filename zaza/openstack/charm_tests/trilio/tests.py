@@ -158,49 +158,7 @@ class WorkloadmgrCLIHelper(object):
         self.trilio_wlm_unit = zaza_model.get_first_unit_name(
             "trilio-wlm"
         )
-        self.auth_args = self._auth_arguments(keystone_client)
-
-    @classmethod
-    def _auth_arguments(cls, keystone_client):
-        """Generate workloadmgrcli arguments for cloud authentication.
-
-        :returns: string of required cli arguments for authentication
-        :rtype: str
-        """
-        overcloud_auth = openstack_utils.get_overcloud_auth()
-        overcloud_auth.update(
-            {
-                "OS_DOMAIN_ID": openstack_utils.get_domain_id(
-                    keystone_client, domain_name="admin_domain"
-                ),
-                "OS_TENANT_ID": openstack_utils.get_project_id(
-                    keystone_client,
-                    project_name="admin",
-                    domain_name="admin_domain",
-                ),
-                "OS_TENANT_NAME": "admin",
-            }
-        )
-
-        _required_keys = [
-            "OS_AUTH_URL",
-            "OS_USERNAME",
-            "OS_PASSWORD",
-            "OS_REGION_NAME",
-            "OS_DOMAIN_ID",
-            "OS_TENANT_ID",
-            "OS_TENANT_NAME",
-        ]
-
-        params = []
-        for os_key in _required_keys:
-            params.append(
-                "--{}={}".format(
-                    os_key.lower().replace("_", "-"),
-                    overcloud_auth[os_key],
-                )
-            )
-        return " ".join(params)
+        self.auth_args = openstack_utils.get_cli_auth_args(keystone_client)
 
     def create_workload(self, instance_id):
         """Create a new workload.

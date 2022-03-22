@@ -18,15 +18,22 @@
 
 import json
 import logging
+import os
+import tempfile
 import unittest
+import urllib
 from configparser import ConfigParser
 from time import sleep
+
+import novaclient.exceptions
 
 import zaza.model
 import zaza.openstack.charm_tests.glance.setup as glance_setup
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.configure.guest
+import zaza.openstack.utilities.generic as generic_utils
 import zaza.openstack.utilities.openstack as openstack_utils
+from zaza.utilities import juju as juju_utils
 
 
 class BaseGuestCreateTest(unittest.TestCase):
@@ -432,6 +439,263 @@ class NovaComputeActionTest(test_utils.OpenStackBaseTest):
             if "failed" in action.data["status"]:
                 raise Exception(
                     "The action failed: {}".format(action.data["message"]))
+
+
+class NovaComputeNvidiaVgpuTest(test_utils.OpenStackBaseTest):
+    """Run nova-compute-nvidia-vgpu specific tests.
+
+    These tests should also turn green if the deployment under test doesn't
+    have GPU hardware.
+    """
+
+    def test_vgpu_in_nova_conf(self):
+        """Test that nova.conf contains vGPU-related settings.
+
+        This test assumes that nova-compute-nvidia-vgpu's config option
+        vgpu-device-mappings has been set to something not empty like
+        "{'nvidia-108': ['0000:c1:00.0']}".
+        """
+        for unit in zaza.model.get_units('nova-compute',
+                                         model_name=self.model_name):
+            nova_conf_file = '/etc/nova/nova.conf'
+            nova_conf = str(generic_utils.get_file_contents(unit,
+                                                            nova_conf_file))
+
+            # See
+            # https://docs.openstack.org/nova/queens/admin/virtual-gpu.html
+            # https://docs.openstack.org/nova/ussuri/admin/virtual-gpu.html
+            # https://docs.openstack.org/releasenotes/nova/xena.html#deprecation-notes
+            self.assertTrue(('enabled_vgpu_types' in nova_conf) or
+                            ('enabled_mdev_types' in nova_conf))
+
+
+class NovaComputeNvidiaVgpuWithHardwareTest(test_utils.OpenStackBaseTest):
+    """Run nova-compute-nvidia-vgpu specific tests.
+
+    These tests require real GPU hardware.
+    """
+
+    def setUp(self):
+        """Declare variables that will be used both in tests and tearDown."""
+        self.RESOURCE_PREFIX = 'zaza-nova'
+        self.keystone_client = openstack_utils.get_keystone_session_client(
+            self.keystone_session)
+        self.trait_name = 'CUSTOM_ZAZA_VGPU'
+        self.flavor_id = 42
+
+    def tearDown(self):
+        """Cleanup all created resources."""
+        self.resource_cleanup()  # cleans up the create guests
+        self._cleanup_vgpu_flavor()
+        self._cleanup_vgpu_trait()
+
+    def test_guest_using_vgpu(self):
+        """Test the creation of a guest with a vGPU.
+
+        This test assumes that nova-compute-nvidia-vgpu's config option
+        vgpu-device-mappings has been set to something not empty like
+        "{'nvidia-108': ['0000:c1:00.0']}".
+
+        This test requires OpenStack Stein or newer.
+
+        This test performs the following steps:
+        1.  Download the proprietary NVIDIA software.
+        2.  Attach it to the nova-compute-nvidia-vgpu charm as a resource.
+        3.  Reboot the compute nodes.
+        4.  List the available vGPU types.
+        5.  Select a vGPU type via juju config option on the charm.
+        6.  Check the amount of used vGPUs.
+        7.  Create a vGPU trait.
+        8.  Create a flavor with this trait.
+        9.  Create a guest with this flavor.
+        10. Check the amount of used vGPUs.
+        """
+        package_local_path = self._download_nvidia_package()
+
+        self._attach_nvidia_package_as_resource(package_local_path)
+        self._reboot_vgpu_units()
+
+        wanted_vgpu_type = 'nvidia-108'
+        wanted_gpu_address = '0000:c1:00.0'
+        self._assert_vgpu_type_available(wanted_vgpu_type, wanted_gpu_address)
+
+        logging.info('Selecting vGPU type {} on GPU {} ...'.format(
+            wanted_vgpu_type, wanted_gpu_address))
+        alternate_config = {
+            "vgpu-device-mappings": ("{'" + wanted_vgpu_type + "': ['" +
+                                     wanted_gpu_address + "']}")
+        }
+        with self.config_change({}, alternate_config, self.application_name,
+                                reset_to_charm_default=True):
+            self._install_openstack_cli_on_vgpu_units()
+
+            resource_provider_id = self._get_vgpu_resource_provider_id(
+                wanted_gpu_address)
+            num_vgpu_used_before = self._get_num_vgpu_used(
+                resource_provider_id)
+
+            self._create_vgpu_trait(resource_provider_id)
+            flavor_name = 'm1.small.vgpu'
+            self._create_vgpu_flavor(flavor_name)
+            self._assign_vgpu_trait_to_flavor(flavor_name)
+
+            self.launch_guest(
+                'vgpu', instance_key=glance_setup.LTS_IMAGE_NAME,
+                flavor_name=flavor_name)
+
+            num_vgpu_used_after = self._get_num_vgpu_used(resource_provider_id)
+            self.assertEqual(num_vgpu_used_after, num_vgpu_used_before + 1)
+
+    def _download_nvidia_package(self):
+        package_cache_dir = tempfile.gettempdir()
+        package_url = os.environ['TEST_NVIDIA_VGPU_HOST_SW']
+        package_name = os.path.basename(urllib.parse.urlparse(
+            package_url).path)
+        package_local_path = os.path.join(package_cache_dir, package_name)
+        if not os.path.exists(package_local_path):
+            logging.info('Downloading {} to {} ...'.format(
+                package_url, package_local_path))
+            openstack_utils.download_image(package_url, package_local_path)
+        else:
+            logging.info(
+                'Cached package found at {} - Skipping download'.format(
+                    package_local_path))
+        return package_local_path
+
+    def _get_vgpu_unit_names(self):
+        vgpu_unit_names = [unit.name for unit in
+                           zaza.model.get_units(self.application_name)]
+        self.assertGreater(len(vgpu_unit_names), 0, 'No vGPU unit found')
+        return vgpu_unit_names
+
+    def _attach_nvidia_package_as_resource(self, package_local_path):
+        logging.info('Attaching {} as a resource...'.format(
+            package_local_path))
+        zaza.model.attach_resource(self.application_name,
+                                   'nvidia-vgpu-software',
+                                   package_local_path)
+        for vgpu_unit_name in self._get_vgpu_unit_names():
+            zaza.model.block_until_unit_wl_message_match(
+                vgpu_unit_name, '.*installed NVIDIA software.*')
+        zaza.model.block_until_all_units_idle()
+
+    def _reboot_vgpu_units(self):
+        vgpu_unit_names = self._get_vgpu_unit_names()
+        for vgpu_unit_name in vgpu_unit_names:
+            logging.info('Rebooting {} ...'.format(vgpu_unit_name))
+            generic_utils.reboot(vgpu_unit_name)
+            zaza.model.block_until_unit_wl_status(vgpu_unit_name, "unknown")
+        for vgpu_unit_name in vgpu_unit_names:
+            zaza.model.block_until_unit_wl_status(vgpu_unit_name, "active")
+        zaza.model.block_until_all_units_idle()
+
+    def _assert_vgpu_type_available(self, wanted_vgpu_type,
+                                    wanted_gpu_address):
+        logging.info(
+            'Checking that the vGPU type {} is available on GPU {} ...'.format(
+                wanted_vgpu_type, wanted_gpu_address))
+        available_vgpu_types = zaza.model.run_action_on_leader(
+            self.application_name, 'list-vgpu-types',
+            raise_on_failure=True).results['output']
+        self.assertIn('{}, {}'.format(wanted_vgpu_type, wanted_gpu_address),
+                      available_vgpu_types)
+
+    def _install_openstack_cli_on_vgpu_units(self):
+        command = 'snap install openstackclients'
+        for vgpu_unit_name in self._get_vgpu_unit_names():
+            juju_utils.remote_run(vgpu_unit_name, remote_cmd=command,
+                                  timeout=180, fatal=True)
+
+    def _get_vgpu_resource_provider_id(self, wanted_gpu_address):
+        logging.info('Querying resource providers...')
+        command = (
+            'openstack {} resource provider list -f value -c uuid -c name')
+        command = command.format(openstack_utils.get_cli_auth_args(
+            self.keystone_client))
+        resource_providers = juju_utils.remote_run(
+            self._get_vgpu_unit_names()[0], remote_cmd=command, timeout=180,
+            fatal=True).strip().split('\n')
+
+        # At this point resource_providers should look like
+        # ['0e1379b8-7bd1-40e6-9f41-93cb5b95e38b node-sparky.maas',
+        #  '1bb845a4-cf21-44c2-896e-e877760ad39b \
+        #   node-sparky.maas_pci_0000_c1_00_0']
+        resource_provider_id = None
+        wanted_resource_provider_substring = 'pci_{}'.format(
+            wanted_gpu_address.replace(':', '_').replace('.', '_'))
+        for resource_provider in resource_providers:
+            if wanted_resource_provider_substring in resource_provider:
+                resource_provider_id = resource_provider.split()[0]
+        self.assertIsNotNone(resource_provider_id)
+        return resource_provider_id
+
+    def _get_num_vgpu_used(self, resource_provider_id):
+        logging.info('Querying resource provider inventory...')
+        command = (
+            'openstack {} resource provider inventory list {} '
+            '-f value -c used')
+        command = command.format(openstack_utils.get_cli_auth_args(
+            self.keystone_client), resource_provider_id)
+        num_vgpu_used = juju_utils.remote_run(
+            self._get_vgpu_unit_names()[0], remote_cmd=command, timeout=180,
+            fatal=True).strip()
+        return int(num_vgpu_used)
+
+    def _create_vgpu_trait(self, resource_provider_id):
+        logging.info('Creating trait {}...'.format(self.trait_name))
+        command = (
+            'openstack {} --os-placement-api-version 1.6 trait create {}')
+        command = command.format(openstack_utils.get_cli_auth_args(
+            self.keystone_client), self.trait_name)
+        first_unit_name = self._get_vgpu_unit_names()[0]
+        juju_utils.remote_run(first_unit_name, remote_cmd=command, timeout=180,
+                              fatal=True)
+        command = (
+            'openstack {} --os-placement-api-version 1.6 resource provider '
+            'trait set --trait {} {}')
+        command = command.format(openstack_utils.get_cli_auth_args(
+            self.keystone_client), self.trait_name, resource_provider_id)
+        juju_utils.remote_run(first_unit_name, remote_cmd=command, timeout=180,
+                              fatal=True)
+
+    def _cleanup_vgpu_trait(self):
+        logging.info('Cleaning up trait {}...'.format(self.trait_name))
+        command = (
+            'openstack {} --os-placement-api-version 1.6 trait delete {}')
+        command = command.format(openstack_utils.get_cli_auth_args(
+            self.keystone_client), self.trait_name)
+        juju_utils.remote_run(
+            self._get_vgpu_unit_names()[0], remote_cmd=command, timeout=180,
+            fatal=False)
+
+    def _create_vgpu_flavor(self, flavor_name):
+        logging.info('Creating flavor {}...'.format(flavor_name))
+        nova_client = openstack_utils.get_nova_session_client(
+            self.keystone_session)
+        nova_client.flavors.create(name=flavor_name, ram=2048, vcpus=1,
+                                   disk=20, flavorid=self.flavor_id)
+
+    def _cleanup_vgpu_flavor(self):
+        logging.info('Cleaning up created flavor...')
+        nova_client = openstack_utils.get_nova_session_client(
+            self.keystone_session)
+        try:
+            flavor = nova_client.flavors.get(self.flavor_id)
+        except novaclient.exceptions.NotFound:
+            return
+        nova_client.flavors.delete(flavor)
+
+    def _assign_vgpu_trait_to_flavor(self, flavor_name):
+        logging.info('Assigning trait {} to flavor {} ...'.format(
+            self.trait_name, flavor_name))
+        command = (
+            'openstack {} flavor set {} --property resources:VGPU=1 '
+            '--property trait:{}=required')
+        command = command.format(openstack_utils.get_cli_auth_args(
+            self.keystone_client), flavor_name, self.trait_name)
+        juju_utils.remote_run(
+            self._get_vgpu_unit_names()[0], remote_cmd=command, timeout=180,
+            fatal=True)
 
 
 class NovaCloudControllerActionTest(test_utils.OpenStackBaseTest):

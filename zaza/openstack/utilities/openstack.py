@@ -3131,3 +3131,45 @@ def get_keystone_session_from_relation(client_app,
         creds['OS_PROJECT_DOMAIN_NAME'] = relation['service_domain']
 
     return get_keystone_session(creds, scope=scope, verify=verify)
+
+
+def get_cli_auth_args(keystone_client):
+    """Generate openstack CLI arguments for cloud authentication.
+
+    :returns: string of required cli arguments for authentication
+    :rtype: str
+    """
+    overcloud_auth = get_overcloud_auth()
+    overcloud_auth.update(
+        {
+            "OS_DOMAIN_ID": get_domain_id(
+                keystone_client, domain_name="admin_domain"
+            ),
+            "OS_TENANT_ID": get_project_id(
+                keystone_client,
+                project_name="admin",
+                domain_name="admin_domain",
+            ),
+            "OS_TENANT_NAME": "admin",
+        }
+    )
+
+    _required_keys = [
+        "OS_AUTH_URL",
+        "OS_USERNAME",
+        "OS_PASSWORD",
+        "OS_REGION_NAME",
+        "OS_DOMAIN_ID",
+        "OS_TENANT_ID",
+        "OS_TENANT_NAME",
+    ]
+
+    params = []
+    for os_key in _required_keys:
+        params.append(
+            "--{}={}".format(
+                os_key.lower().replace("_", "-"),
+                overcloud_auth[os_key],
+            )
+        )
+    return " ".join(params)
