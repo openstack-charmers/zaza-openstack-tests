@@ -568,6 +568,13 @@ class CephTest(test_utils.OpenStackBaseTest):
             zaza_utils.assertActionRanOK(action_obj)
         self.assertEqual(len(osds) * 2, self.get_num_osds(mon))
 
+    def test_action_list_crush_rules(self):
+        """Test the list-crush-rules action."""
+        action_obj = zaza_model.run_action("ceph-mon/0", "list-crush-rules")
+        self.assertEqual("completed", action_obj.status)
+        message = action_obj.data.get("results", {}).get("message")
+        self.assertEqual(message, "(0, replicated_rule)")
+
 
 class CephRGWTest(test_utils.OpenStackBaseTest):
     """Ceph RADOS Gateway Daemons Test Class."""
