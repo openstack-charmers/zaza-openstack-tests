@@ -49,6 +49,16 @@ class CinderBackendTest(test_utils.OpenStackBaseTest):
             self.expected_config_content,
             timeout=2)
 
+    def check_volume_host(self, volume):
+        """Validate the volume id from the expected backend.
+
+        :param volume: Volume to check
+        :type volume: cinderclient.v3.volumes.Volume
+        """
+        self.assertEqual(
+            getattr(volume, 'os-vol-host-attr:host').split('#')[0],
+            'cinder@{}'.format(self.backend_name))
+
     def test_create_volume(self):
         """Test creating a volume with basic configuration."""
         test_vol_name = "zaza{}".format(uuid.uuid1().fields[0])
@@ -64,8 +74,6 @@ class CinderBackendTest(test_utils.OpenStackBaseTest):
                 expected_status='available',
                 msg='Volume status wait')
             test_vol = self.cinder_client.volumes.find(name=test_vol_name)
-            self.assertEqual(
-                getattr(test_vol, 'os-vol-host-attr:host').split('#')[0],
-                'cinder@{}'.format(self.backend_name))
+            self.check_volume_host(test_vol)
         finally:
             self.cinder_client.volumes.delete(vol_new)
