@@ -37,11 +37,15 @@ class CinderNetAppTest(test_utils.OpenStackBaseTest):
 
     def test_cinder_config(self):
         """Test that configuration options match our expectations."""
+        configs = zaza.model.get_application_config("cinder-netapp")
+        family = configs['netapp-storage-family']['value']
+        protocol = configs['netapp-storage-protocol']['value']
+        backend_name = configs['volume-backend-name']['value']
         expected_contents = {
             'cinder-netapp': {
-                'netapp_storage_family': ['ontap_cluster'],
-                'netapp_storage_protocol': ['iscsi'],
-                'volume_backend_name': ['cinder_netapp'],
+                'netapp_storage_family': [family],
+                'netapp_storage_protocol': [protocol],
+                'volume_backend_name': [backend_name],
                 'volume_driver':
                 ['cinder.volume.drivers.netapp.common.NetAppDriver'],
             }}
@@ -54,6 +58,16 @@ class CinderNetAppTest(test_utils.OpenStackBaseTest):
             '/tmp/cinder.conf',
             expected_contents,
             timeout=2)
+
+    def check_volume_host(self, volume):
+        """Validate the volume id from the expected backend.
+
+        :param volume: Volume to check
+        :type volume: cinderclient.v3.volumes.Volume
+        """
+        self.assertEqual(
+            getattr(volume, 'os-vol-host-attr:host').split('#')[0],
+            'cinder@{}'.format(self.backend_name))
 
     def test_create_volume(self):
         """Test creating a volume with basic configuration."""
@@ -70,8 +84,6 @@ class CinderNetAppTest(test_utils.OpenStackBaseTest):
                 expected_status='available',
                 msg='Volume status wait')
             test_vol = self.cinder_client.volumes.find(name=test_vol_name)
-            self.assertEqual(
-                getattr(test_vol, 'os-vol-host-attr:host').split('#')[0],
-                'cinder@cinder-netapp')
+            self.check_volume_host(test_vol)
         finally:
             self.cinder_client.volumes.delete(vol_new)
