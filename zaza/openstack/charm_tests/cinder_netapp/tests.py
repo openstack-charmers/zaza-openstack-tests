@@ -65,9 +65,10 @@ class CinderNetAppTest(test_utils.OpenStackBaseTest):
         :param volume: Volume to check
         :type volume: cinderclient.v3.volumes.Volume
         """
+        host = getattr(volume, 'os-vol-host-attr:host')
         self.assertEqual(
-            getattr(volume, 'os-vol-host-attr:host').split('#')[0],
-            'cinder@{}'.format(self.backend_name))
+            host.split('#')[0].split('@')[1],
+            'cinder-netapp')
 
     def test_create_volume(self):
         """Test creating a volume with basic configuration."""
