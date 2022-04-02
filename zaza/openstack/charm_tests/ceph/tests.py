@@ -545,6 +545,13 @@ class CephTest(test_utils.OpenStackBaseTest):
         )
         logging.debug('OK')
 
+    def get_local_osd_id(self, unit):
+        """Get the OSD id for a unit."""
+        ret = zaza_model.run_on_unit(unit,
+                                     'ceph-volume lvm list --format=json')
+        local = list(json.loads(ret['Stdout']))[-1]
+        return local if local.startswith('osd.') else 'osd.' + local
+
     def get_num_osds(self, osd):
         """Compute the number of active OSD's."""
         result = zaza_model.run_on_unit(osd, 'ceph osd stat --format=json')
@@ -552,20 +559,51 @@ class CephTest(test_utils.OpenStackBaseTest):
         return int(result['num_osds'])
 
     def test_cache_device(self):
-        """Test adding a new disk with a caching device."""
+        """Test replacing a disk in use."""
         logging.info('Running add-disk action with a caching device')
         mon = next(iter(zaza_model.get_units('ceph-mon'))).entity_id
         osds = [x.entity_id for x in zaza_model.get_units('ceph-osd')]
+        params = []
         for unit in osds:
             zaza_model.add_storage(unit, 'cache-devices', 'cinder', 10)
-            loop_dev = zaza_utils.add_loop_device(unit, 10)
+            loop_dev = zaza_utils.add_loop_device(unit, 10).get('Stdout')
+            params.append({'unit': unit, 'device': loop_dev})
             action_obj = zaza_model.run_action(
                 unit_name=unit,
                 action_name='add-disk',
-                action_params={'osd-devices': loop_dev.get('Stdout'),
+                action_params={'osd-devices': loop_dev,
                                'partition-size': 5}
             )
             zaza_utils.assertActionRanOK(action_obj)
+        zaza_model.wait_for_application_states()
+
+        logging.info('Removing previously added disks')
+        for param in params:
+            osd_id = self.get_local_osd_id(param['unit'])
+            param.update({'osd-id': osd_id})
+            action_obj = zaza_model.run_action(
+                unit_name=param['unit'],
+                action_name='remove-disk',
+                action_params={'osd-ids': osd_id, 'timeout': 5,
+                               'format': 'json', 'purge': False}
+            )
+            zaza_utils.assertActionRanOK(action_obj)
+            results = json.loads(action_obj.data['results']['message'])
+            results = results[next(iter(results))]
+            self.assertEqual(results['osd-ids'], osd_id)
+        zaza_model.wait_for_application_states()
+
+        logging.info('Recycling previously removed OSDs')
+        for param in params:
+            action_obj = zaza_model.run_action(
+                unit_name=param['unit'],
+                action_name='add-disk',
+                action_params={'osd-devices': param['device'],
+                               'osd-ids': param['osd-id'],
+                               'partition-size': 4}
+            )
+            zaza_utils.assertActionRanOK(action_obj)
+        zaza_model.wait_for_application_states()
         self.assertEqual(len(osds) * 2, self.get_num_osds(mon))
 
 
