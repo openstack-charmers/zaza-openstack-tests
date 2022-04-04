@@ -29,9 +29,11 @@ import novaclient.exceptions
 
 import zaza.model
 import zaza.openstack.charm_tests.glance.setup as glance_setup
+import zaza.openstack.charm_tests.neutron.tests as neutron_tests
+import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
-import zaza.openstack.configure.guest
 import zaza.openstack.utilities.generic as generic_utils
+import zaza.openstack.configure.guest as guest
 import zaza.openstack.utilities.openstack as openstack_utils
 from zaza.utilities import juju as juju_utils
 
@@ -44,7 +46,7 @@ class BaseGuestCreateTest(unittest.TestCase):
         logging.info('BaseGuestCreateTest.launch_instance is deprecated '
                      'please use '
                      'zaza.openstack.configure.guest.launch_instance')
-        zaza.openstack.configure.guest.launch_instance(instance_key)
+        guest.launch_instance(instance_key)
 
 
 class CirrosGuestCreateTest(test_utils.OpenStackBaseTest):
@@ -84,6 +86,67 @@ class LTSGuestCreateVolumeBackedTest(test_utils.OpenStackBaseTest):
         self.launch_guest(
             'volume-backed-ubuntu', instance_key=glance_setup.LTS_IMAGE_NAME,
             use_boot_volume=True)
+
+    def tearDown(self):
+        """Cleanup of VM guests."""
+        self.resource_cleanup()
+
+
+class VTPMGuestCreateTest(test_utils.OpenStackBaseTest):
+    """Tests launching a guest with vTPM Support.
+
+    These tests are only run for focal-wallaby and newer.
+    Base version in Wallaby is 23.0.0.
+    """
+
+    def _check_tpm_device(self, instance, *devices):
+        """Check that the instance has TPM devices available.
+
+        :param instance: the instance to determine if TPM devices are available
+        :type instance: nova_client.Server instance
+        :param devices: the devices to look for that are present in the guest
+        :type devices: list of strings
+        :return: True if the instance has TPM devices, False otherwise
+        :rtype: bool
+        """
+        fip = neutron_tests.floating_ips_from_instance(instance)[0]
+        username = guest.boot_tests['focal']['username']
+        password = guest.boot_tests['focal'].get('password')
+        privkey = openstack_utils.get_private_key(nova_utils.KEYPAIR_NAME)
+
+        def check_tpm(stdin, stdout, stderr):
+            devs = [line.strip() for line in stdout.readlines()]
+            for expected in devices:
+                self.assertIn(expected, devs)
+
+        logging.info('Validating TPM devices are present')
+        openstack_utils.ssh_command(username, ip=fip, vm_name=instance.name,
+                                    command='sudo ls -1 /dev/tpm*',
+                                    password=password, privkey=privkey,
+                                    verify=check_tpm)
+
+    @test_utils.skipUntilVersion('nova-compute', 'nova-common', '3:23.0.0')
+    def test_launch_vtpm_1_2_instance(self):
+        """Launch an instance using TPM 1.2."""
+        self.RESOURCE_PREFIX = 'zaza-nova'
+        instance = guest.launch_instance(
+            'focal', image_name='focal', flavor_name='vtpm-1.2',
+            vm_name='zaza-nova-vtpm-1-2',
+        )
+        # Note: TPM 1.2 presents tpm0 as a device
+        self._check_tpm_device(instance, '/dev/tpm0')
+
+    @test_utils.skipUntilVersion('nova-compute', 'nova-common', '3:23.0.0')
+    def test_launch_vtpm_2_instance(self):
+        """Launch an instance using TPM 2.0."""
+        self.RESOURCE_PREFIX = 'zaza-nova'
+        instance = guest.launch_instance(
+            'focal', image_name='focal', flavor_name='vtpm-2',
+            vm_name='zaza-nova-vtpm-2',
+        )
+        # Note: TPM 1.2 and 2.0 both present tpm0 as a device. TPM 2.0
+        # devices also include a tpmrm0 device.
+        self._check_tpm_device(instance, '/dev/tpm0', '/dev/tpmrm0')
 
     def tearDown(self):
         """Cleanup of VM guests."""

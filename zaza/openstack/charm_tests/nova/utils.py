@@ -45,5 +45,25 @@ FLAVORS = {
         'ram': 512,
         'disk': 1,
         'vcpus': 1},
+    'vtpm-1.2': {
+        'flavorid': 'auto',
+        'ram': 512,
+        'disk': 5,
+        'vcpus': 1,
+        'extra-specs': {
+            'hw:tpm_version': '1.2',
+            'hw:tpm_model': 'tpm-tis',
+        },
+    },
+    'vtpm-2': {
+        'flavorid': 'auto',
+        'ram': 512,
+        'disk': 5,
+        'vcpus': 1,
+        'extra-specs': {
+            'hw:tpm_version': '2.0',
+            'hw:tpm_model': 'tpm-crb',
+        },
+    },
 }
 KEYPAIR_NAME = 'zaza'
