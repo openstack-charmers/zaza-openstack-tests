@@ -226,8 +226,9 @@ class CephDashboardTest(test_utils.BaseCharmTest):
 
     def test_saml(self):
         """Check that the dashboard is accessible with SAML enabled."""
-        if (openstack_utils.get_os_release() <
-                openstack_utils.get_os_release('focal_yoga')):
+        get_os_release = openstack_utils.get_os_release
+        if (get_os_release(application='vault') <
+                get_os_release('focal_yoga', application='vault')):
             return
 
         url = self.get_master_dashboard_url()
