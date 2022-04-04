@@ -18,12 +18,24 @@ import collections
 import json
 import logging
 import requests
+import tempfile
 import tenacity
 import uuid
 
 import zaza
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
+
+
+SAML_IDP_METADATA = '''
+<ds:KeyInfo xmlns:ds="http://www.w3.org/2000/09/xmldsig#">
+    <ds:X509Data>
+        <ds:X509Certificate>
+            {}
+        </ds:X509Certificate>
+    </ds:X509Data>
+</ds:KeyInfo>
+'''
 
 
 class CephDashboardTest(test_utils.BaseCharmTest):
@@ -211,3 +223,23 @@ class CephDashboardTest(test_utils.BaseCharmTest):
                 'ceph-dashboard',
                 'ceph config-key exists {}'.format(key))
             self.assertEqual(check_out['Code'], '0')
+
+    def test_saml(self):
+        """Check that the dashboard is accessible with SAML enabled."""
+        if (openstack_utils.get_os_release() <
+                openstack_utils.get_os_release('focal_yoga')):
+            return
+
+        url = self.get_master_dashboard_url()
+        with tempfile.NamedTemporaryFile(mode='w') as tmp, \
+                open(self.local_ca_cert) as cert:
+            tmp.write(SAML_IDP_METADATA.format(cert.read()))
+            tmp.flush()
+            zaza.model.set_application_config(
+                'ceph-dashboard',
+                {
+                    'saml-base-url': url,
+                    'saml-idp-metadata': 'file://{}'.format(tmp.name),
+                }
+            )
+            self.access_dashboard(url)
