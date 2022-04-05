@@ -243,4 +243,11 @@ class CephDashboardTest(test_utils.BaseCharmTest):
                     'saml-idp-metadata': 'file://{}'.format(tmp.name),
                 }
             )
-            self.access_dashboard(url)
+
+            # Login must be redirected.
+            resp = requests.get(url + '/auth/saml2/login')
+            self.assertTrue(resp.is_redirect)
+
+            # Check that metadata is present.
+            resp = requests.get(url + '/auth/saml2/metadata')
+            self.assertEqual(resp.status_code, requests.code.ok)
