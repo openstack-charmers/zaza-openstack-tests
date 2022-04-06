@@ -345,6 +345,20 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             openstack_utils.get_images_by_name(glance_client, 'frank'),
             [])
 
+    def test_get_volumes_by_name(self):
+        volume_mock1 = mock.MagicMock()
+        volume_mock1.name = 'bob'
+        volume_mock2 = mock.MagicMock()
+        volume_mock2.name = 'bill'
+        cinder_client = mock.MagicMock()
+        cinder_client.volumes.list.return_value = [volume_mock1, volume_mock2]
+        self.assertEqual(
+            openstack_utils.get_volumes_by_name(cinder_client, 'bob'),
+            [volume_mock1])
+        self.assertEqual(
+            openstack_utils.get_volumes_by_name(cinder_client, 'frank'),
+            [])
+
     def test_find_cirros_image(self):
         urllib_opener_mock = mock.MagicMock()
         self.patch_object(openstack_utils, "get_urllib_opener")
