@@ -45,7 +45,7 @@ class MagpieTest(test_utils.BaseCharmTest):
             './hooks/update-status')
         zaza.model.block_until_unit_wl_message_match(
             self.test_unit_0,
-            '.*rev dns failed.*')
+            '.*dns failed.*')
         logging.info('Restoring /etc/resolv.conf')
         zaza.model.run_on_unit(
             self.test_unit_0,
