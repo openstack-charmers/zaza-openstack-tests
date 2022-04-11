@@ -43,7 +43,12 @@ def get_product_streams(url):
     # metadata being written. Use tenacity to avoid this race.
     client = requests.session()
     json_data = client.get(url, verify=openstack_utils.get_cacert()).text
-    return json.loads(json_data)
+    try:
+        return json.loads(json_data)
+    except Exception as e:
+        logging.error("Couldn't decode json, reason: %s, response text to "
+                      "decode:\n%s", str(e), json_data)
+        raise
 
 
 class GlanceSimpleStreamsSyncTest(test_utils.OpenStackBaseTest):
@@ -112,7 +117,13 @@ class GlanceSimpleStreamsSyncTest(test_utils.OpenStackBaseTest):
             ps_interface = self.keystone_client.service_catalog.url_for(
                 service_type='product-streams', interface='publicURL'
             )
-            url = "{}/{}".format(ps_interface, uri)
+            # the product-streams url registered seems to have added a '/' -
+            # for the test, ensure that the URL is formatted correctly with
+            # only 1 slash between the ps_interface URL and the uri
+            if ps_interface.endswith("/"):
+                url = "{}{}".format(ps_interface, uri)
+            else:
+                url = "{}/{}".format(ps_interface, uri)
             logging.info('Retrieving product stream information'
                          ' from {}'.format(url))
             product_streams = get_product_streams(url)
