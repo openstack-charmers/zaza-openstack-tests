@@ -186,6 +186,11 @@ class CephTest(test_utils.OpenStackBaseTest):
     def setUpClass(cls):
         """Run the ceph's common class setup."""
         super(CephTest, cls).setUpClass()
+        cls.loop_devs = {}   # Maps osd -> loop device
+        for osd in (x.entity_id for x in zaza_model.get_units('ceph-osd')):
+            zaza_model.add_storage(osd, 'cache-devices', 'cinder', 10)
+            loop_dev = zaza_utils.add_loop_device(osd, 10).get('Stdout')
+            cls.loop_devs[osd] = loop_dev
 
     def osd_out_in(self, services):
         """Run OSD out and OSD in tests.
@@ -565,8 +570,7 @@ class CephTest(test_utils.OpenStackBaseTest):
         osds = [x.entity_id for x in zaza_model.get_units('ceph-osd')]
         params = []
         for unit in osds:
-            zaza_model.add_storage(unit, 'cache-devices', 'cinder', 10)
-            loop_dev = zaza_utils.add_loop_device(unit, 10).get('Stdout')
+            loop_dev = self.loop_devs[unit]
             params.append({'unit': unit, 'device': loop_dev})
             action_obj = zaza_model.run_action(
                 unit_name=unit,
