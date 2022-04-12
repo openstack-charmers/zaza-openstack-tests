@@ -595,6 +595,7 @@ class CephTest(test_utils.OpenStackBaseTest):
             results = json.loads(action_obj.data['results']['message'])
             results = results[next(iter(results))]
             self.assertEqual(results['osd-ids'], osd_id)
+            zaza_model.run_on_unit(param['unit'], 'partprobe')
         zaza_model.wait_for_application_states()
 
         logging.info('Recycling previously removed OSDs')
