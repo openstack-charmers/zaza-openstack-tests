@@ -140,7 +140,8 @@ def setup_sdn(network_config, keystone_session=None):
         network_config["default_gateway"],
         network_config["external_net_cidr"],
         network_config["start_floating_ip"],
-        network_config["end_floating_ip"])
+        network_config["end_floating_ip"],
+        dhcp=True)
     provider_router = (
         openstack_utils.create_provider_router(neutron_client, project_id))
     openstack_utils.plug_extnet_into_router(

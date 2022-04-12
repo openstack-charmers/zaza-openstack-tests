@@ -28,6 +28,7 @@ from neutronclient.common import exceptions as neutronexceptions
 
 import yaml
 import zaza
+import zaza.openstack.charm_tests.neutron.setup as neutron_setup
 import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.configure.guest as guest
@@ -806,6 +807,11 @@ class NeutronOvsVsctlTest(NeutronPluginApiSharedTests):
                 self.assertEqual(actual_external_id, expected_external_id)
 
 
+def router_address_from_subnet(subnet):
+    """Retrieve router address from subnet."""
+    return subnet['gateway_ip']
+
+
 class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
     """Base for checking openstack instances have valid networking."""
 
@@ -856,8 +862,10 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
         :param mtu: Check that we can send non-fragmented packets of given size
         :type mtu: Optional[int]
         """
-        floating_1 = floating_ips_from_instance(instance_1)[0]
-        floating_2 = floating_ips_from_instance(instance_2)[0]
+        if not self.attach_to_external_network:
+            floating_1 = floating_ips_from_instance(instance_1)[0]
+            floating_2 = floating_ips_from_instance(instance_2)[0]
+        address_1 = fixed_ips_from_instance(instance_1)[0]
         address_2 = fixed_ips_from_instance(instance_2)[0]
 
         username = guest.boot_tests['bionic']['username']
@@ -875,26 +883,27 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
                 'ping -M do -s {} -c 1'.format(packetsize))
 
         for cmd in cmds:
-            openstack_utils.ssh_command(
-                username, floating_1, 'instance-1',
-                '{} {}'.format(cmd, address_2),
-                password=password, privkey=privkey, verify=verify)
+            if self.attach_to_external_network:
+                openstack_utils.ssh_command(
+                    username, address_1, 'instance-1',
+                    '{} {}'.format(cmd, address_2),
+                    password=password, privkey=privkey, verify=verify)
+            else:
+                openstack_utils.ssh_command(
+                    username, floating_1, 'instance-1',
+                    '{} {}'.format(cmd, address_2),
+                    password=password, privkey=privkey, verify=verify)
 
-            openstack_utils.ssh_command(
-                username, floating_1, 'instance-1',
-                '{} {}'.format(cmd, floating_2),
-                password=password, privkey=privkey, verify=verify)
+                openstack_utils.ssh_command(
+                    username, floating_1, 'instance-1',
+                    '{} {}'.format(cmd, floating_2),
+                    password=password, privkey=privkey, verify=verify)
 
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
                     reraise=True, stop=tenacity.stop_after_attempt(8))
     def validate_instance_can_reach_router(self, instance, verify, mtu=None):
         """
         Validate that an instance can reach it's primary gateway.
-
-        We make the assumption that the router's IP is 192.168.0.1
-        as that's the network that is setup in
-        neutron.setup.basic_overcloud_network which is used in all
-        Zaza Neutron validations.
 
         :param instance: The instance to check networking from
         :type instance: nova_client.Server
@@ -905,7 +914,12 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
         :param mtu: Check that we can send non-fragmented packets of given size
         :type mtu: Optional[int]
         """
-        address = floating_ips_from_instance(instance)[0]
+        if self.attach_to_external_network:
+            router = router_address_from_subnet(self.external_subnet)
+            address = fixed_ips_from_instance(instance)[0]
+        else:
+            router = router_address_from_subnet(self.project_subnet)
+            address = floating_ips_from_instance(instance)[0]
 
         username = guest.boot_tests['bionic']['username']
         password = guest.boot_tests['bionic'].get('password')
@@ -923,7 +937,7 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
 
         for cmd in cmds:
             openstack_utils.ssh_command(
-                username, address, 'instance', '{} 192.168.0.1'.format(cmd),
+                username, address, 'instance', '{} {}'.format(cmd, router),
                 password=password, privkey=privkey, verify=verify)
 
     @tenacity.retry(wait=tenacity.wait_exponential(min=5, max=60),
