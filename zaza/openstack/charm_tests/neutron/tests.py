@@ -128,7 +128,7 @@ class NeutronGatewayTest(NeutronPluginApiSharedTests):
         qos_enabled = zaza.model.get_application_config(
             'neutron-api')['enable-qos']['value']
 
-        if qos_enabled is True or qos_enabled.lowercase() == 'true':
+        if qos_enabled is True:
             logging.info('qos already enabled, not running enable-qos '
                          'test')
             return
