@@ -634,7 +634,8 @@ class OpenStackBaseTest(BaseCharmTest):
             pass
 
     def launch_guest(self, guest_name, userdata=None, use_boot_volume=False,
-                     instance_key=None, flavor_name=None):
+                     instance_key=None, flavor_name=None,
+                     attach_to_external_network=False):
         """Launch one guest to use in tests.
 
         Note that it is up to the caller to have set the RESOURCE_PREFIX class
@@ -651,6 +652,9 @@ class OpenStackBaseTest(BaseCharmTest):
         :type use_boot_volume: boolean
         :param instance_key: Key to collect associated config data with.
         :type instance_key: Optional[str]
+        :param attach_to_external_network: Attach instance directly to external
+                                           network.
+        :type attach_to_external_network: bool
         :returns: Nova instance objects
         :rtype: Server
         """
@@ -679,9 +683,10 @@ class OpenStackBaseTest(BaseCharmTest):
                     vm_name=instance_name,
                     use_boot_volume=use_boot_volume,
                     userdata=userdata,
-                    flavor_name=flavor_name)
+                    flavor_name=flavor_name,
+                    attach_to_external_network=attach_to_external_network)
 
-    def launch_guests(self, userdata=None):
+    def launch_guests(self, userdata=None, attach_to_external_network=False):
         """Launch two guests to use in tests.
 
         Note that it is up to the caller to have set the RESOURCE_PREFIX class
@@ -689,6 +694,9 @@ class OpenStackBaseTest(BaseCharmTest):
 
         :param userdata: Userdata to attach to instance
         :type userdata: Optional[str]
+        :param attach_to_external_network: Attach instance directly to external
+                                           network.
+        :type attach_to_external_network: bool
         :returns: List of launched Nova instance objects
         :rtype: List[Server]
         """
@@ -697,7 +705,8 @@ class OpenStackBaseTest(BaseCharmTest):
             launched_instances.append(
                 self.launch_guest(
                     guest_name='ins-{}'.format(guest_number),
-                    userdata=userdata))
+                    userdata=userdata,
+                    attach_to_external_network=attach_to_external_network))
         return launched_instances
 
     def retrieve_guest(self, guest_name):

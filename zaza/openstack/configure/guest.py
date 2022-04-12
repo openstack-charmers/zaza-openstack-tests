@@ -53,7 +53,7 @@ boot_tests = {
 def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
                     private_network_name=None, image_name=None,
                     flavor_name=None, external_network_name=None, meta=None,
-                    userdata=None):
+                    userdata=None, attach_to_external_network=False):
     """Launch an instance.
 
     :param instance_key: Key to collect associated config data with.
@@ -76,6 +76,9 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
     :type meta: dict
     :param userdata: Configuration to use upon launch, used by cloud-init.
     :type userdata: str
+    :param attach_to_external_network: Attach instance directly to external
+                                       network.
+    :type attach_to_external_network: bool
     :returns: the created instance
     :rtype: novaclient.Server
     """
@@ -94,11 +97,17 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
     flavor = nova_client.flavors.find(name=flavor_name)
 
     private_network_name = private_network_name or "private"
-    net = neutron_client.find_resource("network", private_network_name)
-    nics = [{'net-id': net.get('id')}]
 
     meta = meta or {}
     external_network_name = external_network_name or "ext_net"
+
+    if attach_to_external_network:
+        instance_network_name = external_network_name
+    else:
+        instance_network_name = private_network_name
+
+    net = neutron_client.find_resource("network", instance_network_name)
+    nics = [{'net-id': net.get('id')}]
 
     if use_boot_volume:
         bdmv2 = [{
@@ -143,12 +152,19 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
     port = openstack_utils.get_ports_from_device_id(
         neutron_client,
         instance.id)[0]
-    logging.info('Assigning floating ip.')
-    ip = openstack_utils.create_floating_ip(
-        neutron_client,
-        external_network_name,
-        port=port)['floating_ip_address']
-    logging.info('Assigned floating IP {} to {}'.format(ip, vm_name))
+    if attach_to_external_network:
+        logging.info('attach_to_external_network={}, not assigning floating IP'
+                     .format(attach_to_external_network))
+        ip = port['fixed_ips'][0]['ip_address']
+        logging.info('Using fixed IP {} on network {} for {}'
+                     .format(ip, instance_network_name, vm_name))
+    else:
+        logging.info('Assigning floating ip.')
+        ip = openstack_utils.create_floating_ip(
+            neutron_client,
+            external_network_name,
+            port=port)['floating_ip_address']
+        logging.info('Assigned floating IP {} to {}'.format(ip, vm_name))
     try:
         for attempt in Retrying(
                 stop=stop_after_attempt(8),
