@@ -1500,6 +1500,20 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.configure_networking_charms.assert_called_once_with(
             'fakenetworkingdata', expect, use_juju_wait=False)
 
+    def test_update_subnet_dhcp(self):
+        neutron_client = mock.MagicMock()
+        openstack_utils.update_subnet_dhcp(
+            neutron_client, {'id': 'aId'}, True)
+        neutron_client.update_subnet.assert_called_once_with(
+            'aId',
+            {'subnet': {'enable_dhcp': True}})
+        neutron_client.reset_mock()
+        openstack_utils.update_subnet_dhcp(
+            neutron_client, {'id': 'aId'}, False)
+        neutron_client.update_subnet.assert_called_once_with(
+            'aId',
+            {'subnet': {'enable_dhcp': False}})
+
 
 class TestAsyncOpenstackUtils(ut_utils.AioTestCase):
 
