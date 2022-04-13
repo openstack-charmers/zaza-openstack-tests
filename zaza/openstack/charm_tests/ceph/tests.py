@@ -188,7 +188,6 @@ class CephTest(test_utils.OpenStackBaseTest):
         super(CephTest, cls).setUpClass()
         cls.loop_devs = {}   # Maps osd -> loop device
         for osd in (x.entity_id for x in zaza_model.get_units('ceph-osd')):
-            zaza_model.add_storage(osd, 'cache-devices', 'cinder', 10)
             loop_dev = zaza_utils.add_loop_device(osd, 10).get('Stdout')
             cls.loop_devs[osd] = loop_dev
 
