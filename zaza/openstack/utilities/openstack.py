@@ -1332,6 +1332,24 @@ def update_subnet_dns(neutron_client, subnet, dns_servers):
     neutron_client.update_subnet(subnet['id'], msg)
 
 
+def update_subnet_dhcp(neutron_client, subnet, enable_dhcp):
+    """Update subnet DHCP status.
+
+    :param neutron_client: Authenticated neutronclient
+    :type neutron_client: neutronclient.Client object
+    :param subnet: Subnet object
+    :type subnet: dict
+    :param enable_dhcp: Whether DHCP should be enabled or not
+    :type enable_dhcp: bool
+    """
+    msg = {
+        'subnet': {
+            'enable_dhcp': enable_dhcp,
+        }
+    }
+    neutron_client.update_subnet(subnet['id'], msg)
+
+
 def create_provider_router(neutron_client, project_id):
     """Create the provider router.
 
