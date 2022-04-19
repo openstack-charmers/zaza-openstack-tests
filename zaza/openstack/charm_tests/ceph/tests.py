@@ -1089,4 +1089,3 @@ class BlueStoreCompressionCharmOperation(test_utils.BaseCharmTest):
                          'configuration')
             self.test_config[
                 'target_deploy_status'] = stored_target_deploy_status
-
