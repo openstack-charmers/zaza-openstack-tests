@@ -123,16 +123,22 @@ class NeutronGatewayTest(NeutronPluginApiSharedTests):
 
     def test_401_enable_qos(self):
         """Check qos settings set via neutron-api charm."""
-        if (self.current_os_release >=
-                openstack_utils.get_os_release('trusty_mitaka')):
-            logging.info('running qos check')
+        logging.info('running qos check')
 
-            with self.config_change(
-                    {'enable-qos': 'False'},
-                    {'enable-qos': 'True'},
-                    application_name="neutron-api"):
+        qos_enabled = zaza.model.get_application_config(
+            'neutron-api')['enable-qos']['value']
 
-                self._validate_openvswitch_agent_qos()
+        if qos_enabled is True:
+            logging.info('qos already enabled, not running enable-qos '
+                         'test')
+            return
+
+        with self.config_change(
+                {'enable-qos': False},
+                {'enable-qos': True},
+                application_name="neutron-api"):
+
+            self._validate_openvswitch_agent_qos()
 
     @tenacity.retry(wait=tenacity.wait_exponential(min=5, max=60),
                     reraise=True, stop=tenacity.stop_after_attempt(8))
