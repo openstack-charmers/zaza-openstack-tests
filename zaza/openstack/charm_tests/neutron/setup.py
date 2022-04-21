@@ -43,6 +43,8 @@ OVERCLOUD_NETWORK_CONFIG = {
     "prefix_len": "24",
     "subnetpool_name": "pooled_subnets",
     "subnetpool_prefix": "192.168.0.0/16",
+    "project_net_name": "private",
+    "project_subnet_name": "private_subnet",
 }
 
 OVERCLOUD_PROVIDER_VLAN_NETWORK_CONFIG = {
