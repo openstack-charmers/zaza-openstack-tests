@@ -164,14 +164,16 @@ def setup_sdn(network_config, keystone_session=None):
         neutron_client,
         project_id,
         shared=False,
-        network_type=network_config["network_type"])
+        network_type=network_config["network_type"],
+        net_name=network_config["project_net_name"])
     project_subnet = openstack_utils.create_project_subnet(
         neutron_client,
         project_id,
         project_network,
         network_config.get("private_net_cidr"),
         subnetpool=subnetpool,
-        ip_version=ip_version)
+        ip_version=ip_version,
+        subnet_name=network_config["project_subnet_name"])
     openstack_utils.update_subnet_dns(
         neutron_client,
         project_subnet,
