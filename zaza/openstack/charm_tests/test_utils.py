@@ -681,7 +681,8 @@ class OpenStackBaseTest(BaseCharmTest):
                     userdata=userdata,
                     flavor_name=flavor_name)
 
-    def launch_guests(self, userdata=None):
+    def launch_guests(self, userdata=None, attach_to_external_network=False,
+                      flavor_name=None):
         """Launch two guests to use in tests.
 
         Note that it is up to the caller to have set the RESOURCE_PREFIX class
@@ -697,7 +698,9 @@ class OpenStackBaseTest(BaseCharmTest):
             launched_instances.append(
                 self.launch_guest(
                     guest_name='ins-{}'.format(guest_number),
-                    userdata=userdata))
+                    userdata=userdata,
+                    attach_to_external_network=attach_to_external_network,
+                    flavor_name=flavor_name))
         return launched_instances
 
     def retrieve_guest(self, guest_name):

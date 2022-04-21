@@ -65,5 +65,14 @@ FLAVORS = {
             'hw:tpm_model': 'tpm-crb',
         },
     },
+    'hugepages': {
+        'flavorid': 'auto',
+        'ram': 1024,
+        'disk': 20,
+        'vcpus': 1,
+        'extra-specs': {
+            'hw:mem_page_size': 'large',
+        },
+    },
 }
 KEYPAIR_NAME = 'zaza'
