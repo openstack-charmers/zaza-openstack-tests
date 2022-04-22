@@ -67,28 +67,18 @@ DEFAULT_UNDERCLOUD_NETWORK_CONFIG = {
 }
 
 
-def basic_overcloud_network(limit_gws=None):
-    """Run setup for neutron networking.
-
-    Configure the following:
-        The overcloud network using subnet pools
+def undercloud_and_charm_setup(limit_gws=None):
+    """Perform undercloud and charm setup for network plumbing.
 
     :param limit_gws: Limit the number of gateways that get a port attached
     :type limit_gws: int
     """
-    cli_utils.setup_logging()
-
     # Get network configuration settings
     network_config = {}
-    # Declared overcloud settings
-    network_config.update(OVERCLOUD_NETWORK_CONFIG)
     # Default undercloud settings
     network_config.update(DEFAULT_UNDERCLOUD_NETWORK_CONFIG)
     # Environment specific settings
     network_config.update(generic_utils.get_undercloud_env_vars())
-
-    # Get keystone session
-    keystone_session = openstack_utils.get_overcloud_keystone_session()
 
     # Get optional use_juju_wait for network option
     options = (lifecycle_utils
@@ -117,6 +107,33 @@ def basic_overcloud_network(limit_gws=None):
         logging.warning('Unknown Juju provider type, "{}", will not perform'
                         ' charm network configuration.'
                         .format(provider_type))
+
+
+def basic_overcloud_network(limit_gws=None):
+    """Run setup for neutron networking.
+
+    Configure the following:
+        The overcloud network using subnet pools
+
+    :param limit_gws: Limit the number of gateways that get a port attached
+    :type limit_gws: int
+    """
+    cli_utils.setup_logging()
+
+    # Get network configuration settings
+    network_config = {}
+    # Declared overcloud settings
+    network_config.update(OVERCLOUD_NETWORK_CONFIG)
+    # Default undercloud settings
+    network_config.update(DEFAULT_UNDERCLOUD_NETWORK_CONFIG)
+    # Environment specific settings
+    network_config.update(generic_utils.get_undercloud_env_vars())
+
+    # Get keystone session
+    keystone_session = openstack_utils.get_overcloud_keystone_session()
+
+    # Perform undercloud and charm setup for network plumbing
+    undercloud_and_charm_setup(limit_gws=limit_gws)
 
     # Configure the overcloud network
     network.setup_sdn(network_config, keystone_session=keystone_session)
