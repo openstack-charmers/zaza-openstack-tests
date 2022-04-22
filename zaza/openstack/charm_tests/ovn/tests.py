@@ -177,7 +177,8 @@ class ChassisCharmOperationTest(BaseCharmOperationTest):
             'target_deploy_status', {})
         new_target_deploy_status = stored_target_deploy_status.copy()
         new_target_deploy_status[self.application_name] = {
-            'ovn-chassis': 'blocked',
+            'workload-status': 'blocked',
+            'workload-status-message': 'Wrong format',
         }
         if 'target_deploy_status' in self.test_config:
             self.test_config['target_deploy_status'].update(
@@ -186,7 +187,9 @@ class ChassisCharmOperationTest(BaseCharmOperationTest):
             self.test_config['target_deploy_status'] = new_target_deploy_status
 
         with self.config_change(
-                {'bridge-interface-mappings': ''},
+                self.config_current(
+                    application_name=self.application_name,
+                    keys=['bridge-interface-mappings']),
                 {'bridge-interface-mappings': 'incorrect'}):
             logging.info('Charm went into blocked state as expected, restore '
                          'configuration')
