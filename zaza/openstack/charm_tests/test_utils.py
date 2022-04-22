@@ -28,6 +28,7 @@ import zaza.openstack.configure.guest as configure_guest
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.utilities.generic as generic_utils
 import zaza.openstack.charm_tests.glance.setup as glance_setup
+import zaza.utilities.machine_os
 
 
 def skipIfNotHA(service_name):
@@ -598,6 +599,122 @@ class BaseCharmTest(unittest.TestCase):
         """
         for unit in units:
             model.run_on_unit(unit, "hooks/update-status")
+
+    def assert_unit_cpu_topology(self, unit, nr_1g_hugepages):
+        r"""Assert unit under test CPU topology.
+
+        When using OpenStack as CI substrate:
+
+        By default, when instance NUMA placement is not specified,
+        a topology of N sockets, each with one core and one thread,
+        is used for an instance, where N corresponds to the number of
+        instance vCPUs requested.
+
+        In this context a socket is a physical socket on the motherboard
+        where a CPU is connected.
+
+        The DPDK Environment Abstraction Layer (EAL) allocates memory per
+        CPU socket, so we want the CPU topology inside the instance to
+        mimic something we would be likely to find in the real world and
+        at the same time not make the test too heavy.
+
+        The charm default is to have Open vSwitch allocate 1GB RAM per
+        CPU socket.
+
+        The following command would set the apropriate CPU topology for a
+        4 VCPU, 8 GB RAM flavor:
+
+            openstack flavor set onesocketm1.large \
+                --property hw:cpu_sockets=1 \
+                --property hw:cpu_cores=2 \
+                --property hw:cpu_threads=2
+
+        For validation of operation with multiple sockets, the following
+        command would set the apropriate CPU topology for a
+        8 VCPU, 16GB RAM flavor:
+
+            openstack flavor set twosocketm1.xlarge \
+                --property hw:cpu_sockets=2 \
+                --property hw:cpu_cores=2 \
+                --property hw:cpu_threads=2 \
+                --property hw:numa_nodes=2
+        """
+        # Get number of sockets
+        cmd = 'lscpu -p|grep -v ^#|cut -f3 -d,|sort|uniq|wc -l'
+        sockets = int(zaza.utilities.juju.remote_run(
+            unit.name, cmd, model_name=self.model_name, fatal=True).rstrip())
+
+        # Get total memory
+        cmd = 'cat /proc/meminfo |grep ^MemTotal'
+        _, meminfo_value, _ = zaza.utilities.juju.remote_run(
+            unit.name,
+            cmd,
+            model_name=self.model_name,
+            fatal=True).rstrip().split()
+        mbtotal = int(meminfo_value) * 1024 / 1000 / 1000
+        mbtotalhugepages = nr_1g_hugepages * 1024
+
+        # headroom for operating system and daemons in instance
+        mbsystemheadroom = 2048
+        # memory to be consumed by the nested instance
+        mbinstance = 1024
+
+        # the amount of hugepage memory OVS / DPDK EAL will allocate
+        mbovshugepages = sockets * 1024
+        # the amount of hugepage memory available for nested instance
+        mbfreehugepages = mbtotalhugepages - mbovshugepages
+
+        assert (mbtotal - mbtotalhugepages >= mbsystemheadroom and
+                mbfreehugepages >= mbinstance), (
+            'Unit {} is not suitable for test, please adjust instance '
+            'type CPU topology or provide suitable physical machine. '
+            'CPU Sockets: {} '
+            'Available memory: {} MB '
+            'Details:\n{}'
+            .format(unit.name,
+                    sockets,
+                    mbtotal,
+                    self.assert_unit_cpu_topology.__doc__))
+
+    def enable_hugepages_vfio_on_hvs_in_vms(self, nr_1g_hugepages):
+        """Enable hugepages and unsafe VFIO NOIOMMU on virtual hypervisors."""
+        for unit in model.get_units(
+                zaza.utilities.machine_os.get_hv_application(),
+                model_name=self.model_name):
+            if not zaza.utilities.machine_os.is_vm(unit.name,
+                                                   model_name=self.model_name):
+                logging.info('Unit {} is a physical machine, assuming '
+                             'hugepages and IOMMU configuration already '
+                             'performed through kernel command line.')
+                continue
+            logging.info('Checking CPU topology on {}'.format(unit.name))
+            self.assert_unit_cpu_topology(unit, nr_1g_hugepages)
+            logging.info('Enabling hugepages on {}'.format(unit.name))
+            zaza.utilities.machine_os.enable_hugepages(
+                unit, nr_1g_hugepages, model_name=self.model_name)
+            logging.info('Enabling unsafe VFIO NOIOMMU mode on {}'
+                         .format(unit.name))
+            zaza.utilities.machine_os.enable_vfio_unsafe_noiommu_mode(
+                unit, model_name=self.model_name)
+
+    def disable_hugepages_vfio_on_hvs_in_vms(self):
+        """Disable hugepages and unsafe VFIO NOIOMMU on virtual hypervisors."""
+        for unit in model.get_units(
+                zaza.utilities.machine_os.get_hv_application(),
+                model_name=self.model_name):
+            if not zaza.utilities.machine_os.is_vm(unit.name,
+                                                   model_name=self.model_name):
+                logging.info('Unit {} is a physical machine, assuming '
+                             'hugepages and IOMMU configuration already '
+                             'performed through kernel command line.')
+                continue
+            logging.info('Disabling hugepages on {}'.format(unit.name))
+            zaza.utilities.machine_os.disable_hugepages(
+                unit, model_name=self.model_name)
+            logging.info('Disabling unsafe VFIO NOIOMMU mode on {}'
+                         .format(unit.name))
+            zaza.utilities.machine_os.disable_vfio_unsafe_noiommu_mode(
+                unit, model_name=self.model_name)
 
 
 class OpenStackBaseTest(BaseCharmTest):
