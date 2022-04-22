@@ -6,5 +6,6 @@ dist/
 zaza.openstack.egg-info/
 .coverage
 .vscode/
+*.swp
 # Sphinx
 doc/build
