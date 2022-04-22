@@ -650,7 +650,10 @@ def dvr_enabled():
     :returns: True when DVR is enabled, False otherwise
     :rtype: bool
     """
-    return get_application_config_option('neutron-api', 'enable-dvr')
+    try:
+        return get_application_config_option('neutron-api', 'enable-dvr')
+    except KeyError:
+        return False
 
 
 def ngw_present():
