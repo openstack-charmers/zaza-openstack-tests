@@ -245,9 +245,15 @@ class CephDashboardTest(test_utils.BaseCharmTest):
             )
 
             # Login must be redirected.
-            resp = requests.get(url + '/auth/saml2/login')
+            resp = self._run_request_get(
+                url + '/auth/saml2/login',
+                verify=self.local_ca_cert,
+                allow_redirects=False)
             self.assertTrue(resp.is_redirect)
 
             # Check that metadata is present.
-            resp = requests.get(url + '/auth/saml2/metadata')
+            resp = self._run_request_get(
+                url + '/auth/saml2/metadata',
+                verify=self.local_ca_cert,
+                allow_redirects=False)
             self.assertEqual(resp.status_code, requests.code.ok)
