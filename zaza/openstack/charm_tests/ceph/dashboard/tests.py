@@ -18,7 +18,6 @@ import collections
 import json
 import logging
 import requests
-import tempfile
 import tenacity
 import uuid
 
@@ -79,7 +78,7 @@ SAML_IDP_METADATA = '''
     <NameIDFormat>
       urn:oasis:names:tc:SAML:2.0:nameid-format:transient
     </NameIDFormat>
-	<SingleSignOnService
+    <SingleSignOnService
      Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"
      Location="{host}"/>
   </IDPSSODescriptor>
@@ -281,11 +280,8 @@ class CephDashboardTest(test_utils.BaseCharmTest):
             host=url)
 
         zaza.model.set_application_config(
-          'ceph-dashboard',
-            {
-              'saml-base-url': url,
-              'saml-idp-metadata': idp_meta,
-            }
+            'ceph-dashboard',
+            {'saml-base-url': url, 'saml-idp-metadata': idp_meta}
         )
 
         # Check that both login and metadata are accesible.
