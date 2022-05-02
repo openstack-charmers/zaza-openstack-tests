@@ -151,6 +151,8 @@ class CephDashboardTest(test_utils.BaseCharmTest):
             headers=headers,
             verify=verify)
 
+    @tenacity.retry(wait=tenacity.wait_fixed(2), reraise=True,
+                    stop=tenacity.stop_after_attempt(90))
     def get_master_dashboard_url(self):
         """Get the url of the dashboard servicing requests.
 
@@ -163,7 +165,10 @@ class CephDashboardTest(test_utils.BaseCharmTest):
         output = zaza.model.run_on_leader(
             'ceph-mon',
             'ceph mgr services')['Stdout']
-        return json.loads(output)['dashboard']
+        url = json.loads(output).get('dashboard')
+        if url is None:
+            raise tenacity.RetryError(None)
+        return url
 
     def test_dashboard_units(self):
         """Check dashboard units are configured correctly."""
@@ -265,6 +270,16 @@ class CephDashboardTest(test_utils.BaseCharmTest):
                 'ceph-dashboard',
                 'ceph config-key exists {}'.format(key))
             self.assertEqual(check_out['Code'], '0')
+
+    @tenacity.retry(wait=tenacity.wait_fixed(2), reraise=True,
+                    stop=tenacity.stop_after_attempt(20))
+    def wait_for_saml_dashboard(self):
+        output = zaza.model.run_on_leader(
+            'ceph-mon',
+            'ceph dashboard sso status')['Stdout']
+        if 'enabled' in output:
+            return
+        raise tenacity.RetryError(None)
 
     def test_saml(self):
         """Check that the dashboard is accessible with SAML enabled."""
