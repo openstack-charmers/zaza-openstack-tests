@@ -274,6 +274,7 @@ class CephDashboardTest(test_utils.BaseCharmTest):
     @tenacity.retry(wait=tenacity.wait_fixed(2), reraise=True,
                     stop=tenacity.stop_after_attempt(20))
     def wait_for_saml_dashboard(self):
+        """Wait until the Ceph dashboard is enabled."""
         output = zaza.model.run_on_leader(
             'ceph-mon',
             'ceph dashboard sso status')['Stdout']
