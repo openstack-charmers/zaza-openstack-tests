@@ -300,6 +300,8 @@ class CephDashboardTest(test_utils.BaseCharmTest):
             {'saml-base-url': url, 'saml-idp-metadata': idp_meta}
         )
 
+        self.wait_for_saml_dashboard()
+
         # Check that both login and metadata are accesible.
         resp = self._run_request_get(
             url + '/auth/saml2/login',
