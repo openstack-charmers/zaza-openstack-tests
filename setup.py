@@ -114,7 +114,7 @@ if sys.argv[-1] == 'tag':
 
 setup(
     license='Apache-2.0: http://www.apache.org/licenses/LICENSE-2.0',
-    name='zaza-openstack-tests'
+    name='zaza-openstack-tests',
     packages=find_namespace_packages(include=['zaza.*'], exclude=["unit_tests"]),
     zip_safe=False,
     include_package_data=True,
