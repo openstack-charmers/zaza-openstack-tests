@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import os
 import sys
-from setuptools import setup, find_packages
+from setuptools import setup, find_namespace_packages
 from setuptools.command.test import test as TestCommand
 
 version = "0.0.1.dev1"
