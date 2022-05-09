@@ -18,7 +18,6 @@ import collections
 import json
 import logging
 import requests
-import tempfile
 import tenacity
 import uuid
 
@@ -27,14 +26,63 @@ import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 
 
+X509_CERT = '''
+MIICZDCCAg6gAwIBAgICBr8wDQYJKoZIhvcNAQEEBQAwgZIxCzAJBgNVBAYTAlVTMRMwEQYDVQQI
+EwpDYWxpZm9ybmlhMRQwEgYDVQQHEwtTYW50YSBDbGFyYTEeMBwGA1UEChMVU3VuIE1pY3Jvc3lz
+dGVtcyBJbmMuMRowGAYDVQQLExFJZGVudGl0eSBTZXJ2aWNlczEcMBoGA1UEAxMTQ2VydGlmaWNh
+dGUgTWFuYWdlcjAeFw0wNzAzMDcyMTUwMDVaFw0xMDEyMDEyMTUwMDVaMDsxFDASBgNVBAoTC2V4
+YW1wbGUuY29tMSMwIQYDVQQDExpMb2FkQmFsYW5jZXItMy5leGFtcGxlLmNvbTCBnzANBgkqhkiG
+9w0BAQEFAAOBjQAwgYkCgYEAlOhN9HddLMpE3kCjkPSOFpCkDxTNuhMhcgBkYmSEF/iJcQsLX/ga
+pO+W1SIpwqfsjzR5ZvEdtc/8hGumRHqcX3r6XrU0dESM6MW5AbNNJsBnwIV6xZ5QozB4wL4zREhw
+zwwYejDVQ/x+8NRESI3ym17tDLEuAKyQBueubgjfic0CAwEAAaNgMF4wEQYJYIZIAYb4QgEBBAQD
+AgZAMA4GA1UdDwEB/wQEAwIE8DAfBgNVHSMEGDAWgBQ7oCE35Uwn7FsjS01w5e3DA1CrrjAYBgNV
+HREEETAPgQ1tYWxsYUBzdW4uY29tMA0GCSqGSIb3DQEBBAUAA0EAGhJhep7X2hqWJWQoXFcdU7eQ
+'''
+
+X509_DATA = '''
+EwpDYWxpZm9ybmlhMRQwEgYDVQQHEwtTYW50YSBDbGFyYTEeMBwGA1UEChMVU3VuIE1pY3Jvc3lz
+dGVtcyBJbmMuMRowGAYDVQQLExFJZGVudGl0eSBTZXJ2aWNlczEcMBoGA1UEAxMTQ2VydGlmaWNh
+dGUgTWFuYWdlcjAeFw0wNzAzMDcyMjAxMTVaFw0xMDEyMDEyMjAxMTVaMDsxFDASBgNVBAoTC2V4
+YW1wbGUuY29tMSMwIQYDVQQDExpMb2FkQmFsYW5jZXItMy5leGFtcGxlLmNvbTCBnzANBgkqhkiG
+HREEETAPgQ1tYWxsYUBzdW4uY29tMA0GCSqGSIb3DQEBBAUAA0EAEgbmnOz2Rvpj9bludb9lEeVa
+OA46zRiyt4BPlbgIaFyG6P7GWSddMi/14EimQjjDbr4ZfvlEdPJmimHExZY3KQ==
+'''
+
 SAML_IDP_METADATA = '''
-<ds:KeyInfo xmlns:ds="http://www.w3.org/2000/09/xmldsig#">
-    <ds:X509Data>
-        <ds:X509Certificate>
-            {}
-        </ds:X509Certificate>
-    </ds:X509Data>
-</ds:KeyInfo>
+<EntityDescriptor
+  xmlns="urn:oasis:names:tc:SAML:2.0:metadata"
+  entityID="ceph-dashboard">
+  <IDPSSODescriptor
+   WantAuthnRequestsSigned="false"
+   protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
+    <KeyDescriptor use="signing">
+      <KeyInfo xmlns="http://www.w3.org/2000/09/xmldsig#">
+        <X509Data>
+          <X509Certificate>
+            {cert}
+          </X509Certificate>
+        </X509Data>
+      </KeyInfo>
+    </KeyDescriptor>
+    <KeyDescriptor use="encryption">
+      <KeyInfo xmlns="http://www.w3.org/2000/09/xmldsig#">
+        <X509Data>
+          {data}
+        </X509Data>
+      </KeyInfo>
+    </KeyDescriptor>
+    <ArtifactResolutionService index="0" isDefault="1"/>
+      <NameIDFormat>
+        urn:oasis:names:tc:SAML:2.0:nameid-format:persistent
+      </NameIDFormat>
+    <NameIDFormat>
+      urn:oasis:names:tc:SAML:2.0:nameid-format:transient
+    </NameIDFormat>
+    <SingleSignOnService
+     Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"
+     Location="{host}"/>
+  </IDPSSODescriptor>
+</EntityDescriptor>
 '''
 
 
@@ -103,6 +151,8 @@ class CephDashboardTest(test_utils.BaseCharmTest):
             headers=headers,
             verify=verify)
 
+    @tenacity.retry(wait=tenacity.wait_fixed(2), reraise=True,
+                    stop=tenacity.stop_after_attempt(90))
     def get_master_dashboard_url(self):
         """Get the url of the dashboard servicing requests.
 
@@ -112,16 +162,13 @@ class CephDashboardTest(test_utils.BaseCharmTest):
         :returns: URL of dashboard on unit
         :rtype: Union[str, None]
         """
-        units = zaza.model.get_units(self.application_name)
-        for unit in units:
-            r = self._run_request_get(
-                'https://{}:8443'.format(
-                    zaza.model.get_unit_public_address(unit)),
-                verify=self.local_ca_cert,
-                allow_redirects=False)
-            if r.status_code == requests.codes.ok:
-                return 'https://{}:8443'.format(
-                    zaza.model.get_unit_public_address(unit))
+        output = zaza.model.run_on_leader(
+            'ceph-mon',
+            'ceph mgr services')['Stdout']
+        url = json.loads(output).get('dashboard')
+        if url is None:
+            raise tenacity.RetryError(None)
+        return url
 
     def test_dashboard_units(self):
         """Check dashboard units are configured correctly."""
@@ -187,7 +234,7 @@ class CephDashboardTest(test_utils.BaseCharmTest):
         path = "api/auth"
         headers = {
             'Content-type': 'application/json',
-            'Accept': 'application/vnd.ceph.api.v1.0'}
+            'Accept': 'application/vnd.ceph.api.v1.0+json'}
         payload = {"username": user, "password": password}
         verify = self.local_ca_cert
         r = self._run_request_post(
@@ -224,6 +271,17 @@ class CephDashboardTest(test_utils.BaseCharmTest):
                 'ceph config-key exists {}'.format(key))
             self.assertEqual(check_out['Code'], '0')
 
+    @tenacity.retry(wait=tenacity.wait_fixed(2), reraise=True,
+                    stop=tenacity.stop_after_attempt(20))
+    def wait_for_saml_dashboard(self):
+        """Wait until the Ceph dashboard is enabled."""
+        output = zaza.model.run_on_leader(
+            'ceph-mon',
+            'ceph dashboard sso status')['Stdout']
+        if 'enabled' in output:
+            return
+        raise tenacity.RetryError(None)
+
     def test_saml(self):
         """Check that the dashboard is accessible with SAML enabled."""
         get_os_release = openstack_utils.get_os_release
@@ -232,22 +290,27 @@ class CephDashboardTest(test_utils.BaseCharmTest):
             return
 
         url = self.get_master_dashboard_url()
-        with tempfile.NamedTemporaryFile(mode='w') as tmp, \
-                open(self.local_ca_cert) as cert:
-            tmp.write(SAML_IDP_METADATA.format(cert.read()))
-            tmp.flush()
-            zaza.model.set_application_config(
-                'ceph-dashboard',
-                {
-                    'saml-base-url': url,
-                    'saml-idp-metadata': 'file://{}'.format(tmp.name),
-                }
-            )
+        idp_meta = SAML_IDP_METADATA.format(
+            cert=X509_CERT,
+            data=X509_DATA,
+            host=url)
 
-            # Login must be redirected.
-            resp = requests.get(url + '/auth/saml2/login')
-            self.assertTrue(resp.is_redirect)
+        zaza.model.set_application_config(
+            'ceph-dashboard',
+            {'saml-base-url': url, 'saml-idp-metadata': idp_meta}
+        )
 
-            # Check that metadata is present.
-            resp = requests.get(url + '/auth/saml2/metadata')
-            self.assertEqual(resp.status_code, requests.code.ok)
+        self.wait_for_saml_dashboard()
+
+        # Check that both login and metadata are accesible.
+        resp = self._run_request_get(
+            url + '/auth/saml2/login',
+            verify=self.local_ca_cert,
+            allow_redirects=False)
+        self.assertTrue(resp.status_code, requests.codes.ok)
+
+        resp = self._run_request_get(
+            url + '/auth/saml2/metadata',
+            verify=self.local_ca_cert,
+            allow_redirects=False)
+        self.assertEqual(resp.status_code, requests.codes.ok)
