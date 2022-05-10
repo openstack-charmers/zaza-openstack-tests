@@ -35,6 +35,7 @@ import zaza.openstack.utilities.exceptions as zaza_exceptions
 import zaza.openstack.utilities.generic as zaza_utils
 import zaza.utilities.juju as juju_utils
 import zaza.openstack.utilities.openstack as zaza_openstack
+import zaza.openstack.utilities.generic as generic_utils
 
 
 class CephLowLevelTest(test_utils.OpenStackBaseTest):
@@ -641,6 +642,22 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
         except KeyError:
             return False
 
+    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=10, max=300),
+                    reraise=True, stop=tenacity.stop_after_attempt(10),
+                    retry=tenacity.retry_if_exception_type(AssertionError))
+    def wait_for_sync(self, application):
+        """Wait for slave to secondary to show it is in sync."""
+        juju_units = zaza_model.get_units(application)
+        unit_hostnames = generic_utils.get_unit_hostnames(juju_units)
+        sync_states = []
+        sync_check_str = 'data is caught up with source'
+        for unit_name, hostname in unit_hostnames.items():
+            key_name = "rgw.{}".format(hostname)
+            cmd = 'radosgw-admin --id={} zone sync status'.format(key_name)
+            stdout = zaza_model.run_on_unit(unit_name, cmd).get('Stdout', '')
+            sync_states.append(sync_check_str in stdout)
+        assert all(sync_states)
+
     def test_processes(self):
         """Verify Ceph processes.
 
@@ -786,6 +803,7 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
             'promote',
             action_params={},
         )
+        self.wait_for_sync('ceph-radosgw')
         _container = 'demo-container-for-failover'
         _test_data = 'Test data from Zaza on Slave'
         target_client.put_container(_container)
@@ -800,6 +818,7 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
             'promote',
             action_params={},
         )
+        self.wait_for_sync('slave-ceph-radosgw')
 
         @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
                         reraise=True, stop=tenacity.stop_after_attempt(12))
