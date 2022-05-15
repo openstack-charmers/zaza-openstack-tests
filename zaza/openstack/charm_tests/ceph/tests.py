@@ -611,6 +611,40 @@ class CephTest(test_utils.OpenStackBaseTest):
         zaza_model.wait_for_application_states()
         self.assertEqual(len(osds) * 2, self.get_num_osds(mon))
 
+    def test_ceph_auth(self):
+        """Test creating and deleting user."""
+        logging.info('Creating user and exported keyring...')
+        action_obj = zaza_model.run_action_on_leader(
+            'ceph-mon',
+            'get-or-create-user',
+            action_params={'username': 'sandbox',
+                           'mon-caps': 'allow r',
+                           'osd-caps': 'allow r'}
+        )
+        logging.debug('Result of action: {}'.format(action_obj))
+        create_results = json.loads(action_obj.data['results']['message'])
+
+        logging.info('Getting existing user and exported keyring...')
+        action_obj = zaza_model.run_action_on_leader(
+            'ceph-mon',
+            'get-or-create-user',
+            action_params={'username': 'sandbox'}
+        )
+        logging.debug('Result of action: {}'.format(action_obj))
+        get_results = json.loads(action_obj.data['results']['message'])
+
+        self.assertEqual(get_results, create_results)
+
+        logging.info('Deleting user...')
+        action_obj = zaza_model.run_action_on_leader(
+            'ceph-mon',
+            'delete-user',
+            action_params={'username': 'sandbox'}
+        )
+        logging.debug('Result of action: {}'.format(action_obj))
+        delete_results = action_obj.data['results']['message']
+        self.assertEqual(delete_results, "updated\n")
+
 
 class CephRGWTest(test_utils.OpenStackBaseTest):
     """Ceph RADOS Gateway Daemons Test Class."""
