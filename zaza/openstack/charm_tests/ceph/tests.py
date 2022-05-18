@@ -635,7 +635,7 @@ class CephTest(test_utils.OpenStackBaseTest):
 
         self.assertEqual(get_results, create_results)
 
-        logging.info('Deleting user...')
+        logging.info('Deleting existing user...')
         action_obj = zaza_model.run_action_on_leader(
             'ceph-mon',
             'delete-user',
@@ -644,6 +644,16 @@ class CephTest(test_utils.OpenStackBaseTest):
         logging.debug('Result of action: {}'.format(action_obj))
         delete_results = action_obj.data['results']['message']
         self.assertEqual(delete_results, "updated\n")
+
+        logging.info('Deleting non-existing user...')
+        action_obj = zaza_model.run_action_on_leader(
+            'ceph-mon',
+            'delete-user',
+            action_params={'username': 'sandbox'}
+        )
+        logging.debug('Result of action: {}'.format(action_obj))
+        delete_results = action_obj.data['results']['message']
+        self.assertEqual(delete_results, "entity client.sandbox does not exist\n")
 
 
 class CephRGWTest(test_utils.OpenStackBaseTest):
