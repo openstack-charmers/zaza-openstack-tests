@@ -10,6 +10,15 @@ admin_project_name = {{ admin_project_name }}
 admin_password = {{ admin_password }}
 admin_domain_name = {{ admin_domain_name }}
 
+{% if 'manila' in enabled_services %}
+[share]
+multitenancy_enabled = false
+capability_snapshot_support = true
+enable_protocols = nfs
+capability_storage_protocol = NFS
+max_api_microversion = 2.63
+{% endif %}
+
 {% if 'nova' in enabled_services %}
 [compute]
 image_ref = {{ image_id }}

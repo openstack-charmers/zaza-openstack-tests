@@ -38,8 +38,8 @@ IGNORABLE_VARS = ['TEST_CIDR_PRIV']
 TEMPEST_FLAVOR_NAME = 'm1.tempest'
 TEMPEST_ALT_FLAVOR_NAME = 'm2.tempest'
 TEMPEST_SVC_LIST = ['ceilometer', 'cinder', 'glance', 'heat', 'horizon',
-                    'ironic', 'neutron', 'nova', 'octavia', 'sahara', 'swift',
-                    'trove', 'zaqar']
+                    'ironic', 'manila', 'neutron', 'nova', 'octavia',
+                    'sahara', 'swift', 'trove', 'zaqar']
 
 
 def render_tempest_config_keystone_v2():
