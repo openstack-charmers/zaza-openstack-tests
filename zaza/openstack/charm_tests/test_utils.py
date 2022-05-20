@@ -1298,10 +1298,12 @@ class BaseDeferredRestartTest(BaseCharmTest):
 
 class UpgradeableTest(OpenStackBaseTest):
     """Base class for tests that test charm upgrades."""
+
     upgraded = False
 
     @classmethod
     def setUpClass(cls):
+        """Upgrade the needed charms before running the tests."""
         super(UpgradeableTest, cls).setUpClass()
         if cls.upgraded:
             return
