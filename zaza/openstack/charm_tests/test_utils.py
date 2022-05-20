@@ -14,6 +14,7 @@
 """Module containing base class for implementing charm tests."""
 import contextlib
 import logging
+import os
 import subprocess
 import sys
 import tenacity
@@ -1293,3 +1294,26 @@ class BaseDeferredRestartTest(BaseCharmTest):
             policy_file)
         model.block_until_all_units_idle()
         self.check_clear_hooks()
+
+
+class UpgradeableTest(OpenStackBaseTest):
+    """Base class for tests that test charm upgrades."""
+    upgraded = False
+
+    @classmethod
+    def setUpClass(cls):
+        super(UpgradeableTest, cls).setUpClass()
+        if cls.upgraded:
+            return
+
+        config = lifecycle_utils.get_charm_config(fatal=False)
+        charms = config.get('upgrade_charms')
+        if not charms:
+            cls.upgraded = True
+            return
+
+        cwd = os.getcwd()
+        for charm in charms:
+            model.upgrade_charm(charm, path=cwd + '/' + charm + '.charm')
+
+        cls.upgraded = True

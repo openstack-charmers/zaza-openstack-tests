@@ -38,7 +38,7 @@ import zaza.openstack.utilities.openstack as zaza_openstack
 import zaza.openstack.utilities.generic as generic_utils
 
 
-class CephLowLevelTest(test_utils.OpenStackBaseTest):
+class CephLowLevelTest(test_utils.UpgradeableTest):
     """Ceph Low Level Test Class."""
 
     @classmethod
@@ -109,7 +109,7 @@ class CephLowLevelTest(test_utils.OpenStackBaseTest):
             self.assertEqual(pool['pg_autoscale_mode'], 'on')
 
 
-class CephRelationTest(test_utils.OpenStackBaseTest):
+class CephRelationTest(test_utils.UpgradeableTest):
     """Ceph's relations test class."""
 
     @classmethod
@@ -180,7 +180,7 @@ class CephRelationTest(test_utils.OpenStackBaseTest):
         self._ceph_to_ceph_osd_relation(remote_unit_name)
 
 
-class CephTest(test_utils.OpenStackBaseTest):
+class CephTest(test_utils.UpgradeableTest):
     """Ceph common functional tests."""
 
     @classmethod
