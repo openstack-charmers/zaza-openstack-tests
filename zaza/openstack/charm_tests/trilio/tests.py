@@ -160,6 +160,27 @@ class WorkloadmgrCLIHelper(object):
         )
         self.auth_args = openstack_utils.get_cli_auth_args(keystone_client)
 
+    @tenacity.retry(
+        retry=tenacity.retry_if_exception_type(zaza_model.CommandRunFailed),
+        wait=tenacity.wait_fixed(10),  # interval between retries
+        stop=tenacity.stop_after_attempt(5))  # retry 10 times
+    def wlm_run_cmd(self, remote_cmd):
+        """Run command on unit and return the output.
+
+        :param remote_cmd: Command to execute on unit
+        :type remote_cmd: string
+        :returns: Juju run output
+        :rtype: string
+        :raises: model.CommandRunFailed
+        """
+        logging.info("Running {}".format(remote_cmd))
+        return juju_utils.remote_run(
+            self.trilio_wlm_unit,
+            remote_cmd,
+            timeout=180,
+            fatal=True,
+        ).strip()
+
     def create_workload(self, instance_id):
         """Create a new workload.
 
@@ -168,14 +189,12 @@ class WorkloadmgrCLIHelper(object):
         :returns: workload ID
         :rtype: str
         """
-        workload_id = juju_utils.remote_run(
-            self.trilio_wlm_unit,
-            remote_cmd=self.WORKLOAD_CREATE_CMD.format(
-                auth_args=self.auth_args, instance_id=instance_id
-            ),
-            timeout=180,
-            fatal=True,
-        ).strip()
+        workload_id = self.wlm_run_cmd(
+            self.WORKLOAD_CREATE_CMD.format(
+                auth_args=self.auth_args,
+                instance_id=instance_id
+            )
+        )
 
         retryer = tenacity.Retrying(
             wait=tenacity.wait_exponential(multiplier=1, max=30),
@@ -202,22 +221,18 @@ class WorkloadmgrCLIHelper(object):
         :returns: snapshot ID
         :rtype: str
         """
-        juju_utils.remote_run(
-            self.trilio_wlm_unit,
-            remote_cmd=self.SNAPSHOT_CMD.format(
-                auth_args=self.auth_args, workload_id=workload_id
-            ),
-            timeout=180,
-            fatal=True,
+        self.wlm_run_cmd(
+            self.SNAPSHOT_CMD.format(
+                auth_args=self.auth_args,
+                workload_id=workload_id
+            )
         )
-        snapshot_id = juju_utils.remote_run(
-            self.trilio_wlm_unit,
-            remote_cmd=self.SNAPSHOT_ID_CMD.format(
-                auth_args=self.auth_args, workload_id=workload_id
-            ),
-            timeout=180,
-            fatal=True,
-        ).strip()
+        snapshot_id = self.wlm_run_cmd(
+            self.SNAPSHOT_ID_CMD.format(
+                auth_args=self.auth_args,
+                workload_id=workload_id
+            )
+        )
 
         retryer = tenacity.Retrying(
             wait=tenacity.wait_exponential(multiplier=1, max=30),
@@ -243,22 +258,18 @@ class WorkloadmgrCLIHelper(object):
         :param snapshot_id: snapshot ID to restore
         :type snapshot_id: str
         """
-        juju_utils.remote_run(
-            self.trilio_wlm_unit,
-            remote_cmd=self.ONECLICK_RESTORE_CMD.format(
-                auth_args=self.auth_args, snapshot_id=snapshot_id
-            ),
-            timeout=180,
-            fatal=True,
+        self.wlm_run_cmd(
+            self.ONECLICK_RESTORE_CMD.format(
+                auth_args=self.auth_args,
+                snapshot_id=snapshot_id
+            )
         )
-        restore_id = juju_utils.remote_run(
-            self.trilio_wlm_unit,
-            remote_cmd=self.RESTORE_LIST_CMD.format(
-                auth_args=self.auth_args, snapshot_id=snapshot_id
-            ),
-            timeout=180,
-            fatal=True,
-        ).strip()
+        restore_id = self.wlm_run_cmd(
+            self.RESTORE_LIST_CMD.format(
+                auth_args=self.auth_args,
+                snapshot_id=snapshot_id
+            )
+        )
 
         retryer = tenacity.Retrying(
             wait=tenacity.wait_exponential(multiplier=1, max=30),
