@@ -1296,26 +1296,67 @@ class BaseDeferredRestartTest(BaseCharmTest):
         self.check_clear_hooks()
 
 
+def _upgrade_charms(cls):
+    if getattr(cls, 'charms_upgraded', None):
+        return
+
+    config = lifecycle_utils.get_charm_config(fatal=False)
+    charms = config.get('upgrade_charms')
+    if not charms:
+        setattr(cls, 'charms_upgraded', True)
+        return
+
+    cwd = os.getcwd()
+    for charm in charms:
+        model.upgrade_charm(charm, path=cwd + '/' + charm + '.charm')
+
+    setattr(cls, 'charms_upgraded', True)
+
+
 class UpgradeableTest(OpenStackBaseTest):
     """Base class for tests that test charm upgrades."""
 
-    upgraded = False
+    charms_upgraded = False
 
     @classmethod
     def setUpClass(cls):
         """Upgrade the needed charms before running the tests."""
         super(UpgradeableTest, cls).setUpClass()
-        if cls.upgraded:
-            return
+        _upgrade_charms(cls)
 
-        config = lifecycle_utils.get_charm_config(fatal=False)
-        charms = config.get('upgrade_charms')
-        if not charms:
-            cls.upgraded = True
-            return
 
-        cwd = os.getcwd()
-        for charm in charms:
-            model.upgrade_charm(charm, path=cwd + '/' + charm + '.charm')
+# In addition to classes that run their whole test suite after upgrading,
+# we also support cherry picking specific methods that should run both
+# before _and_ after upgrade. Due to limitations in how Python's decorators
+# work, we need to decorate both the containing class and the methods that
+# we want to run twice.
 
-        cls.upgraded = True
+def upgradeable_test(method):
+    """Decorate method that should be run before and after upgrades."""
+    method.needs_upgrade = True
+    return method
+
+
+def _patch_upgrade(method, cls):
+    name = method.__name__
+    if not name.startswith('test_'):
+        return
+
+    def new_method(*args, **kwargs):
+        _upgrade_charms(cls)
+        return method(*args, **kwargs)
+
+    setattr(cls, 'test_999_upgraded_' + name[5:], new_method)
+
+
+def lazy_upgrade(cls):
+    """Decorate class that needs to run upgradeable methods."""
+    changes = []
+    for name, method in cls.__dict__.items():
+        if getattr(method, 'needs_upgrade', None):
+            changes.append((method, cls))
+
+    for method, cls in changes:
+        _patch_upgrade(method, cls)
+
+    return cls
