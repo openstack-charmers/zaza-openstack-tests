@@ -633,14 +633,35 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
     def test_write_private_key(self):
         self.patch_object(openstack_utils.deployment_env, 'get_tmpdir',
                           return_value='/tmp/zaza-model1')
+        self.patch_object(openstack_utils.os, 'umask',
+                          return_value='fakeumask')
         m = mock.mock_open()
         with mock.patch(
             'zaza.openstack.utilities.openstack.open', m, create=False
         ):
             openstack_utils.write_private_key('mykeys', 'keycontents')
+        self.umask.assert_has_calls([
+            mock.call(0o177),
+            mock.call('fakeumask')
+        ])
         m.assert_called_once_with('/tmp/zaza-model1/id_rsa_mykeys', 'w')
         handle = m()
         handle.write.assert_called_once_with('keycontents')
+
+        # Confirm that umask is reset even if write raises an exception
+        m.reset_mock()
+        self.umask.reset_mock()
+        with mock.patch(
+            'zaza.openstack.utilities.openstack.open', m, create=False
+        ):
+            handle = m()
+            handle.write.side_effect = OSError
+            with self.assertRaises(OSError):
+                openstack_utils.write_private_key('mykeys', 'keycontents')
+        self.umask.assert_has_calls([
+            mock.call(0o177),
+            mock.call('fakeumask')
+        ])
 
     def test_get_private_key(self):
         self.patch_object(openstack_utils.deployment_env, 'get_tmpdir',
