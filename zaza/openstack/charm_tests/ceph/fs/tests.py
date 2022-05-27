@@ -15,9 +15,8 @@
 """Encapsulate CephFS testing."""
 
 import logging
-import time
 import asyncio
-from tenacity import Retrying, stop_after_attempt, wait_exponential
+from tenacity import retry, Retrying, stop_after_attempt, wait_exponential
 import zaza.model as model
 import zaza.openstack.charm_tests.neutron.tests as neutron_tests
 import zaza.openstack.charm_tests.nova.utils as nova_utils
@@ -130,6 +129,8 @@ write_files:
             return dict((k.strip(), v.strip())
                         for k, v in dict(holder).items())
 
+        @retry(wait=wait_exponential(multiplier=1, min=4, max=10),
+               stop=stop_after_attempt(10))
         def _change_conf_check(mds_config):
             """Change configs, then assert to ensure config was set.
 
@@ -139,28 +140,31 @@ write_files:
             crt = model.async_set_application_config('ceph-fs', mds_config)
             loop.run_until_complete(crt)
             results = _get_conf()
-            time.sleep(1)  # needs time to release lock and update conf.
-            assert int(results['mds cache memory limit']) == \
-                   int(mds_config['mds-cache-memory-limit'])
-            assert float(results['mds cache reservation']) == \
-                   float(mds_config['mds-cache-reservation'])
-            assert float(results['mds health cache threshold']) == \
-                   float(mds_config['mds-health-cache-threshold'])
+
+            self.assertEquals(
+                results['mds cache memory limit'],
+                mds_config['mds-cache-memory-limit'])
+            self.assertAlmostEqual(
+                float(results['mds cache reservation']),
+                float(mds_config['mds-cache-reservation']))
+            self.assertAlmostEqual(
+                float(results['mds health cache threshold']),
+                float(mds_config['mds-health-cache-threshold']))
 
         # ensure defaults are set
-        mds_config = {'mds-cache-memory-limit': '4294967296',
+        mds_config = {'mds-cache-memory-limit': '4Gi',
                       'mds-cache-reservation': '0.05',
                       'mds-health-cache-threshold': '1.5'}
         _change_conf_check(mds_config)
 
         # change defaults
-        mds_config = {'mds-cache-memory-limit': '8589934592',
+        mds_config = {'mds-cache-memory-limit': '8Gi',
                       'mds-cache-reservation': '0.10',
                       'mds-health-cache-threshold': '2'}
         _change_conf_check(mds_config)
 
         # Restore config to keep tests idempotent
-        mds_config = {'mds-cache-memory-limit': '4294967296',
+        mds_config = {'mds-cache-memory-limit': '4Gi',
                       'mds-cache-reservation': '0.05',
                       'mds-health-cache-threshold': '1.5'}
         _change_conf_check(mds_config)
