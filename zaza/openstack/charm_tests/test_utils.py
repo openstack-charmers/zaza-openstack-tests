@@ -1350,7 +1350,29 @@ def _patch_upgrade(method, cls):
 
 
 def lazy_upgrade(cls):
-    """Decorate class that needs to run upgradeable methods."""
+    """Decorate class that needs to run upgradeable methods.
+
+    This decorator is meant to be used in tandem with the 'upgradeable_test'
+    one. Specifically, this one decorates classes while the other one
+    decorates methods. So you can have a test class like:
+
+    @lazy_upgrade
+    class MyTestClass(BaseCharmTest):
+
+      def test_1(self):
+        pass
+
+      @upgradeable_test
+      def test_2(self):
+        pass
+
+    In this example, the test class has 2 methods, the second one being
+    an 'upgradeable' method; i.e: this method runs twice, the first pass
+    being a regular run, while the second one does so after upgrading the
+    charms specified in the tests.yaml file. This second pass is done from
+    a dynamically generated method, prefixed by 'test_999', to try to make
+    it run as late as possible.
+    """
     changes = []
     for name, method in cls.__dict__.items():
         if getattr(method, 'needs_upgrade', None):
