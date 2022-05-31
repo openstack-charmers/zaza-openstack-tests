@@ -111,23 +111,27 @@ write_files:
         self.TESTED_UNIT = 'ceph-fs/0'
 
         def _get_conf():
-            """get/parse config file into dict for specified configs.
+            """get/parse ceph daemon response into dict for specified configs.
 
             :returns dict: conf options selected from configs
             :rtype: dict
             """
-            conf = model.run_on_unit(self.TESTED_UNIT, "cat {}"
-                                         .format('/etc/ceph/ceph.conf'))
-            holder = []
-            configs = ["mds cache memory limit",
-                       "mds cache reservation",
-                       "mds health cache threshold"]
-            for item in conf['Stdout'].split("\n"):
-                if any(ext in item for ext in configs):
-                    holder.append(tuple(item.split('=')))
-            # strip the leading/trailing whitespace
-            return dict((k.strip(), v.strip())
-                        for k, v in dict(holder).items())
+            configs = ["mds_cache_memory_limit",
+                       "mds_cache_reservation",
+                       "mds_health_cache_threshold"]
+            holder = {}
+            for config in configs:
+                cmd = "sudo ceph daemon mds." \
+                      "$HOSTNAME config show | grep {}".format(config)
+                conf = model.run_on_unit(self.TESTED_UNIT, cmd)
+                print(conf)
+                for i in (conf['Stdout'].replace('"', '')
+                                        .replace(',', '')
+                                        .strip()
+                                        .split("\n")):
+                    key, val = i.split(":")
+                    holder[key] = val.strip()
+            return holder
 
         @retry(wait=wait_exponential(multiplier=1, min=4, max=10),
                stop=stop_after_attempt(10))
@@ -140,31 +144,31 @@ write_files:
             crt = model.async_set_application_config('ceph-fs', mds_config)
             loop.run_until_complete(crt)
             results = _get_conf()
-
             self.assertEquals(
-                results['mds cache memory limit'],
+                results['mds_cache_memory_limit'],
                 mds_config['mds-cache-memory-limit'])
             self.assertAlmostEqual(
-                float(results['mds cache reservation']),
+                float(results['mds_cache_reservation']),
                 float(mds_config['mds-cache-reservation']))
             self.assertAlmostEqual(
-                float(results['mds health cache threshold']),
+                float(results['mds_health_cache_threshold']),
                 float(mds_config['mds-health-cache-threshold']))
 
         # ensure defaults are set
-        mds_config = {'mds-cache-memory-limit': '4Gi',
+        _get_conf()
+        mds_config = {'mds-cache-memory-limit': '4294967296',
                       'mds-cache-reservation': '0.05',
                       'mds-health-cache-threshold': '1.5'}
         _change_conf_check(mds_config)
 
         # change defaults
-        mds_config = {'mds-cache-memory-limit': '8Gi',
+        mds_config = {'mds-cache-memory-limit': '8589934592',
                       'mds-cache-reservation': '0.10',
                       'mds-health-cache-threshold': '2'}
         _change_conf_check(mds_config)
 
         # Restore config to keep tests idempotent
-        mds_config = {'mds-cache-memory-limit': '4Gi',
+        mds_config = {'mds-cache-memory-limit': '4294967296',
                       'mds-cache-reservation': '0.05',
                       'mds-health-cache-threshold': '1.5'}
         _change_conf_check(mds_config)
