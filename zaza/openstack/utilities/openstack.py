@@ -22,6 +22,8 @@ import datetime
 import enum
 import io
 import itertools
+import socket
+
 import juju_wait
 import logging
 import os
@@ -36,6 +38,17 @@ import tenacity
 import textwrap
 import urllib
 
+from _socket import (
+    EAI_AGAIN,
+    EAI_BADFLAGS,
+    EAI_FAIL,
+    EAI_FAMILY,
+    EAI_MEMORY,
+    EAI_NODATA,
+    EAI_NONAME,
+    EAI_SERVICE,
+    EAI_SOCKTYPE,
+)
 
 from .os_versions import (
     OPENSTACK_CODENAMES,
@@ -81,7 +94,6 @@ from zaza.openstack.utilities import (
     generic as generic_utils,
 )
 import zaza.utilities.networking as network_utils
-
 
 CIRROS_RELEASE_URL = 'http://download.cirros-cloud.net/version/released'
 CIRROS_IMAGE_URL = 'http://download.cirros-cloud.net'
@@ -160,7 +172,6 @@ UPGRADE_SERVICES = [
     {'name': 'placement', 'type': CHARM_TYPES['placement']},
 ]
 
-
 WORKLOAD_STATUS_EXCEPTIONS = {
     'vault': {
         'workload-status': 'blocked',
@@ -205,6 +216,7 @@ async def async_block_until_ca_exists(application_name, ca_cert,
     :param timeout: How long in seconds to wait
     :type timeout: int
     """
+
     async def _check_ca_present(model, ca_files):
         units = model.applications[application_name].units
         for ca_file in ca_files:
@@ -225,12 +237,14 @@ async def async_block_until_ca_exists(application_name, ca_cert,
                 return True
         else:
             return False
+
     ca_files = await _async_get_remote_ca_cert_file_candidates(
         application_name,
         model_name=model_name)
     async with zaza.model.run_in_model(model_name) as model:
         await zaza.model.async_block_until(
             lambda: _check_ca_present(model, ca_files), timeout=timeout)
+
 
 block_until_ca_exists = zaza.model.sync_wrapper(async_block_until_ca_exists)
 
@@ -794,7 +808,7 @@ def add_interface_to_netplan(server_name, mac_address):
     for attempt in tenacity.Retrying(
             stop=tenacity.stop_after_attempt(3),
             wait=tenacity.wait_exponential(
-            multiplier=1, min=2, max=10)):
+                multiplier=1, min=2, max=10)):
         with attempt:
             with tempfile.NamedTemporaryFile(mode="w") as netplan_file:
                 netplan_file.write(body_value)
@@ -927,7 +941,7 @@ def create_additional_port_for_machines(novaclient, neutronclient, net_id,
             if port['name'] == ext_port_name:
                 logging.warning(
                     'Instance {} already has additional port, skipping.'
-                    .format(server.id))
+                        .format(server.id))
                 break
         else:
             logging.info('Attaching additional port to instance ("{}"), '
@@ -1004,8 +1018,8 @@ def configure_networking_charms(networking_data, macs, use_juju_wait=True):
         if current_data_port and current_data_port != 'to-be-set':
             logging.info("Skip update of external network data port config."
                          "Config '{}' already set to value: {}".format(
-                             networking_data.port_config_key,
-                             current_data_port))
+                networking_data.port_config_key,
+                current_data_port))
             return
 
         model.set_application_config(
@@ -1629,8 +1643,8 @@ def add_neutron_secgroup_rules(neutron_client, project_id, custom_rules=[]):
     secgroup = None
     for group in neutron_client.list_security_groups().get('security_groups'):
         if (group.get('name') == 'default' and
-            (group.get('project_id') == project_id or
-                (group.get('tenant_id') == project_id))):
+                (group.get('project_id') == project_id or
+                 (group.get('tenant_id') == project_id))):
             secgroup = group
     if not secgroup:
         raise Exception("Failed to find default security group")
@@ -1646,12 +1660,12 @@ def add_neutron_secgroup_rules(neutron_client, project_id, custom_rules=[]):
         logging.info('Adding ssh security group rule')
         neutron_client.create_security_group_rule(
             {'security_group_rule':
-                {'security_group_id': secgroup.get('id'),
-                 'protocol': 'tcp',
-                 'port_range_min': 22,
-                 'port_range_max': 22,
-                 'direction': 'ingress',
-                 }
+                 {'security_group_id': secgroup.get('id'),
+                  'protocol': 'tcp',
+                  'port_range_min': 22,
+                  'port_range_max': 22,
+                  'direction': 'ingress',
+                  }
              })
 
     if 'icmp' in protocol_rules:
@@ -1660,10 +1674,10 @@ def add_neutron_secgroup_rules(neutron_client, project_id, custom_rules=[]):
         logging.info('Adding ping security group rule')
         neutron_client.create_security_group_rule(
             {'security_group_rule':
-                {'security_group_id': secgroup.get('id'),
-                 'protocol': 'icmp',
-                 'direction': 'ingress',
-                 }
+                 {'security_group_id': secgroup.get('id'),
+                  'protocol': 'icmp',
+                  'direction': 'ingress',
+                  }
              })
 
     for rule in custom_rules:
@@ -2170,6 +2184,7 @@ async def _async_get_remote_ca_cert_file_candidates(application,
     cert_files.append(KEYSTONE_REMOTE_CACERT)
     return cert_files
 
+
 _get_remote_ca_cert_file_candidates = zaza.model.sync_wrapper(
     _async_get_remote_ca_cert_file_candidates)
 
@@ -2287,6 +2302,27 @@ def find_ubuntu_image(release, arch):
     return UBUNTU_IMAGE_URLS[release].format(release=release, arch=arch)
 
 
+# error codes that represent a dns issue
+DNS_ISSUES = [
+    EAI_AGAIN,
+    EAI_BADFLAGS,
+    EAI_FAIL,
+    EAI_FAMILY,
+    EAI_MEMORY,
+    EAI_NODATA,
+    EAI_NONAME,
+    EAI_SERVICE,
+    EAI_SOCKTYPE
+]
+
+
+class DnsProblemError(Exception):
+    pass
+
+
+@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
+                reraise=True,
+                retry=tenacity.retry_if_exception_type(DnsProblemError))
 def download_image(image_url, target_file):
     """Download the image from the given url to the specified file.
 
@@ -2297,7 +2333,11 @@ def download_image(image_url, target_file):
     """
     opener = get_urllib_opener()
     urllib.request.install_opener(opener)
-    urllib.request.urlretrieve(image_url, target_file)
+    try:
+        urllib.request.urlretrieve(image_url, target_file)
+    except urllib.error.URLError as ex:
+        if type(ex.reason) == socket.gaierror and ex.reason.errno in DNS_ISSUES:
+            raise DnsProblemError(ex)
 
 
 def _resource_reaches_status(resource, resource_id,
@@ -2588,7 +2628,7 @@ def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[],
         result = glance.image_tags.update(image.id, tag)
         logging.debug(
             'applying tag to image: glance.image_tags.update({}, {}) = {}'
-            .format(image.id, tags, result))
+                .format(image.id, tags, result))
 
     logging.info("Setting image properties: {}".format(properties))
     if properties:
@@ -2865,7 +2905,7 @@ def cloud_init_complete(nova_client, vm_id, bootstring):
     if bootstring not in console_log:
         raise exceptions.CloudInitIncomplete(
             "'{}' not found in console log: {}"
-            .format(bootstring, console_log))
+                .format(bootstring, console_log))
 
 
 @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
@@ -2902,6 +2942,7 @@ def ssh_test(username, ip, vm_name, password=None, privkey=None, retry=True):
     :type retry: boolean
     :raises: exceptions.SSHFailed
     """
+
     def verify(stdin, stdout, stderr):
         return_string = stdout.readlines()[0].strip()
 
@@ -2968,14 +3009,14 @@ def ssh_command(username,
         try:
             verify(stdin, stdout, stderr)
         except Exception as e:
-            raise(e)
+            raise (e)
         finally:
             ssh.close()
 
 
 @tenacity.retry(wait=tenacity.wait_exponential(multiplier=0.01),
                 reraise=True, stop=tenacity.stop_after_delay(60) |
-                tenacity.stop_after_attempt(100))
+                                   tenacity.stop_after_attempt(100))
 def neutron_agent_appears(neutron_client, binary):
     """Wait for Neutron agent to appear and return agent_id.
 
@@ -3001,7 +3042,7 @@ def neutron_agent_appears(neutron_client, binary):
 @tenacity.retry(wait=tenacity.wait_exponential(multiplier=0.01),
                 reraise=True,
                 stop=tenacity.stop_after_delay(60) |
-                tenacity.stop_after_attempt(100))
+                     tenacity.stop_after_attempt(100))
 def neutron_bgp_speaker_appears_on_agent(neutron_client, agent_id):
     """Wait for Neutron BGP speaker to appear on agent.
 
