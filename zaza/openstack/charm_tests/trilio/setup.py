@@ -176,3 +176,16 @@ def python2_workaround():
             unit.entity_id,
             ("apt install --yes python-is-python3; "
              "systemctl restart wlm\\*.service"))
+
+
+def restart_tvault_contego():
+    """Workaround for Bug #1951999.
+
+    tvault-contego may need restarting if nova.conf is rendered after
+    systemd has timed out restarting tvault-contego.
+    """
+    for unit in zaza_model.get_units('trilio-data-mover'):
+        zaza_model.run_on_unit(
+            unit.entity_id,
+            ("systemctl restart tvault-contego; "
+             "./hooks/update-status"))
