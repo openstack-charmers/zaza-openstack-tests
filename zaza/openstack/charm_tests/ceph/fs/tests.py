@@ -124,7 +124,6 @@ write_files:
                 cmd = "sudo ceph daemon mds." \
                       "$HOSTNAME config show | grep {}".format(config)
                 conf = model.run_on_unit(self.TESTED_UNIT, cmd)
-                print(conf)
                 for i in (conf['Stdout'].replace('"', '')
                                         .replace(',', '')
                                         .strip()
