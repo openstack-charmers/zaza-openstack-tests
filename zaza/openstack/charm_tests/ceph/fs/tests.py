@@ -15,14 +15,17 @@
 """Encapsulate CephFS testing."""
 
 import logging
-from tenacity import Retrying, stop_after_attempt, wait_exponential
-
+import asyncio
+from tenacity import retry, Retrying, stop_after_attempt, wait_exponential
 import zaza.model as model
 import zaza.openstack.charm_tests.neutron.tests as neutron_tests
 import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.configure.guest as guest
-import zaza.openstack.utilities.openstack as openstack_utils
+
+from zaza.openstack.utilities import (
+    openstack as openstack_utils,
+)
 
 
 class CephFSTests(test_utils.OpenStackBaseTest):
@@ -102,6 +105,72 @@ write_files:
             'sudo mount -a && '
             'sudo cat /mnt/cephfs/test',
             password=password, privkey=privkey, verify=verify)
+
+    def test_conf(self):
+        """Test ceph to ensure juju config options are properly set."""
+        self.TESTED_UNIT = 'ceph-fs/0'
+
+        def _get_conf():
+            """get/parse ceph daemon response into dict for specified configs.
+
+            :returns dict: conf options selected from configs
+            :rtype: dict
+            """
+            configs = ["mds_cache_memory_limit",
+                       "mds_cache_reservation",
+                       "mds_health_cache_threshold"]
+            holder = {}
+            for config in configs:
+                cmd = "sudo ceph daemon mds." \
+                      "$HOSTNAME config show | grep {}".format(config)
+                conf = model.run_on_unit(self.TESTED_UNIT, cmd)
+                for i in (conf['Stdout'].replace('"', '')
+                                        .replace(',', '')
+                                        .strip()
+                                        .split("\n")):
+                    key, val = i.split(":")
+                    holder[key] = val.strip()
+            return holder
+
+        @retry(wait=wait_exponential(multiplier=1, min=4, max=10),
+               stop=stop_after_attempt(10))
+        def _change_conf_check(mds_config):
+            """Change configs, then assert to ensure config was set.
+
+            Doesn't return a value.
+            """
+            loop = asyncio.get_event_loop()
+            crt = model.async_set_application_config('ceph-fs', mds_config)
+            loop.run_until_complete(crt)
+            results = _get_conf()
+            self.assertEquals(
+                results['mds_cache_memory_limit'],
+                mds_config['mds-cache-memory-limit'])
+            self.assertAlmostEqual(
+                float(results['mds_cache_reservation']),
+                float(mds_config['mds-cache-reservation']))
+            self.assertAlmostEqual(
+                float(results['mds_health_cache_threshold']),
+                float(mds_config['mds-health-cache-threshold']))
+
+        # ensure defaults are set
+        _get_conf()
+        mds_config = {'mds-cache-memory-limit': '4294967296',
+                      'mds-cache-reservation': '0.05',
+                      'mds-health-cache-threshold': '1.5'}
+        _change_conf_check(mds_config)
+
+        # change defaults
+        mds_config = {'mds-cache-memory-limit': '8589934592',
+                      'mds-cache-reservation': '0.10',
+                      'mds-health-cache-threshold': '2'}
+        _change_conf_check(mds_config)
+
+        # Restore config to keep tests idempotent
+        mds_config = {'mds-cache-memory-limit': '4294967296',
+                      'mds-cache-reservation': '0.05',
+                      'mds-health-cache-threshold': '1.5'}
+        _change_conf_check(mds_config)
 
 
 def _indent(text, amount, ch=' '):
