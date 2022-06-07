@@ -239,6 +239,7 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
                 'name': self.EC_METADATA_POOL}))
 
     def refresh_partitions(self, ctxt):
+        """Refresh kernel partition tables in client."""
         self.run_commands(ctxt['client_entity_id'], ('partprobe', ), ctxt)
 
     def run_client_checks(self, test_ctxt):
