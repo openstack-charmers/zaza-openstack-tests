@@ -262,11 +262,12 @@ PACKAGE_CODENAMES = {
         ('11', 'victoria'),
     ]),
     'ceph-common': OrderedDict([
-        ('10', 'mitaka'),  # jewel
-        ('12', 'queens'),  # luminous
-        ('13', 'rocky'),   # mimic
-        ('14', 'train'),   # nautilus
-        ('15', 'ussuri'),  # octopus
+        ('10', 'mitaka'),   # jewel
+        ('12', 'queens'),   # luminous
+        ('13', 'rocky'),    # mimic
+        ('14', 'train'),    # nautilus
+        ('15', 'ussuri'),   # octopus
+        ('16', 'victoria'), # pacific
     ]),
     'placement-common': OrderedDict([
         ('2', 'train'),
