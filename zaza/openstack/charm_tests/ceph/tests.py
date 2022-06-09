@@ -653,7 +653,8 @@ class CephTest(test_utils.OpenStackBaseTest):
         )
         logging.debug('Result of action: {}'.format(action_obj))
         delete_results = action_obj.data['results']['message']
-        self.assertEqual(delete_results, "entity client.sandbox does not exist\n")
+        self.assertEqual(delete_results, 
+                         "entity client.sandbox does not exist\n")
 
 
 class CephRGWTest(test_utils.OpenStackBaseTest):
