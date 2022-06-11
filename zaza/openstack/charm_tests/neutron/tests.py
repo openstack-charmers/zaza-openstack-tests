@@ -29,6 +29,7 @@ from neutronclient.common import exceptions as neutronexceptions
 import yaml
 import zaza
 import zaza.openstack.charm_tests.neutron.setup as neutron_setup
+import zaza.openstack.charm_tests.neutron.utils as neutron_utils
 import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.configure.guest as guest
@@ -863,10 +864,12 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
         :type mtu: Optional[int]
         """
         if not self.attach_to_external_network:
-            floating_1 = floating_ips_from_instance(instance_1)[0]
-            floating_2 = floating_ips_from_instance(instance_2)[0]
-        address_1 = fixed_ips_from_instance(instance_1)[0]
-        address_2 = fixed_ips_from_instance(instance_2)[0]
+            floating_1 = neutron_utils.floating_ips_from_instance(
+                instance_1)[0]
+            floating_2 = neutron_utils.floating_ips_from_instance(
+                instance_2)[0]
+        address_1 = neutron_utils.fixed_ips_from_instance(instance_1)[0]
+        address_2 = neutron_utils.fixed_ips_from_instance(instance_2)[0]
 
         username = guest.boot_tests['bionic']['username']
         password = guest.boot_tests['bionic'].get('password')
@@ -916,10 +919,10 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
         """
         if self.attach_to_external_network:
             router = router_address_from_subnet(self.external_subnet)
-            address = fixed_ips_from_instance(instance)[0]
+            address = neutron_utils.fixed_ips_from_instance(instance)[0]
         else:
             router = router_address_from_subnet(self.project_subnet)
-            address = floating_ips_from_instance(instance)[0]
+            address = neutron_utils.floating_ips_from_instance(instance)[0]
 
         username = guest.boot_tests['bionic']['username']
         password = guest.boot_tests['bionic'].get('password')
@@ -1020,9 +1023,9 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
 
         try:
             mtu_1 = self.effective_network_mtu(
-                network_name_from_instance(instance_1))
+                neutron_utils.network_name_from_instance(instance_1))
             mtu_2 = self.effective_network_mtu(
-                network_name_from_instance(instance_2))
+                neutron_utils.network_name_from_instance(instance_2))
             mtu_min = min(mtu_1, mtu_2)
         except neutronexceptions.NotFound:
             # Older versions of OpenStack cannot look up network by name, just
@@ -1040,65 +1043,6 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
         # Validate tenant to external network routing
         self.validate_instance_can_reach_router(instance_1, verify, mtu_1)
         self.validate_instance_can_reach_router(instance_2, verify, mtu_2)
-
-
-def floating_ips_from_instance(instance):
-    """
-    Retrieve floating IPs from an instance.
-
-    :param instance: The instance to fetch floating IPs from
-    :type instance: nova_client.Server
-
-    :returns: A list of floating IPs for the specified server
-    :rtype: list[str]
-    """
-    return ips_from_instance(instance, 'floating')
-
-
-def fixed_ips_from_instance(instance):
-    """
-    Retrieve fixed IPs from an instance.
-
-    :param instance: The instance to fetch fixed IPs from
-    :type instance: nova_client.Server
-
-    :returns: A list of fixed IPs for the specified server
-    :rtype: list[str]
-    """
-    return ips_from_instance(instance, 'fixed')
-
-
-def network_name_from_instance(instance):
-    """Retrieve name of primary network the instance is attached to.
-
-    :param instance: The instance to fetch name of network from.
-    :type instance: nova_client.Server
-    :returns: Name of primary network the instance is attached to.
-    :rtype: str
-    """
-    return next(iter(instance.addresses))
-
-
-def ips_from_instance(instance, ip_type):
-    """
-    Retrieve IPs of a certain type from an instance.
-
-    :param instance: The instance to fetch IPs from
-    :type instance: nova_client.Server
-    :param ip_type: the type of IP to fetch, floating or fixed
-    :type ip_type: str
-
-    :returns: A list of IPs for the specified server
-    :rtype: list[str]
-    """
-    if ip_type not in ['floating', 'fixed']:
-        raise RuntimeError(
-            "Only 'floating' and 'fixed' are valid IP types to search for"
-        )
-    return list([
-        ip['addr'] for ip in instance.addresses[
-            network_name_from_instance(instance)]
-        if ip['OS-EXT-IPS:type'] == ip_type])
 
 
 class NeutronNetworkingTest(NeutronNetworkingBase):
