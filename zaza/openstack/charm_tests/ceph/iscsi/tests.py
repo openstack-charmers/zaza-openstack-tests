@@ -254,11 +254,12 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
         """
         self.create_iscsi_target(test_ctxt)
         self.login_iscsi_target(test_ctxt)
+        self.refresh_partitions(test_ctxt)
         self.check_client_device(test_ctxt, init_client=True)
         self.logout_iscsi_targets(test_ctxt)
         self.login_iscsi_target(test_ctxt)
-        self.check_client_device(test_ctxt, init_client=False)
         self.refresh_partitions(test_ctxt)
+        self.check_client_device(test_ctxt, init_client=False)
 
     def test_create_and_mount_volume(self):
         """Test creating a target and mounting it on a client."""
