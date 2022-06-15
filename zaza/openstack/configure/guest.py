@@ -50,6 +50,41 @@ boot_tests = {
         'bootstring': 'finished at'}}
 
 
+def launch_instance_retryer(instance_key, **kwargs):
+    """Launch an instance and retry on failure.
+
+    See launch_instance for kwargs
+
+    :param instance_key: Key to collect associated config data with.
+    :type instance_key: str
+    """
+    vm_name = kwargs.get('vm_name', time.strftime("%Y%m%d%H%M%S"))
+    kwargs['vm_name'] = vm_name
+
+    def remove_vm_on_failure(retry_state):
+        logging.info(
+            'Detected failure launching or connecting to VM {}'.format(
+                vm_name))
+        keystone_session = openstack_utils.get_overcloud_keystone_session()
+        nova_client = openstack_utils.get_nova_session_client(keystone_session)
+        vm = nova_client.servers.find(name=vm_name)
+        openstack_utils.resource_removed(
+            nova_client.servers,
+            vm.id,
+            msg="Waiting for the Nova VM {} to be deleted".format(vm.name))
+
+    retryer = Retrying(
+        stop=stop_after_attempt(3),
+        after=remove_vm_on_failure,
+    )
+    instance = retryer(
+        launch_instance,
+        instance_key,
+        **kwargs
+    )
+    return instance
+
+
 def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
                     private_network_name=None, image_name=None,
                     flavor_name=None, external_network_name=None, meta=None,
