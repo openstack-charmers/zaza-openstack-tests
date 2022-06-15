@@ -409,7 +409,7 @@ class TrilioGhostNFSShareTest(TrilioBaseTest):
             self.lead_unit,
             'ghost-share',
             action_params={
-                'nfs-shares': '10.20.0.1:/srv/testing'
+                'nfs-shares': '10.20.0.1:/srv/ghost-testing'
             },
             model_name=self.model_name)
         )
