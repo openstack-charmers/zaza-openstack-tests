@@ -337,7 +337,7 @@ class TrilioBaseTest(test_utils.OpenStackBaseTest):
             name="{}-100-vol".format(self.RESOURCE_PREFIX),
         )
 
-        instance = guest_utils.launch_instance(
+        instance = guest_utils.launch_instance_retryer(
             glance_setup.CIRROS_IMAGE_NAME,
             vm_name="{}-server".format(self.RESOURCE_PREFIX),
         )
