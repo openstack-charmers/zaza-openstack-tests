@@ -548,6 +548,24 @@ class MySQLInnoDBClusterTests(MySQLCommonTests):
             .format(_key, _value, action.data))
         logging.info("Passed set cluster option action test.")
 
+    def test_911_restart_after_group_replication_cache_set(self):
+        """Restart after group_replication_message_cache_size is set.
+
+        Check the cluster is up and running after the
+        group_replication_message_cache_size config option is set.
+        """
+        option = 'group-replication-message-cache-size'
+        default = ''
+        alternate = '512M'
+        self.restart_on_changed(
+            self.conf_file,
+            {option: default},
+            {option: alternate},
+            {},
+            {},
+            self.services
+        )
+
 
 class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
     """Percona Cluster cold start tests."""
