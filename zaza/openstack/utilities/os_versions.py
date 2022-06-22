@@ -307,6 +307,7 @@ UBUNTU_RELEASES = (
     'groovy',
     'hirsute',
     'impish',
+    'jammy',
 )
 
 
