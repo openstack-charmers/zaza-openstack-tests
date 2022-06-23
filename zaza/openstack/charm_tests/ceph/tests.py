@@ -189,8 +189,13 @@ class CephTest(test_utils.OpenStackBaseTest):
         super(CephTest, cls).setUpClass()
         cls.loop_devs = {}   # Maps osd -> loop device
         for osd in (x.entity_id for x in zaza_model.get_units('ceph-osd')):
-            loop_dev = zaza_utils.add_loop_device(osd, 10).get('Stdout')
+            loop_dev = zaza_utils.add_loop_device(osd, size=10).get('Stdout')
             cls.loop_devs[osd] = loop_dev
+
+    @classmethod
+    def tearDownClass(cls):
+        for osd, loop_dev in cls.loop_devs.items():
+            zaza_utils.remove_loop_device(osd, loop_dev)
 
     def osd_out_in(self, services):
         """Run OSD out and OSD in tests.
@@ -603,6 +608,15 @@ class CephTest(test_utils.OpenStackBaseTest):
             zaza_utils.assertActionRanOK(action_obj)
         zaza_model.wait_for_application_states()
         self.assertEqual(len(osds) * 2, self.get_num_osds(mon))
+
+        # Finally, remove all the added OSDs that are backed by loop devices.
+        for param in params:
+            osd_id = self.get_local_osd_id(param['unit'])
+            zaza_model.run_action(
+                unit_name=param['unit'],
+                action_name='remove-disk',
+                action_params={'osd-ids': osd_id, 'purge': True}
+            )
 
     def test_ceph_auth(self):
         """Test creating and deleting user."""
