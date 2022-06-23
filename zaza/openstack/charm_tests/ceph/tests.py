@@ -194,6 +194,7 @@ class CephTest(test_utils.OpenStackBaseTest):
 
     @classmethod
     def tearDownClass(cls):
+        """Run the ceph's common class teardown."""
         for osd, loop_dev in cls.loop_devs.items():
             zaza_utils.remove_loop_device(osd, loop_dev)
 
