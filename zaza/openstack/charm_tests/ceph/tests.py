@@ -268,10 +268,11 @@ class CephTest(test_utils.OpenStackBaseTest):
         Verify that the content matches the original file.
         """
         unit_name = 'ceph-mon/0'
-        cmd = 'sudo ceph osd pool create test 128; \
+        cmd = 'sudo ceph osd pool create test {PG_NUM}; \
                echo 123456789 > /tmp/input.txt; \
                rados put -p test test_input /tmp/input.txt; \
                rados get -p test test_input /dev/stdout'
+        cmd = cmd.format(PG_NUM=32)
         logging.debug('Creating test pool and putting test file in pool...')
         result = zaza_model.run_on_unit(unit_name, cmd)
         code = result.get('Code')
