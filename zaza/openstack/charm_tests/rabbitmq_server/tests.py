@@ -271,6 +271,13 @@ class RmqTests(test_utils.OpenStackBaseTest):
 
     def test_414_rmq_nrpe_monitors(self):
         """Check rabbimq-server nrpe monitor basic functionality."""
+        try:
+            zaza.model.get_application("nrpe")
+        except KeyError:
+            logging.warn(("Skipping as nrpe is not deployed. "
+                          "http://pad.lv/1968008"))
+            return
+
         units = zaza.model.get_units(self.application_name)
         host_names = generic_utils.get_unit_hostnames(units)
 
