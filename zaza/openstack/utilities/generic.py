@@ -725,10 +725,13 @@ def get_leaders_and_non_leaders(application_name):
     return leader, non_leaders
 
 
-def add_loop_device(unit, size=10):
+def add_loop_device(unit, name='loop.img', size=10):
     """Add a loopback device to a Juju unit.
 
     :param unit: The unit name on which to create the device.
+    :type unit: str
+
+    :param name: The name of the file used for the loop device.
     :type unit: str
 
     :param size: The size in GB of the device.
@@ -736,9 +739,25 @@ def add_loop_device(unit, size=10):
 
     :returns: The device name.
     """
-    loop_name = '/home/ubuntu/loop.img'
+    loop_name = '/home/ubuntu/{}'.format(name)
     truncate = 'truncate --size {}GB {}'.format(size, loop_name)
     losetup = 'losetup --find {}'.format(loop_name)
     lofind = 'losetup -a | grep {} | cut -f1 -d ":"'.format(loop_name)
     cmd = "sudo sh -c '{} && {} && {}'".format(truncate, losetup, lofind)
+    return model.run_on_unit(unit, cmd)
+
+
+def remove_loop_device(unit, device, name='loop.img'):
+    """Remove a loopback device from a Juju unit.
+
+    :param unit: The unit name from which to remove the device.
+    :type unit: str
+
+    :param device: The loop device path to be removed.
+    :type unit: str
+
+    :param name: The name of the file used for the loop device.
+    :type name: str
+    """
+    cmd = "sudo sh -c 'losetup -d {} && rm {}'".format(device, name)
     return model.run_on_unit(unit, cmd)
