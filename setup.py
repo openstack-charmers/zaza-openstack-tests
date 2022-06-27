@@ -69,7 +69,7 @@ install_require = [
 ]
 
 tests_require = [
-    'tox >= 2.3.1',
+    'tox',
 ]
 
 
