@@ -17,6 +17,9 @@
 """Encapsulate Cinder testing."""
 
 import logging
+import unittest
+
+import novaclient
 
 import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
@@ -30,15 +33,15 @@ from tenacity import (
 )
 
 
-class CinderTests(test_utils.OpenStackBaseTest):
-    """Encapsulate Cinder tests."""
+class CinderBase(test_utils.OpenStackBaseTest):
+    """Base for Cinder tests."""
 
     RESOURCE_PREFIX = 'zaza-cindertests'
 
     @classmethod
     def setUpClass(cls):
         """Run class setup for running tests."""
-        super(CinderTests, cls).setUpClass(application_name='cinder')
+        super(CinderBase, cls).setUpClass(application_name='cinder')
         cls.application_name = 'cinder'
         cls.lead_unit = zaza.model.get_lead_unit_name(
             "cinder", model_name=cls.model_name)
@@ -56,6 +59,21 @@ class CinderTests(test_utils.OpenStackBaseTest):
                 wait=wait_exponential(multiplier=1, min=2, max=60)):
             with attempt:
                 volumes = list(cls.cinder_client.volumes.list())
+                for vol in volumes:
+                    for attachment in vol.attachments:
+                        logging.info("Removing volume {} from {}".format(
+                            vol.id,
+                            attachment['server_id']))
+                        cls.nova_client.volumes.delete_server_volume(
+                            attachment['server_id'],
+                            vol.id)
+                        openstack_utils.resource_reaches_status(
+                            cls.cinder_client.volumes,
+                            vol.id,
+                            wait_iteration_max_time=1200,
+                            stop_after_attempt=20,
+                            expected_status="available",
+                            msg="Volume status wait")
                 snapped_volumes = [v for v in volumes
                                    if v.name.endswith("-from-snap")]
                 if snapped_volumes:
@@ -111,6 +129,10 @@ class CinderTests(test_utils.OpenStackBaseTest):
                 except Exception as e:
                     logging.error("error removing volume: {}".format(str(e)))
                     raise
+
+
+class CinderTests(CinderBase):
+    """Encapsulate Cinder tests."""
 
     def test_100_volume_create_extend_delete(self):
         """Test creating, extending a volume."""
@@ -258,6 +280,87 @@ class CinderTests(test_utils.OpenStackBaseTest):
         """
         with self.pause_resume(self.services):
             logging.info("Testing pause resume")
+
+
+class CinderEncryptedVolume(CinderBase):
+    """Class for testing encrypted volume support."""
+
+    def ensure_guest(self, vm_name):
+        """Return the existing guest or boot a new one.
+
+        :param vm_name: Name of guest to lookup
+        :type vm_name: str
+        :returns: Guest matching name.
+        :rtype: novaclient.v2.servers.Server
+        """
+        try:
+            # XXX FLAVOR
+            guest = self.nova_client.servers.find(name=vm_name)
+            logging.info('Found existing guest')
+        except novaclient.exceptions.NotFound:
+            logging.info('Launching new guest')
+            guest = zaza.openstack.configure.guest.launch_instance(
+                'bionic',
+                flavor_name='m1.ly',
+                vm_name=vm_name)
+        return guest
+
+    def test_130_encrypted_volumes(self):
+        """Test creating an encrypted volume and attatching it."""
+        status = zaza.model.get_status()
+        if 'barbican' not in status.applications.keys():
+            raise unittest.SkipTest(
+                "Skipping encryption test, Barbican not present")
+        vol_types = [
+            v
+            for v in self.cinder_client.volume_types.list()
+            if v.name == 'LUKS']
+        if vol_types:
+            luks_vol_type = vol_types[0]
+        else:
+            luks_vol_type = self.cinder_client.volume_types.create('LUKS')
+        vol_encrypt_types = [
+            v
+            for v in self.cinder_client.volume_encryption_types.list()
+            if v.volume_type_id == luks_vol_type.id]
+        if not vol_encrypt_types:
+            specs = {
+                'cipher': 'aes-xts-plain64',
+                'key_size': 512,
+                'control_location': 'front-end',
+                'provider': 'nova.volume.encryptors.luks.LuksEncryptor'}
+            self.cinder_client.volume_encryption_types.create(
+                luks_vol_type,
+                specs=specs)
+        vol_name = '{}-130-encrypted-vol'.format(self.RESOURCE_PREFIX)
+        vol_new = self.cinder_client.volumes.create(
+            name=vol_name,
+            volume_type='LUKS',
+            size='1')
+        openstack_utils.resource_reaches_status(
+            self.cinder_client.volumes,
+            vol_new.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
+            expected_status="available",
+            msg="Volume status wait")
+        self.assertTrue(vol_new.encrypted)
+        vm_name = '{}-encrypted-vol-test'.format(self.RESOURCE_PREFIX)
+        guest = self.ensure_guest(vm_name)
+        self.nova_client.volumes.create_server_volume(
+            guest.id,
+            vol_new.id)
+        openstack_utils.resource_reaches_status(
+            self.cinder_client.volumes,
+            vol_new.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
+            expected_status="in-use",
+            msg="Volume status wait")
+        volume = self.cinder_client.volumes.find(name=vol_name)
+        self.assertIn(
+            guest.id,
+            [g['server_id'] for g in volume.attachments])
 
 
 class SecurityTests(test_utils.OpenStackBaseTest):
