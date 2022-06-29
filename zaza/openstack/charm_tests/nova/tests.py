@@ -907,6 +907,75 @@ class NovaCloudController(NovaCommonTests):
             alternate_entry,
             self.services)
 
+    def test_230_resize_to_the_same_host(self):
+        """Verify that the allow-resize-to-same-host setting is propagated.
+
+        Change allow-resize-to-same-host and assert that change propagates to
+        the correct file on nova-cloud-controller units and that services are
+        restarted as a result. Also verify that the setting is propagated to
+        the nova-compute units.
+        """
+        services = ['nova-compute']
+        nova_config_key = 'allow_resize_to_same_host'
+        juju_config_key = 'allow-resize-to-same-host'
+        try:
+            current_value = zaza.model.get_application_config(
+                'nova-cloud-controller')[juju_config_key]['value']
+        except KeyError:
+            logging.info('This version of nova-cloud-controller charm does '
+                         'not suport {} config option. '
+                         'Nothing to test.'.format(juju_config_key))
+            return
+
+        new_value = 'True'
+        set_default = {juju_config_key: current_value}
+        set_alternate = {juju_config_key: new_value}
+
+        mtime = zaza.model.get_unit_time(
+            self.lead_unit,
+            model_name=self.model_name)
+        logging.debug('Remote unit timestamp {}'.format(mtime))
+
+        # Make config change, wait for the services restart on
+        # nova-cloud-controller
+        with self.config_change(set_default, set_alternate):
+            # The config change should propagate to nova-cmopute units
+            # Wait for them to get settled after relation data has changed
+            logging.info(
+                'Waiting for services ({}) to be restarted'.format(services))
+            zaza.model.block_until_services_restarted(
+                'nova-compute',
+                mtime,
+                services,
+                model_name=self.model_name)
+
+            # Get config value form nova-compute units and verify that
+            # it's changed
+            nova_cfg = ConfigParser()
+
+            for unit in zaza.model.get_units('nova-compute',
+                                             model_name=self.model_name):
+                logging.info('Checking value of {} in {}'.format(
+                    nova_config_key, unit.entity_id))
+                result = zaza.model.run_on_unit(
+                    unit.entity_id,
+                    'cat /etc/nova/nova.conf')
+                nova_cfg.read_string(result['Stdout'])
+
+                try:
+                    allow_resize_to_same_host =\
+                        nova_cfg['DEFAULT'][nova_config_key]
+                    logging.debug('Unit {}; value of {} is: {}'.format(
+                        unit.entity_id,
+                        nova_config_key,
+                        allow_resize_to_same_host))
+                except KeyError:
+                    logging.error('Key {} not found for unit {}'.format(
+                        nova_config_key, unit.entity_id))
+                    allow_resize_to_same_host = None
+
+                self.assertEqual(new_value, allow_resize_to_same_host)
+
     def test_302_api_rate_limiting_is_enabled(self):
         """Check that API rate limiting is enabled."""
         logging.info('Checking api-paste config file data...')
