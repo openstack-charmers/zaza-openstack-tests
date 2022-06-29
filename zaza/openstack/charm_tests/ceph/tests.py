@@ -21,6 +21,7 @@ from os import (
     listdir,
     path
 )
+import re
 import requests
 import tempfile
 
@@ -1161,3 +1162,40 @@ class BlueStoreCompressionCharmOperation(test_utils.BaseCharmTest):
                          'configuration')
             self.test_config[
                 'target_deploy_status'] = stored_target_deploy_status
+
+
+class CephDepartureTest(test_utils.OpenStackBaseTest):
+    """Test charm handling of a departing unit."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running ceph departure tests."""
+        super(CephDepartureTest, cls).setUpClass(application_name='ceph-mon')
+
+    def get_mon_count(self, unit):
+        """Compute the number of active ceph monitors."""
+        result = zaza_model.run_on_unit(unit, 'ceph mon stat')
+        rx = re.compile('(\\d)* mons')
+        match = rx.search(result['Stdout'])
+        return int(match.group(1))
+
+    def get_mon_units(self):
+        """Get a list of the ceph-mon units."""
+        return list(x.entity_id for x in zaza_model.get_units('ceph-mon'))
+
+    def test_departure(self):
+        """Test descaling of a ceph-mon unit."""
+        mons = self.get_mon_units()
+        mon_count = len(mons)
+        logging.info('Monitor count is {}'.format(mon_count))
+        zaza_model.add_unit('ceph-mon', wait_appear=True)
+        try:
+            logging.info('New monitor has been added')
+            new_mon = next(iter(set(self.get_mon_units()) - set(mons)))
+            zaza_model.wait_for_unit_idle(new_mon)
+            self.assertEqual(mon_count + 1, self.get_mon_count(mons[0]))
+            zaza_model.destroy_unit('ceph-mon', mons[0], wait_disappear=True)
+            self.assertEqual(mon_count, self.get_mon_count(mons[1]))
+        except Exception:
+            zaza_model.destroy_unit('ceph-mon', mons[0])
+            raise
