@@ -126,7 +126,7 @@ class CephDashboardTest(test_utils.BaseCharmTest):
     def test_dashboard_units(self):
         """Check dashboard units are configured correctly."""
         verify = self.local_ca_cert
-        units = zaza.model.get_units(self.application_name)
+        units = zaza.model.get_units('ceph-mon')
         rcs = collections.defaultdict(list)
         for unit in units:
             r = self._run_request_get(
