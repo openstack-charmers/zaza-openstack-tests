@@ -17,6 +17,7 @@
 """Encapsulate Manila Ganesha testing."""
 
 import logging
+import tenacity
 
 from zaza.openstack.charm_tests.manila_ganesha.setup import (
     MANILA_GANESHA_TYPE_NAME,
@@ -56,3 +57,78 @@ class ManilaGaneshaTests(manila_tests.ManilaBaseTest):
                     unit.entity_id,
                     "systemctl stop manila-share nfs-ganesha")
         return True
+
+    def test_902_nrpe_custom_plugin_checks(self):
+        """Confirm that the NRPE custom plugin files are created."""
+        try:
+            zaza.model.get_application("nrpe")
+        except KeyError:
+            logging.warn("Skipping as nrpe is not deployed.")
+            return
+
+        units = zaza.model.get_units('manila-ganesha')
+        plugins = ['check_nfs_conn', 'check_nfs_exports', 'check_nfs_services']
+
+        cmds = []
+        for check_name in plugins:
+            cmds.append(f'ls /usr/local/lib/nagios/plugins/{check_name}')
+
+        for attempt in tenacity.Retrying(
+            wait=tenacity.wait_fixed(20),
+            stop=tenacity.stop_after_attempt(2),
+            reraise=True
+        ):
+            with attempt:
+                ret = generic_utils.check_commands_on_units(cmds, units)
+                self.assertIsNone(ret, msg=ret)
+
+    def test_903_nrpe_custom_cronjob_checks(self):
+￼       """Confirm that the NRPE custom cron job files are created."""
+        try:
+            zaza.model.get_application("nrpe")
+        except KeyError:
+            logging.warn("Skipping as nrpe is not deployed.")
+            return
+
+        units = zaza.model.get_units('manila-ganesha')
+        cronjobs = ['nfs_conn', 'nfs_services', 'nfs_exports']
+
+        cmds = []
+        for check_name in plugins:
+            cmds.append(f'ls /etc/cron.d/nagios-check_{check_name}')
+
+        for attempt in tenacity.Retrying(
+            wait=tenacity.wait_fixed(20),
+            stop=tenacity.stop_after_attempt(2),
+            reraise=True
+        ):
+            with attempt:
+                ret = generic_utils.check_commands_on_units(cmds, units)
+                self.assertIsNone(ret, msg=ret)
+
+    def test_904_nrpe_service_checks(self):
+        """Confirm that the NRPE service check files are created."""
+        try:
+            zaza.model.get_application("nrpe")
+        except KeyError:
+            logging.warn("Skipping as nrpe is not deployed.")
+            return
+
+        units = zaza.model.get_units('manila-ganesha')
+        services = ['nfs_conn', 'nfs_exports', 'nfs_services']
+
+        cmds = []
+        for check_name in services:
+            cmds.append(
+                'egrep -oh /usr/local.* /etc/nagios/nrpe.d/'
+                'check_{}.cfg'.format(check_name)
+            )
+
+        for attempt in tenacity.Retrying(
+            wait=tenacity.wait_fixed(20),
+            stop=tenacity.stop_after_attempt(2),
+            reraise=True
+        ):
+            with attempt:
+                ret = generic_utils.check_commands_on_units(cmds, units)
+                self.assertIsNone(ret, msg=ret)
