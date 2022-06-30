@@ -31,6 +31,7 @@ from zaza.openstack.charm_tests.glance.setup import (
 
 
 DEFAULT_CINDER_RBD_MIRRORING_MODE = 'pool'
+INTERNAL_POOLS = ('.mgr', 'device_health_metrics')
 
 
 def get_cinder_rbd_mirroring_mode(cinder_ceph_app_name='cinder-ceph'):
@@ -182,7 +183,7 @@ class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
             action_params=action_params)
         return json.loads(result.results['output'])
 
-    def get_pools(self):
+    def get_pools(self, include_internal_pools=False):
         """Retrieve list of pools from both sites.
 
         :returns: Tuple with list of pools on each side.
@@ -197,8 +198,10 @@ class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
                 'ceph-mon' + self.site_b_app_suffix,
                 model_name=self.site_b_model),
             model_name=self.site_b_model)
-        site_a_pools.pop('.mgr', None)
-        site_b_pools.pop('.mgr', None)
+        if not include_internal_pools:
+            for pool in INTERNAL_POOLS:
+                site_a_pools.pop(pool, None)
+                site_b_pools.pop(pool None)
         return sorted(site_a_pools.keys()), sorted(site_b_pools.keys())
 
     def get_failover_pools(self):
@@ -744,7 +747,7 @@ class CephRBDMirrorDisasterFailoverTest(CephRBDMirrorBase):
         * Execute the forced failover via Juju actions
         """
         # Get the site-b Ceph pools that need to be promoted
-        _, site_b_pools = self.get_failover_pools()
+        _, site_b_pools = self.get_failover_pools(include_internal_pools=True)
         site_b_app_name = self.application_name + self.site_b_app_suffix
 
         # Simulate primary site unexpected shutdown
@@ -765,6 +768,7 @@ class CephRBDMirrorDisasterFailoverTest(CephRBDMirrorBase):
         self.assertEqual(result.status, 'failed')
 
         # Retry to promote site-b using the 'force' Juju action parameter.
+        _, site_b_pools = self.get_failover_pools()
         result = zaza.model.run_action_on_leader(
             site_b_app_name,
             'promote',
