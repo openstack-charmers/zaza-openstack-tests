@@ -15,6 +15,7 @@
 """Ceph-mon Testing for cinder-ceph."""
 
 import logging
+import os
 
 import zaza.model
 
@@ -123,6 +124,30 @@ class CinderCephMonTest(test_utils.BaseCharmTest):
         zaza.model.block_until(*conditions)
         zaza.model.block_until_all_units_idle()
         logging.info("... Done.")
+
+
+class CephPermissionUpgradeTest(test_utils.OpenStackBaseTest):
+    """Verify that the ceph mon units update permissions on upgrade."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running ceph mon tests."""
+        super().setUpClass()
+
+    def test_ceph_permission_upgrade(self):
+        """Check that the charm updates permissions on charm upgrade."""
+        # Revoke 'osd blocklist' command
+        zaza.model.run_on_leader(
+            'ceph-mon',
+            'sudo -u ceph ceph auth caps client.cinder-ceph mon '
+            '"allow r; allow command \"osd blacklist\"" osd "allow rwx"')
+        charm = 'ceph-mon'
+        charm_path = os.getcwd() + '/' + charm + '.charm'
+        logging.debug("Upgrading {} to {}".format(charm, charm_path))
+        zaza.model.upgrade_charm(charm, path=charm_path)
+        auth = zaza.model.run_on_leader(
+            'ceph-mon', 'ceph auth get client.cinder-ceph')['Stdout']
+        self.assertIn('blocklist', auth)
 
 
 def does_relation_exist(unit_name,
