@@ -197,6 +197,8 @@ class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
                 'ceph-mon' + self.site_b_app_suffix,
                 model_name=self.site_b_model),
             model_name=self.site_b_model)
+        site_a_pools.pop('.mgr', None)
+        site_b_pools.pop('.mgr', None)
         return sorted(site_a_pools.keys()), sorted(site_b_pools.keys())
 
     def get_failover_pools(self):
@@ -667,13 +669,17 @@ class CephRBDMirrorControlledFailoverTest(CephRBDMirrorBase):
         # Validate that the Ceph images from site-b report 'up+replaying'
         # (which is reported by secondary Ceph images). And check that images
         # exist in Cinder and Glance pools.
-        self.wait_for_mirror_state(
-            'up+replaying',
-            check_entries_behind_master=True,
-            application_name=site_b_app_name,
-            model_name=self.site_b_model,
-            require_images_in=[self.cinder_ceph_app_name, 'glance'],
-            pools=site_b_pools)
+        if result.results['output']:
+            # Depending on timing, there may be no images that were resynced.
+            # As such, only run the following check when there are images,
+            # to avoid going into an infinite loop.
+            self.wait_for_mirror_state(
+                'up+replaying',
+                check_entries_behind_master=True,
+                application_name=site_b_app_name,
+                model_name=self.site_b_model,
+                require_images_in=[self.cinder_ceph_app_name, 'glance'],
+                pools=site_b_pools)
 
 
 class CephRBDMirrorDisasterFailoverTest(CephRBDMirrorBase):
