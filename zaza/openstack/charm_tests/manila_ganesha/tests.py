@@ -67,7 +67,7 @@ class ManilaGaneshaTests(manila_tests.ManilaBaseTest):
             logging.warn("Skipping as nrpe is not deployed.")
             return
 
-        units = zaza.model.get_units('manila-ganesha')
+        units = zaza.model.get_units('manila-ganesha-az1')
         plugins = ['check_nfs_conn', 'check_nfs_exports', 'check_nfs_services']
 
         cmds = []
@@ -91,7 +91,7 @@ class ManilaGaneshaTests(manila_tests.ManilaBaseTest):
             logging.warn("Skipping as nrpe is not deployed.")
             return
 
-        units = zaza.model.get_units('manila-ganesha')
+        units = zaza.model.get_units('manila-ganesha-az1')
         cronjobs = ['nfs_conn', 'nfs_services', 'nfs_exports']
 
         cmds = []
@@ -115,7 +115,7 @@ class ManilaGaneshaTests(manila_tests.ManilaBaseTest):
             logging.warn("Skipping as nrpe is not deployed.")
             return
 
-        units = zaza.model.get_units('manila-ganesha')
+        units = zaza.model.get_units('manila-ganesha-az1')
         services = ['nfs_conn', 'nfs_exports', 'nfs_services']
 
         cmds = []
