@@ -201,7 +201,7 @@ class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
         if not include_internal_pools:
             for pool in INTERNAL_POOLS:
                 site_a_pools.pop(pool, None)
-                site_b_pools.pop(pool None)
+                site_b_pools.pop(pool, None)
         return sorted(site_a_pools.keys()), sorted(site_b_pools.keys())
 
     def get_failover_pools(self):
