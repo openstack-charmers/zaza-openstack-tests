@@ -23,6 +23,7 @@ from zaza.openstack.charm_tests.manila_ganesha.setup import (
     MANILA_GANESHA_TYPE_NAME,
 )
 
+import zaza.openstack.utilities.generic as generic_utils
 import zaza.openstack.charm_tests.manila.tests as manila_tests
 import zaza.model
 
