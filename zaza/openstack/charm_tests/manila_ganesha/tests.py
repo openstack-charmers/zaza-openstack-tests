@@ -83,7 +83,7 @@ class ManilaGaneshaTests(manila_tests.ManilaBaseTest):
                 self.assertIsNone(ret, msg=ret)
 
     def test_903_nrpe_custom_cronjob_checks(self):
-￼       """Confirm that the NRPE custom cron job files are created."""
+        """Confirm that the NRPE custom cron job files are created."""
         try:
             zaza.model.get_application("nrpe")
         except KeyError:
