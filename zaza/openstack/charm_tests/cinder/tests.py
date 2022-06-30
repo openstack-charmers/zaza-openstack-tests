@@ -82,12 +82,15 @@ class CinderTests(test_utils.OpenStackBaseTest):
                 fips_reservations = []
                 for vm in cls.nova_client.servers.list():
                     if vm.name.startswith(cls.RESOURCE_PREFIX):
-                        fips_reservations += neutron_tests.floating_ips_from_instance(vm)
+                        fips_reservations += (
+                            neutron_tests.floating_ips_from_instance(vm)
+                        )
                         vm.delete()
                         openstack_utils.resource_removed(
                             cls.nova_client.servers,
                             vm.id,
-                            msg="Waiting for the Nova VM {} to be deleted".format(vm.name))
+                            msg="Waiting for the Nova VM "
+                                "{} to be deleted".format(vm.name))
 
                 if fips_reservations:
                     logging.info('Cleaning up test FiPs reservations')
@@ -243,10 +246,7 @@ class CinderTests(test_utils.OpenStackBaseTest):
             msg="Volume")
 
     def test_200_online_extend_volume_lvm_backend(self):
-        """
-        Test extending a volume (with lvm backend)
-        while attached to an instance.
-        """
+        """Test extending an attached volume with lvm backend."""
         test_vol = self.cinder_client.volumes.create(
             name='{}-200-vol'.format(self.RESOURCE_PREFIX),
             size='1')
@@ -268,7 +268,9 @@ class CinderTests(test_utils.OpenStackBaseTest):
             instance_key=glance_setup.LTS_IMAGE_NAME,
             flavor_name='m1.small',
         )
-        openstack_utils.attach_volume(self.nova_client, test_vol.id, instance.id)
+        openstack_utils.attach_volume(
+            self.nova_client, test_vol.id, instance.id
+        )
         openstack_utils.resource_reaches_status(
             self.cinder_client.volumes,
             test_vol.id,

@@ -2647,6 +2647,7 @@ def attach_volume(nova, volume_id, instance_id):
                                              volume_id=volume_id,
                                              device='/dev/vdx')
 
+
 def detach_volume(nova, volume_id, instance_id):
     """Detach a cinder volume to a nova instance.
 
@@ -2666,6 +2667,7 @@ def detach_volume(nova, volume_id, instance_id):
     )
     return nova.volumes.delete_server_volume(server_id=instance_id,
                                              volume_id=volume_id)
+
 
 def failover_cinder_volume_host(cinder, backend_name='cinder-ceph',
                                 target_backend_id='ceph',
