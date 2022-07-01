@@ -204,7 +204,7 @@ class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
                 site_b_pools.pop(pool, None)
         return sorted(site_a_pools.keys()), sorted(site_b_pools.keys())
 
-    def get_failover_pools(self):
+    def get_failover_pools(self, **kwargs):
         """Get the failover Ceph pools' names, from both sites.
 
         If the Cinder RBD mirroring mode is 'image', the 'cinder-ceph' pool
@@ -213,7 +213,7 @@ class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
         :returns: Tuple with site-a pools and site-b pools.
         :rtype: Tuple[List[str], List[str]]
         """
-        site_a_pools, site_b_pools = self.get_pools()
+        site_a_pools, site_b_pools = self.get_pools(**kwargs)
         if get_cinder_rbd_mirroring_mode(self.cinder_ceph_app_name) == 'image':
             site_a_pools.remove(self.cinder_ceph_app_name)
             site_b_pools.remove(self.cinder_ceph_app_name)
