@@ -17,11 +17,13 @@
 """Encapsulate Manila Ganesha testing."""
 
 import logging
+import tenacity
 
 from zaza.openstack.charm_tests.manila_ganesha.setup import (
     MANILA_GANESHA_TYPE_NAME,
 )
 
+import zaza.openstack.utilities.generic as generic_utils
 import zaza.openstack.charm_tests.manila.tests as manila_tests
 import zaza.model
 
@@ -56,3 +58,66 @@ class ManilaGaneshaTests(manila_tests.ManilaBaseTest):
                     unit.entity_id,
                     "systemctl stop manila-share nfs-ganesha")
         return True
+
+    def _run_nrpe_check_command(self, commands):
+        try:
+            zaza.model.get_application("nrpe")
+        except KeyError:
+            self.skipTest("Skipped NRPE checks since nrpe is not deployed.")
+
+        units = zaza.model.get_units("manila-ganesha-az1")
+
+        for attempt in tenacity.Retrying(
+            wait=tenacity.wait_fixed(20),
+            stop=tenacity.stop_after_attempt(2),
+            reraise=True,
+        ):
+            with attempt:
+                ret = generic_utils.check_commands_on_units(commands, units)
+                self.assertIsNone(ret, msg=ret)
+
+    def test_903_nrpe_custom_plugin_checks(self):
+        """Confirm that the NRPE custom plugin files are created."""
+        plugins = [
+            "check_nfs_conn",
+            "check_nfs_exports",
+            "check_nfs_services",
+        ]
+
+        commands = [
+            "ls /usr/local/lib/nagios/plugins/{}".format(plugin)
+            for plugin in plugins
+        ]
+
+        self._run_nrpe_check_command(commands)
+
+    def test_904_nrpe_custom_cronjob_checks(self):
+        """Confirm that the NRPE custom cron job files are created."""
+        cronjobs = [
+            "nfs_conn",
+            "nfs_exports",
+            "nfs_services",
+        ]
+
+        commands = [
+            "ls /etc/cron.d/nagios-check_{}".format(cronjob)
+            for cronjob in cronjobs
+        ]
+
+        self._run_nrpe_check_command(commands)
+
+    def test_905_nrpe_custom_service_checks(self):
+        """Confirm that the NRPE custom service files are created."""
+        services = [
+            "nfs_conn",
+            "nfs_exports",
+            "nfs_services",
+        ]
+
+        commands = [
+            "egrep -oh "
+            "/usr/local.* /etc/nagios/nrpe.d/check_{}.cfg".format(service)
+            for service in services
+        ]
+
+        self._run_nrpe_check_command(commands)
