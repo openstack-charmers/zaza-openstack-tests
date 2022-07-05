@@ -23,8 +23,10 @@ import unittest
 import juju
 import tenacity
 import zaza.model
+import zaza.utilities.juju as juju_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.generic as generic_utils
+import zaza.openstack.utilities.openstack as openstack_utils
 
 from zaza.openstack.utilities.generic import get_series
 from zaza.openstack.utilities.os_versions import CompareHostReleases
@@ -523,3 +525,137 @@ class RabbitMQDeferredRestartTest(test_utils.BaseDeferredRestartTest):
 
         # Check workload status no longer shows deferred restarts.
         self.check_status_message_is_clear()
+
+
+class RmqRebootTests(RmqTests):
+    """Zaza tests on a basic rabbitmq cluster deployment."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running tests."""
+        super(RmqTests, cls).setUpClass()
+        cls.application = "rabbitmq-server"
+        cls.keystone_session = \
+            openstack_utils.get_undercloud_keystone_session()
+        cls.nova_client = openstack_utils.get_nova_session_client(
+            cls.keystone_session)
+
+    def test_930_test_reboot_cluster(self):
+        """Test whether a RabbitMQ cluster boots up in the right order.
+
+        A RabbitMQ cluster with mirrored queues the boot order of
+        brokers in the cluster is significant. The last broker to shut
+        down has to be available for the other brokers to be able to
+        boot. While the brokers will try for 5 minutes by default to
+        reach this broker, there is the possibility of boot failures.
+
+        """
+        _machines = sorted(
+            juju_utils.get_machines_for_application(self.application))
+        _uuids = [juju_utils.get_machine_status(_machine, key="instance-id")
+                  for _machine in _machines]
+        _names = [self.nova_client.servers.get(_uuid).name for _uuid in _uuids]
+        _units = [_unit
+                  for _machine in _machines
+                  for _unit in zaza.model.get_units(self.application)
+                  if _machine == _unit.safe_data['machine-id']]
+        _machines = list(zip(_machines, _names, _uuids, _units))
+        zaza.model.block_until_all_units_idle()
+
+        # Shut down RabbitMQ cluster in order so we know the primary
+        # broker (the last broker to shut down).
+        for _, _name, _uuid, _ in _machines:
+            self.nova_client.servers.stop(_uuid)
+            logging.info("Wait until machine {} ({}) is "
+                         "shut off ...".format(_uuid, _name))
+            openstack_utils.resource_reaches_status(self.nova_client.servers,
+                                                    _uuid,
+                                                    expected_status='SHUTOFF',
+                                                    stop_after_attempt=16)
+
+        # Start secondary brokers and assert their blocked state.
+        primary = _machines.pop()
+        for _, _name, _uuid, _unit in _machines:
+            logging.info("Starting secondary broker "
+                         "{} ({})".format(_uuid, _name))
+            self.nova_client.servers.start(_uuid)
+            openstack_utils.resource_reaches_status(self.nova_client.servers,
+                                                    _uuid,
+                                                    expected_status='ACTIVE',
+                                                    stop_after_attempt=16)
+            logging.info("Waiting for {} to realize it cannot start "
+                         "the RabbitMQ cluster".format(_unit.name))
+            zaza.model.block_until_unit_wl_status(_unit.name, "blocked")
+
+        # Start primary broker and wait for cluster to start up.
+        _, _name, _uuid, _ = primary
+        logging.info("Starting primary broker {} ({})".format(_uuid, _name))
+        self.nova_client.servers.start(_uuid)
+        openstack_utils.resource_reaches_status(self.nova_client.servers,
+                                                _uuid,
+                                                expected_status='ACTIVE',
+                                                stop_after_attempt=16)
+        zaza.model.block_until_all_units_idle()
+        logging.info('OK')
+
+    def test_931_test_force_boot_cluster_node(self):
+        """Test whether a stuck RabbitMQ broker can be force booted.
+
+        A RabbitMQ cluster with mirrored queues the boot order of
+        brokers in the cluster is significant. The last broker to shut
+        down has to be available for the other brokers to be able to
+        boot. While the brokers will try for 5 minutes by default to
+        reach this broker, there is the possibility of boot failures.
+
+        """
+        _machines = sorted(
+            juju_utils.get_machines_for_application(self.application))
+        _uuids = [juju_utils.get_machine_status(_machine, key="instance-id")
+                  for _machine in _machines]
+        _names = [self.nova_client.servers.get(_uuid).name for _uuid in _uuids]
+        _units = [_unit
+                  for _machine in _machines
+                  for _unit in zaza.model.get_units(self.application)
+                  if _machine == _unit.safe_data['machine-id']]
+        _machines = list(zip(_machines, _names, _uuids, _units))
+        zaza.model.block_until_all_units_idle()
+
+        # Shut down RabbitMQ cluster in order so we know the primary
+        # broker (the last broker to shut down).
+        for _, _name, _uuid, _ in _machines:
+            self.nova_client.servers.stop(_uuid)
+            logging.info("Wait until machine {} ({}) is "
+                         "shut off ...".format(_uuid, _name))
+            openstack_utils.resource_reaches_status(self.nova_client.servers,
+                                                    _uuid,
+                                                    expected_status='SHUTOFF',
+                                                    stop_after_attempt=16)
+
+        # Start first secondary broker and assert its blocked state.
+        secondary = _machines.pop(0)
+        _, _name, _uuid, _unit = secondary
+        logging.info("Starting secondary broker "
+                     "{} ({})".format(_uuid, _name))
+        self.nova_client.servers.start(_uuid)
+        openstack_utils.resource_reaches_status(self.nova_client.servers,
+                                                _uuid,
+                                                expected_status='ACTIVE',
+                                                stop_after_attempt=16)
+        logging.info("Waiting for {} to realize it cannot start "
+                     "the RabbitMQ cluster".format(_unit.name))
+        zaza.model.block_until_unit_wl_status(_unit.name, "blocked")
+
+        # Force-boot blocked broker.
+        force_boot = zaza.model.run_action(_unit.entity_id, "force-boot")
+        logging.info("status: {}".format(force_boot))
+
+        # Start remaining brokers and wait for cluster to start up.
+        for _, _name, _uuid, _ in _machines:
+            logging.info("Starting broker {} ({})".format(_uuid, _name))
+            self.nova_client.servers.start(_uuid)
+            openstack_utils.resource_reaches_status(self.nova_client.servers,
+                                                    _uuid,
+                                                    expected_status='ACTIVE',
+                                                    stop_after_attempt=16)
+        zaza.model.block_until_all_units_idle()
+        logging.info('OK')
