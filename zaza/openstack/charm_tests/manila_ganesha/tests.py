@@ -85,7 +85,7 @@ class ManilaGaneshaTests(manila_tests.ManilaBaseTest):
         ]
 
         commands = [
-            f"ls /usr/local/lib/nagios/plugins/{plugin}"
+            "ls /usr/local/lib/nagios/plugins/{}".format(plugin)
             for plugin in plugins
         ]
 
@@ -100,7 +100,7 @@ class ManilaGaneshaTests(manila_tests.ManilaBaseTest):
         ]
 
         commands = [
-            f"ls /etc/cron.d/nagios-check_{cronjob}"
+            "ls /etc/cron.d/nagios-check_{}".format(cronjob)
             for cronjob in cronjobs
         ]
 
@@ -115,7 +115,8 @@ class ManilaGaneshaTests(manila_tests.ManilaBaseTest):
         ]
 
         commands = [
-            f"egrep -oh /usr/local.* /etc/nagios/nrpe.d/check_{service}.cfg"
+            "egrep -oh "
+            "/usr/local.* /etc/nagios/nrpe.d/check_{}.cfg".format(service)
             for service in services
         ]
 
