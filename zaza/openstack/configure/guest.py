@@ -68,7 +68,7 @@ def launch_instance_retryer(instance_key, **kwargs):
         keystone_session = openstack_utils.get_overcloud_keystone_session()
         nova_client = openstack_utils.get_nova_session_client(keystone_session)
         vm = nova_client.servers.find(name=vm_name)
-        openstack_utils.resource_removed(
+        openstack_utils.delete_resource(
             nova_client.servers,
             vm.id,
             msg="Waiting for the Nova VM {} to be deleted".format(vm.name))
