@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import os
 import sys
-from setuptools import setup, find_packages
+from setuptools import setup, find_namespace_packages
 from setuptools.command.test import test as TestCommand
 
 version = "0.0.1.dev1"
@@ -61,7 +61,8 @@ install_require = [
     'python-ceilometerclient',
     'python-cinderclient<6.0.0',
     'python-swiftclient<3.9.0',
-    'zaza@git+https://github.com/openstack-charmers/zaza.git#egg=zaza',
+    # 'zaza@git+https://github.com/openstack-charmers/zaza.git#egg=zaza',
+    'zaza',
 ]
 
 tests_require = [
@@ -114,7 +115,9 @@ if sys.argv[-1] == 'tag':
 
 setup(
     license='Apache-2.0: http://www.apache.org/licenses/LICENSE-2.0',
-    packages=find_packages(exclude=["unit_tests"]),
+    # name='zaza-openstack-tests',
+    name='zaza.openstack',
+    packages=find_namespace_packages(include=['zaza.*'], exclude=["unit_tests"]),
     zip_safe=False,
     include_package_data=True,
     cmdclass={'test': Tox},
