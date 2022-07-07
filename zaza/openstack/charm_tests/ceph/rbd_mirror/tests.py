@@ -154,6 +154,12 @@ def create_cinder_volume(cinder, name='zaza', image_id=None, type_id=None):
     return create_volume(cinder, volume_params)
 
 
+def remove_internal_pools(pools):
+    """Exclude the internal pools from the passed dict."""
+    for pool in INTERNAL_POOLS:
+        pools.pop(pool, None)
+
+
 class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
     """Base class for ``ceph-rbd-mirror`` tests."""
 
@@ -199,9 +205,8 @@ class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
                 model_name=self.site_b_model),
             model_name=self.site_b_model)
         if not include_internal_pools:
-            for pool in INTERNAL_POOLS:
-                site_a_pools.pop(pool, None)
-                site_b_pools.pop(pool, None)
+            remove_internal_pools(site_a_pools)
+            remove_internal_pools(site_b_pools)
         return sorted(site_a_pools.keys()), sorted(site_b_pools.keys())
 
     def get_failover_pools(self, **kwargs):
@@ -768,14 +773,14 @@ class CephRBDMirrorDisasterFailoverTest(CephRBDMirrorBase):
         self.assertEqual(result.status, 'failed')
 
         # Retry to promote site-b using the 'force' Juju action parameter.
-        _, site_b_pools = self.get_failover_pools()
         result = zaza.model.run_action_on_leader(
             site_b_app_name,
             'promote',
             model_name=self.site_b_model,
             action_params={
                 'force': True,
-                'pools': ','.join(site_b_pools),
+                'pools': ','.join(pool for pool in site_b_pools
+                                  if pool not in INTERNAL_POOLS)
             })
         self.assertEqual(int(result.results['Code']), 0)
 
