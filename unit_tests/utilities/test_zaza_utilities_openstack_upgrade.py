@@ -15,7 +15,12 @@
 import mock
 
 import unit_tests.utils as ut_utils
+import zaza
 import zaza.openstack.utilities.openstack_upgrade as openstack_upgrade
+
+
+def tearDownModule():
+    zaza.clean_up_libjuju_thread()
 
 
 class TestOpenStackUpgradeUtils(ut_utils.BaseTestCase):
