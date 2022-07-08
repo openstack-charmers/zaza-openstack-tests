@@ -91,6 +91,14 @@ class ManilaTests(test_utils.OpenStackBaseTest):
         units = zaza.model.get_units('manila')
         services = ['apache2', 'haproxy', 'manila-scheduler', 'manila-data']
 
+        # Remove check_haproxy if hacluster is present in the bundle
+        # See LP Bug#1880601 for details
+        try:
+            if zaza.model.get_units('hacluster'):
+                services.remove("haproxy")
+        except KeyError:
+            pass
+
         cmds = []
         for check_name in services:
             cmds.append(
