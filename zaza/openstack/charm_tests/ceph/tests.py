@@ -942,10 +942,9 @@ class CephPrometheusTest(unittest.TestCase):
             raise unittest.SkipTest('Prometheus not present, skipping test')
         unit = zaza_model.get_unit_from_name(
             zaza_model.get_lead_unit_name('prometheus2'))
-        self.assertEqual(
-            '3',
-            _get_mon_count_from_prometheus(
-                zaza_model.get_unit_public_address(unit)))
+        prometheus_mon_count = _get_mon_count_from_prometheus(
+            zaza_model.get_unit_public_address(unit))
+        self.assertTrue(0 < int(prometheus_mon_count))
 
 
 class CephPoolConfig(Exception):
