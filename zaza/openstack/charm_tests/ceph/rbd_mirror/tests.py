@@ -31,7 +31,7 @@ from zaza.openstack.charm_tests.glance.setup import (
 
 
 DEFAULT_CINDER_RBD_MIRRORING_MODE = 'pool'
-INTERNAL_POOLS = ('.mgr', 'device_health_metrics')
+INTERNAL_POOLS = set(('.mgr', 'device_health_metrics'))
 
 
 def get_cinder_rbd_mirroring_mode(cinder_ceph_app_name='cinder-ceph'):
@@ -154,12 +154,6 @@ def create_cinder_volume(cinder, name='zaza', image_id=None, type_id=None):
     return create_volume(cinder, volume_params)
 
 
-def remove_internal_pools(pools):
-    """Exclude the internal pools from the passed dict."""
-    for pool in INTERNAL_POOLS:
-        pools.pop(pool, None)
-
-
 class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
     """Base class for ``ceph-rbd-mirror`` tests."""
 
@@ -204,10 +198,12 @@ class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
                 'ceph-mon' + self.site_b_app_suffix,
                 model_name=self.site_b_model),
             model_name=self.site_b_model)
+        site_a_pools = set(site_a_pools.keys())
+        site_b_pools = set(site_b_pools.keys())
         if not include_internal_pools:
-            remove_internal_pools(site_a_pools)
-            remove_internal_pools(site_b_pools)
-        return sorted(site_a_pools.keys()), sorted(site_b_pools.keys())
+            site_a_pools -= INTERNAL_POOLS
+            site_b_pools -= INTERNAL_POOLS
+        return list(site_a_pools), list(site_b_pools)
 
     def get_failover_pools(self, **kwargs):
         """Get the failover Ceph pools' names, from both sites.
