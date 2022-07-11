@@ -41,7 +41,7 @@ class ManilaGaneshaTests(manila_tests.ManilaBaseTest):
 
     def _restart_share_instance(self):
         logging.info('Restarting manila-share and nfs-ganesha')
-        # It would be better for thie to derive the application name,
+        # It would be better for this to derive the application name,
         # manila-ganesha-az1, from deployed instances of the manila-ganesha
         # charm; however, that functionality isn't present yet in zaza, so
         # this is a best-guestimate arrived at by looking for applications
@@ -65,7 +65,12 @@ class ManilaGaneshaTests(manila_tests.ManilaBaseTest):
         except KeyError:
             self.skipTest("Skipped NRPE checks since nrpe is not deployed.")
 
-        units = zaza.model.get_units("manila-ganesha-az1")
+        units = []
+        try:
+            units = zaza.model.get_units("manila-ganesha-az1")
+        except KeyError:
+            self.skipTest("Skipped NRPE checks since"
+                          "manila-ganesha-az1 is not deployed.")
 
         for attempt in tenacity.Retrying(
             wait=tenacity.wait_fixed(20),
