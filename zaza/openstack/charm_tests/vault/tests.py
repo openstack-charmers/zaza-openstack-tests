@@ -63,8 +63,18 @@ class BaseVaultTest(test_utils.OpenStackBaseTest):
         if cls.vip_client:
             cls.clients.append(cls.vip_client)
         cls.vault_creds = vault_utils.get_credentials()
+
+        # This little dance is to ensure a correct init and unseal sequence,
+        # for the case of vault with the raft backend.
+        # It will also work fine in other cases.
+        # The wait functions will raise AssertionErrors on timeouts.
+        init_client = vault_utils.wait_and_get_initialized_client(cls.clients)
+        vault_utils.unseal_all([init_client], cls.vault_creds['keys'][0])
+        vault_utils.wait_until_all_initialised(cls.clients)
         vault_utils.unseal_all(cls.clients, cls.vault_creds['keys'][0])
+
         vault_utils.auth_all(cls.clients, cls.vault_creds['root_token'])
+        vault_utils.wait_for_ha_settled(cls.clients)
         vault_utils.ensure_secret_backend(cls.clients[0])
 
     def tearDown(self):
