@@ -31,7 +31,7 @@ from zaza.openstack.charm_tests.glance.setup import (
 
 
 DEFAULT_CINDER_RBD_MIRRORING_MODE = 'pool'
-INTERNAL_POOLS = set(('.mgr', 'device_health_metrics'))
+INTERNAL_POOLS = frozenset(('.mgr', 'device_health_metrics'))
 
 
 def get_cinder_rbd_mirroring_mode(cinder_ceph_app_name='cinder-ceph'):
