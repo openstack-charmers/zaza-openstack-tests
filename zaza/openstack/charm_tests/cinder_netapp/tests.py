@@ -27,10 +27,12 @@ class CinderNetAppTest(CinderBackendTest):
     family = configs['netapp-storage-family']['value']
     protocol = configs['netapp-storage-protocol']['value']
     backend_name = configs['volume-backend-name']['value']
+    search_pattern = configs['netapp-pool-name-search-pattern']['value']
     expected_contents = {
         'cinder-netapp': {
             'netapp_storage_family': [family],
             'netapp_storage_protocol': [protocol],
+            'netapp_pool_name_search_pattern': [search_pattern],
             'volume_backend_name': [backend_name],
             'volume_driver':
                 ['cinder.volume.drivers.netapp.common.NetAppDriver'],
