@@ -23,6 +23,8 @@ from os import (
 )
 import requests
 import tempfile
+import boto3
+import urllib3
 
 import tenacity
 
@@ -37,6 +39,10 @@ import zaza.utilities.juju as juju_utils
 import zaza.openstack.utilities.openstack as zaza_openstack
 import zaza.openstack.utilities.generic as generic_utils
 
+# Disable warnings for ssl_verify=false
+urllib3.disable_warnings(
+    urllib3.exceptions.InsecureRequestWarning
+)
 
 class CephLowLevelTest(test_utils.OpenStackBaseTest):
     """Ceph Low Level Test Class."""
@@ -695,23 +701,95 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
         except KeyError:
             return False
 
+    def get_rgwadmin_cmd_skeleton(self, unit_name:str):
+        '''Get radosgw-admin cmd skeleton with rgw.hostname populated key'''
+        app_name = unit_name.split('/')[0]
+        juju_units = zaza_model.get_units(app_name)
+        unit_hostnames = generic_utils.get_unit_hostnames(juju_units)
+        hostname = unit_hostnames[unit_name]
+        return 'radosgw-admin --id=rgw.{} '.format(hostname)
+
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=10, max=300),
                     reraise=True, stop=tenacity.stop_after_attempt(10),
                     retry=tenacity.retry_if_exception_type(AssertionError))
-    def wait_for_sync(self, application):
+    def wait_for_sync(self, application, isPrimary=False):
         """Wait for slave to secondary to show it is in sync."""
         juju_units = zaza_model.get_units(application)
         unit_hostnames = generic_utils.get_unit_hostnames(juju_units)
-        sync_states = []
-        sync_check_str = 'data is caught up with source'
+        sync_states = list()
+        data_check = 'data is caught up with source'
+        meta_primary = 'metadata sync no sync (zone is master)'
+        meta_secondary = 'metadata is caught up with master'
+        meta_check = meta_primary if isPrimary else meta_secondary
         for unit_name, hostname in unit_hostnames.items():
             key_name = "rgw.{}".format(hostname)
-            cmd = 'radosgw-admin --id={} zone sync status'.format(key_name)
+            cmd = 'radosgw-admin --id={} sync status'.format(key_name)
             stdout = zaza_model.run_on_unit(unit_name, cmd).get('Stdout', '')
-            sync_states.append(sync_check_str in stdout)
+            sync_states.append((data_check in stdout) and
+                               (meta_check in stdout))
         assert all(sync_states)
 
-    def test_processes(self):
+    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
+                    reraise=True, stop=tenacity.stop_after_attempt(12))
+    def fetch_rgw_object(self, target_client, container_name, object_name):
+        return target_client.Object(container_name, object_name).get()[
+            'Body'
+        ].read().decode('UTF-8')
+
+    def promote_to_primary(self, app_name:str):
+        '''Promote provided app to Primary and update period at new secondary'''
+        new_secondary = 'ceph-radosgw/0' 
+        if app_name == 'ceph-radosgw':
+            new_secondary = 'slave-ceph-radosgw/0'
+
+        # Promote to Primary
+        zaza_model.run_action_on_leader(
+            app_name,
+            'promote',
+            action_params={},
+        )
+
+        # Period Update Commit new secondary.
+        cmd = self.get_rgwadmin_cmd_skeleton(new_secondary)
+        output = zaza_model.run_on_unit(
+            new_secondary, cmd + 'period update --commit'
+        ).get('Stdout', '')
+
+    def get_client_keys(self):
+        """Create access_key and secret_key for boto3 client"""
+        unit_name = 'ceph-radosgw/0' # Only one unit of rgw in model.
+        user_name = 'botoclient'
+        cmd = self.get_rgwadmin_cmd_skeleton(unit_name)
+        users = json.loads(zaza_model.run_on_unit(
+            unit_name, cmd + 'user list'
+        ).get('Stdout', ''))
+        # Fetch boto3 user keys if user exists.
+        if user_name in users:
+            output = json.loads(zaza_model.run_on_unit(
+                unit_name, cmd + 'user info --uid={}'.format(user_name)
+            ).get('Stdout', ''))
+            keys = output['keys'][0]
+            return keys['access_key'], keys['secret_key']
+        # Create boto3 user if it does not exist.
+        create_cmd = cmd + 'user create --uid={} --display-name={}'.format(
+            user_name, user_name
+        )
+        output = json.loads(
+            zaza_model.run_on_unit(unit_name, create_cmd).get('Stdout', '')
+        )
+        keys = output['keys'][0]
+        return keys['access_key'], keys['secret_key']
+
+    def get_rgw_endpoint(self, unit_name:str):
+        unit = zaza_model.get_unit_from_name(unit_name)
+        unit_address = zaza_model.get_unit_public_address(
+            unit,
+            self.model_name
+        )
+        logging.debug("Unit: {}, Endpoint: {}".format(unit_name, unit_address))
+        return "https://{}:443".format(unit_address)
+
+    def test_001_processes(self):
         """Verify Ceph processes.
 
         Verify that the expected service processes are running
@@ -734,7 +812,7 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
                                                    actual_pids)
         self.assertTrue(ret)
 
-    def test_services(self):
+    def test_002_services(self):
         """Verify the ceph services.
 
         Verify the expected services are running on the service units.
@@ -755,132 +833,153 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=10, max=300),
                     reraise=True, stop=tenacity.stop_after_attempt(10),
                     retry=tenacity.retry_if_exception_type(IOError))
-    def test_object_storage(self):
-        """Verify object storage API.
-
-        Verify that the object storage API works as expected.
+    def test_003_object_storage_and_migration(self):
         """
-        if self.multisite:
-            raise unittest.SkipTest('Skipping REST API test, '
-                                    'multisite configuration')
-        logging.info('Checking Swift REST API')
-        keystone_session = zaza_openstack.get_overcloud_keystone_session()
-        region_name = zaza_model.get_application_config(
-            self.application_name,
-            model_name=self.model_name)['region']['value']
-        swift_client = zaza_openstack.get_swift_session_client(
-            keystone_session,
-            region_name,
-            cacert=self.cacert,
+        1. Verify object storage API works as expected.
+        2. Migrate to multisite if multisite-model is deployed.
+        3. Verify Syncronisation works and objects are replicated.
+        """
+        logging.info('Checking Object Storage')
+        container_name = 'zaza-container'
+        obj_data = 'Test data from Zaza'
+
+        primary_endpoint = self.get_rgw_endpoint('ceph-radosgw/0')
+        secondary_endpoint = self.get_rgw_endpoint('slave-ceph-radosgw/0')
+        access_key, secret_key = self.get_client_keys() 
+        primary_client = boto3.resource("s3",
+                                        verify=False,
+                                        endpoint_url=primary_endpoint,
+                                        aws_access_key_id=access_key,
+                                        aws_secret_access_key=secret_key)
+        primary_client.Bucket(container_name).create()
+        primary_object_one = primary_client.Object(
+            container_name,
+            'prefile'
         )
-        _container = 'demo-container'
-        _test_data = 'Test data from Zaza'
-        swift_client.put_container(_container)
-        swift_client.put_object(_container,
-                                'testfile',
-                                contents=_test_data,
-                                content_type='text/plain')
-        _, content = swift_client.get_object(_container, 'testfile')
-        self.assertEqual(content.decode('UTF-8'), _test_data)
+        primary_object_one.put(Body=obj_data)
+        content = primary_object_one.get()['Body'].read().decode('UTF-8')
 
-    def test_object_storage_multisite(self):
-        """Verify object storage replication.
+        # 1. Verify object storage API works as expected.
+        self.assertEqual(content, obj_data)
 
-        Verify that the object storage replication works as expected.
-        """
+        # Migrate to multisite if multisite-model is deployed.
         if not self.multisite:
-            raise unittest.SkipTest('Skipping multisite replication test')
-
-        logging.info('Checking multisite replication')
-        keystone_session = zaza_openstack.get_overcloud_keystone_session()
-        source_client = zaza_openstack.get_swift_session_client(
-            keystone_session,
-            region_name='east-1',
-            cacert=self.cacert,
+            logging.info('Skipping Multisite Migration Test')
+            return
+        zaza_model.set_application_config(
+            'ceph-radosgw',
+            {
+                'realm': 'zaza_realm',
+                'zonegroup': 'zaza_zg',
+                'zone': 'zaza_primary'
+            }
         )
-        _container = 'demo-container'
-        _test_data = 'Test data from Zaza'
-        source_client.put_container(_container)
-        source_client.put_object(_container,
-                                 'testfile',
-                                 contents=_test_data,
-                                 content_type='text/plain')
-        _, source_content = source_client.get_object(_container, 'testfile')
-        self.assertEqual(source_content.decode('UTF-8'), _test_data)
-
-        target_client = zaza_openstack.get_swift_session_client(
-            keystone_session,
-            region_name='east-1',
-            cacert=self.cacert,
+        zaza_model.set_application_config(
+            'slave-ceph-radosgw',
+            {
+                'realm': 'zaza_realm',
+                'zonegroup': 'zaza_zg',
+                'zone': 'zaza_secondary'
+            }
         )
 
-        @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
-                        reraise=True, stop=tenacity.stop_after_attempt(12))
-        def _target_get_object():
-            return target_client.get_object(_container, 'testfile')
-        _, target_content = _target_get_object()
+        # If Master/Slave relation does not exist.
+        if zaza_model.get_relation_id(
+                "ceph-radosgw", 'slave-ceph-radosgw',
+                remote_interface_name='slave'
+        ) is None:
+            zaza_model.add_relation(
+                "ceph-radosgw", "ceph-radosgw:master",
+                "slave-ceph-radosgw:slave"
+            )
 
-        self.assertEqual(target_content.decode('UTF-8'),
-                         source_content.decode('UTF-8'))
-        target_client.delete_object(_container, 'testfile')
+        zaza_model.block_until_unit_wl_status('ceph-radosgw/0', "blocked")
+        zaza_model.block_until_unit_wl_status('ceph-radosgw/0', "active")
+        self.wait_for_sync('slave-ceph-radosgw', isPrimary=False)
+        self.wait_for_sync('ceph-radosgw', isPrimary=True)
 
-        try:
-            source_client.head_object(_container, 'testfile')
-        except ClientException as e:
-            self.assertEqual(e.http_status, 404)
-        else:
-            self.fail('object not deleted on source radosgw')
+        # Create a new session and Add one more object on primary.
+        primary_client.Object(
+            container_name,
+            'postfile'
+        ).put(Body=obj_data)
 
-    def test_multisite_failover(self):
+        target_client = boto3.resource("s3",
+                                       verify=False,
+                                       endpoint_url=secondary_endpoint,
+                                       aws_access_key_id=access_key,
+                                       aws_secret_access_key=secret_key)
+
+        pre_migration_data = self.fetch_rgw_object(
+            target_client, container_name, 'prefile'
+        )
+        post_migration_data = self.fetch_rgw_object(
+            target_client, container_name, 'postfile'
+        )
+
+        # 3. Verify Syncronisation works and objects are replicated
+        self.assertEqual(pre_migration_data, obj_data)
+        self.assertEqual(post_migration_data, obj_data)
+        logging.info('Finished Test')
+
+    def test_004_multisite_failover(self):
         """Verify object storage failover/failback.
 
         Verify that the slave radosgw can be promoted to master status
         """
-        if not self.multisite:
+        if zaza_model.get_relation_id(
+                "ceph-radosgw", 'slave-ceph-radosgw',
+                remote_interface_name='slave'
+        ) is None:
             raise unittest.SkipTest('Skipping multisite failover test')
 
         logging.info('Checking multisite failover/failback')
-        keystone_session = zaza_openstack.get_overcloud_keystone_session()
-        source_client = zaza_openstack.get_swift_session_client(
-            keystone_session,
-            region_name='east-1',
-            cacert=self.cacert,
-        )
-        target_client = zaza_openstack.get_swift_session_client(
-            keystone_session,
-            region_name='west-1',
-            cacert=self.cacert,
-        )
-        zaza_model.run_action_on_leader(
-            'slave-ceph-radosgw',
-            'promote',
-            action_params={},
-        )
-        self.wait_for_sync('ceph-radosgw')
-        _container = 'demo-container-for-failover'
-        _test_data = 'Test data from Zaza on Slave'
-        target_client.put_container(_container)
-        target_client.put_object(_container,
-                                 'testfile',
-                                 contents=_test_data,
-                                 content_type='text/plain')
-        _, target_content = target_client.get_object(_container, 'testfile')
+        # Create RGW IO client.
+        primary_endpoint = self.get_rgw_endpoint('ceph-radosgw/0')
+        secondary_endpoint = self.get_rgw_endpoint('slave-ceph-radosgw/0')
+        access_key, secret_key = self.get_client_keys() 
+        primary_client = boto3.resource("s3",
+                                        verify=False,
+                                        endpoint_url=primary_endpoint,
+                                        aws_access_key_id=access_key,
+                                        aws_secret_access_key=secret_key)
+        secondary_client = boto3.resource("s3",
+                                       verify=False,
+                                       endpoint_url=secondary_endpoint,
+                                       aws_access_key_id=access_key,
+                                       aws_secret_access_key=secret_key)
 
-        zaza_model.run_action_on_leader(
-            'ceph-radosgw',
-            'promote',
-            action_params={},
+        # Failover Scenario, Promote Slave-Ceph-RadosGW to Primary
+        self.promote_to_primary('slave-ceph-radosgw')
+
+        # Wait for Sites to be syncronised.
+        self.wait_for_sync('ceph-radosgw',isPrimary=False)
+        self.wait_for_sync('slave-ceph-radosgw', isPrimary=True)
+
+        # IO Test
+        container = 'demo-container-for-failover'
+        test_data = 'Test data from Zaza on Slave'
+        secondary_client.Bucket(container).create()
+        secondary_object = secondary_client.Object(container, 'testfile')
+        secondary_object.put(
+            Body=test_data
         )
-        self.wait_for_sync('slave-ceph-radosgw')
+        secondary_content = secondary_object.get()[
+            'Body'
+        ].read().decode('UTF-8')
 
-        @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
-                        reraise=True, stop=tenacity.stop_after_attempt(12))
-        def _source_get_object():
-            return source_client.get_object(_container, 'testfile')
-        _, source_content = _source_get_object()
+        # Recovery scenario, reset ceph-rgw as primary.
+        self.promote_to_primary('ceph-radosgw')
+        self.wait_for_sync('ceph-radosgw', isPrimary=True)
+        self.wait_for_sync('slave-ceph-radosgw', isPrimary=False)
 
-        self.assertEqual(target_content.decode('UTF-8'),
-                         source_content.decode('UTF-8'))
+        # Fetch Syncronised copy of testfile from primary site.
+        primary_content = self.fetch_rgw_object(
+            primary_client, container, 'testfile'
+        )
+
+        # Verify Data Integrity.
+        self.assertEqual(secondary_content, primary_content)
 
 
 class CephProxyTest(unittest.TestCase):
