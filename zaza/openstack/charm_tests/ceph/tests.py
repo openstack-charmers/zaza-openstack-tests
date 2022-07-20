@@ -892,8 +892,8 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
                 "ceph-radosgw", "ceph-radosgw:master",
                 "slave-ceph-radosgw:slave"
             )
+            zaza_model.block_until_unit_wl_status('ceph-radosgw/0', "blocked")
 
-        zaza_model.block_until_unit_wl_status('ceph-radosgw/0', "blocked")
         zaza_model.block_until_unit_wl_status('ceph-radosgw/0', "active")
         self.wait_for_sync('slave-ceph-radosgw', isPrimary=False)
         self.wait_for_sync('ceph-radosgw', isPrimary=True)
