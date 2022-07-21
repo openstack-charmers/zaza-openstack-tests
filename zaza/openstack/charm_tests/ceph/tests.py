@@ -732,15 +732,23 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
                     reraise=True, stop=tenacity.stop_after_attempt(12))
     def fetch_rgw_object(self, target_client, container_name, object_name):
+        '''
+        Fetch RGW object content
+        :param target_client: boto3 client object configured for an endpoint.
+        :param container_name: RGW bucket name for desired object.
+        :param object_name: Object name for desired object.
+        '''
         return target_client.Object(container_name, object_name).get()[
             'Body'
         ].read().decode('UTF-8')
 
     def promote_to_primary(self, app_name:str):
         '''Promote provided app to Primary and update period at new secondary'''
-        new_secondary = 'ceph-radosgw/0' 
-        if app_name == 'ceph-radosgw':
-            new_secondary = 'slave-ceph-radosgw/0'
+        secondary_prefix = 'slave-'
+        if secondary_prefix not in app_name:
+            new_secondary = secondary_prefix + app_name
+        else:
+            new_secondary = app_name.split(secondary_prefix)[1]
 
         # Promote to Primary
         zaza_model.run_action_on_leader(
@@ -780,13 +788,22 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
         keys = output['keys'][0]
         return keys['access_key'], keys['secret_key']
 
+    @tenacity.retry(
+        retry=tenacity.retry_if_result(lambda ret: ret is None),
+        wait=tenacity.wait_fixed(10),
+        stop=tenacity.stop_after_attempt(5)
+    )
     def get_rgw_endpoint(self, unit_name:str):
         unit = zaza_model.get_unit_from_name(unit_name)
         unit_address = zaza_model.get_unit_public_address(
             unit,
             self.model_name
         )
-        logging.debug("Unit: {}, Endpoint: {}".format(unit_name, unit_address))
+
+        logging.info("Unit: {}, Endpoint: {}".format(unit_name, unit_address))
+        if unit_address is None:
+            return None
+
         return "https://{}:443".format(unit_address)
 
     def test_001_processes(self):
@@ -843,8 +860,10 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
         container_name = 'zaza-container'
         obj_data = 'Test data from Zaza'
 
+        # Create client for IO with Primary endpoint.
         primary_endpoint = self.get_rgw_endpoint('ceph-radosgw/0')
-        secondary_endpoint = self.get_rgw_endpoint('slave-ceph-radosgw/0')
+        self.assertNotEqual(primary_endpoint, None)
+
         access_key, secret_key = self.get_client_keys() 
         primary_client = boto3.resource("s3",
                                         verify=False,
@@ -861,11 +880,18 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
 
         # 1. Verify object storage API works as expected.
         self.assertEqual(content, obj_data)
+        logging.info('Object Storage OK')
 
         # Migrate to multisite if multisite-model is deployed.
         if not self.multisite:
             logging.info('Skipping Multisite Migration Test')
             return
+
+        logging.info('Checking Multisite Migration')
+        # Create client for IO with secondary endpoint.
+        secondary_endpoint = self.get_rgw_endpoint('slave-ceph-radosgw/0')
+        self.assertNotEqual(secondary_endpoint, None)
+
         zaza_model.set_application_config(
             'ceph-radosgw',
             {
@@ -888,6 +914,7 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
                 "ceph-radosgw", 'slave-ceph-radosgw',
                 remote_interface_name='slave'
         ) is None:
+            logging.info('Adding multisite relation')
             zaza_model.add_relation(
                 "ceph-radosgw", "ceph-radosgw:master",
                 "slave-ceph-radosgw:slave"
@@ -920,7 +947,7 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
         # 3. Verify Syncronisation works and objects are replicated
         self.assertEqual(pre_migration_data, obj_data)
         self.assertEqual(post_migration_data, obj_data)
-        logging.info('Finished Test')
+        logging.info('Multisite Migration OK')
 
     def test_004_multisite_failover(self):
         """Verify object storage failover/failback.
@@ -944,10 +971,10 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
                                         aws_access_key_id=access_key,
                                         aws_secret_access_key=secret_key)
         secondary_client = boto3.resource("s3",
-                                       verify=False,
-                                       endpoint_url=secondary_endpoint,
-                                       aws_access_key_id=access_key,
-                                       aws_secret_access_key=secret_key)
+                                          verify=False,
+                                          endpoint_url=secondary_endpoint,
+                                          aws_access_key_id=access_key,
+                                          aws_secret_access_key=secret_key)
 
         # Failover Scenario, Promote Slave-Ceph-RadosGW to Primary
         self.promote_to_primary('slave-ceph-radosgw')
