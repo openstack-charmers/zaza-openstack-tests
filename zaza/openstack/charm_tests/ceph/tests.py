@@ -1119,6 +1119,7 @@ class BlueStoreCompressionCharmOperation(test_utils.BaseCharmTest):
 
 class CephAuthTest(unittest.TestCase):
     """Ceph auth tests (user creation and deletion)."""
+
     def test_ceph_auth(self):
         """Test creating and deleting user."""
         logging.info('Creating user and exported keyring...')
