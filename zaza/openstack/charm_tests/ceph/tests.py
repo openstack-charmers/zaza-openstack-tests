@@ -1023,11 +1023,11 @@ class CephRGWTest(test_utils.BaseCharmTest):
                 self.secondary_rgw_app + ":slave"
             )
             zaza_model.block_until_unit_wl_status(
-                self.secondary_rgw_app + "/0", "waiting"
+                self.secondary_rgw_unit, "waiting"
             )
-        logging.info('Waiting for model to stabalize')
+
         zaza_model.block_until_unit_wl_status(
-            self.secondary_rgw_app + "/0", "active"
+            self.secondary_rgw_unit, "active"
         )
         logging.info('Waiting for Data and Metadata to Synchronize')
         self.wait_for_sync(self.secondary_rgw_app, isPrimary=False)
@@ -1075,12 +1075,8 @@ class CephRGWTest(test_utils.BaseCharmTest):
 
         logging.info('Checking multisite failover/failback')
         # Create RGW IO client.
-        primary_endpoint = self.get_rgw_endpoint(
-            self.primary_rgw_app + "/0"
-        )
-        secondary_endpoint = self.get_rgw_endpoint(
-            self.secondary_rgw_app + "/0"
-        )
+        primary_endpoint = self.get_rgw_endpoint(self.primary_rgw_unit)
+        secondary_endpoint = self.get_rgw_endpoint(self.secondary_rgw_unit)
         access_key, secret_key = self.get_client_keys() 
         primary_client = boto3.resource("s3",
                                         verify=False,
