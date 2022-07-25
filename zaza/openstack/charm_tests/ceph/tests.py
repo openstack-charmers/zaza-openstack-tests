@@ -671,8 +671,14 @@ class CephTest(test_utils.OpenStackBaseTest):
                          "entity client.sandbox does not exist\n")
 
 
-class CephRGWTest(test_utils.OpenStackBaseTest):
+class CephRGWTest(test_utils.BaseCharmTest):
     """Ceph RADOS Gateway Daemons Test Class."""
+
+    # String Resources
+    primary_rgw_app = 'ceph-radosgw'
+    primary_rgw_unit = 'ceph-radosgw/0'
+    secondary_rgw_app = 'secondary-ceph-radosgw'
+    secondary_rgw_unit = 'secondary-ceph-radosgw/0'
 
     @classmethod
     def setUpClass(cls):
@@ -683,11 +689,11 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
     def expected_apps(self):
         """Determine application names for ceph-radosgw apps."""
         _apps = [
-            'ceph-radosgw'
+            self.primary_rgw_app
         ]
         try:
-            zaza_model.get_application('slave-ceph-radosgw')
-            _apps.append('slave-ceph-radosgw')
+            zaza_model.get_application(self.secondary_rgw_app)
+            _apps.append(self.secondary_rgw_app)
         except KeyError:
             pass
         return _apps
@@ -696,7 +702,7 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
     def multisite(self):
         """Determine whether deployment is multi-site."""
         try:
-            zaza_model.get_application('slave-ceph-radosgw')
+            zaza_model.get_application(self.secondary_rgw_app)
             return True
         except KeyError:
             return False
@@ -742,13 +748,12 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
             'Body'
         ].read().decode('UTF-8')
 
-    def promote_to_primary(self, app_name:str):
+    def promote_rgw_to_primary(self, app_name:str):
         '''Promote provided app to Primary and update period at new secondary'''
-        secondary_prefix = 'slave-'
-        if secondary_prefix not in app_name:
-            new_secondary = secondary_prefix + app_name
+        if app_name is self.primary_rgw_app:
+            new_secondary = self.secondary_rgw_unit
         else:
-            new_secondary = app_name.split(secondary_prefix)[1]
+            new_secondary = self.primary_rgw_unit
 
         # Promote to Primary
         zaza_model.run_action_on_leader(
@@ -759,13 +764,15 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
 
         # Period Update Commit new secondary.
         cmd = self.get_rgwadmin_cmd_skeleton(new_secondary)
-        output = zaza_model.run_on_unit(
+        zaza_model.run_on_unit(
             new_secondary, cmd + 'period update --commit'
         ).get('Stdout', '')
 
-    def get_client_keys(self):
+    def get_client_keys(self, rgw_app_name=None):
         """Create access_key and secret_key for boto3 client"""
-        unit_name = 'ceph-radosgw/0' # Only one unit of rgw in model.
+        unit_name = self.primary_rgw_unit
+        if rgw_app_name is not None:
+            unit_name = rgw_app_name + '/0'
         user_name = 'botoclient'
         cmd = self.get_rgwadmin_cmd_skeleton(unit_name)
         users = json.loads(zaza_model.run_on_unit(
@@ -793,18 +800,62 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
         wait=tenacity.wait_fixed(10),
         stop=tenacity.stop_after_attempt(5)
     )
-    def get_rgw_endpoint(self, unit_name:str):
+    def get_rgw_endpoint(self, unit_name:str, isHttps=False):
+        """Fetch Application endpoint for RGW unit"""
         unit = zaza_model.get_unit_from_name(unit_name)
         unit_address = zaza_model.get_unit_public_address(
             unit,
             self.model_name
         )
 
-        logging.info("Unit: {}, Endpoint: {}".format(unit_name, unit_address))
+        logging.debug("Unit: {}, Endpoint: {}".format(unit_name, unit_address))
         if unit_address is None:
             return None
 
-        return "https://{}:443".format(unit_address)
+        if isHttps:
+            return "https://{}:443".format(unit_address)
+
+        return "http://{}:80".format(unit_address)
+
+    def configure_rgw_apps_for_multisite(self):
+        """Configure Multisite values on primary and secondary apps"""
+        realm = 'zaza_realm'
+        zonegroup = 'zaza_zg'
+
+        zaza_model.set_application_config(
+            self.primary_rgw_app,
+            {
+                'realm': realm,
+                'zonegroup': zonegroup,
+                'zone': 'zaza_primary'
+            }
+        )
+        zaza_model.set_application_config(
+            self.secondary_rgw_app,
+            {
+                'realm': realm,
+                'zonegroup': zonegroup,
+                'zone': 'zaza_secondary'
+            }
+        )
+
+    def clean_rgw_multisite_config(self, app_name):
+        unit_name = app_name + "/0"
+        zaza_model.set_application_config(
+            app_name,
+            {
+                'realm': "",
+                'zonegroup': "",
+                'zone': "default"
+            }
+        )
+        # Commit changes to period.
+        cmd = self.get_rgwadmin_cmd_skeleton(unit_name)
+        output = zaza_model.run_on_unit(
+            unit_name, cmd + 'period update --commit --rgw-zone=default '
+            '--rgw-zonegroup=default'
+        ).get('Stdout', '')
+
 
     def test_001_processes(self):
         """Verify Ceph processes.
@@ -844,13 +895,82 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
                     target_status='running'
                 )
 
-    # When testing with TLS there is a chance the deployment will appear done
-    # and idle prior to ceph-radosgw and Keystone have updated the service
-    # catalog.  Retry the test in this circumstance.
-    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=10, max=300),
-                    reraise=True, stop=tenacity.stop_after_attempt(10),
-                    retry=tenacity.retry_if_exception_type(IOError))
-    def test_003_object_storage_and_migration(self):
+    def test_003_secondary_migration_block(self):
+        """
+        1. Verify object storage API with secondary endpoint.
+        2. Relate Primary-Secondary for multisite.
+        3. Verify secondary fails migration due to existing Bucket.
+        """
+        if not self.multisite:
+            logging.info('Skipping Secondary Migration Block Test')
+            return
+
+        logging.info('Checking Object Storage API')
+        container_name = 'zaza-container'
+        obj_data = 'Test data from Zaza'
+
+        secondary_endpoint = self.get_rgw_endpoint(self.secondary_rgw_unit)
+        self.assertNotEqual(secondary_endpoint, None)
+
+        access_key, secret_key = self.get_client_keys(self.secondary_rgw_app) 
+        secondary_client = boto3.resource("s3",
+                                          verify=False,
+                                          endpoint_url=secondary_endpoint,
+                                          aws_access_key_id=access_key,
+                                          aws_secret_access_key=secret_key)
+        secondary_client.Bucket(container_name).create()
+        secondary_object = secondary_client.Object(
+            container_name,
+            'prefile'
+        )
+        secondary_object.put(Body=obj_data)
+        content = secondary_object.get()['Body'].read().decode('UTF-8')
+
+        # 1. Verify object storage API works as expected.
+        self.assertEqual(content, obj_data)
+        logging.info('Checking Object Storage API OK')
+
+        # 2. Migrate to multisite
+        if zaza_model.get_relation_id(
+                self.primary_rgw_app, self.secondary_rgw_app,
+                remote_interface_name='slave'
+        ) is None:
+            logging.info('Configuring Multisite')
+            self.configure_rgw_apps_for_multisite()
+            zaza_model.add_relation(
+                self.primary_rgw_app,
+                self.primary_rgw_app + ":master",
+                self.secondary_rgw_app + ":slave"
+            )
+            zaza_model.block_until_unit_wl_status(self.primary_rgw_unit,
+                                                  "blocked")
+            zaza_model.block_until_unit_wl_status(self.primary_rgw_unit,
+                                                "active")
+        # 3. Verify secondary fails migration due to existing Bucket.
+        logging.info('Checking Secondary Migration Block')
+        assert_state = {
+            self.secondary_rgw_app: {
+                "workload-status": "blocked",
+                "workload-status-message-prefix": "Site contain Buckets, "
+                    "kindly purge all Buckets before configuring this "
+                    "site as a secondary."
+            }
+        }
+        zaza_model.wait_for_application_states(states=assert_state,
+                                               timeout=7200)
+        self.clean_rgw_multisite_config(self.secondary_rgw_app)
+        zaza_model.remove_relation(
+            self.primary_rgw_app,
+            self.primary_rgw_app + ":master",
+            self.secondary_rgw_app + ":slave"
+        )
+        secondary_client.Object(container_name, 'prefile').delete()
+        secondary_client.Bucket(container_name).delete()
+
+        zaza_model.block_until_unit_wl_status(self.secondary_rgw_unit,
+                                              'active')
+
+    def test_004_object_storage_and_migration(self):
         """
         1. Verify object storage API works as expected.
         2. Migrate to multisite if multisite-model is deployed.
@@ -861,8 +981,10 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
         obj_data = 'Test data from Zaza'
 
         # Create client for IO with Primary endpoint.
-        primary_endpoint = self.get_rgw_endpoint('ceph-radosgw/0')
+        primary_endpoint = self.get_rgw_endpoint(self.primary_rgw_unit)
+        secondary_endpoint = self.get_rgw_endpoint(self.secondary_rgw_unit)
         self.assertNotEqual(primary_endpoint, None)
+        self.assertNotEqual(secondary_endpoint, None)
 
         access_key, secret_key = self.get_client_keys() 
         primary_client = boto3.resource("s3",
@@ -888,44 +1010,36 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
             return
 
         logging.info('Checking Multisite Migration')
-        # Create client for IO with secondary endpoint.
-        secondary_endpoint = self.get_rgw_endpoint('slave-ceph-radosgw/0')
-        self.assertNotEqual(secondary_endpoint, None)
-
-        zaza_model.set_application_config(
-            'ceph-radosgw',
-            {
-                'realm': 'zaza_realm',
-                'zonegroup': 'zaza_zg',
-                'zone': 'zaza_primary'
-            }
-        )
-        zaza_model.set_application_config(
-            'slave-ceph-radosgw',
-            {
-                'realm': 'zaza_realm',
-                'zonegroup': 'zaza_zg',
-                'zone': 'zaza_secondary'
-            }
-        )
-
         # If Master/Slave relation does not exist.
         if zaza_model.get_relation_id(
-                "ceph-radosgw", 'slave-ceph-radosgw',
+                self.primary_rgw_app, self.secondary_rgw_app,
                 remote_interface_name='slave'
         ) is None:
-            logging.info('Adding multisite relation')
+            logging.info('Configuring Multisite')
+            self.configure_rgw_apps_for_multisite()
             zaza_model.add_relation(
-                "ceph-radosgw", "ceph-radosgw:master",
-                "slave-ceph-radosgw:slave"
+                self.primary_rgw_app,
+                self.primary_rgw_app + ":master",
+                self.secondary_rgw_app + ":slave"
             )
-            zaza_model.block_until_unit_wl_status('ceph-radosgw/0', "blocked")
-
-        zaza_model.block_until_unit_wl_status('ceph-radosgw/0', "active")
-        self.wait_for_sync('slave-ceph-radosgw', isPrimary=False)
-        self.wait_for_sync('ceph-radosgw', isPrimary=True)
+            zaza_model.block_until_unit_wl_status(
+                self.secondary_rgw_app + "/0", "waiting"
+            )
+        logging.info('Waiting for model to stabalize')
+        zaza_model.block_until_unit_wl_status(
+            self.secondary_rgw_app + "/0", "active"
+        )
+        logging.info('Waiting for Data and Metadata to Synchronize')
+        self.wait_for_sync(self.secondary_rgw_app, isPrimary=False)
+        self.wait_for_sync(self.primary_rgw_app, isPrimary=True)
 
         # Create a new session and Add one more object on primary.
+        logging.info('Performing post migration IO tests.')
+        primary_client = boto3.resource("s3",
+                                        verify=False,
+                                        endpoint_url=primary_endpoint,
+                                        aws_access_key_id=access_key,
+                                        aws_secret_access_key=secret_key)
         primary_client.Object(
             container_name,
             'postfile'
@@ -947,23 +1061,26 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
         # 3. Verify Syncronisation works and objects are replicated
         self.assertEqual(pre_migration_data, obj_data)
         self.assertEqual(post_migration_data, obj_data)
-        logging.info('Multisite Migration OK')
 
-    def test_004_multisite_failover(self):
+    def test_005_multisite_failover(self):
         """Verify object storage failover/failback.
 
         Verify that the slave radosgw can be promoted to master status
         """
         if zaza_model.get_relation_id(
-                "ceph-radosgw", 'slave-ceph-radosgw',
+                self.primary_rgw_app, self.secondary_rgw_app,
                 remote_interface_name='slave'
         ) is None:
             raise unittest.SkipTest('Skipping multisite failover test')
 
         logging.info('Checking multisite failover/failback')
         # Create RGW IO client.
-        primary_endpoint = self.get_rgw_endpoint('ceph-radosgw/0')
-        secondary_endpoint = self.get_rgw_endpoint('slave-ceph-radosgw/0')
+        primary_endpoint = self.get_rgw_endpoint(
+            self.primary_rgw_app + "/0"
+        )
+        secondary_endpoint = self.get_rgw_endpoint(
+            self.secondary_rgw_app + "/0"
+        )
         access_key, secret_key = self.get_client_keys() 
         primary_client = boto3.resource("s3",
                                         verify=False,
@@ -977,11 +1094,11 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
                                           aws_secret_access_key=secret_key)
 
         # Failover Scenario, Promote Slave-Ceph-RadosGW to Primary
-        self.promote_to_primary('slave-ceph-radosgw')
+        self.promote_rgw_to_primary(self.secondary_rgw_app)
 
         # Wait for Sites to be syncronised.
-        self.wait_for_sync('ceph-radosgw',isPrimary=False)
-        self.wait_for_sync('slave-ceph-radosgw', isPrimary=True)
+        self.wait_for_sync(self.primary_rgw_app,isPrimary=False)
+        self.wait_for_sync(self.secondary_rgw_app, isPrimary=True)
 
         # IO Test
         container = 'demo-container-for-failover'
@@ -996,9 +1113,9 @@ class CephRGWTest(test_utils.OpenStackBaseTest):
         ].read().decode('UTF-8')
 
         # Recovery scenario, reset ceph-rgw as primary.
-        self.promote_to_primary('ceph-radosgw')
-        self.wait_for_sync('ceph-radosgw', isPrimary=True)
-        self.wait_for_sync('slave-ceph-radosgw', isPrimary=False)
+        self.promote_rgw_to_primary(self.primary_rgw_app)
+        self.wait_for_sync(self.primary_rgw_app, isPrimary=True)
+        self.wait_for_sync(self.secondary_rgw_app, isPrimary=False)
 
         # Fetch Syncronised copy of testfile from primary site.
         primary_content = self.fetch_rgw_object(
