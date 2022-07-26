@@ -28,8 +28,6 @@ import urllib3
 
 import tenacity
 
-from swiftclient.exceptions import ClientException
-
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.model as zaza_model
 import zaza.openstack.utilities.ceph as zaza_ceph
@@ -43,6 +41,7 @@ import zaza.openstack.utilities.generic as generic_utils
 urllib3.disable_warnings(
     urllib3.exceptions.InsecureRequestWarning
 )
+
 
 class CephLowLevelTest(test_utils.OpenStackBaseTest):
     """Ceph Low Level Test Class."""
@@ -707,8 +706,15 @@ class CephRGWTest(test_utils.BaseCharmTest):
         except KeyError:
             return False
 
-    def get_rgwadmin_cmd_skeleton(self, unit_name:str):
-        '''Get radosgw-admin cmd skeleton with rgw.hostname populated key'''
+    def get_rgwadmin_cmd_skeleton(self, unit_name):
+        """
+        Get radosgw-admin cmd skeleton with rgw.hostname populated key.
+
+        :param unit_name: Unit on which the complete command would be run.
+        :ptype unit_name: str
+        :returns: hostname filled basic command skeleton
+        :rtype: str
+        """
         app_name = unit_name.split('/')[0]
         juju_units = zaza_model.get_units(app_name)
         unit_hostnames = generic_utils.get_unit_hostnames(juju_units)
@@ -718,15 +724,22 @@ class CephRGWTest(test_utils.BaseCharmTest):
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=10, max=300),
                     reraise=True, stop=tenacity.stop_after_attempt(10),
                     retry=tenacity.retry_if_exception_type(AssertionError))
-    def wait_for_sync(self, application, isPrimary=False):
-        """Wait for slave to secondary to show it is in sync."""
+    def wait_for_sync(self, application, is_primary=False):
+        """
+        Wait for slave to secondary to show it is in sync.
+
+        :param application: RGW application which has to be waited for
+        :ptype application: str
+        :param is_primary: whether application is primary site endpoint
+        :ptype is_primary: boolean
+        """
         juju_units = zaza_model.get_units(application)
         unit_hostnames = generic_utils.get_unit_hostnames(juju_units)
         sync_states = list()
         data_check = 'data is caught up with source'
         meta_primary = 'metadata sync no sync (zone is master)'
         meta_secondary = 'metadata is caught up with master'
-        meta_check = meta_primary if isPrimary else meta_secondary
+        meta_check = meta_primary if is_primary else meta_secondary
         for unit_name, hostname in unit_hostnames.items():
             key_name = "rgw.{}".format(hostname)
             cmd = 'radosgw-admin --id={} sync status'.format(key_name)
@@ -738,18 +751,27 @@ class CephRGWTest(test_utils.BaseCharmTest):
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
                     reraise=True, stop=tenacity.stop_after_attempt(12))
     def fetch_rgw_object(self, target_client, container_name, object_name):
-        '''
-        Fetch RGW object content
+        """
+        Fetch RGW object content.
+
         :param target_client: boto3 client object configured for an endpoint.
+        :ptype target_client: str
         :param container_name: RGW bucket name for desired object.
+        :ptype container_name: str
         :param object_name: Object name for desired object.
-        '''
+        :ptype object_name: str
+        """
         return target_client.Object(container_name, object_name).get()[
             'Body'
         ].read().decode('UTF-8')
 
-    def promote_rgw_to_primary(self, app_name:str):
-        '''Promote provided app to Primary and update period at new secondary'''
+    def promote_rgw_to_primary(self, app_name: str):
+        """
+        Promote provided app to Primary and update period at new secondary.
+
+        :param app_name: Secondary site rgw Application to be promoted.
+        :ptype app_name: str
+        """
         if app_name is self.primary_rgw_app:
             new_secondary = self.secondary_rgw_unit
         else:
@@ -769,7 +791,12 @@ class CephRGWTest(test_utils.BaseCharmTest):
         ).get('Stdout', '')
 
     def get_client_keys(self, rgw_app_name=None):
-        """Create access_key and secret_key for boto3 client"""
+        """
+        Create access_key and secret_key for boto3 client.
+
+        :param rgw_app_name: RGW application for which keys are required.
+        :ptype rgw_app_name: str
+        """
         unit_name = self.primary_rgw_unit
         if rgw_app_name is not None:
             unit_name = rgw_app_name + '/0'
@@ -800,8 +827,13 @@ class CephRGWTest(test_utils.BaseCharmTest):
         wait=tenacity.wait_fixed(10),
         stop=tenacity.stop_after_attempt(5)
     )
-    def get_rgw_endpoint(self, unit_name:str, isHttps=False):
-        """Fetch Application endpoint for RGW unit"""
+    def get_rgw_endpoint(self, unit_name: str):
+        """
+        Fetch Application endpoint for RGW unit.
+
+        :param unit_name: Unit name for which RGW endpoint is required.
+        :ptype unit_name: str
+        """
         unit = zaza_model.get_unit_from_name(unit_name)
         unit_address = zaza_model.get_unit_public_address(
             unit,
@@ -811,14 +843,15 @@ class CephRGWTest(test_utils.BaseCharmTest):
         logging.debug("Unit: {}, Endpoint: {}".format(unit_name, unit_address))
         if unit_address is None:
             return None
-
-        if isHttps:
+        # Evaluate port
+        try:
+            zaza_model.get_application("vault")
             return "https://{}:443".format(unit_address)
-
-        return "http://{}:80".format(unit_address)
+        except KeyError:
+            return "http://{}:80".format(unit_address)
 
     def configure_rgw_apps_for_multisite(self):
-        """Configure Multisite values on primary and secondary apps"""
+        """Configure Multisite values on primary and secondary apps."""
         realm = 'zaza_realm'
         zonegroup = 'zaza_zg'
 
@@ -840,6 +873,12 @@ class CephRGWTest(test_utils.BaseCharmTest):
         )
 
     def clean_rgw_multisite_config(self, app_name):
+        """
+        Clear Multisite Juju config values to default.
+
+        :param app_name: App for which config values are to be cleared
+        :ptype app_name: str
+        """
         unit_name = app_name + "/0"
         zaza_model.set_application_config(
             app_name,
@@ -851,11 +890,10 @@ class CephRGWTest(test_utils.BaseCharmTest):
         )
         # Commit changes to period.
         cmd = self.get_rgwadmin_cmd_skeleton(unit_name)
-        output = zaza_model.run_on_unit(
+        zaza_model.run_on_unit(
             unit_name, cmd + 'period update --commit --rgw-zone=default '
             '--rgw-zonegroup=default'
         ).get('Stdout', '')
-
 
     def test_001_processes(self):
         """Verify Ceph processes.
@@ -897,9 +935,10 @@ class CephRGWTest(test_utils.BaseCharmTest):
 
     def test_003_secondary_migration_block(self):
         """
-        1. Verify object storage API with secondary endpoint.
-        2. Relate Primary-Secondary for multisite.
-        3. Verify secondary fails migration due to existing Bucket.
+        Performs the following checks (in order).
+
+        1. Object storage API works with secondary endpoint.
+        2. Secondary fails migration due to existing Bucket.
         """
         if not self.multisite:
             logging.info('Skipping Secondary Migration Block Test')
@@ -912,7 +951,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
         secondary_endpoint = self.get_rgw_endpoint(self.secondary_rgw_unit)
         self.assertNotEqual(secondary_endpoint, None)
 
-        access_key, secret_key = self.get_client_keys(self.secondary_rgw_app) 
+        access_key, secret_key = self.get_client_keys(self.secondary_rgw_app)
         secondary_client = boto3.resource("s3",
                                           verify=False,
                                           endpoint_url=secondary_endpoint,
@@ -945,15 +984,15 @@ class CephRGWTest(test_utils.BaseCharmTest):
             zaza_model.block_until_unit_wl_status(self.primary_rgw_unit,
                                                   "blocked")
             zaza_model.block_until_unit_wl_status(self.primary_rgw_unit,
-                                                "active")
+                                                  "active")
         # 3. Verify secondary fails migration due to existing Bucket.
         logging.info('Checking Secondary Migration Block')
         assert_state = {
             self.secondary_rgw_app: {
                 "workload-status": "blocked",
-                "workload-status-message-prefix": "Site contain Buckets, "
-                    "kindly purge all Buckets before configuring this "
-                    "site as a secondary."
+                "workload-status-message-prefix":
+                    "Site contain Buckets, kindly purge all Buckets before "
+                    "configuring this site as a secondary."
             }
         }
         zaza_model.wait_for_application_states(states=assert_state,
@@ -972,9 +1011,11 @@ class CephRGWTest(test_utils.BaseCharmTest):
 
     def test_004_object_storage_and_migration(self):
         """
-        1. Verify object storage API works as expected.
-        2. Migrate to multisite if multisite-model is deployed.
-        3. Verify Syncronisation works and objects are replicated.
+        Performs the following checks (in order).
+
+        1. Object storage API works as expected.
+        2. Migration to multisite (if multisite-model is deployed).
+        3. Data/Metadata Syncronization works as expected.
         """
         logging.info('Checking Object Storage')
         container_name = 'zaza-container'
@@ -982,11 +1023,9 @@ class CephRGWTest(test_utils.BaseCharmTest):
 
         # Create client for IO with Primary endpoint.
         primary_endpoint = self.get_rgw_endpoint(self.primary_rgw_unit)
-        secondary_endpoint = self.get_rgw_endpoint(self.secondary_rgw_unit)
         self.assertNotEqual(primary_endpoint, None)
-        self.assertNotEqual(secondary_endpoint, None)
 
-        access_key, secret_key = self.get_client_keys() 
+        access_key, secret_key = self.get_client_keys()
         primary_client = boto3.resource("s3",
                                         verify=False,
                                         endpoint_url=primary_endpoint,
@@ -1030,21 +1069,18 @@ class CephRGWTest(test_utils.BaseCharmTest):
             self.secondary_rgw_unit, "active"
         )
         logging.info('Waiting for Data and Metadata to Synchronize')
-        self.wait_for_sync(self.secondary_rgw_app, isPrimary=False)
-        self.wait_for_sync(self.primary_rgw_app, isPrimary=True)
+        self.wait_for_sync(self.secondary_rgw_app, is_primary=False)
+        self.wait_for_sync(self.primary_rgw_app, is_primary=True)
 
         # Create a new session and Add one more object on primary.
         logging.info('Performing post migration IO tests.')
-        primary_client = boto3.resource("s3",
-                                        verify=False,
-                                        endpoint_url=primary_endpoint,
-                                        aws_access_key_id=access_key,
-                                        aws_secret_access_key=secret_key)
         primary_client.Object(
             container_name,
             'postfile'
         ).put(Body=obj_data)
 
+        secondary_endpoint = self.get_rgw_endpoint(self.secondary_rgw_unit)
+        self.assertNotEqual(secondary_endpoint, None)
         target_client = boto3.resource("s3",
                                        verify=False,
                                        endpoint_url=secondary_endpoint,
@@ -1077,7 +1113,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
         # Create RGW IO client.
         primary_endpoint = self.get_rgw_endpoint(self.primary_rgw_unit)
         secondary_endpoint = self.get_rgw_endpoint(self.secondary_rgw_unit)
-        access_key, secret_key = self.get_client_keys() 
+        access_key, secret_key = self.get_client_keys()
         primary_client = boto3.resource("s3",
                                         verify=False,
                                         endpoint_url=primary_endpoint,
@@ -1093,8 +1129,8 @@ class CephRGWTest(test_utils.BaseCharmTest):
         self.promote_rgw_to_primary(self.secondary_rgw_app)
 
         # Wait for Sites to be syncronised.
-        self.wait_for_sync(self.primary_rgw_app,isPrimary=False)
-        self.wait_for_sync(self.secondary_rgw_app, isPrimary=True)
+        self.wait_for_sync(self.primary_rgw_app, is_primary=False)
+        self.wait_for_sync(self.secondary_rgw_app, is_primary=True)
 
         # IO Test
         container = 'demo-container-for-failover'
@@ -1110,8 +1146,8 @@ class CephRGWTest(test_utils.BaseCharmTest):
 
         # Recovery scenario, reset ceph-rgw as primary.
         self.promote_rgw_to_primary(self.primary_rgw_app)
-        self.wait_for_sync(self.primary_rgw_app, isPrimary=True)
-        self.wait_for_sync(self.secondary_rgw_app, isPrimary=False)
+        self.wait_for_sync(self.primary_rgw_app, is_primary=True)
+        self.wait_for_sync(self.secondary_rgw_app, is_primary=False)
 
         # Fetch Syncronised copy of testfile from primary site.
         primary_content = self.fetch_rgw_object(
