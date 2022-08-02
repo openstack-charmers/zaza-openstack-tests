@@ -722,11 +722,10 @@ class CephRGWTest(test_utils.BaseCharmTest):
         return 'radosgw-admin --id=rgw.{} '.format(hostname)
 
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=10, max=300),
-                    reraise=True, stop=tenacity.stop_after_attempt(10),
+                    reraise=True, stop=tenacity.stop_after_attempt(12),
                     retry=tenacity.retry_if_exception_type(AssertionError))
     def wait_for_sync(self, application, is_primary=False):
-        """
-        Wait for slave to secondary to show it is in sync.
+        """Wait for required RGW endpoint to finish sync for data and metadata.
 
         :param application: RGW application which has to be waited for
         :type application: str
@@ -735,7 +734,6 @@ class CephRGWTest(test_utils.BaseCharmTest):
         """
         juju_units = zaza_model.get_units(application)
         unit_hostnames = generic_utils.get_unit_hostnames(juju_units)
-        sync_states = list()
         data_check = 'data is caught up with source'
         meta_primary = 'metadata sync no sync (zone is master)'
         meta_secondary = 'metadata is caught up with master'
@@ -744,15 +742,13 @@ class CephRGWTest(test_utils.BaseCharmTest):
             key_name = "rgw.{}".format(hostname)
             cmd = 'radosgw-admin --id={} sync status'.format(key_name)
             stdout = zaza_model.run_on_unit(unit_name, cmd).get('Stdout', '')
-            sync_states.append((data_check in stdout) and
-                               (meta_check in stdout))
-        assert all(sync_states)
+            assert(data_check in stdout)
+            assert(meta_check in stdout)
 
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
                     reraise=True, stop=tenacity.stop_after_attempt(12))
     def fetch_rgw_object(self, target_client, container_name, object_name):
-        """
-        Fetch RGW object content.
+        """Fetch RGW object content.
 
         :param target_client: boto3 client object configured for an endpoint.
         :type target_client: str
@@ -766,8 +762,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
         ].read().decode('UTF-8')
 
     def promote_rgw_to_primary(self, app_name: str):
-        """
-        Promote provided app to Primary and update period at new secondary.
+        """Promote provided app to Primary and update period at new secondary.
 
         :param app_name: Secondary site rgw Application to be promoted.
         :type app_name: str
@@ -788,11 +783,10 @@ class CephRGWTest(test_utils.BaseCharmTest):
         cmd = self.get_rgwadmin_cmd_skeleton(new_secondary)
         zaza_model.run_on_unit(
             new_secondary, cmd + 'period update --commit'
-        ).get('Stdout', '')
+        )
 
     def get_client_keys(self, rgw_app_name=None):
-        """
-        Create access_key and secret_key for boto3 client.
+        """Create access_key and secret_key for boto3 client.
 
         :param rgw_app_name: RGW application for which keys are required.
         :type rgw_app_name: str
@@ -828,8 +822,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
         stop=tenacity.stop_after_attempt(5)
     )
     def get_rgw_endpoint(self, unit_name: str):
-        """
-        Fetch Application endpoint for RGW unit.
+        """Fetch Application endpoint for RGW unit.
 
         :param unit_name: Unit name for which RGW endpoint is required.
         :type unit_name: str
@@ -873,8 +866,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
         )
 
     def clean_rgw_multisite_config(self, app_name):
-        """
-        Clear Multisite Juju config values to default.
+        """Clear Multisite Juju config values to default.
 
         :param app_name: App for which config values are to be cleared
         :type app_name: str
@@ -893,7 +885,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
         zaza_model.run_on_unit(
             unit_name, cmd + 'period update --commit --rgw-zone=default '
             '--rgw-zonegroup=default'
-        ).get('Stdout', '')
+        )
 
     def test_001_processes(self):
         """Verify Ceph processes.
@@ -1058,7 +1050,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
         if not self.multisite:
             raise unittest.SkipTest('Skipping Migration Test')
 
-        logging.info('Checking Object Storage')
+        logging.info('Checking Migration')
         # If Master/Slave relation does not exist, add it.
         if zaza_model.get_relation_id(
                 self.primary_rgw_app, self.secondary_rgw_app,
