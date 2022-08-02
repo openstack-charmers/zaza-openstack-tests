@@ -711,7 +711,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
         Get radosgw-admin cmd skeleton with rgw.hostname populated key.
 
         :param unit_name: Unit on which the complete command would be run.
-        :ptype unit_name: str
+        :type unit_name: str
         :returns: hostname filled basic command skeleton
         :rtype: str
         """
@@ -729,9 +729,9 @@ class CephRGWTest(test_utils.BaseCharmTest):
         Wait for slave to secondary to show it is in sync.
 
         :param application: RGW application which has to be waited for
-        :ptype application: str
+        :type application: str
         :param is_primary: whether application is primary site endpoint
-        :ptype is_primary: boolean
+        :type is_primary: boolean
         """
         juju_units = zaza_model.get_units(application)
         unit_hostnames = generic_utils.get_unit_hostnames(juju_units)
@@ -755,11 +755,11 @@ class CephRGWTest(test_utils.BaseCharmTest):
         Fetch RGW object content.
 
         :param target_client: boto3 client object configured for an endpoint.
-        :ptype target_client: str
+        :type target_client: str
         :param container_name: RGW bucket name for desired object.
-        :ptype container_name: str
+        :type container_name: str
         :param object_name: Object name for desired object.
-        :ptype object_name: str
+        :type object_name: str
         """
         return target_client.Object(container_name, object_name).get()[
             'Body'
@@ -770,7 +770,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
         Promote provided app to Primary and update period at new secondary.
 
         :param app_name: Secondary site rgw Application to be promoted.
-        :ptype app_name: str
+        :type app_name: str
         """
         if app_name is self.primary_rgw_app:
             new_secondary = self.secondary_rgw_unit
@@ -795,7 +795,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
         Create access_key and secret_key for boto3 client.
 
         :param rgw_app_name: RGW application for which keys are required.
-        :ptype rgw_app_name: str
+        :type rgw_app_name: str
         """
         unit_name = self.primary_rgw_unit
         if rgw_app_name is not None:
@@ -832,7 +832,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
         Fetch Application endpoint for RGW unit.
 
         :param unit_name: Unit name for which RGW endpoint is required.
-        :ptype unit_name: str
+        :type unit_name: str
         """
         unit = zaza_model.get_unit_from_name(unit_name)
         unit_address = zaza_model.get_unit_public_address(
@@ -877,7 +877,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
         Clear Multisite Juju config values to default.
 
         :param app_name: App for which config values are to be cleared
-        :ptype app_name: str
+        :type app_name: str
         """
         unit_name = app_name + "/0"
         zaza_model.set_application_config(
