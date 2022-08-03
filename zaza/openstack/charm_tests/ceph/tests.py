@@ -671,7 +671,13 @@ class CephTest(test_utils.OpenStackBaseTest):
 
 
 class CephRGWTest(test_utils.BaseCharmTest):
-    """Ceph RADOS Gateway Daemons Test Class."""
+    """Ceph RADOS Gateway Daemons Test Class.
+
+    This Testset is not idempotent, because we don't support scale down from
+    multisite to singlesite (yet). Tests can be performed independently.
+    However, If test_004 has completed migration, retriggering the test-set
+    would cause a time-out in test_003.
+    """
 
     # String Resources
     primary_rgw_app = 'ceph-radosgw'
@@ -742,8 +748,8 @@ class CephRGWTest(test_utils.BaseCharmTest):
             key_name = "rgw.{}".format(hostname)
             cmd = 'radosgw-admin --id={} sync status'.format(key_name)
             stdout = zaza_model.run_on_unit(unit_name, cmd).get('Stdout', '')
-            assert(data_check in stdout)
-            assert(meta_check in stdout)
+            assert data_check in stdout
+            assert meta_check in stdout
 
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
                     reraise=True, stop=tenacity.stop_after_attempt(12))
@@ -925,8 +931,8 @@ class CephRGWTest(test_utils.BaseCharmTest):
                     target_status='running'
                 )
 
-    def test_003_object_storage(self):
-        """Perform Object Storage on both endpoints and verify DI."""
+    def test_003_object_storage_and_secondary_block(self):
+        """Verify Object Storage API and Secondary Migration block."""
         container_name = 'zaza-container'
         obj_data = 'Test data from Zaza'
         obj_name = 'prefile'
@@ -982,30 +988,24 @@ class CephRGWTest(test_utils.BaseCharmTest):
         content = secondary_object.get()['Body'].read().decode('UTF-8')
         self.assertEqual(content, obj_data)
 
-    def test_004_secondary_migration_block(self):
-        """Perform mutisite migration and verify secondary migration block."""
-        # Skip multisite tests if not compatible with bundle.
-        if not self.multisite:
-            raise unittest.SkipTest('Skipping Secondary Migration Block Test')
-
-        container_name = 'zaza-container'
-        obj_name = 'prefile'
-
+        logging.info('Checking Secondary Migration Block')
         # 1. Migrate to multisite
         if zaza_model.get_relation_id(
                 self.primary_rgw_app, self.secondary_rgw_app,
                 remote_interface_name='slave'
-        ) is None:
-            logging.info('Configuring Multisite')
-            self.configure_rgw_apps_for_multisite()
-            zaza_model.add_relation(
-                self.primary_rgw_app,
-                self.primary_rgw_app + ":master",
-                self.secondary_rgw_app + ":slave"
-            )
+        ) is not None:
+            logging.info('Skipping Test, Multisite relation already present.')
+            return
+
+        logging.info('Configuring Multisite')
+        self.configure_rgw_apps_for_multisite()
+        zaza_model.add_relation(
+            self.primary_rgw_app,
+            self.primary_rgw_app + ":master",
+            self.secondary_rgw_app + ":slave"
+        )
 
         # 2. Verify secondary fails migration due to existing Bucket.
-        logging.info('Checking Secondary Migration Block')
         assert_state = {
             self.secondary_rgw_app: {
                 "workload-status": "blocked",
@@ -1014,7 +1014,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
             }
         }
         zaza_model.wait_for_application_states(states=assert_state,
-                                               timeout=720)
+                                               timeout=900)
 
         # 3. Perform Secondary Cleanup
         logging.info('Perform cleanup at secondary')
@@ -1025,32 +1025,38 @@ class CephRGWTest(test_utils.BaseCharmTest):
             self.secondary_rgw_app + ":slave"
         )
 
-        # 1. Fetch Secondary Endpoint Details
-        secondary_endpoint = self.get_rgw_endpoint(self.secondary_rgw_unit)
-        self.assertNotEqual(secondary_endpoint, None)
-
-        # 2. Create RGW Client and delete data
-        access_key, secret_key = self.get_client_keys(self.secondary_rgw_app)
-        secondary_client = boto3.resource("s3",
-                                          verify=False,
-                                          endpoint_url=secondary_endpoint,
-                                          aws_access_key_id=access_key,
-                                          aws_secret_access_key=secret_key)
         secondary_client.Object(container_name, obj_name).delete()
         secondary_client.Bucket(container_name).delete()
 
         zaza_model.block_until_unit_wl_status(self.secondary_rgw_unit,
                                               'active')
 
-    def test_005_migration(self):
-        """Perform multisite migration and verify data synchronization."""
+    def test_004_migration_and_multisite_failover(self):
+        """Perform multisite migration and verify failover."""
         container_name = 'zaza-container'
         obj_data = 'Test data from Zaza'
         # Skip multisite tests if not compatible with bundle.
         if not self.multisite:
             raise unittest.SkipTest('Skipping Migration Test')
 
-        logging.info('Checking Migration')
+        logging.info('Perform Pre-Migration IO')
+        # 1. Fetch Endpoint Details
+        primary_endpoint = self.get_rgw_endpoint(self.primary_rgw_unit)
+        self.assertNotEqual(primary_endpoint, None)
+
+        # 2. Create primary client and add pre-migration object.
+        access_key, secret_key = self.get_client_keys()
+        primary_client = boto3.resource("s3",
+                                        verify=False,
+                                        endpoint_url=primary_endpoint,
+                                        aws_access_key_id=access_key,
+                                        aws_secret_access_key=secret_key)
+        primary_client.Bucket(container_name).create()
+        primary_client.Object(
+            container_name,
+            'prefile'
+        ).put(Body=obj_data)
+
         # If Master/Slave relation does not exist, add it.
         if zaza_model.get_relation_id(
                 self.primary_rgw_app, self.secondary_rgw_app,
@@ -1075,71 +1081,38 @@ class CephRGWTest(test_utils.BaseCharmTest):
         self.wait_for_sync(self.primary_rgw_app, is_primary=True)
 
         logging.info('Performing post migration IO tests.')
-        # 1. Fetch Endpoint Details
-        primary_endpoint = self.get_rgw_endpoint(self.primary_rgw_unit)
-        secondary_endpoint = self.get_rgw_endpoint(self.secondary_rgw_unit)
-        self.assertNotEqual(primary_endpoint, None)
-        self.assertNotEqual(secondary_endpoint, None)
-
-        # 2. Create RGW Client and add another object at primary
-        access_key, secret_key = self.get_client_keys()
-        primary_client = boto3.resource("s3",
-                                        verify=False,
-                                        endpoint_url=primary_endpoint,
-                                        aws_access_key_id=access_key,
-                                        aws_secret_access_key=secret_key)
-        primary_client.Bucket(container_name).create()
+        # Add another object at primary
         primary_client.Object(
             container_name,
             'postfile'
         ).put(Body=obj_data)
 
-        # 3. Create secondary client and fetch synchronised objects.
-        target_client = boto3.resource("s3",
-                                       verify=False,
-                                       endpoint_url=secondary_endpoint,
-                                       aws_access_key_id=access_key,
-                                       aws_secret_access_key=secret_key)
-
-        # 4. Verify Data Integrity
-        pre_migration_data = self.fetch_rgw_object(
-            target_client, container_name, 'prefile'
-        )
-        post_migration_data = self.fetch_rgw_object(
-            target_client, container_name, 'postfile'
-        )
-
-        # 5. Verify Syncronisation works and objects are replicated
-        self.assertEqual(pre_migration_data, obj_data)
-        self.assertEqual(post_migration_data, obj_data)
-
-    def test_006_multisite_failover(self):
-        """Verify object storage failover/failback.
-
-        Verify that the slave radosgw can be promoted to master status
-        """
-        if zaza_model.get_relation_id(
-                self.primary_rgw_app, self.secondary_rgw_app,
-                remote_interface_name='slave'
-        ) is None:
-            raise unittest.SkipTest('Skipping multisite failover test')
-
-        logging.info('Checking multisite failover/failback')
-        # Create RGW IO client.
-        primary_endpoint = self.get_rgw_endpoint(self.primary_rgw_unit)
+        # 1. Fetch Endpoint Details
         secondary_endpoint = self.get_rgw_endpoint(self.secondary_rgw_unit)
-        access_key, secret_key = self.get_client_keys()
-        primary_client = boto3.resource("s3",
-                                        verify=False,
-                                        endpoint_url=primary_endpoint,
-                                        aws_access_key_id=access_key,
-                                        aws_secret_access_key=secret_key)
+        self.assertNotEqual(secondary_endpoint, None)
+
+        # 2. Create secondary client and fetch synchronised objects.
         secondary_client = boto3.resource("s3",
                                           verify=False,
                                           endpoint_url=secondary_endpoint,
                                           aws_access_key_id=access_key,
                                           aws_secret_access_key=secret_key)
 
+        # 3. Verify Data Integrity
+        # fetch_rgw_object has internal retry so waiting for sync beforehand
+        # is not required for post migration object sync.
+        pre_migration_data = self.fetch_rgw_object(
+            secondary_client, container_name, 'prefile'
+        )
+        post_migration_data = self.fetch_rgw_object(
+            secondary_client, container_name, 'postfile'
+        )
+
+        # 4. Verify Syncronisation works and objects are replicated
+        self.assertEqual(pre_migration_data, obj_data)
+        self.assertEqual(post_migration_data, obj_data)
+
+        logging.info('Checking multisite failover/failback')
         # Failover Scenario, Promote Slave-Ceph-RadosGW to Primary
         self.promote_rgw_to_primary(self.secondary_rgw_app)
 
