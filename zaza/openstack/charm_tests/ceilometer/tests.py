@@ -112,8 +112,8 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
         )
 
         logging.info('Checking api functionality...')
-        assert(ceil.samples.list() == [])
-        assert(ceil.meters.list() == [])
+        assert ceil.samples.list() == []
+        assert ceil.meters.list() == []
 
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change."""
