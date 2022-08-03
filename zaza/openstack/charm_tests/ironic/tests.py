@@ -42,7 +42,7 @@ class IronicTest(test_utils.OpenStackBaseTest):
         actual_interfaces = [endpoint['interface'] for endpoint in
                              actual_endpoints["baremetal"]]
         for expected_interface in ('internal', 'admin', 'public'):
-            assert(expected_interface in actual_interfaces)
+            assert expected_interface in actual_interfaces
 
     def test_400_api_connection(self):
         """Simple api calls to check service is up and responding."""
@@ -50,7 +50,7 @@ class IronicTest(test_utils.OpenStackBaseTest):
 
         logging.info('listing conductors')
         conductors = ironic.conductor.list()
-        assert(len(conductors) > 0)
+        assert len(conductors) > 0
 
         # By default, only IPMI HW type is enabled. iDrac and Redfish
         # can optionally be enabled
@@ -59,8 +59,8 @@ class IronicTest(test_utils.OpenStackBaseTest):
 
         expected = ['intel-ipmi', 'ipmi']
         for exp in expected:
-            assert(exp in driver_names)
-        assert(len(driver_names) == 2)
+            assert exp in driver_names
+        assert len(driver_names) == 2
 
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change.
