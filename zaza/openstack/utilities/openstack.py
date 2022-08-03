@@ -552,7 +552,8 @@ def get_keystone_session_client(session, client_api_version=3):
 
 
 def get_keystone_client(openrc_creds, verify=None):
-    """Return authenticated keystoneclient and set auth_ref for service_catalog.
+    """
+    Return authenticated keystoneclient and set auth_ref for service_catalog.
 
     :param openrc_creds: OpenStack RC credentials
     :type openrc_creds: dict
@@ -2941,7 +2942,7 @@ def ssh_command(username,
         try:
             verify(stdin, stdout, stderr)
         except Exception as e:
-            raise(e)
+            raise e
         finally:
             ssh.close()
 
