@@ -53,7 +53,7 @@ class GnocchiTest(test_utils.OpenStackBaseTest):
         )
 
         logging.info('Checking api functionality...')
-        assert(gnocchi.status.get() != [])
+        assert gnocchi.status.get() != []
 
     def test_910_pause_resume(self):
         """Run pause and resume tests.
