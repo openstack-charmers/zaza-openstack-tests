@@ -189,7 +189,8 @@ def setup_sdn(network_config, keystone_session=None):
 
 
 def setup_sdn_provider_vlan(network_config, keystone_session=None):
-    """Perform setup for Software Defined Network, specifically a provider VLAN.
+    """
+    Perform setup for Software Defined Network, specifically a provider VLAN.
 
     :param network_config: Network configuration settings dictionary
     :type network_config: dict
