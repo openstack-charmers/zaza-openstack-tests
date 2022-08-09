@@ -624,51 +624,6 @@ class CephTest(test_utils.OpenStackBaseTest):
                 action_params={'osd-ids': osd_id, 'purge': True}
             )
 
-    def test_ceph_auth(self):
-        """Test creating and deleting user."""
-        logging.info('Creating user and exported keyring...')
-        action_obj = zaza_model.run_action_on_leader(
-            'ceph-mon',
-            'get-or-create-user',
-            action_params={'username': 'sandbox',
-                           'mon-caps': 'allow r',
-                           'osd-caps': 'allow r'}
-        )
-        logging.debug('Result of action: {}'.format(action_obj))
-        create_results = json.loads(action_obj.data['results']['message'])
-
-        logging.info('Getting existing user and exported keyring...')
-        action_obj = zaza_model.run_action_on_leader(
-            'ceph-mon',
-            'get-or-create-user',
-            action_params={'username': 'sandbox'}
-        )
-        logging.debug('Result of action: {}'.format(action_obj))
-        get_results = json.loads(action_obj.data['results']['message'])
-
-        self.assertEqual(get_results, create_results)
-
-        logging.info('Deleting existing user...')
-        action_obj = zaza_model.run_action_on_leader(
-            'ceph-mon',
-            'delete-user',
-            action_params={'username': 'sandbox'}
-        )
-        logging.debug('Result of action: {}'.format(action_obj))
-        delete_results = action_obj.data['results']['message']
-        self.assertEqual(delete_results, "updated\n")
-
-        logging.info('Deleting non-existing user...')
-        action_obj = zaza_model.run_action_on_leader(
-            'ceph-mon',
-            'delete-user',
-            action_params={'username': 'sandbox'}
-        )
-        logging.debug('Result of action: {}'.format(action_obj))
-        delete_results = action_obj.data['results']['message']
-        self.assertEqual(delete_results,
-                         "entity client.sandbox does not exist\n")
-
 
 class CephRGWTest(test_utils.BaseCharmTest):
     """Ceph RADOS Gateway Daemons Test Class.
@@ -1423,3 +1378,52 @@ class BlueStoreCompressionCharmOperation(test_utils.BaseCharmTest):
                          'configuration')
             self.test_config[
                 'target_deploy_status'] = stored_target_deploy_status
+
+
+class CephAuthTest(unittest.TestCase):
+    """Ceph auth tests (user creation and deletion)."""
+
+    def test_ceph_auth(self):
+        """Test creating and deleting user."""
+        logging.info('Creating user and exported keyring...')
+        action_obj = zaza_model.run_action_on_leader(
+            'ceph-mon',
+            'get-or-create-user',
+            action_params={'username': 'sandbox',
+                           'mon-caps': 'allow r',
+                           'osd-caps': 'allow r'}
+        )
+        logging.debug('Result of action: {}'.format(action_obj))
+        create_results = json.loads(action_obj.data['results']['message'])
+
+        logging.info('Getting existing user and exported keyring...')
+        action_obj = zaza_model.run_action_on_leader(
+            'ceph-mon',
+            'get-or-create-user',
+            action_params={'username': 'sandbox'}
+        )
+        logging.debug('Result of action: {}'.format(action_obj))
+        get_results = json.loads(action_obj.data['results']['message'])
+
+        self.assertEqual(get_results, create_results)
+
+        logging.info('Deleting existing user...')
+        action_obj = zaza_model.run_action_on_leader(
+            'ceph-mon',
+            'delete-user',
+            action_params={'username': 'sandbox'}
+        )
+        logging.debug('Result of action: {}'.format(action_obj))
+        delete_results = action_obj.data['results']['message']
+        self.assertEqual(delete_results, "updated\n")
+
+        logging.info('Deleting non-existing user...')
+        action_obj = zaza_model.run_action_on_leader(
+            'ceph-mon',
+            'delete-user',
+            action_params={'username': 'sandbox'}
+        )
+        logging.debug('Result of action: {}'.format(action_obj))
+        delete_results = action_obj.data['results']['message']
+        self.assertEqual(delete_results,
+                         "entity client.sandbox does not exist\n")
