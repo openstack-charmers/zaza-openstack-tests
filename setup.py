@@ -37,8 +37,6 @@ install_require = [
     'dnspython',
     'hvac<0.7.0',
     'jinja2',
-    'juju',
-    'juju-wait',
     'lxml',
     'PyYAML',
     'tenacity',
