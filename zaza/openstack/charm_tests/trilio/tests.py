@@ -469,3 +469,52 @@ class TrilioWLMS3Test(TrilioWLMBaseTest):
     """Tests for Trilio WLM charm backed by S3."""
 
     application_name = "trilio-wlm"
+
+
+class TrilioHorizonPluginTest(test_utils.OpenStackBaseTest):
+    """Tests for Trilio Horizon Plugin charm."""
+
+    application_name = "trilio-horizon-plugin"
+    local_settings_file = '/etc/openstack-dashboard/local_settings.py'
+
+    def installed_trilio_version(self):
+        """Get the Trilio version from the installed package."""
+        action_out = zaza_model.run_on_leader(
+            self.application_name,
+            ("dpkg-query --showformat='${Version}' "
+             "--show python3-tvault-horizon-plugin"))
+        return float('.'.join(action_out['stdout'].split('.')[:2]))
+
+    def set_openstack_encryption_support(self, os_enc_support):
+        """Set the openstack-encryption-support option."""
+        zaza_model.set_application_config(
+            self.application_name,
+            {'openstack-encryption-support': str(os_enc_support)})
+        logging.info(
+            "Checking openstack encryption support is set to {}".format(
+                os_enc_support))
+        zaza_model.block_until_file_has_contents(
+            self.application_name,
+            self.local_settings_file,
+            'OPENSTACK_ENCRYPTION_SUPPORT = {}'.format(os_enc_support))
+
+    def test_encryption_settings(self):
+        """Test trilio encryption options."""
+        expect = self.installed_trilio_version() >= 4.2
+        logging.info(
+            "Checking Trilio encryption support is set to {}".format(expect))
+        zaza_model.block_until_file_has_contents(
+            self.application_name,
+            self.local_settings_file,
+            'TRILIO_ENCRYPTION_SUPPORT = {}'.format(expect))
+        expect = zaza_model.get_application_config(
+            self.application_name)['openstack-encryption-support']['value']
+        self.set_openstack_encryption_support(
+            expect)
+        expect = not expect
+        self.set_openstack_encryption_support(
+            expect)
+        # Put config back to original setting
+        expect = not expect
+        self.set_openstack_encryption_support(
+            expect)
