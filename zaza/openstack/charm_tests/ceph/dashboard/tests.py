@@ -168,7 +168,7 @@ class CephDashboardTest(test_utils.BaseCharmTest):
         url = json.loads(output).get('dashboard')
         if url is None:
             raise tenacity.RetryError(None)
-        return url
+        return url.strip('/')
 
     def test_dashboard_units(self):
         """Check dashboard units are configured correctly."""
