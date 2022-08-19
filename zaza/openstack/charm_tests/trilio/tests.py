@@ -483,6 +483,11 @@ class TrilioHorizonPluginTest(test_utils.OpenStackBaseTest):
             self.application_name,
             ("dpkg-query --showformat='${Version}' "
              "--show python3-tvault-horizon-plugin"))
+        if 'no packages found' in action_out['stderr']:
+            action_out = zaza_model.run_on_leader(
+                self.application_name,
+                ("dpkg-query --showformat='${Version}' "
+                 "--show tvault-horizon-plugin"))
         return float('.'.join(action_out['stdout'].split('.')[:2]))
 
     def set_openstack_encryption_support(self, os_enc_support):
