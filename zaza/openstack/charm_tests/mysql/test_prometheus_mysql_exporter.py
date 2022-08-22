@@ -36,8 +36,10 @@ class PrometheusMySQLExporterTest(MySQLBaseTest):
     ):
         """Exec check cmd on each unit in the application.
 
-        :param str cmd: The check command run on unit.
-        :param str expected: Expected result code.
+        :param cmd: The check command run on unit
+        :type cmd: str
+        :param expected: Expected result code
+        :type expected: str
         """
         for unit in zaza_model.get_units(self.application):
             result = zaza_model.run_on_unit(unit.name, cmd)
