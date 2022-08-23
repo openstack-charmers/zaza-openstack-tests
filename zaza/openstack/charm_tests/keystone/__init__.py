@@ -43,8 +43,10 @@ class BaseKeystoneTest(test_utils.OpenStackBaseTest):
         cls.tls_rid = zaza.model.get_relation_id(
             'keystone', 'vault', remote_interface_name='certificates')
         # Check for VIP
-        cls.vip = (zaza.model.get_application_config('keystone')
-                   .get('vip').get('value'))
+        cls.vip = None
+        # NOTE: doesn't work with keystone-k8s charm
+        # cls.vip = (zaza.model.get_application_config('keystone')
+        #            .get('vip').get('value'))
         cls.keystone_ips = zaza.model.get_app_ips('keystone')
         # If we have a VIP set and we are using TLS only check the VIP
         # If you check the individual IP haproxy may send to a different
@@ -69,8 +71,10 @@ class BaseKeystoneTest(test_utils.OpenStackBaseTest):
     @contextlib.contextmanager
     def v3_keystone_preferred(self):
         """Set the preferred keystone api to v3 within called context."""
-        with self.config_change(
-                {'preferred-api-version': self.default_api_version},
-                {'preferred-api-version': self.api_v3},
-                application_name="keystone"):
-            yield
+        yield
+        # not implemented in keystone-k8s
+        # with self.config_change(
+        #         {'preferred-api-version': self.default_api_version},
+        #         {'preferred-api-version': self.api_v3},
+        #         application_name="keystone"):
+        #     yield

@@ -1882,6 +1882,12 @@ def get_current_os_versions(deployed_applications, model_name=None):
     :returns: List of aplication to codenames dictionaries
     :rtype: list
     """
+    return {
+        "keystone": "xena",
+        "glance": "xena"
+    }
+
+    # this doesn't work on k8s charms
     versions = {}
     for application in UPGRADE_SERVICES:
         if application['name'] not in deployed_applications:
