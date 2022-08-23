@@ -487,6 +487,8 @@ def get_keystone_scope(model_name=None):
     :returns: String keystone scope
     :rtype: string
     """
+    return "PROJECT"
+    # doesn't work yet with keystone k8s charm
     os_version = get_current_os_versions("keystone",
                                          model_name=model_name)["keystone"]
     # Keystone policy.json shipped the charm with liberty requires a domain
@@ -2084,6 +2086,8 @@ def get_keystone_api_version(model_name=None):
     :returns: Keystone's api version
     :rtype: int
     """
+    return 3
+    # the below doesn't work with the k8s charm.
     os_version = get_current_os_versions(
         'keystone',
         model_name=model_name)['keystone']
@@ -2125,10 +2129,12 @@ def get_overcloud_auth(address=None, model_name=None):
         address = get_keystone_ip(model_name=model_name)
     address = network_utils.format_addr(address)
 
-    password = juju_utils.leader_get(
-        'keystone',
-        'admin_passwd',
-        model_name=model_name)
+    # doesn't work with keystone-k8s (returns None)
+    # password = juju_utils.leader_get(
+    #     'keystone',
+    #     'admin_passwd',
+    #     model_name=model_name)
+    password = "abc123"
 
     if get_keystone_api_version(model_name=model_name) == 2:
         # V2 Explicitly, or None when charm does not possess the config key
@@ -2155,7 +2161,9 @@ def get_overcloud_auth(address=None, model_name=None):
             'OS_PROJECT_DOMAIN_NAME': 'admin_domain',
             'API_VERSION': 3,
         }
-    local_ca_cert = get_remote_ca_cert_file('keystone', model_name=model_name)
+    # doesn't work yet with k8s charm
+    # local_ca_cert = get_remote_ca_cert_file('keystone', model_name=model_name)
+    local_ca_cert = None
     if local_ca_cert:
         auth_settings['OS_CACERT'] = local_ca_cert
 
@@ -2530,6 +2538,7 @@ def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
     :rtype: glanceclient.common.utils.RequestIdProxy
     """
     # Create glance image
+    logging.info("glance.images.create(name={}, ...)".format(image_name))
     image = glance.images.create(
         name=image_name,
         disk_format=disk_format,
@@ -2542,6 +2551,7 @@ def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
         glance.images.image_import(
             image.id, method='glance-direct', backend=backend)
     else:
+        logging.info("glance.images.upload({}, ...)".format(image.id))
         glance.images.upload(
             image.id, open(local_path, 'rb'), backend=backend)
 
