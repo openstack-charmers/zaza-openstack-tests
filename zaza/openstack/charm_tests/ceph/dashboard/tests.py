@@ -17,73 +17,16 @@
 import collections
 import json
 import logging
+import re
 import requests
 import tenacity
+import unittest
 import uuid
 
 import zaza
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
-
-
-X509_CERT = '''
-MIICZDCCAg6gAwIBAgICBr8wDQYJKoZIhvcNAQEEBQAwgZIxCzAJBgNVBAYTAlVTMRMwEQYDVQQI
-EwpDYWxpZm9ybmlhMRQwEgYDVQQHEwtTYW50YSBDbGFyYTEeMBwGA1UEChMVU3VuIE1pY3Jvc3lz
-dGVtcyBJbmMuMRowGAYDVQQLExFJZGVudGl0eSBTZXJ2aWNlczEcMBoGA1UEAxMTQ2VydGlmaWNh
-dGUgTWFuYWdlcjAeFw0wNzAzMDcyMTUwMDVaFw0xMDEyMDEyMTUwMDVaMDsxFDASBgNVBAoTC2V4
-YW1wbGUuY29tMSMwIQYDVQQDExpMb2FkQmFsYW5jZXItMy5leGFtcGxlLmNvbTCBnzANBgkqhkiG
-9w0BAQEFAAOBjQAwgYkCgYEAlOhN9HddLMpE3kCjkPSOFpCkDxTNuhMhcgBkYmSEF/iJcQsLX/ga
-pO+W1SIpwqfsjzR5ZvEdtc/8hGumRHqcX3r6XrU0dESM6MW5AbNNJsBnwIV6xZ5QozB4wL4zREhw
-zwwYejDVQ/x+8NRESI3ym17tDLEuAKyQBueubgjfic0CAwEAAaNgMF4wEQYJYIZIAYb4QgEBBAQD
-AgZAMA4GA1UdDwEB/wQEAwIE8DAfBgNVHSMEGDAWgBQ7oCE35Uwn7FsjS01w5e3DA1CrrjAYBgNV
-HREEETAPgQ1tYWxsYUBzdW4uY29tMA0GCSqGSIb3DQEBBAUAA0EAGhJhep7X2hqWJWQoXFcdU7eQ
-'''
-
-X509_DATA = '''
-EwpDYWxpZm9ybmlhMRQwEgYDVQQHEwtTYW50YSBDbGFyYTEeMBwGA1UEChMVU3VuIE1pY3Jvc3lz
-dGVtcyBJbmMuMRowGAYDVQQLExFJZGVudGl0eSBTZXJ2aWNlczEcMBoGA1UEAxMTQ2VydGlmaWNh
-dGUgTWFuYWdlcjAeFw0wNzAzMDcyMjAxMTVaFw0xMDEyMDEyMjAxMTVaMDsxFDASBgNVBAoTC2V4
-YW1wbGUuY29tMSMwIQYDVQQDExpMb2FkQmFsYW5jZXItMy5leGFtcGxlLmNvbTCBnzANBgkqhkiG
-HREEETAPgQ1tYWxsYUBzdW4uY29tMA0GCSqGSIb3DQEBBAUAA0EAEgbmnOz2Rvpj9bludb9lEeVa
-OA46zRiyt4BPlbgIaFyG6P7GWSddMi/14EimQjjDbr4ZfvlEdPJmimHExZY3KQ==
-'''
-
-SAML_IDP_METADATA = '''
-<EntityDescriptor
-  xmlns="urn:oasis:names:tc:SAML:2.0:metadata"
-  entityID="ceph-dashboard">
-  <IDPSSODescriptor
-   WantAuthnRequestsSigned="false"
-   protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
-    <KeyDescriptor use="signing">
-      <KeyInfo xmlns="http://www.w3.org/2000/09/xmldsig#">
-        <X509Data>
-          <X509Certificate>
-            {cert}
-          </X509Certificate>
-        </X509Data>
-      </KeyInfo>
-    </KeyDescriptor>
-    <KeyDescriptor use="encryption">
-      <KeyInfo xmlns="http://www.w3.org/2000/09/xmldsig#">
-        <X509Data>
-          {data}
-        </X509Data>
-      </KeyInfo>
-    </KeyDescriptor>
-    <ArtifactResolutionService index="0" isDefault="1"/>
-      <NameIDFormat>
-        urn:oasis:names:tc:SAML:2.0:nameid-format:persistent
-      </NameIDFormat>
-    <NameIDFormat>
-      urn:oasis:names:tc:SAML:2.0:nameid-format:transient
-    </NameIDFormat>
-    <SingleSignOnService
-     Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"
-     Location="{host}"/>
-  </IDPSSODescriptor>
-</EntityDescriptor>
-'''
+import zaza.openstack.utilities.generic as generic_utils
 
 
 class CephDashboardTest(test_utils.BaseCharmTest):
@@ -287,30 +230,109 @@ class CephDashboardTest(test_utils.BaseCharmTest):
         get_os_release = openstack_utils.get_os_release
         if (get_os_release(application='ceph-mon') <
                 get_os_release('focal_yoga')):
-            return
+            raise unittest.SkipTest(
+                'CephMon OS release < focal_yoga, skipping test')
 
         url = self.get_master_dashboard_url()
-        idp_meta = SAML_IDP_METADATA.format(
-            cert=X509_CERT,
-            data=X509_DATA,
-            host=url)
+        test_idp_saml_app_name = 'test-saml-idp1'
+
+        try:
+            unit = zaza.model.get_units(test_idp_saml_app_name)[0]
+        except KeyError:
+            raise unittest.SkipTest(
+                'IdP not deployed, skipping test')
+
+        saml_url = "http://{}/simplesaml".format(
+            zaza.model.get_unit_public_address(unit))
+
+        self.create_user('user1')
 
         zaza.model.set_application_config(
             'ceph-dashboard',
-            {'saml-base-url': url, 'saml-idp-metadata': idp_meta}
+            {
+                'saml-base-url': url.strip('/'),
+                'saml-idp-metadata':
+                    "{}/saml2/idp/metadata.php".format(
+                        saml_url)
+            }
         )
 
         self.wait_for_saml_dashboard()
 
-        # Check that both login and metadata are accesible.
+        zaza.model.set_application_config(
+            'ceph-dashboard',
+            {
+                'saml-username-attribute': 'username',
+            }
+        )
+
+        self.wait_for_saml_dashboard()
+
+        unit = zaza.model.get_units('ceph-dashboard')[0]
+
         resp = self._run_request_get(
+            "{}/auth/saml2/metadata".format(
+                url),
+            verify=self.local_ca_cert,
+            allow_redirects=False)
+
+        saml_idp_states = {
+            'test-saml-idp1': {
+                'workload-status': 'active',
+                'workload-status-message': 'Unit is ready'
+            },
+            'telegraf': {
+                'workload-status': 'active',
+                'workload-status-message-prefix': 'Monitoring'
+            }
+        }
+        zaza.model.wait_for_application_states(states=saml_idp_states)
+        self.assertEqual(resp.status_code, requests.codes.ok)
+        sp_metadata = resp.content.decode('utf-8')
+        generic_utils.attach_file_resource(
+            test_idp_saml_app_name,
+            'sp-metadata',
+            sp_metadata,
+            '.xml')
+
+        # Check that both metadata and login are accesible.
+
+        s = requests.Session()
+
+        resp = s.get(
             url + '/auth/saml2/login',
             verify=self.local_ca_cert,
             allow_redirects=False)
         self.assertTrue(resp.status_code, requests.codes.ok)
+        self.assertTrue(resp.is_redirect)
 
-        resp = self._run_request_get(
-            url + '/auth/saml2/metadata',
+        location = resp.headers.get('Location')
+        saml = s.get(
+            location, verify=False, allow_redirects=True
+        ).content.decode('utf-8')
+        logging.info("SAML output: {}".format(saml))
+        auth_state = re.search('name="AuthState" value="(.+)"', saml).group(1)
+
+        saml_res = s.post(
+            saml_url + '/module.php/core/loginuserpass.php',
+            verify=False,
+            data={
+                'username': 'user1',
+                'password': 'userpass1',
+                'AuthState': auth_state,
+            }, headers=None)
+
+        content = saml_res.content.decode('utf-8')
+        relay_state = re.search(
+            'name="RelayState" value="(.+?)"', content).group(1)
+        saml_response = re.search(
+            'name="SAMLResponse" value="(.+?)"', content).group(1)
+        post_url = re.search('action="(.+?)">', content).group(1)
+        dashboard_res = s.post(
+            post_url,
             verify=self.local_ca_cert,
-            allow_redirects=False)
-        self.assertEqual(resp.status_code, requests.codes.ok)
+            data={
+                'SAMLResponse': saml_response,
+                'RelayState': relay_state,
+            }, headers=None)
+        self.assertTrue(dashboard_res.status_code, requests.codes.ok)
