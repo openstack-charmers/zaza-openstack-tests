@@ -28,6 +28,8 @@ class PrometheusMySQLExporterTest(MySQLBaseTest):
         """Run class setup for running mysql tests."""
         super().setUpClass(application_name="mysql-innodb-cluster")
         cls.application = "mysql-innodb-cluster"
+        cls.snap_name = "mysqld-exporter"
+        cls.service_name = "snap.mysqld-exporter.mysqld-exporter.service"
 
     def _exporter_http_check(
         self,
@@ -50,7 +52,7 @@ class PrometheusMySQLExporterTest(MySQLBaseTest):
         active=True,
     ):
         cmd = "systemctl is-active {}".format(
-            "snap.mysql-prometheus-exporter.mysqld-exporter.service"
+            self.service_name
         )
         excepted = "active\n"
         if not active:
@@ -96,12 +98,12 @@ class PrometheusMySQLExporterTest(MySQLBaseTest):
 
     def test_04_snap_config(self):
         """Check snap set config is working."""
-        cmd = "sudo snap get mysql-prometheus-exporter mysql -d"
+        cmd = "sudo snap get {} mysql -d".format(self.snap_name)
         for unit in zaza_model.get_units(self.application):
             result = zaza_model.run_on_unit(unit.name, cmd)
             json_mysql_config = json.loads(
                 result.get("stdout")).get("mysql")
-            json_mysql_config.pop("pwd")
+            json_mysql_config.pop("password")
             self.assertEqual(
                 json_mysql_config,
                 {
