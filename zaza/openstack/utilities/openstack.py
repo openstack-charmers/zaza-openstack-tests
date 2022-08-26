@@ -73,10 +73,12 @@ from swiftclient import client as swiftclient
 from manilaclient import client as manilaclient
 
 from juju.errors import JujuError
+import yaml
 
 import zaza
 
 from zaza import model
+import zaza.utilities.generic as zaza_generic_utils
 from zaza.openstack.utilities import (
     exceptions,
     generic as generic_utils,
@@ -1932,12 +1934,17 @@ def get_current_os_release_pair(application='keystone'):
     """
     try:
         machine = list(juju_utils.get_machines_for_application(application))[0]
+        __import__("pprint").pprint(machine)
     except IndexError:
         raise exceptions.ApplicationNotFound(application)
 
     series = juju_utils.get_machine_series(machine)
     if not series:
-        raise exceptions.SeriesNotFound()
+        # we're probably on k8s, so take a guess.
+        # I don't think we have a method to
+        # pull the series from the workload container?
+        series = "focal"
+        # raise exceptions.SeriesNotFound()
 
     os_version = get_current_os_versions([application]).get(application)
     if not os_version:
@@ -2073,6 +2080,7 @@ def get_keystone_ip(model_name=None):
     :returns: IP address
     :rtype: str
     """
+    # keystone-k8s doesn't have vip option
     vip_option = get_application_config_option(
         'keystone',
         'vip',
@@ -2080,8 +2088,24 @@ def get_keystone_ip(model_name=None):
     if vip_option:
         # strip the option, splits on whitespace and return the first one.
         return vip_option.strip().split()[0]
+
+    # keystone-k8s doesn't advertise its own public address,
+    # because it's done through traefik (k8s ingress management)
     unit = model.get_units('keystone', model_name=model_name)[0]
-    return model.get_unit_public_address(unit)
+
+    if model_name is None:
+        model_name = model.get_juju_model()
+
+    result = zaza.model.sync_wrapper(zaza_generic_utils.check_output)(
+        ["juju", "status", "--format=yaml", "-m", model_name],
+        log_stderr=False, log_stdout=False,
+    )
+    status = yaml.safe_load(result['Stdout'])
+    try:
+        return status['applications']['keystone']['address']
+    except KeyError:
+        logging.warn("Keystone address not found")
+        return None
 
 
 def get_keystone_api_version(model_name=None):

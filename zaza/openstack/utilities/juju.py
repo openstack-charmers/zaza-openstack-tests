@@ -164,9 +164,13 @@ def get_machine_series(machine, model_name=None):
     :returns: Juju series
     :rtype: string
     """
-    return zaza.utilities.juju.get_machine_series(
+    series = zaza.utilities.juju.get_machine_series(
         machine,
         model_name=model_name)
+
+    # hack for now to handle k8s, that doesn't have a concept of machines
+    if not series:
+        return "focal"
 
 
 @deprecate()

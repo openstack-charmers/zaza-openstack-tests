@@ -44,10 +44,15 @@ class BaseKeystoneTest(test_utils.OpenStackBaseTest):
             'keystone', 'vault', remote_interface_name='certificates')
         # Check for VIP
         cls.vip = None
-        # NOTE: doesn't work with keystone-k8s charm
+        # NOTE: doesn't work with keystone-k8s charm; no vip config option
         # cls.vip = (zaza.model.get_application_config('keystone')
         #            .get('vip').get('value'))
-        cls.keystone_ips = zaza.model.get_app_ips('keystone')
+
+        # get_app_ips doesn't work with the k8s charms.
+        # So fall back to getting the private keystone ip here... seems to work.
+        # cls.keystone_ips = zaza.model.get_app_ips('keystone')
+        cls.keystone_ips = [openstack_utils.get_keystone_ip(zaza.model.get_juju_model())]
+
         # If we have a VIP set and we are using TLS only check the VIP
         # If you check the individual IP haproxy may send to a different
         # back end which leads to mismatched certificates.
