@@ -15,6 +15,7 @@
 """MySQL Prometheus Exporter Testing."""
 
 import json
+import urllib.request
 
 import zaza.model as zaza_model
 from zaza.openstack.charm_tests.mysql.tests import MySQLBaseTest
@@ -68,12 +69,22 @@ class PrometheusMySQLExporterTest(MySQLBaseTest):
             expected="0",
         )
 
-    def test_02_exporter_metrics_http_check(self):
-        """Check metrics API is working."""
-        cmd = "curl http://localhost:9104/metrics"
-        self._exporter_http_check(cmd=cmd, expected="0")
+        for unit in zaza_model.get_units(self.application):
+            url = "http://{}:9104/metrics".format(
+                unit.public_address)
+            with urllib.request.urlopen(url) as resp:
+                metrics = resp.read().decode("utf-8")
+                if not any(
+                    str(line) == "mysql_up 1"
+                    for line in metrics.split("\n")
+                ):
+                    self.fail(
+                        "Exporter permission not correct on {}".format(
+                            unit.public_address
+                        )
+                    )
 
-    def test_03_exporter_service_relation_trigger(self):
+    def test_02_exporter_service_relation_trigger(self):
         """Relation trigger exporter service start/stop."""
         zaza_model.remove_relation(
             self.application,
@@ -96,7 +107,7 @@ class PrometheusMySQLExporterTest(MySQLBaseTest):
         zaza_model.block_until_all_units_idle()
         self._check_service_status_is(active=True)
 
-    def test_04_snap_config(self):
+    def test_03_snap_config(self):
         """Check snap set config is working."""
         cmd = "sudo snap get {} mysql -d".format(self.snap_name)
         for unit in zaza_model.get_units(self.application):
