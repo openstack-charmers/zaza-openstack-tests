@@ -706,6 +706,26 @@ class CephRGWTest(test_utils.BaseCharmTest):
             assert data_check in stdout
             assert meta_check in stdout
 
+    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=10, max=300),
+                    reraise=True, stop=tenacity.stop_after_attempt(12),
+                    retry=tenacity.retry_if_exception_type(AssertionError))
+    def wait_for_scaledown(self, application):
+        """Wait for required RGW endpoint to finish sync for data and metadata.
+
+        :param application: RGW application which has to be waited for
+        :type application: str
+        """
+        juju_units = zaza_model.get_units(application)
+        unit_hostnames = generic_utils.get_unit_hostnames(juju_units)
+        data_check = 'data is caught up with source'
+        meta_check = 'metadata sync no sync (zone is master)'
+        for unit_name, hostname in unit_hostnames.items():
+            key_name = "rgw.{}".format(hostname)
+            cmd = 'radosgw-admin --id={} sync status'.format(key_name)
+            stdout = zaza_model.run_on_unit(unit_name, cmd).get('Stdout', '')
+            assert data_check not in stdout
+            assert meta_check in stdout
+
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
                     reraise=True, stop=tenacity.stop_after_attempt(12))
     def fetch_rgw_object(self, target_client, container_name, object_name):
@@ -980,6 +1000,12 @@ class CephRGWTest(test_utils.BaseCharmTest):
             self.secondary_rgw_app + ":slave"
         )
 
+        # Refresh secondary client.
+        secondary_client = boto3.resource("s3",
+                                          verify=False,
+                                          endpoint_url=secondary_endpoint,
+                                          aws_access_key_id=access_key,
+                                          aws_secret_access_key=secret_key)
         secondary_client.Object(container_name, obj_name).delete()
         secondary_client.Bucket(container_name).delete()
 
@@ -1099,6 +1125,45 @@ class CephRGWTest(test_utils.BaseCharmTest):
 
         # Verify Data Integrity.
         self.assertEqual(secondary_content, primary_content)
+
+        # Scaledown and verify replication has stopped.
+        logging.info('Checking multisite scaledown')
+        zaza_model.remove_relation(
+            self.primary_rgw_app,
+            self.primary_rgw_app + ":master",
+            self.secondary_rgw_app + ":slave"
+        )
+
+        # wait for sync stop
+        self.wait_for_scaledown(self.primary_rgw_app)
+        self.wait_for_scaledown(self.secondary_rgw_app)
+
+        # Refresh client and verify objects are not replicating.
+        primary_client = boto3.resource("s3",
+                                        verify=False,
+                                        endpoint_url=primary_endpoint,
+                                        aws_access_key_id=access_key,
+                                        aws_secret_access_key=secret_key)
+        secondary_client = boto3.resource("s3",
+                                          verify=False,
+                                          endpoint_url=secondary_endpoint,
+                                          aws_access_key_id=access_key,
+                                          aws_secret_access_key=secret_key)
+
+        # IO Test
+        container = 'scaledown-container'
+        test_data = 'Scaledown Test data'
+        secondary_client.Bucket(container).create()
+        secondary_object = secondary_client.Object(container, 'scaledown')
+        secondary_object.put(
+            Body=test_data
+        )
+
+        primary_content = self.fetch_rgw_object(
+            primary_client, container, 'scaledown'
+        )
+
+        logging.info('Data: "{}"'.format(primary_content))
 
 
 class CephProxyTest(unittest.TestCase):
