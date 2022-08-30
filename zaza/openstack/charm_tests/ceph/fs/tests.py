@@ -15,7 +15,7 @@
 """Encapsulate CephFS testing."""
 
 import logging
-import asyncio
+import json
 import subprocess
 from tenacity import retry, Retrying, stop_after_attempt, wait_exponential
 import unittest
@@ -33,17 +33,15 @@ class CephFSTests(unittest.TestCase):
     def tearDown(self):
         """Cleanup after running tests."""
         if self.mounts_share:
-            try:
-                zaza.utilities.generic.run_via_ssh(
-                    unit_name='ubuntu/0',
-                    cmd='sudo fusermount -u {0} && sudo rmdir {0}'.format(
-                        self.mount_dir))
-                zaza.utilities.generic.run_via_ssh(
-                    unit_name='ubuntu/1',
-                    cmd='sudo fusermount -u {0} && sudo rmdir {0}'.format(
-                        self.mount_dir))
-            except subprocess.CalledProcessError:
-                logging.warning("Failed to cleanup mounts")
+            for unit in ['ubuntu/0', 'ubuntu/1']:
+                try:
+                    zaza.utilities.generic.run_via_ssh(
+                        unit_name=unit,
+                        cmd='sudo fusermount -u {0} && sudo rmdir {0}'.format(
+                            self.mount_dir))
+                except subprocess.CalledProcessError:
+                    logging.warning(
+                        "Failed to cleanup mounts on {}".format(unit))
 
     def _mount_share(self, unit_name: str,
                      retry: bool = True):
@@ -131,26 +129,14 @@ class CephFSTests(unittest.TestCase):
         self.TESTED_UNIT = 'ceph-fs/0'
 
         def _get_conf():
-            """get/parse ceph daemon response into dict for specified configs.
+            """get/parse ceph daemon response into dict.
 
-            :returns dict: conf options selected from configs
+            :returns dict: Current configuration of the Ceph MDS daemon
             :rtype: dict
             """
-            configs = ["mds_cache_memory_limit",
-                       "mds_cache_reservation",
-                       "mds_health_cache_threshold"]
-            holder = {}
-            for config in configs:
-                cmd = "sudo ceph daemon mds." \
-                      "$HOSTNAME config show | grep {}".format(config)
-                conf = model.run_on_unit(self.TESTED_UNIT, cmd)
-                for i in (conf['Stdout'].replace('"', '')
-                                        .replace(',', '')
-                                        .strip()
-                                        .split("\n")):
-                    key, val = i.split(":")
-                    holder[key] = val.strip()
-            return holder
+            cmd = "sudo ceph daemon mds.$HOSTNAME config show"
+            conf = model.run_on_unit(self.TESTED_UNIT, cmd)
+            return json.loads(conf['Stdout'])
 
         @retry(wait=wait_exponential(multiplier=1, min=4, max=10),
                stop=stop_after_attempt(10))
@@ -159,9 +145,7 @@ class CephFSTests(unittest.TestCase):
 
             Doesn't return a value.
             """
-            loop = asyncio.get_event_loop()
-            crt = model.async_set_application_config('ceph-fs', mds_config)
-            loop.run_until_complete(crt)
+            model.set_application_config('ceph-fs', mds_config)
             results = _get_conf()
             self.assertEquals(
                 results['mds_cache_memory_limit'],
@@ -174,7 +158,6 @@ class CephFSTests(unittest.TestCase):
                 float(mds_config['mds-health-cache-threshold']))
 
         # ensure defaults are set
-        _get_conf()
         mds_config = {'mds-cache-memory-limit': '4294967296',
                       'mds-cache-reservation': '0.05',
                       'mds-health-cache-threshold': '1.5'}
