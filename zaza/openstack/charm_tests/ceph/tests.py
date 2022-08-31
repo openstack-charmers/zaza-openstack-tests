@@ -1427,3 +1427,57 @@ class CephAuthTest(unittest.TestCase):
         delete_results = action_obj.data['results']['message']
         self.assertEqual(delete_results,
                          "entity client.sandbox does not exist\n")
+
+
+class CephMonActionsTest(test_utils.OpenStackBaseTest):
+    """Test miscellaneous actions of the ceph-mon charm."""
+
+    def test_reweight_osd(self):
+        """Test the change-osd-weight action."""
+        unit = 'ceph-mon/0'
+        osd = 0
+        weight = 700
+        action_obj = zaza_model.run_action(
+            unit_name=unit,
+            action_name='change-osd-weight',
+            action_params={'osd': osd, 'weight': 700}
+        )
+        zaza_utils.assertActionRanOK(action_obj)
+        cmd = 'sudo ceph osd crush tree --format=json'
+        result = zaza_model.run_on_unit(unit, cmd)
+        self.assertEqual(int(result.get('Code')), 0)
+
+        tree = json.loads(result.get('Stdout'))
+        entry = None
+        osd = 'osd.' + str(osd)
+        for node in tree['nodes']:
+            if node.get('name') == osd:
+                entry = node
+                break
+
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry['crush_weight'], weight)
+
+    def test_copy_pool(self):
+        """Test the copy-pool (and list-pool) action."""
+        unit = 'ceph-mon/0'
+        logging.debug('Creating secondary test pool')
+        cmd = 'sudo ceph osd pool create test2 32'
+        result = zaza_model.run_on_unit(unit, cmd)
+        self.assertEqual(int(result.get('Code')), 0)
+
+        action_obj = zaza_model.run_action(
+            unit_name=unit,
+            action_name='list-pools',
+            action_params={}
+        )
+        zaza_utils.assertActionRanOK(action_obj)
+        self.assertIn('test2', action_obj.data['results']['message'])
+
+        logging.debug('Copying test pool')
+        action_obj = zaza_model.run_action(
+            unit_name=unit,
+            action_name='copy-pool',
+            action_params={'source': 'nova', 'target': 'test2'}
+        )
+        zaza_utils.assertActionRanOK(action_obj)
