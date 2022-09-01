@@ -24,6 +24,7 @@ from os import (
 import requests
 import tempfile
 import boto3
+import botocore.exceptions
 import urllib3
 
 import tenacity
@@ -1159,12 +1160,16 @@ class CephRGWTest(test_utils.BaseCharmTest):
             Body=test_data
         )
 
-        primary_content = self.fetch_rgw_object(
-            primary_client, container, 'scaledown'
-        )
-
-        logging.info('Data: "{}"'.format(primary_content))
-
+        try:
+            primary_content = self.fetch_rgw_object(
+                primary_client, container, 'scaledown'
+            )
+        except botocore.exceptions.ConnectionError:
+            # Desired exception.
+            self.assertTrue(True)
+            return
+        # Undesired.
+        self.assertTrue(False)
 
 class CephProxyTest(unittest.TestCase):
     """Test ceph via proxy."""
