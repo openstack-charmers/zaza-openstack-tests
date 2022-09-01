@@ -2602,6 +2602,27 @@ def attach_volume(nova, volume_id, instance_id):
                                              device='/dev/vdx')
 
 
+def detach_volume(nova, volume_id, instance_id):
+    """Detach a cinder volume to a nova instance.
+
+    :param nova: Authenticated nova client
+    :type nova: novaclient.v2.client.Client
+    :param volume_id: the id of the volume to attach
+    :type volume_id: str
+    :param instance_id: the id of the instance to attach the volume to
+    :type instance_id: str
+    :returns: nova volume pointer
+    :rtype: novaclient.v2.volumes.Volume
+    """
+    logging.info(
+        'Detaching volume {} from instance {}'.format(
+            volume_id, instance_id
+        )
+    )
+    return nova.volumes.delete_server_volume(server_id=instance_id,
+                                             volume_id=volume_id)
+
+
 def failover_cinder_volume_host(cinder, backend_name='cinder-ceph',
                                 target_backend_id='ceph',
                                 target_status='disabled',
