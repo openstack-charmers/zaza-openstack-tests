@@ -61,14 +61,13 @@ class VaultFacade:
             self.unseal_client = self.vip_client
         else:
             self.unseal_client = self.clients[0]
-        self.initialized = is_initialized(self.unseal_client)
         if initialize:
             self.initialize()
 
     @property
     def is_initialized(self):
         """Check if vault is initialized."""
-        return self.initialized
+        return is_initialized(self.unseal_client)
 
     def initialize(self):
         """Initialise vault and store resulting credentials."""
@@ -77,11 +76,14 @@ class VaultFacade:
         else:
             self.vault_creds = init_vault(self.unseal_client)
             store_credentials(self.vault_creds)
-        self.initialized = is_initialized(self.unseal_client)
+            self.unseal_client = wait_and_get_initialized_client(self.clients)
 
     def unseal(self):
         """Unseal all the vaults clients."""
+        unseal_all([self.unseal_client], self.vault_creds['keys'][0])
+        wait_until_all_initialised(self.clients)
         unseal_all(self.clients, self.vault_creds['keys'][0])
+        wait_for_ha_settled(self.clients)
 
     def authorize(self):
         """Authorize charm to perfom certain actions.
@@ -90,6 +92,7 @@ class VaultFacade:
         set of calls against the vault API.
         """
         auth_all(self.clients, self.vault_creds['root_token'])
+        wait_for_ha_settled(self.clients)
         run_charm_authorize(self.vault_creds['root_token'])
 
 
