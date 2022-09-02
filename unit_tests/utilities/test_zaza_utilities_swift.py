@@ -93,7 +93,7 @@ class TestSwiftUtils(ut_utils.BaseTestCase):
         self.patch_object(zaza.model, 'get_units')
         self.patch_object(zaza.model, 'get_unit_public_address')
 
-        def _get_unit_public_address(u):
+        def _get_unit_public_address(u, model_name=None):
             return u.public_address
 
         self.get_unit_public_address.side_effect = _get_unit_public_address
