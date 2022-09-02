@@ -1160,16 +1160,12 @@ class CephRGWTest(test_utils.BaseCharmTest):
             Body=test_data
         )
 
-        try:
+        # Since bucket is not replicated.
+        with self.assertRaises(botocore.exceptions.ClientError):
             primary_content = self.fetch_rgw_object(
                 primary_client, container, 'scaledown'
             )
-        except botocore.exceptions.ConnectionError:
-            # Desired exception.
-            self.assertTrue(True)
-            return
-        # Undesired.
-        self.assertTrue(False)
+
 
 class CephProxyTest(unittest.TestCase):
     """Test ceph via proxy."""
