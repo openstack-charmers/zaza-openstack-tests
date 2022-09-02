@@ -91,6 +91,8 @@ UBUNTU_IMAGE_URLS = {
                '{release}-server-cloudimg-{arch}.img'),
     'focal': ('http://cloud-images.ubuntu.com/{release}/current/'
               '{release}-server-cloudimg-{arch}.img'),
+    'default': ('http://cloud-images.ubuntu.com/{release}/current/'
+                '{release}-server-cloudimg-{arch}.img'),
 }
 
 CHARM_TYPES = {
@@ -2299,7 +2301,8 @@ def find_cirros_image(arch):
 
 def find_ubuntu_image(release, arch):
     """Return url for image."""
-    return UBUNTU_IMAGE_URLS[release].format(release=release, arch=arch)
+    loc_str = UBUNTU_IMAGE_URLS.get(release) or UBUNTU_IMAGE_URLS['default']
+    return loc_str.format(release=release, arch=arch)
 
 
 def download_image(image_url, target_file):

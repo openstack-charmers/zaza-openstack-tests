@@ -373,6 +373,10 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             openstack_utils.find_ubuntu_image('bionic', 'aarch64'),
             ('http://cloud-images.ubuntu.com/bionic/current/'
              'bionic-server-cloudimg-aarch64.img'))
+        self.assertEqual(
+            openstack_utils.find_ubuntu_image('jammy', 'amd64'),
+            ('http://cloud-images.ubuntu.com/jammy/current/'
+             'jammy-server-cloudimg-amd64.img'))
 
     def test_download_image(self):
         urllib_opener_mock = mock.MagicMock()
