@@ -24,8 +24,8 @@ import zaza.utilities.deployment_env as deployment_env
 
 CIRROS_IMAGE_NAME = "cirros"
 CIRROS_ALT_IMAGE_NAME = "cirros_alt"
-LTS_RELEASE = "bionic"
-LTS_IMAGE_NAME = "bionic"
+LTS_RELEASE = "jammy"
+LTS_IMAGE_NAME = "jammy"
 
 
 def basic_setup():
