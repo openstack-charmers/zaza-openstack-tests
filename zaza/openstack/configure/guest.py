@@ -47,7 +47,13 @@ boot_tests = {
         'image_name': 'focal',
         'flavor_name': 'm1.small',
         'username': 'ubuntu',
-        'bootstring': 'finished at'}}
+        'bootstring': 'finished at'},
+    'jammy': {
+        'image_name': 'jammy',
+        'flavor_name': 'm1.small',
+        'username': 'ubuntu',
+        'bootstring': 'finished at'}
+}
 
 
 def launch_instance_retryer(instance_key, **kwargs):
