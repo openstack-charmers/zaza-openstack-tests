@@ -1181,6 +1181,10 @@ class CephRGWTest(test_utils.BaseCharmTest):
                 primary_client, container, 'scaledown'
             )
 
+        # Cleanup of scaledown resources.
+        secondary_client.Object(container, 'scaledown').delete()
+        secondary_client.Bucket(container).delete()
+
 
 class CephProxyTest(unittest.TestCase):
     """Test ceph via proxy."""
