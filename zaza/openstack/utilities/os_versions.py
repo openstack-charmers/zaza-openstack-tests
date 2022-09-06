@@ -65,6 +65,7 @@ OPENSTACK_CODENAMES = OrderedDict([
     ('2021.1', 'wallaby'),
     ('2021.2', 'xena'),
     ('2022.1', 'yoga'),
+    ('2022.2', 'zed'),
 ])
 
 OPENSTACK_RELEASES_PAIRS = [
@@ -78,7 +79,7 @@ OPENSTACK_RELEASES_PAIRS = [
     'focal_victoria', 'groovy_victoria',
     'focal_wallaby', 'hirsute_wallaby',
     'focal_xena', 'impish_xena',
-    'focal_yoga', 'jammy_yoga',
+    'focal_yoga', 'jammy_yoga', 'jammy_zed',
 ]
 
 SWIFT_CODENAMES = OrderedDict([
