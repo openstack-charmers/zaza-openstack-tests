@@ -517,13 +517,13 @@ class NovaCloudController(NovaCommonTests):
                                 nova.services.list()]
         for expected_service_name in ('nova-scheduler', 'nova-conductor',
                                       'nova-compute'):
-            assert(expected_service_name in actual_service_names)
+            assert expected_service_name in actual_service_names
 
         # Thanks to setup.create_flavors we should have a few flavors already:
-        assert(len(nova.flavors.list()) > 0)
+        assert len(nova.flavors.list()) > 0
 
         # Just checking it's not raising and returning an iterable:
-        assert(len(nova.servers.list()) >= 0)
+        assert len(nova.servers.list()) >= 0
 
     def test_106_compute_catalog_endpoints(self):
         """Verify that the compute endpoints are present in the catalog."""
@@ -537,12 +537,12 @@ class NovaCloudController(NovaCommonTests):
         if self.current_release < self.XENIAL_QUEENS:
             actual_compute_endpoints = actual_endpoints['compute'][0]
             for expected_url in ('internalURL', 'adminURL', 'publicURL'):
-                assert(expected_url in actual_compute_endpoints)
+                assert expected_url in actual_compute_endpoints
         else:
             actual_compute_interfaces = [endpoint['interface'] for endpoint in
                                          actual_endpoints['compute']]
             for expected_interface in ('internal', 'admin', 'public'):
-                assert(expected_interface in actual_compute_interfaces)
+                assert expected_interface in actual_compute_interfaces
 
     def test_220_nova_metadata_propagate(self):
         """Verify that the vendor-data settings are propagated.
