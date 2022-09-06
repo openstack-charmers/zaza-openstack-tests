@@ -163,7 +163,7 @@ def invert_condition(async_condition):
     :rtype: Coroutine[[], bool]
     """
     async def _async_invert_condition_closure():
-        return not(await async_condition())
+        return not (await async_condition())
     return _async_invert_condition_closure
 
 
