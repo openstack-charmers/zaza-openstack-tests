@@ -120,7 +120,7 @@ class ManilaBaseTest(test_utils.OpenStackBaseTest):
     """Encapsulate a Manila basic functionality test."""
 
     RESOURCE_PREFIX = 'zaza-manilatests'
-    INSTANCE_KEY = 'bionic'
+    INSTANCE_KEY = 'jammy'
     INSTANCE_USERDATA = """#cloud-config
 packages:
 - nfs-common
