@@ -37,10 +37,16 @@ def setup_ganesha_share_type(manila_client=None):
         manila_client = manilaclient.Client(
             session=keystone_session, client_version='2')
 
+    current_release = openstack_utils.get_os_release()
+    FOCAL_VICTORIA = openstack_utils.get_os_release("focal_victoria")
+    if current_release > FOCAL_VICTORIA:
+        snapshot_support = True
+    else:
+        snapshot_support = False
     manila_client.share_types.create(
         name=MANILA_GANESHA_TYPE_NAME, spec_driver_handles_share_servers=False,
         extra_specs={
             'vendor_name': 'Ceph',
             'storage_protocol': 'NFS',
-            'snapshot_support': True,
+            'snapshot_support': snapshot_support,
         })
