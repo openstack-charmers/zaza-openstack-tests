@@ -48,9 +48,11 @@ class ManilaGaneshaTests(manila_tests.ManilaBaseTest):
         # this is a best-guestimate arrived at by looking for applications
         # with the word 'ganesha' in their names.
         ganeshas = [
-            app for app in zaza.model.sync_deployed()
+            app for app in zaza.model.sync_deployed(model_name=self.model_name)
             if 'ganesha' in app and 'mysql' not in app]
-        logging.info('Found ganeshas: {}'.format(ganeshas))
+        logging.info('Found ganeshas in model {}: {}'.format(
+            self.model_name,
+            ganeshas))
         for ganesha in ganeshas:
             ganesha_unit = zaza.model.get_units(ganesha)[0]
             hacluster_unit = zaza_utils_juju.get_subordinate_units(
