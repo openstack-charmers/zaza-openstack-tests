@@ -42,5 +42,5 @@ def setup_ganesha_share_type(manila_client=None):
         extra_specs={
             'vendor_name': 'Ceph',
             'storage_protocol': 'NFS',
-            'snapshot_support': True,
+            'snapshot_support': False,
         })
