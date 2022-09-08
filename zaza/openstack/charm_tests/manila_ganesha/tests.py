@@ -50,6 +50,7 @@ class ManilaGaneshaTests(manila_tests.ManilaBaseTest):
         ganeshas = [
             app for app in zaza.model.sync_deployed()
             if 'ganesha' in app and 'mysql' not in app]
+        logging.info('Found ganeshas: {}'.format(ganeshas))
         for ganesha in ganeshas:
             ganesha_unit = zaza.model.get_units(ganesha)[0]
             hacluster_unit = zaza_utils_juju.get_subordinate_units(
