@@ -684,7 +684,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
         return 'radosgw-admin --id=rgw.{} '.format(hostname)
 
     def wait_for_status(self, application,
-                        is_primary=False, meta_expected = True):
+                        is_primary=False, meta_expected=True):
         """Wait for required RGW endpoint to finish sync for data and metadata.
 
         :param application: RGW application which has to be waited for
@@ -717,7 +717,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
                     if meta_expected:
                         self.assertIn(meta_check, stdout)
                     else:
-                        # Neither Primary nor Secondary 
+                        # Neither Primary nor Secondary
                         self.assertNotIn(meta_primary, stdout)
                         self.assertNotIn(meta_secondary, stdout)
 
