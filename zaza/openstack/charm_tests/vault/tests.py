@@ -31,7 +31,6 @@ import zaza.openstack.charm_tests.vault.utils as vault_utils
 import zaza.openstack.utilities.cert
 import zaza.openstack.utilities.openstack
 import zaza.model
-import zaza.utilities.juju as juju_utils
 
 
 @tenacity.retry(
@@ -306,12 +305,16 @@ class VaultTest(BaseVaultTest):
         logging.info("Waiting for model to be idle ...")
         zaza.model.block_until_all_units_idle(model_name=self.model_name)
 
-        logging.info("Testing action reload on {}".format(lead_client))
-        zaza.model.run_action(
-            juju_utils.get_unit_name_from_ip_address(
-                lead_client.addr, 'vault'),
-            'reload',
-            model_name=self.model_name)
+        # Reload all vault units to ensure the new value is loaded.
+        # Note that charm-vault since 4fccd710 will auto-reload
+        # vault on config change, so this will be unecessary.
+        for unit in zaza.model.get_units(
+            application_name="vault",
+            model_name=self.model_name
+        ):
+            zaza.model.run_action(
+                unit.name, 'reload',
+                model_name=self.model_name)
 
         logging.info("Getting new value ...")
         new_value = vault_utils.get_running_config(lead_client)[
