@@ -683,13 +683,16 @@ class CephRGWTest(test_utils.BaseCharmTest):
         hostname = unit_hostnames[unit_name]
         return 'radosgw-admin --id=rgw.{} '.format(hostname)
 
-    def wait_for_sync(self, application, is_primary=False):
+    def wait_for_status(self, application,
+                        is_primary=False, meta_expected = True):
         """Wait for required RGW endpoint to finish sync for data and metadata.
 
         :param application: RGW application which has to be waited for
         :type application: str
-        :param is_primary: whether application is primary site endpoint
+        :param is_primary: whether meta check should be primary specific.
         :type is_primary: boolean
+        :param meta_expected: whether metadata substring should be checked
+        :type meta_expected: boolean
         """
         juju_units = zaza_model.get_units(application)
         unit_hostnames = generic_utils.get_unit_hostnames(juju_units)
@@ -710,34 +713,13 @@ class CephRGWTest(test_utils.BaseCharmTest):
                     stdout = zaza_model.run_on_unit(
                         unit_name, cmd
                     ).get('Stdout', '')
-                    assert data_check in stdout
-                    assert meta_check in stdout
-
-    def wait_for_scaledown(self, application):
-        """Wait for required RGW endpoint to remove multisite from site.
-
-        :param application: RGW application which has to be waited for
-        :type application: str
-        """
-        juju_units = zaza_model.get_units(application)
-        unit_hostnames = generic_utils.get_unit_hostnames(juju_units)
-        data_check = 'data is caught up with source'
-        meta_check = 'metadata sync no sync (zone is master)'
-
-        for attempt in tenacity.Retrying(
-            wait=tenacity.wait_exponential(multiplier=10, max=300),
-            reraise=True, stop=tenacity.stop_after_attempt(12),
-            retry=tenacity.retry_if_exception_type(AssertionError)
-        ):
-            with attempt:
-                for unit_name, hostname in unit_hostnames.items():
-                    key_name = "rgw.{}".format(hostname)
-                    cmd = 'radosgw-admin --id={} sync status'.format(key_name)
-                    stdout = zaza_model.run_on_unit(
-                        unit_name, cmd
-                    ).get('Stdout', '')
-                    assert data_check not in stdout
-                    assert meta_check in stdout
+                    self.assertIn(data_check, stdout)
+                    if meta_expected:
+                        self.assertIn(meta_check, stdout)
+                    else:
+                        # Neither Primary nor Secondary 
+                        self.assertNotIn(meta_primary, stdout)
+                        self.assertNotIn(meta_secondary, stdout)
 
     def fetch_rgw_object(self, target_client, container_name, object_name):
         """Fetch RGW object content.
@@ -1074,8 +1056,8 @@ class CephRGWTest(test_utils.BaseCharmTest):
             self.secondary_rgw_unit, "active"
         )
         logging.info('Waiting for Data and Metadata to Synchronize')
-        self.wait_for_sync(self.secondary_rgw_app, is_primary=False)
-        self.wait_for_sync(self.primary_rgw_app, is_primary=True)
+        self.wait_for_status(self.secondary_rgw_app, is_primary=False)
+        self.wait_for_status(self.primary_rgw_app, is_primary=True)
 
         logging.info('Performing post migration IO tests.')
         # Add another object at primary
@@ -1114,8 +1096,8 @@ class CephRGWTest(test_utils.BaseCharmTest):
         self.promote_rgw_to_primary(self.secondary_rgw_app)
 
         # Wait for Sites to be syncronised.
-        self.wait_for_sync(self.primary_rgw_app, is_primary=False)
-        self.wait_for_sync(self.secondary_rgw_app, is_primary=True)
+        self.wait_for_status(self.primary_rgw_app, is_primary=False)
+        self.wait_for_status(self.secondary_rgw_app, is_primary=True)
 
         # IO Test
         container = 'demo-container-for-failover'
@@ -1131,8 +1113,8 @@ class CephRGWTest(test_utils.BaseCharmTest):
 
         # Recovery scenario, reset ceph-rgw as primary.
         self.promote_rgw_to_primary(self.primary_rgw_app)
-        self.wait_for_sync(self.primary_rgw_app, is_primary=True)
-        self.wait_for_sync(self.secondary_rgw_app, is_primary=False)
+        self.wait_for_status(self.primary_rgw_app, is_primary=True)
+        self.wait_for_status(self.secondary_rgw_app, is_primary=False)
 
         # Fetch Syncronised copy of testfile from primary site.
         primary_content = self.fetch_rgw_object(
@@ -1151,8 +1133,8 @@ class CephRGWTest(test_utils.BaseCharmTest):
         )
 
         # wait for sync stop
-        self.wait_for_scaledown(self.primary_rgw_app)
-        self.wait_for_scaledown(self.secondary_rgw_app)
+        self.wait_for_status(self.primary_rgw_app, meta_expected=False)
+        self.wait_for_status(self.secondary_rgw_app, meta_expected=False)
 
         # Refresh client and verify objects are not replicating.
         primary_client = boto3.resource("s3",
