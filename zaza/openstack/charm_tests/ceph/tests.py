@@ -1427,3 +1427,83 @@ class CephAuthTest(unittest.TestCase):
         delete_results = action_obj.data['results']['message']
         self.assertEqual(delete_results,
                          "entity client.sandbox does not exist\n")
+
+
+class CephMonActionsTest(test_utils.OpenStackBaseTest):
+    """Test miscellaneous actions of the ceph-mon charm."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running ceph-mon actions."""
+        super(CephMonActionsTest, cls).setUpClass()
+        # Allow mons to delete pools.
+        zaza_model.run_on_unit(
+            'ceph-mon/0',
+            "ceph tell mon.\\* injectargs '--mon-allow-pool-delete=true'"
+        )
+
+    def _get_osd_weight(self, osd, unit):
+        """Fetch the CRUSH weight of an OSD."""
+        cmd = 'sudo ceph osd crush tree --format=json'
+        result = zaza_model.run_on_unit(unit, cmd)
+        self.assertEqual(int(result.get('Code')), 0)
+
+        tree = json.loads(result.get('Stdout'))
+        for node in tree['nodes']:
+            if node.get('name') == osd:
+                return node['crush_weight']
+
+    def test_reweight_osd(self):
+        """Test the change-osd-weight action."""
+        unit = 'ceph-mon/0'
+        osd = 0
+        osd_str = 'osd.' + str(osd)
+        weight = 700
+        prev_weight = self._get_osd_weight(osd_str, unit)
+        try:
+            action_obj = zaza_model.run_action(
+                unit_name=unit,
+                action_name='change-osd-weight',
+                action_params={'osd': osd, 'weight': 700}
+            )
+            zaza_utils.assertActionRanOK(action_obj)
+            self.assertEqual(weight, self._get_osd_weight(osd_str, unit))
+        finally:
+            # Reset the weight.
+            zaza_model.run_action(
+                unit_name=unit,
+                action_name='change-osd-weight',
+                action_params={'osd': osd, 'weight': prev_weight}
+            )
+
+    def test_copy_pool(self):
+        """Test the copy-pool (and list-pool) action."""
+        unit = 'ceph-mon/0'
+        logging.debug('Creating secondary test pool')
+        cmd = 'sudo ceph osd pool create test2 32'
+        try:
+            result = zaza_model.run_on_unit(unit, cmd)
+            self.assertEqual(int(result.get('Code')), 0)
+
+            action_obj = zaza_model.run_action(
+                unit_name=unit,
+                action_name='list-pools',
+                action_params={}
+            )
+            zaza_utils.assertActionRanOK(action_obj)
+            self.assertIn('test2', action_obj.data['results']['message'])
+
+            logging.debug('Copying test pool')
+            action_obj = zaza_model.run_action(
+                unit_name=unit,
+                action_name='copy-pool',
+                action_params={'source': 'nova', 'target': 'test2'}
+            )
+            zaza_utils.assertActionRanOK(action_obj)
+        finally:
+            # Clean up our mess.
+            zaza_model.run_on_unit(
+                unit,
+                ('sudo ceph osd pool delete test2 test2 '
+                 '--yes-i-really-really-mean-it')
+            )
