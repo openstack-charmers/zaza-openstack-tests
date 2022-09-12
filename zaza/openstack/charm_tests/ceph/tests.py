@@ -683,16 +683,32 @@ class CephRGWTest(test_utils.BaseCharmTest):
         hostname = unit_hostnames[unit_name]
         return 'radosgw-admin --id=rgw.{} '.format(hostname)
 
+    def purge_bucket(self, application, bucket_name):
+        """Remove a bucket and all it's objects
+
+        :param application: RGW application name
+        :type application: str
+        :param bucket_name: Name for RGW bucket to be deleted
+        :type bucket_name: str
+        """
+        juju_units = zaza_model.get_units(application)
+        unit_hostnames = generic_utils.get_unit_hostnames(juju_units)
+        for unit_name, hostname in unit_hostnames.items():
+            key_name = "rgw.{}".format(hostname)
+            cmd = 'radosgw-admin --id={} bucket rm --bucket={}' \
+                  ' --purge-objects'.format(key_name, bucket_name)
+            zaza_model.run_on_unit(unit_name, cmd)
+
     def wait_for_status(self, application,
-                        is_primary=False, meta_expected=True):
+                        is_primary=False, sync_expected=True):
         """Wait for required RGW endpoint to finish sync for data and metadata.
 
         :param application: RGW application which has to be waited for
         :type application: str
-        :param is_primary: whether meta check should be primary specific.
+        :param is_primary: whether RGW application is primary or secondary
         :type is_primary: boolean
-        :param meta_expected: whether metadata substring should be checked
-        :type meta_expected: boolean
+        :param sync_expected: whether sync details should be expected in status
+        :type sync_expected: boolean
         """
         juju_units = zaza_model.get_units(application)
         unit_hostnames = generic_utils.get_unit_hostnames(juju_units)
@@ -713,13 +729,14 @@ class CephRGWTest(test_utils.BaseCharmTest):
                     stdout = zaza_model.run_on_unit(
                         unit_name, cmd
                     ).get('Stdout', '')
-                    self.assertIn(data_check, stdout)
-                    if meta_expected:
+                    if sync_expected:
+                        # Both data and meta sync.
+                        self.assertIn(data_check, stdout)
                         self.assertIn(meta_check, stdout)
                     else:
-                        # Neither Primary nor Secondary
-                        self.assertNotIn(meta_primary, stdout)
-                        self.assertNotIn(meta_secondary, stdout)
+                        #  ExpectPrimary's Meta Status and no Data sync status
+                        self.assertIn(meta_primary, stdout)
+                        self.assertNotIn(data_check, stdout)
 
     def fetch_rgw_object(self, target_client, container_name, object_name):
         """Fetch RGW object content.
@@ -998,14 +1015,8 @@ class CephRGWTest(test_utils.BaseCharmTest):
             self.secondary_rgw_app + ":slave"
         )
 
-        # Refresh secondary client.
-        secondary_client = boto3.resource("s3",
-                                          verify=False,
-                                          endpoint_url=secondary_endpoint,
-                                          aws_access_key_id=access_key,
-                                          aws_secret_access_key=secret_key)
-        secondary_client.Object(container_name, obj_name).delete()
-        secondary_client.Bucket(container_name).delete()
+        # Make secondary pristine.
+        self.purge_bucket(self.secondary_rgw_app, container_name)
 
         zaza_model.block_until_unit_wl_status(self.secondary_rgw_unit,
                                               'active')
@@ -1100,7 +1111,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
         self.wait_for_status(self.secondary_rgw_app, is_primary=True)
 
         # IO Test
-        container = 'demo-container-for-failover'
+        container = 'failover-container'
         test_data = 'Test data from Zaza on Slave'
         secondary_client.Bucket(container).create()
         secondary_object = secondary_client.Object(container, 'testfile')
@@ -1133,8 +1144,8 @@ class CephRGWTest(test_utils.BaseCharmTest):
         )
 
         # wait for sync stop
-        self.wait_for_status(self.primary_rgw_app, meta_expected=False)
-        self.wait_for_status(self.secondary_rgw_app, meta_expected=False)
+        self.wait_for_status(self.primary_rgw_app, sync_expected=False)
+        self.wait_for_status(self.secondary_rgw_app, sync_expected=False)
 
         # Refresh client and verify objects are not replicating.
         primary_client = boto3.resource("s3",
@@ -1163,9 +1174,10 @@ class CephRGWTest(test_utils.BaseCharmTest):
                 primary_client, container, 'scaledown'
             )
 
-        # Cleanup of scaledown resources.
-        secondary_client.Object(container, 'scaledown').delete()
-        secondary_client.Bucket(container).delete()
+        # Cleanup of scaledown resources and synced resources.
+        self.purge_bucket(self.secondary_rgw_app, container)
+        self.purge_bucket(self.secondary_rgw_app, 'zaza-container')
+        self.purge_bucket(self.secondary_rgw_app, 'failover-container')
 
 
 class CephProxyTest(unittest.TestCase):
