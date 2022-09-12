@@ -684,7 +684,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
         return 'radosgw-admin --id=rgw.{} '.format(hostname)
 
     def purge_bucket(self, application, bucket_name):
-        """Remove a bucket and all it's objects
+        """Remove a bucket and all it's objects.
 
         :param application: RGW application name
         :type application: str
