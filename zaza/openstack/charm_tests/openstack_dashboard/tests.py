@@ -530,7 +530,7 @@ class OpenStackDashboardPolicydTests(policyd.BasePolicydSpecialization,
     })}
 
     # url associated with rule above that will return HTTP 403
-    url = "http://{}/horizon/identity/domains"
+    url = "{}/identity/domains"
 
     @classmethod
     def setUpClass(cls, application_name=None):
@@ -565,7 +565,7 @@ class OpenStackDashboardPolicydTests(policyd.BasePolicydSpecialization,
             self.get_horizon_url(), domain, username, password,
             cafile=self.cacert)
         # now attempt to get the domains page
-        _url = self.url.format(zaza_model.get_unit_public_address(unit))
+        _url = self.url.format(self.get_horizon_url())
         logging.info("URL is {}".format(_url))
         result = client.get(_url)
         if result.status_code == 403:
