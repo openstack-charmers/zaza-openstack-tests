@@ -46,7 +46,7 @@ class CharmKeystoneSAMLMellonTest(BaseKeystoneTest):
         cls.application_name = cls.test_config['charm_name']
         cls.action = "get-sp-metadata"
         cls.current_release = openstack_utils.get_os_release()
-        cls.FOCAL_USSURI = openstack_utils.get_os_release("focal_ussuri")
+        cls.BIONIC_STEIN = openstack_utils.get_os_release("bionic_stein")
 
     def test_run_get_sp_metadata_action(self):
         """Validate the get-sp-metadata action."""
@@ -97,8 +97,8 @@ class CharmKeystoneSAMLMellonTest(BaseKeystoneTest):
         else:
             proto = "http"
 
-        # Use Keystone URL for < Focal
-        if self.current_release < self.FOCAL_USSURI:
+        # Use Keystone URL for < Stein
+        if self.current_release < self.BIONIC_STEIN:
             region = "{}://{}:5000/v3".format(proto, keystone_ip)
         else:
             region = "default"
@@ -180,7 +180,7 @@ class BaseCharmKeystoneSAMLMellonTest(BaseKeystoneTest):
         cls.horizon_idp_display_name = horizon_idp_display_name
         cls.action = "get-sp-metadata"
         cls.current_release = openstack_utils.get_os_release()
-        cls.FOCAL_USSURI = openstack_utils.get_os_release("focal_ussuri")
+        cls.BIONIC_STEIN = openstack_utils.get_os_release("bionic_stein")
 
     @staticmethod
     def check_horizon_redirect(horizon_url, horizon_expect,
@@ -295,8 +295,8 @@ class BaseCharmKeystoneSAMLMellonTest(BaseKeystoneTest):
             zaza.model.get_unit_public_address(unit))
         proto = "https" if self.tls_rid else "http"
 
-        # Use Keystone URL for < Focal
-        if self.current_release < self.FOCAL_USSURI:
+        # Use Keystone URL for < Stein
+        if self.current_release < self.BIONIC_STEIN:
             region = "{}://{}:5000/v3".format(proto, keystone_ip)
         else:
             region = "default"
