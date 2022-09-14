@@ -65,9 +65,11 @@ class BaseCharmOperationTest(test_utils.BaseCharmTest):
 
     def test_nrpe_configured(self):
         """Confirm that the NRPE service check files are created."""
-        if self.current_release == openstack_utils.get_os_release(
-                'jammy_yoga'):
-            self.skipTest('The NRPE charm does not support Jammy yet')
+        if not zaza.model.get_relation_id(
+                self.application_name, 'nrpe',
+                remote_interface_name='nrpe-external-master'):
+            self.skipTest('The NRPE charm is not related to the '
+                          'charm under test.')
         units = zaza.model.get_units(self.application_name)
         cmds = []
         for check_name in self.nrpe_checks:
