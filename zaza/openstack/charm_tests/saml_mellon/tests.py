@@ -282,10 +282,6 @@ class BaseCharmKeystoneSAMLMellonTest(BaseKeystoneTest):
 
     def test_saml_mellon_redirects(self):
         """Validate the horizon -> keystone -> IDP redirects."""
-        unit = zaza.model.get_units(self.application_name)[0]
-        keystone_ip = self.vip if self.vip else (
-            zaza.model.get_unit_public_address(unit))
-
         horizon = "openstack-dashboard"
         horizon_config = zaza.model.get_application_config(horizon)
         horizon_vip = horizon_config.get("vip").get("value")
@@ -297,6 +293,11 @@ class BaseCharmKeystoneSAMLMellonTest(BaseKeystoneTest):
 
         # Use Keystone URL for < Stein
         if self.current_release < self.BIONIC_STEIN:
+            keystone_config = zaza.model.get_application_config('keystone')
+            keystone_ip = keystone_config.get("vip").get("value")
+            if not keystone_ip:
+                keystone_unit = zaza.model.get_units('keystone')[0]
+                keystone_ip = zaza.model.get_unit_public_address(keystone_unit)
             region = "{}://{}:5000/v3".format(proto, keystone_ip)
         else:
             region = "default"
