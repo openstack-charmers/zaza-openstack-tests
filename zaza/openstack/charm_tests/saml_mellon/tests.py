@@ -181,6 +181,11 @@ class BaseCharmKeystoneSAMLMellonTest(BaseKeystoneTest):
         cls.action = "get-sp-metadata"
         cls.current_release = openstack_utils.get_os_release()
         cls.FOCAL_USSURI = openstack_utils.get_os_release("focal_ussuri")
+        keystone_config = zaza.model.get_application_config('keystone')
+        cls.keystone_ip = keystone_config.get("vip").get("value")
+        if not cls.keystone_ip:
+            keystone_unit = zaza.model.get_units('keystone')[0]
+            cls.keystone_ip = zaza.model.get_unit_public_address(keystone_unit)
 
     @staticmethod
     def check_horizon_redirect(horizon_url, horizon_expect,
@@ -258,8 +263,6 @@ class BaseCharmKeystoneSAMLMellonTest(BaseKeystoneTest):
     def test_run_get_sp_metadata_action(self):
         """Validate the get-sp-metadata action."""
         unit = zaza.model.get_units(self.application_name)[0]
-        ip = self.vip if self.vip else zaza.model.get_unit_public_address(unit)
-
         action = zaza.model.run_action(unit.entity_id, self.action)
         self.assertNotIn(
             "failed",
@@ -270,22 +273,18 @@ class BaseCharmKeystoneSAMLMellonTest(BaseKeystoneTest):
         root = etree.fromstring(output)
         for item in root.items():
             if "entityID" in item[0]:
-                self.assertIn(ip, item[1])
+                self.assertIn(self.keystone_ip, item[1])
 
         for appt in root.getchildren():
             for elem in appt.getchildren():
                 for item in elem.items():
                     if "Location" in item[0]:
-                        self.assertIn(ip, item[1])
+                        self.assertIn(self.keystone_ip, item[1])
 
         logging.info("Successul get-sp-metadata action")
 
     def test_saml_mellon_redirects(self):
         """Validate the horizon -> keystone -> IDP redirects."""
-        unit = zaza.model.get_units(self.application_name)[0]
-        keystone_ip = self.vip if self.vip else (
-            zaza.model.get_unit_public_address(unit))
-
         horizon = "openstack-dashboard"
         horizon_config = zaza.model.get_application_config(horizon)
         horizon_vip = horizon_config.get("vip").get("value")
@@ -297,7 +296,7 @@ class BaseCharmKeystoneSAMLMellonTest(BaseKeystoneTest):
 
         # Use Keystone URL for < Focal
         if self.current_release < self.FOCAL_USSURI:
-            region = "{}://{}:5000/v3".format(proto, keystone_ip)
+            region = "{}://{}:5000/v3".format(proto, self.keystone_ip)
         else:
             region = "default"
 
