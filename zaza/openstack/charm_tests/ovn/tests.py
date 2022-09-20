@@ -199,6 +199,10 @@ class ChassisCharmOperationTest(BaseCharmOperationTest):
             self.test_config[
                 'target_deploy_status'] = stored_target_deploy_status
 
+
+class DPDKTest(test_utils.BaseCharmTest):
+    """DPDK-related tests."""
+
     def _openvswitch_switch_dpdk_installed(self):
         """Assert that the openvswitch-switch-dpdk package is installed.
 
@@ -295,10 +299,6 @@ class ChassisCharmOperationTest(BaseCharmOperationTest):
                 AssertionError,
                 msg='OVS unexpectedly has DPDK initialized'):
             self._ovs_dpdk_initialized()
-
-
-class DPDKTest(test_utils.BaseCharmTest):
-    """DPDK-related tests."""
 
     def test_enable_dpdk(self):
         """Confirm that transitioning to/from DPDK works."""
