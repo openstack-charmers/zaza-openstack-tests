@@ -294,6 +294,10 @@ class ChassisCharmOperationTest(BaseCharmOperationTest):
                 msg='OVS unexpectedly has DPDK initialized'):
             self._ovs_dpdk_initialized()
 
+
+class DPDKTest(test_utils.BaseCharmTest):
+    """DPDK-related tests."""
+
     def test_enable_dpdk(self):
         """Confirm that transitioning to/from DPDK works."""
         logging.info('Pre-flight check')
