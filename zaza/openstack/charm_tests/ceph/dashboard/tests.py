@@ -169,7 +169,7 @@ class CephDashboardTest(test_utils.BaseCharmTest):
         path = "api/auth"
         headers = {
             'Content-type': 'application/json',
-            'Accept': 'application/vnd.ceph.api.v1.0'}
+            'Accept': 'application/vnd.ceph.api.v1.0+json'}
         payload = {"username": user, "password": password}
         verify = self.local_ca_cert
         r = self._run_request_post(
