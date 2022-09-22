@@ -299,10 +299,26 @@ def get_ks_creds(cloud_creds, scope='PROJECT'):
                 'username': cloud_creds['OS_USERNAME'],
                 'password': cloud_creds['OS_PASSWORD'],
                 'auth_url': cloud_creds['OS_AUTH_URL'],
-                'user_domain_name': cloud_creds['OS_USER_DOMAIN_NAME'],
                 'project_domain_name': cloud_creds['OS_PROJECT_DOMAIN_NAME'],
                 'project_name': cloud_creds['OS_PROJECT_NAME'],
             }
+            # the FederationBaseAuth class doesn't support the
+            # 'user_domain_name' argument, so only setting it in the 'auth'
+            # dict when it's passed in the cloud_creds.
+            if cloud_creds.get('OS_USER_DOMAIN_NAME'):
+                auth['user_domain_name'] = cloud_creds['OS_USER_DOMAIN_NAME']
+
+        if cloud_creds.get('OS_AUTH_TYPE') == 'v3oidcpassword':
+            auth.update({
+                'identity_provider': cloud_creds['OS_IDENTITY_PROVIDER'],
+                'protocol': cloud_creds['OS_PROTOCOL'],
+                'client_id': cloud_creds['OS_CLIENT_ID'],
+                'client_secret': cloud_creds['OS_CLIENT_SECRET'],
+                # optional configuration options:
+                'access_token_endpoint': cloud_creds.get(
+                    'OS_ACCESS_TOKEN_ENDPOINT'),
+                'discovery_endpoint': cloud_creds.get('OS_DISCOVERY_ENDPOINT')
+            })
     return auth
 
 
@@ -511,7 +527,10 @@ def get_keystone_session(openrc_creds, scope='PROJECT', verify=None):
     if openrc_creds.get('API_VERSION', 2) == 2:
         auth = v2.Password(**keystone_creds)
     else:
-        auth = v3.Password(**keystone_creds)
+        if openrc_creds.get('OS_AUTH_TYPE') == 'v3oidcpassword':
+            auth = v3.OidcPassword(**keystone_creds)
+        else:
+            auth = v3.Password(**keystone_creds)
     return session.Session(auth=auth, verify=verify)
 
 
