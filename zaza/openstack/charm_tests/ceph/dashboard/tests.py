@@ -100,21 +100,15 @@ class CephDashboardTest(test_utils.BaseCharmTest):
         :returns: URL of dashboard on unit
         :rtype: Union[str, None]
         """
-        units = zaza.model.get_units(self.application_name)
-        for unit in units:
-            r = self._run_request_get(
-                'https://{}:8443'.format(
-                    zaza.model.get_unit_public_address(unit)),
-                verify=self.local_ca_cert,
-                allow_redirects=False)
-            if r.status_code == requests.codes.ok:
-                return 'https://{}:8443'.format(
-                    zaza.model.get_unit_public_address(unit))
+        output = zaza.model.run_on_leader(
+            'ceph-mon',
+            'ceph mgr services')['Stdout']
+        return json.loads(output)['dashboard']
 
     def test_dashboard_units(self):
         """Check dashboard units are configured correctly."""
         verify = self.local_ca_cert
-        units = zaza.model.get_units(self.application_name)
+        units = zaza.model.get_units('ceph-mon')
         rcs = collections.defaultdict(list)
         for unit in units:
             r = self._run_request_get(
@@ -175,7 +169,7 @@ class CephDashboardTest(test_utils.BaseCharmTest):
         path = "api/auth"
         headers = {
             'Content-type': 'application/json',
-            'Accept': 'application/vnd.ceph.api.v1.0'}
+            'Accept': 'application/vnd.ceph.api.v1.0+json'}
         payload = {"username": user, "password": password}
         verify = self.local_ca_cert
         r = self._run_request_post(
