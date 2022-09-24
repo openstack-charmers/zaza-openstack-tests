@@ -982,7 +982,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
         # 1. Migrate to multisite
         if zaza_model.get_relation_id(
                 self.primary_rgw_app, self.secondary_rgw_app,
-                remote_interface_name='slave'
+                remote_interface_name='secondary'
         ) is not None:
             logging.info('Skipping Test, Multisite relation already present.')
             return
@@ -991,8 +991,8 @@ class CephRGWTest(test_utils.BaseCharmTest):
         self.configure_rgw_apps_for_multisite()
         zaza_model.add_relation(
             self.primary_rgw_app,
-            self.primary_rgw_app + ":master",
-            self.secondary_rgw_app + ":slave"
+            self.primary_rgw_app + ":primary",
+            self.secondary_rgw_app + ":secondary"
         )
 
         # 2. Verify secondary fails migration due to existing Bucket.
@@ -1011,8 +1011,8 @@ class CephRGWTest(test_utils.BaseCharmTest):
         self.clean_rgw_multisite_config(self.secondary_rgw_app)
         zaza_model.remove_relation(
             self.primary_rgw_app,
-            self.primary_rgw_app + ":master",
-            self.secondary_rgw_app + ":slave"
+            self.primary_rgw_app + ":primary",
+            self.secondary_rgw_app + ":secondary"
         )
 
         # Make secondary pristine.
@@ -1047,17 +1047,17 @@ class CephRGWTest(test_utils.BaseCharmTest):
             'prefile'
         ).put(Body=obj_data)
 
-        # If Master/Slave relation does not exist, add it.
+        # If Primary/Secondary relation does not exist, add it.
         if zaza_model.get_relation_id(
                 self.primary_rgw_app, self.secondary_rgw_app,
-                remote_interface_name='slave'
+                remote_interface_name='secondary'
         ) is None:
             logging.info('Configuring Multisite')
             self.configure_rgw_apps_for_multisite()
             zaza_model.add_relation(
                 self.primary_rgw_app,
-                self.primary_rgw_app + ":master",
-                self.secondary_rgw_app + ":slave"
+                self.primary_rgw_app + ":primary",
+                self.secondary_rgw_app + ":secondary"
             )
             zaza_model.block_until_unit_wl_status(
                 self.secondary_rgw_unit, "waiting"
@@ -1103,7 +1103,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
         self.assertEqual(post_migration_data, obj_data)
 
         logging.info('Checking multisite failover/failback')
-        # Failover Scenario, Promote Slave-Ceph-RadosGW to Primary
+        # Failover Scenario, Promote Secondary-Ceph-RadosGW to Primary
         self.promote_rgw_to_primary(self.secondary_rgw_app)
 
         # Wait for Sites to be syncronised.
@@ -1112,7 +1112,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
 
         # IO Test
         container = 'failover-container'
-        test_data = 'Test data from Zaza on Slave'
+        test_data = 'Test data from Zaza on Secondary'
         secondary_client.Bucket(container).create()
         secondary_object = secondary_client.Object(container, 'testfile')
         secondary_object.put(
@@ -1139,8 +1139,8 @@ class CephRGWTest(test_utils.BaseCharmTest):
         logging.info('Checking multisite scaledown')
         zaza_model.remove_relation(
             self.primary_rgw_app,
-            self.primary_rgw_app + ":master",
-            self.secondary_rgw_app + ":slave"
+            self.primary_rgw_app + ":primary",
+            self.secondary_rgw_app + ":secondary"
         )
 
         # wait for sync stop
