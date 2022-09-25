@@ -752,7 +752,8 @@ class OpenStackBaseTest(BaseCharmTest):
 
     def launch_guest(self, guest_name, userdata=None, use_boot_volume=False,
                      instance_key=None, flavor_name=None,
-                     attach_to_external_network=False):
+                     attach_to_external_network=False,
+                     keystone_session=None):
         """Launch one guest to use in tests.
 
         Note that it is up to the caller to have set the RESOURCE_PREFIX class
@@ -772,6 +773,8 @@ class OpenStackBaseTest(BaseCharmTest):
         :param attach_to_external_network: Attach instance directly to external
                                            network.
         :type attach_to_external_network: bool
+        :param keystone_session: Keystone session to use.
+        :type keystone_session: Optional[keystoneauth1.session.Session]
         :returns: Nova instance objects
         :rtype: Server
         """
@@ -801,7 +804,8 @@ class OpenStackBaseTest(BaseCharmTest):
                     use_boot_volume=use_boot_volume,
                     userdata=userdata,
                     flavor_name=flavor_name,
-                    attach_to_external_network=attach_to_external_network)
+                    attach_to_external_network=attach_to_external_network,
+                    keystone_session=keystone_session)
 
     def launch_guests(self, userdata=None, attach_to_external_network=False,
                       flavor_name=None):
