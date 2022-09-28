@@ -19,7 +19,7 @@ import logging
 import juju
 
 import tenacity
-
+import yaml
 import zaza
 
 import zaza.model
@@ -701,3 +701,134 @@ class OVNCentralDeferredRestartTest(
         self.run_package_change_test(
             'ovn-central',
             'ovn-central')
+
+
+class OVNCentralDownscaleTests(test_utils.BaseCharmTest):
+    """Tests for cluster-status and cluster-kick actions."""
+
+    SB_CMD = "ovs-appctl -t /var/run/ovn/ovnsb_db.ctl {}"
+    NB_CMD = "ovs-appctl -t /var/run/ovn/ovnnb_db.ctl {}"
+
+    def _cluster_status_action(self):
+        """Return Southbound and Northbound cluster status.
+
+        This function returns data as reported by "cluster-status" action
+        parsed into two dictionaries in the following order:
+        "Southbound status", "Northbound status"
+        """
+        yaml_load_err = "Status of '{}' could not be loaded as yaml:\n{}"
+        status_raw = zaza.model.run_action_on_leader("ovn-central",
+                                                     "cluster-status")
+        status_data = status_raw.data["results"]
+        # Verify expected items in the action result
+        self.assertIn("northbound-cluster", status_data)
+        self.assertIn("southbound-cluster", status_data)
+
+        try:
+            nb_status = yaml.safe_load(status_data["northbound-cluster"])
+        except yaml.YAMLError:
+            self.fail(yaml_load_err.format("northbound-cluster",
+                                           status_data["northbound-cluster"]))
+        try:
+            sb_status = yaml.safe_load(status_data["southbound-cluster"])
+        except yaml.YAMLError:
+            self.fail(yaml_load_err.format("southbound-cluster",
+                                           status_data["southbound-cluster"]))
+
+        return sb_status, nb_status
+
+    def test_cluster_status(self):
+        """Test that cluster-status action returns expected results."""
+        application = zaza.model.get_application("ovn-central")
+        sb_status, nb_status = self._cluster_status_action()
+
+        # Verify that cluster status includes "Servers" field with correct type
+        for status in (nb_status, sb_status):
+            self.assertIn("Servers", status)
+            self.assertIsInstance(status["Servers"], dict)
+
+        # Verify that units and their Server IDs are properly paired
+        expected_mapping = {}
+        for unit in application.units:
+            unit_name = unit.entity_id
+            nb_status_cmd = self.NB_CMD.format("cluster/status OVN_Northbound")
+            sb_status_cmd = self.SB_CMD.format("cluster/status OVN_Southbound")
+            nb_cluster_status = zaza.model.run_on_unit(unit_name,
+                                                       nb_status_cmd)
+            sb_cluster_status = zaza.model.run_on_unit(unit_name,
+                                                       sb_status_cmd)
+            nb_id = nb_cluster_status["Stdout"].splitlines()[0]
+            sb_id = sb_cluster_status["Stdout"].splitlines()[0]
+            expected_mapping[unit_name] = {"sb_id": sb_id, "nb_id": nb_id}
+
+        for unit_name, unit_data in expected_mapping.items():
+            sb_id = unit_data["sb_id"]
+            nb_id = unit_data["nb_id"]
+            self.assertEqual(sb_status["Servers"][sb_id]["Unit"], unit_name)
+            self.assertEqual(nb_status["Servers"][nb_id]["Unit"], unit_name)
+
+    def test_cluster_kick(self):
+        """Test forcefully removing a member of an ovn cluster.
+
+        If unit fails to remove itself gracefully from the
+        Southbound/Northbound OVN clusters, it can be kicked using
+        "cluster-kick" action. This test simulates such scenario by removing
+        contents of "/var/run/ovn/*" to mess with OVN communication before
+        removal of the unit which prevents the unit from gracefully leaving
+        the OVN cluster.
+        """
+        application = zaza.model.get_application("ovn-central")
+        removed_unit = application.units[-1].entity_id
+        missing_unit_err = ("Failed to perform kick test. Unit {} is already"
+                            " missing from the {} cluster status")
+        sb_status, nb_status = self._cluster_status_action()
+
+        for server_id, server_data in sb_status["Servers"].items():
+            if server_data["Unit"] == removed_unit:
+                removed_sb_id = server_id
+                break
+        else:
+            self.fail(missing_unit_err.format(removed_unit, "Southbound"))
+
+        for server_id, server_data in nb_status["Servers"].items():
+            if server_data["Unit"] == removed_unit:
+                removed_nb_id = server_id
+                break
+        else:
+            self.fail(missing_unit_err.format(removed_unit, "Northbound"))
+
+        logging.info("Killing OVN services on %s unit" % removed_unit)
+        zaza.model.run_on_unit(removed_unit, "rm -rf /var/run/ovn/*")
+
+        logging.info("Removing unit %s", removed_unit)
+        zaza.model.destroy_unit(application.entity_id, removed_unit)
+        zaza.model.wait_for_application_states(
+            states={"ovn-central": {"workload-status": "active"}}
+        )
+
+        # Verify that Server IDs of the removed unit are no longer associated
+        # with the units ID and show "UNKNOWN" instead
+        sb_status, nb_status = self._cluster_status_action()
+
+        self.assertEqual(sb_status["Servers"][removed_sb_id]["Unit"],
+                         "UNKNOWN")
+        self.assertEqual(nb_status["Servers"][removed_nb_id]["Unit"],
+                         "UNKNOWN")
+
+        logging.info("Requesting kick of removed servers (Southbound ID: %s, "
+                     "Northbound ID: %s) from OVN clusters",
+                     removed_sb_id,
+                     removed_nb_id)
+        action_params = {"sb-server-id": removed_sb_id,
+                         "nb-server-id": removed_nb_id,
+                         "i-really-mean-it": True}
+        zaza.model.run_action_on_leader("ovn-central",
+                                        "cluster-kick",
+                                        action_params=action_params)
+
+        # Verify that Server IDs of the removed unit are completely removed
+        # from the cluster status
+        sb_status, nb_status = self._cluster_status_action()
+
+        self.assertNotIn(removed_sb_id, sb_status["Servers"])
+        self.assertNotIn(removed_nb_id, nb_status["Servers"])
