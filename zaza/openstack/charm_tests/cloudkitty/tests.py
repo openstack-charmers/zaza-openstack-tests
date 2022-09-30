@@ -50,7 +50,47 @@ class CloudkittyTest(test_utils.OpenStackBaseTest):
     def test_401_module_enable(self):
         """Test enabling hashmap module via API."""
         logging.info('Enabling hashmap module')
-        self.cloudkitty.rating.update_module(module_id='hashmap', enabled=True)
+        rating = self.cloudkitty.rating
+        rating.update_module(module_id='hashmap', enabled=True)
 
-        hashmap = self.cloudkitty.rating.get_module(module_id='hashmap')
+        hashmap = rating.get_module(module_id='hashmap')
         assert hashmap.get('enabled')
+
+    def test_402_service_create_and_delete(self):
+        """Test service create and delete via API."""
+        hashmap = self.cloudkitty.rating.hashmap
+        service = hashmap.create_service(name='test')
+
+        assert service['name'] == 'test'
+
+        service_id = service['service_id']
+        hashmap.delete_service(service_id=service_id)
+
+    def test_403_field_create_and_delete(self):
+        """Test field create and delete via API."""
+        hashmap = self.cloudkitty.rating.hashmap
+        service = hashmap.create_service(name='test')
+
+        service_id = service['service_id']
+        field = hashmap.create_field(name='test', service_id=service_id)
+
+        field_id = field['field_id']
+        hashmap.delete_field(field_id=field_id)
+        hashmap.delete_service(service_id=service_id)
+
+    def test_404_mapping_create_and_delete(self):
+        """Test mapping create and delete via API."""
+        hashmap = self.cloudkitty.rating.hashmap
+        service = hashmap.create_service(name='test')
+
+        service_id = service['service_id']
+        field = hashmap.create_field(name='test', service_id=service_id)
+
+        field_id = field['field_id']
+        mapping = hashmap.create_mapping(
+            type='flat', field_id=field_id, value='test', cost=0.1)
+
+        mapping_id = mapping['mapping_id']
+        hashmap.delete_mapping(mapping_id=mapping_id)
+        hashmap.delete_field(field_id=field_id)
+        hashmap.delete_service(service_id=service_id)
