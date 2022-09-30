@@ -28,6 +28,7 @@ class CloudkittyTest(test_utils.OpenStackBaseTest):
     """Encapsulate Cloudkitty tests."""
 
     CONF_FILE = '/etc/cloudkitty/cloudkitty.conf'
+    API_VERSION = '1'
 
     @classmethod
     def setUpClass(cls):
@@ -35,13 +36,21 @@ class CloudkittyTest(test_utils.OpenStackBaseTest):
         super(CloudkittyTest, cls).setUpClass()
         cls.current_release = openstack_utils.get_os_release()
 
+        logging.info('Instantiating cloudkitty client...')
+        cls.cloudkitty = client.Client(
+            CloudkittyTest.API_VERSION,
+            session=cls.keystone_session
+        )
+
     def test_400_api_connection(self):
         """Simple api calls to check service is up and responding."""
-        logging.info('Instantiating cloudkitty client...')
-        client_version = '1'
-        cloudkitty = client.Client(
-            client_version,
-            session=openstack_utils.get_overcloud_keystone_session()
-        )
-        cloudkitty.report.get_summary()
-        pass
+        tenants_list = self.cloudkitty.report.get_tenants()
+        assert tenants_list == []
+
+    def test_401_module_enable(self):
+        """Test enabling hashmap module via API."""
+        logging.info('Enabling hashmap module')
+        self.cloudkitty.rating.update_module(module_id='hashmap', enabled=True)
+
+        hashmap = self.cloudkitty.rating.get_module(module_id='hashmap')
+        assert hashmap.get('enabled')
