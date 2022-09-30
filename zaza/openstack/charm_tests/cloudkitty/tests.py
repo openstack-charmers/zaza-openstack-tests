@@ -27,7 +27,6 @@ from cloudkittyclient import client
 class CloudkittyTest(test_utils.OpenStackBaseTest):
     """Encapsulate Cloudkitty tests."""
 
-    CONF_FILE = '/etc/cloudkitty/cloudkitty.conf'
     API_VERSION = '1'
 
     @classmethod
@@ -42,55 +41,77 @@ class CloudkittyTest(test_utils.OpenStackBaseTest):
             session=cls.keystone_session
         )
 
+    def tearDown(self):
+        """Run teardown for test class."""
+        rating = self.cloudkitty.rating
+
+        if not rating.get_module(module_id='hashmap').get('enabled'):
+            rating.update_module(module_id='hashmap', enabled=True)
+
+        hashmap = rating.hashmap
+        for service in hashmap.get_service().get('services'):
+
+            service_id = service.get('service_id')
+
+            fields = hashmap.get_field(service_id=service_id)
+            for field in fields.get('fields'):
+                hashmap.delete_field(field_id=field.get('field_id'))
+
+            mappings = hashmap.get_mapping(service_id=service_id)
+            for mapping in mappings.get('mappings'):
+                hashmap.delete_mapping(mapping_id=mapping.get('mapping_id'))
+
+            hashmap.delete_service(service_id=service_id)
+
+        for group in hashmap.get_group().get('groups'):
+            hashmap.delete_group(group_id=group.get('group_id'))
+
     def test_400_api_connection(self):
         """Simple api calls to check service is up and responding."""
-        tenants_list = self.cloudkitty.report.get_tenants()
+        report = self.cloudkitty.report
+        tenants_list = report.get_tenants()
         assert tenants_list == []
 
-    def test_401_module_enable(self):
-        """Test enabling hashmap module via API."""
-        logging.info('Enabling hashmap module')
+    def test_401_module_enable_and_disable(self):
+        """Test enable and disable module via API."""
         rating = self.cloudkitty.rating
-        rating.update_module(module_id='hashmap', enabled=True)
+        modules = rating.get_module()
 
-        hashmap = rating.get_module(module_id='hashmap')
-        assert hashmap.get('enabled')
+        for module in modules.get('modules'):
+            module_id = module.get('module_id')
 
-    def test_402_service_create_and_delete(self):
-        """Test service create and delete via API."""
-        hashmap = self.cloudkitty.rating.hashmap
-        service = hashmap.create_service(name='test')
+            # noop module can't be disabled
+            if module_id == 'noop':
+                continue
 
-        assert service['name'] == 'test'
+            logging.info('Enabling {} module'.format(module_id))
+            rating.update_module(module_id=module_id, enabled=True)
+            module = rating.get_module(module_id=module_id)
+            assert module.get('enabled')
 
-        service_id = service['service_id']
-        hashmap.delete_service(service_id=service_id)
+            logging.info('Disabling {} module'.format(module_id))
+            rating.update_module(module_id=module_id, enabled=False)
+            module = rating.get_module(module_id=module_id)
+            assert not module.get('enabled')
 
-    def test_403_field_create_and_delete(self):
-        """Test field create and delete via API."""
-        hashmap = self.cloudkitty.rating.hashmap
-        service = hashmap.create_service(name='test')
+    def test_402_create_mapping(self):
+        """Test mapping create via API."""
+        rating = self.cloudkitty.rating
 
-        service_id = service['service_id']
-        field = hashmap.create_field(name='test', service_id=service_id)
+        if not rating.get_module(module_id='hashmap').get('enabled'):
+            rating.update_module(module_id='hashmap', enabled=True)
 
-        field_id = field['field_id']
-        hashmap.delete_field(field_id=field_id)
-        hashmap.delete_service(service_id=service_id)
+        hashmap = rating.hashmap
 
-    def test_404_mapping_create_and_delete(self):
-        """Test mapping create and delete via API."""
-        hashmap = self.cloudkitty.rating.hashmap
-        service = hashmap.create_service(name='test')
+        service = hashmap.create_service(name='test-service')
+        service_id = service.get('service_id')
 
-        service_id = service['service_id']
-        field = hashmap.create_field(name='test', service_id=service_id)
+        field = hashmap.create_field(name='test-field', service_id=service_id)
+        field_id = field.get('field_id')
 
-        field_id = field['field_id']
-        mapping = hashmap.create_mapping(
-            type='flat', field_id=field_id, value='test', cost=0.1)
+        group = hashmap.create_group(name='test-group')
+        group_id = group.get('group_id')
 
-        mapping_id = mapping['mapping_id']
-        hashmap.delete_mapping(mapping_id=mapping_id)
-        hashmap.delete_field(field_id=field_id)
-        hashmap.delete_service(service_id=service_id)
+        hashmap.create_mapping(
+            type='flat', field_id=field_id,
+            group_id=group_id, value='test-value', cost=0.1)
