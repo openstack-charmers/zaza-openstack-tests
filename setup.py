@@ -29,6 +29,11 @@ install_require = [
     'async_generator',
     'boto3',
 
+    # pyopenssl depends on a newer version of cryptography since 22.1.0
+    # TypeError: deprecated() got an unexpected keyword argument 'name'
+    # https://github.com/pyca/pyopenssl/commit/a145fc3bc6d2e943434beb2f04bbf9b18930296f
+    'pyopenssl<22.1.0',
+
     # Newer versions require a Rust compiler to build, see
     # * https://github.com/openstack-charmers/zaza/issues/421
     # * https://mail.python.org/pipermail/cryptography-dev/2021-January/001003.html
