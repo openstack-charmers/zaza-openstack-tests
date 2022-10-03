@@ -2099,6 +2099,56 @@ def get_overcloud_auth(address=None, model_name=None):
     :returns: Dictionary of authentication settings
     :rtype: dict
     """
+    if juju_utils.is_k8s_deployment():
+        return _get_overcloud_auth_k8s(address=address, model_name=None)
+    else:
+        return _get_overcloud_auth(address=address, model_name=None)
+
+
+def _get_overcloud_auth_k8s(address=None, model_name=None):
+    """Get overcloud OpenStack authentication from the k8s environment.
+
+    :param model_name: Name of model to query.
+    :type model_name: str
+    :returns: Dictionary of authentication settings
+    :rtype: dict
+    """
+    logging.warning('Assuming http keystone endpoint')
+    transport = 'http'
+    port = 5000
+    if not address:
+        address = zaza.model.get_status()[
+            'applications']['keystone'].public_address
+    address = network_utils.format_addr(address)
+
+    # This is hard-coded in the charm at the moment
+    logging.warning('Using hardcoded keystone password')
+    password = 'abc123'
+
+    # V3 or later
+    logging.info('Using keystone API V3 (or later) for overcloud auth')
+    auth_settings = {
+        'OS_AUTH_URL': '%s://%s:%i/v3' % (transport, address, port),
+        'OS_USERNAME': 'admin',
+        'OS_PASSWORD': password,
+        'OS_REGION_NAME': 'RegionOne',
+        'OS_DOMAIN_NAME': 'admin_domain',
+        'OS_USER_DOMAIN_NAME': 'admin_domain',
+        'OS_PROJECT_NAME': 'admin',
+        'OS_PROJECT_DOMAIN_NAME': 'admin_domain',
+        'API_VERSION': 3,
+    }
+    return auth_settings
+
+
+def _get_overcloud_auth(address=None, model_name=None):
+    """Get overcloud OpenStack authentication from the environment.
+
+    :param model_name: Name of model to query.
+    :type model_name: str
+    :returns: Dictionary of authentication settings
+    :rtype: dict
+    """
     tls_rid = model.get_relation_id('keystone', 'vault',
                                     model_name=model_name,
                                     remote_interface_name='certificates')
