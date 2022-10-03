@@ -180,13 +180,6 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             network_msg)
 
     def test_get_keystone_scope(self):
-        self.patch_object(openstack_utils, "get_current_os_versions")
-
-        # <= Liberty
-        self.get_current_os_versions.return_value = {"keystone": "liberty"}
-        self.assertEqual(openstack_utils.get_keystone_scope(), "DOMAIN")
-        # > Liberty
-        self.get_current_os_versions.return_value = {"keystone": "mitaka"}
         self.assertEqual(openstack_utils.get_keystone_scope(), "PROJECT")
 
     def _test_get_overcloud_auth(self, tls_relation=False, ssl_cert=False,

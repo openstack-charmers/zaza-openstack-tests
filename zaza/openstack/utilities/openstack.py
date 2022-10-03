@@ -487,15 +487,7 @@ def get_keystone_scope(model_name=None):
     :returns: String keystone scope
     :rtype: string
     """
-    os_version = get_current_os_versions("keystone",
-                                         model_name=model_name)["keystone"]
-    # Keystone policy.json shipped the charm with liberty requires a domain
-    # scoped token. Bug #1649106
-    if os_version == "liberty":
-        scope = "DOMAIN"
-    else:
-        scope = "PROJECT"
-    return scope
+    return "PROJECT"
 
 
 def get_keystone_session(openrc_creds, scope='PROJECT', verify=None):
