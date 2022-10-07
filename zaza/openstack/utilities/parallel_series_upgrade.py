@@ -27,9 +27,7 @@ from zaza import model
 from zaza.charm_lifecycle import utils as cl_utils
 import zaza.openstack.utilities.generic as os_utils
 import zaza.openstack.utilities.series_upgrade as series_upgrade_utils
-from zaza.openstack.utilities.series_upgrade import (
-    SUBORDINATE_PAUSE_RESUME_BLACKLIST,
-)
+from zaza.openstack.utilities.series_upgrade import async_pause_helper
 
 
 def app_config(charm_name):
@@ -512,24 +510,12 @@ async def maybe_pause_things(
         if pause_non_leader_subordinate:
             if status["units"][unit].get("subordinates"):
                 for subordinate in status["units"][unit]["subordinates"]:
-                    _app = subordinate.split('/')[0]
-                    if _app in SUBORDINATE_PAUSE_RESUME_BLACKLIST:
-                        logging.info("Skipping pausing {} - blacklisted"
-                                     .format(subordinate))
-                    else:
-                        unit_pauses.append(
-                            _pause_helper("subordinate", subordinate))
+                    unit_pauses.append(async_pause_helper(
+                        "subordinate", subordinate))
         if pause_non_leader_primary:
-            unit_pauses.append(_pause_helper("leader", unit))
+            unit_pauses.append(async_pause_helper("leader", unit))
     if unit_pauses:
         await asyncio.gather(*unit_pauses)
-
-
-async def _pause_helper(_type, unit):
-    """Pause helper to ensure that the log happens nearer to the action."""
-    logging.info("Pausing ({}) {}".format(_type, unit))
-    await model.async_run_action(unit, "pause", action_params={})
-    logging.info("Finished Pausing ({}) {}".format(_type, unit))
 
 
 def get_leader_and_non_leaders(status):
