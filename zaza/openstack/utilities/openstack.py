@@ -2140,9 +2140,13 @@ def _get_overcloud_auth_k8s(address=None, model_name=None):
             'applications']['keystone'].public_address
     address = network_utils.format_addr(address)
 
-    # This is hard-coded in the charm at the moment
-    logging.warning('Using hardcoded keystone password')
-    password = 'abc123'
+    logging.info('Retrieving admin password from keystone')
+    action = zaza.model.run_action_on_leader(
+        'keystone',
+        'get-admin-password',
+        action_params={}
+    )
+    password = action.data['results']['password']
 
     # V3 or later
     logging.info('Using keystone API V3 (or later) for overcloud auth')
