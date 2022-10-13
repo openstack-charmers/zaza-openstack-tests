@@ -67,6 +67,7 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
         cls.from_series = None
         cls.to_series = None
         cls.workaround_script = None
+        cls.vault_unsealer = None
         cls.files = []
 
     def test_200_run_series_upgrade(self):
@@ -78,7 +79,7 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
             target_series=self.to_series)
         from_series = self.from_series
         to_series = self.to_series
-        vault_unsealer = getattr(self, "vault_unsealer", None)
+        vault_unsealer = self.vault_unsealer
         completed_machines = []
         workaround_script = None
         files = []
@@ -197,10 +198,21 @@ class BionicFocalSeriesUpgrade(OpenStackParallelSeriesUpgrade):
 
     @classmethod
     def setUpClass(cls):
-        """Run setup for Xenial to Bionic Series Upgrades."""
+        """Run setup for Bionic to Focal Series Upgrades."""
         super(BionicFocalSeriesUpgrade, cls).setUpClass()
         cls.from_series = "bionic"
         cls.to_series = "focal"
+
+
+class FocalJammySeriesUpgrade(OpenStackParallelSeriesUpgrade):
+    """OpenStack Bionic to FocalSeries Upgrade."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run setup for Focal to Jammy Series Upgrades."""
+        super(BionicFocalSeriesUpgrade, cls).setUpClass()
+        cls.from_series = "focal"
+        cls.to_series = "jammy"
 
 
 class UbuntuLiteParallelSeriesUpgrade(unittest.TestCase):

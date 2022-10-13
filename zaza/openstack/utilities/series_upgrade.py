@@ -942,9 +942,7 @@ async def async_pause_helper(_type, unit):
     :param unit: Unit to pause
     """
     logging.info("Pausing ({}) {}".format(_type, unit))
-    print(model.async_get_application)
     app = await model.async_get_application(unit.split('/')[0])
-    print(app)
     if "pause" not in await app.get_actions():
         logging.info("Skipping pausing {} - no pause action"
                      .format(unit))

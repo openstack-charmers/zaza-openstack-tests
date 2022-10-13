@@ -475,6 +475,9 @@ async def run_post_upgrade_functions(post_upgrade_functions):
     """
     if post_upgrade_functions:
         for func in post_upgrade_functions:
+            if callable(func):
+                func()
+                return
             logging.info("Running {}".format(func))
             m = cl_utils.get_class(func)
             await m()
@@ -488,12 +491,9 @@ async def run_post_application_upgrade_functions(post_upgrade_functions):
     """
     if post_upgrade_functions:
         for func in post_upgrade_functions:
-            if callable(func):
-                func()
-            else:
-                logging.info("Running {}".format(func))
-                m = cl_utils.get_class(func)
-                await m()
+            logging.info("Running {}".format(func))
+            m = cl_utils.get_class(func)
+            await m()
 
 
 async def maybe_pause_things(
