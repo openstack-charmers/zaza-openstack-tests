@@ -163,8 +163,7 @@ def series_upgrade_non_leaders_first(
                 for subordinate in status["units"][unit]["subordinates"]:
                     pause_helper("subordinate", subordinate)
         if pause_non_leader_primary:
-            logging.info("Pausing {}".format(unit))
-            model.run_action(unit, "pause", action_params={})
+            pause_helper("leader", unit)
 
     # Series upgrade the non-leaders first
     for unit in non_leaders:
@@ -258,7 +257,7 @@ async def async_series_upgrade_non_leaders_first(
         if pause_non_leader_subordinate:
             if status["units"][unit].get("subordinates"):
                 for subordinate in status["units"][unit]["subordinates"]:
-                    await async_pause_helper("subordinate", subordinate)
+                    pause_helper("subordinate", subordinate)
         if pause_non_leader_primary:
             logging.info("Pausing {}".format(unit))
             await model.async_run_action(unit, "pause", action_params={})
@@ -358,8 +357,7 @@ def series_upgrade_application(application, pause_non_leader_primary=True,
                 for subordinate in status["units"][unit]["subordinates"]:
                     pause_helper("subordinate", subordinate)
         if pause_non_leader_primary:
-            logging.info("Pausing {}".format(unit))
-            model.run_action(unit, "pause", action_params={})
+            pause_helper("leader", unit)
 
     machine = status["units"][leader]["machine"]
     # Series upgrade the leader
@@ -470,10 +468,9 @@ async def async_series_upgrade_application(
         if pause_non_leader_subordinate:
             if status["units"][unit].get("subordinates"):
                 for subordinate in status["units"][unit]["subordinates"]:
-                    await async_pause_helper("subordinate", subordinate)
+                    pause_helper("subordinate", subordinate)
         if pause_non_leader_primary:
-            logging.info("Pausing {}".format(unit))
-            await model.async_run_action(unit, "pause", action_params={})
+            pause_helper("leader", unit)
 
     machine = status["units"][leader]["machine"]
     # Series upgrade the leader
@@ -945,7 +942,10 @@ async def async_pause_helper(_type, unit):
     :param unit: Unit to pause
     """
     logging.info("Pausing ({}) {}".format(_type, unit))
-    if "pause" not in model.get_actions(unit.split('/')[0]):
+    print(model.async_get_application)
+    app = await model.async_get_application(unit.split('/')[0])
+    print(app)
+    if "pause" not in await app.get_actions():
         logging.info("Skipping pausing {} - no pause action"
                      .format(unit))
         return

@@ -23,7 +23,7 @@ import telnetlib
 import tempfile
 import yaml
 
-from zaza import model
+from zaza import model, sync_wrapper
 from zaza.openstack.utilities import exceptions as zaza_exceptions
 from zaza.openstack.utilities.os_versions import UBUNTU_OPENSTACK_RELEASE
 from zaza.utilities import juju as juju_utils
@@ -234,24 +234,6 @@ def get_yaml_config(config_file):
     return yaml.safe_load(open(config_file, 'r').read())
 
 
-def set_origin(application, origin='openstack-origin', pocket='distro'):
-    """Set the configuration option for origin source.
-
-    :param application: Name of application to upgrade series
-    :type application: str
-    :param origin: The configuration setting variable name for changing origin
-                   source. (openstack-origin or source)
-    :type origin: str
-    :param pocket: Origin source cloud pocket.
-                   i.e. 'distro' or 'cloud:xenial-newton'
-    :type pocket: str
-    :returns: None
-    :rtype: None
-    """
-    logging.info("Set origin on {} to {}".format(application, origin))
-    model.set_application_config(application, {origin: pocket})
-
-
 async def async_set_origin(application, origin='openstack-origin',
                            pocket='distro'):
     """Set the configuration option for origin source.
@@ -259,7 +241,8 @@ async def async_set_origin(application, origin='openstack-origin',
     :param application: Name of application to upgrade series
     :type application: str
     :param origin: The configuration setting variable name for changing origin
-                   source. (openstack-origin or source)
+                   source. (openstack-origin or source). Use "auto" to
+                   automatically detect origin variable name.
     :type origin: str
     :param pocket: Origin source cloud pocket.
                    i.e. 'distro' or 'cloud:xenial-newton'
@@ -267,8 +250,20 @@ async def async_set_origin(application, origin='openstack-origin',
     :returns: None
     :rtype: None
     """
-    logging.info("Set origin on {} to {}".format(application, origin))
+    if origin == "auto":
+        config = await model.async_get_application_config(application)
+        for origin in ("openstack-origin", "source"):
+            if config.get(origin):
+                break
+        else:
+            logging.warn("Failed to set origin for {} to {}, no origin config "
+                         "found".format(application, origin))
+            return
+
+    logging.info("Set origin on {} to {}".format(application, pocket))
     await model.async_set_application_config(application, {origin: pocket})
+
+set_origin = sync_wrapper(async_set_origin)
 
 
 def run_via_ssh(unit_name, cmd):

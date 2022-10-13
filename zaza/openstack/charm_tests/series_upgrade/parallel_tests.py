@@ -78,6 +78,7 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
             target_series=self.to_series)
         from_series = self.from_series
         to_series = self.to_series
+        vault_unsealer = getattr(self, "vault_unsealer", None)
         completed_machines = []
         workaround_script = None
         files = []
@@ -104,12 +105,13 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
             sem = asyncio.Semaphore(4)
             for charm_name in apps:
                 if applications[charm_name]["series"] == to_series:
-                    logging.info("{} already has series {}, skipping".format(
+                    logging.warn("{} already has series {}, skipping".format(
                         charm_name, to_series))
                     continue
                 charm = applications[charm_name]['charm']
                 name = upgrade_utils.extract_charm_name_from_url(charm)
-                upgrade_config = parallel_series_upgrade.app_config(name)
+                upgrade_config = parallel_series_upgrade.app_config(
+                    name, vault_unsealer)
                 upgrade_functions.append(
                     wrap_coroutine_with_sem(
                         sem,

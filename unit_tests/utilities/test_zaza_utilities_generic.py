@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import mock
 import unit_tests.utils as ut_utils
 from zaza.openstack.utilities import generic as generic_utils
@@ -190,13 +191,41 @@ class TestGenericUtils(ut_utils.BaseTestCase):
 
     def test_set_origin(self):
         "application, origin='openstack-origin', pocket='distro'):"
-        self.patch_object(generic_utils.model, "set_application_config")
+        self.patch_object(generic_utils.model, "async_set_application_config",
+                          new_callable=mock.MagicMock(),
+                          name="set_application_config")
+        future = asyncio.Future()
+        future.set_result(None)
+        self.set_application_config.return_value = future
+
         _application = "application"
         _origin = "source"
         _pocket = "cloud:fake-cloud"
         generic_utils.set_origin(_application, origin=_origin, pocket=_pocket)
         self.set_application_config.assert_called_once_with(
             _application, {_origin: _pocket})
+
+    def test_set_origin_auto(self):
+        self.patch_object(generic_utils.model, "async_set_application_config",
+                          new_callable=mock.MagicMock(),
+                          name="set_application_config")
+        set_future = asyncio.Future()
+        set_future.set_result(None)
+        self.set_application_config.return_value = set_future
+
+        self.patch_object(generic_utils.model, "async_get_application_config",
+                          new_callable=mock.MagicMock(),
+                          name="get_application_config")
+        get_future = asyncio.Future()
+        get_future.set_result({"source": {"value": "distro"}})
+        self.get_application_config.return_value = get_future
+
+        _application = "application"
+        _origin = "auto"
+        _pocket = "cloud:fake-cloud"
+        generic_utils.set_origin(_application, origin=_origin, pocket=_pocket)
+        self.set_application_config.assert_called_once_with(
+            _application, {"source": _pocket})
 
     def test_set_dpkg_non_interactive_on_unit(self):
         self.patch_object(generic_utils, "model")
