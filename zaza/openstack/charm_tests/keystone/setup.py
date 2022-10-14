@@ -177,7 +177,7 @@ def wait_for_url(url, ok_codes=None):
     :param url: url to test
     :type url: str
     :param ok_codes: HTTP codes that are acceptable
-    :type ok_codes: List[int]
+    :type ok_codes: Optional[List[int]]
     :raises: AssertionError
     """
     if not ok_codes:
