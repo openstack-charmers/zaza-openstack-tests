@@ -71,7 +71,7 @@ class MasakariTest(test_utils.OpenStackBaseTest):
         except novaclient.exceptions.NotFound:
             logging.info('Launching new guest')
             guest = zaza.openstack.configure.guest.launch_instance(
-                'bionic',
+                'jammy',
                 use_boot_volume=True,
                 meta={'HA_Enabled': 'True'},
                 vm_name=vm_name)
