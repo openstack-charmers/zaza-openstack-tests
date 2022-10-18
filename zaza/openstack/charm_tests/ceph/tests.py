@@ -1470,7 +1470,7 @@ class CephInternalTest(test_utils.OpenStackBaseTest):
     @classmethod
     def setUpClass(cls):
         """Run the common class setup."""
-        super(CephTest, cls).setUpClass()
+        super(CephInternalTest, cls).setUpClass()
         cls.loop_devs = {}   # Maps osd -> loop device
         for osd in (x.entity_id for x in zaza_model.get_units('ceph-osd')):
             loop_dev = zaza_utils.add_loop_device(osd, size=10).get('Stdout')
