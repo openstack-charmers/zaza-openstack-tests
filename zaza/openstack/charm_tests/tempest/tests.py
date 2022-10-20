@@ -122,6 +122,23 @@ class TempestTestWithKeystoneV3(TempestTestBase):
         return super().run()
 
 
+class TempestTestWithKeystoneMinimal(TempestTestBase):
+    """Tempest test class to validate an OpenStack setup with Keystone V2."""
+
+    def run(self):
+        """Run tempest tests as specified in tests/tests.yaml.
+
+        Allow test to run even if some components are missing (like
+        external network setup).
+        See TempestTestBase.run() for the available test options.
+
+        :returns: Status of tempest run
+        :rtype: bool
+        """
+        tempest_utils.render_tempest_config_keystone_v3(minimal=True)
+        return super().run()
+
+
 class TempestTest(TempestTestBase):
     """Tempest test class.
 
