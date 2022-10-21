@@ -623,6 +623,7 @@ class OVSOVNMigrationTest(test_utils.BaseCharmTest):
             except KeyError:
                 pass
         zaza.model.wait_for_agent_status()
+        zaza.model.block_until_all_units_idle()
         zaza.model.wait_for_application_states(
             states=self.target_deploy_status)
 
@@ -706,8 +707,8 @@ class OVNCentralDeferredRestartTest(
 class OVNCentralDownscaleTests(test_utils.BaseCharmTest):
     """Tests for cluster-status and cluster-kick actions."""
 
-    SB_CMD = "ovs-appctl -t /var/run/ovn/ovnsb_db.ctl {}"
-    NB_CMD = "ovs-appctl -t /var/run/ovn/ovnnb_db.ctl {}"
+    SB_CMD = "ovn-appctl -t /var/run/ovn/ovnsb_db.ctl {}"
+    NB_CMD = "ovn-appctl -t /var/run/ovn/ovnnb_db.ctl {}"
 
     def _cluster_status_action(self):
         """Return Southbound and Northbound cluster status.
@@ -741,7 +742,7 @@ class OVNCentralDownscaleTests(test_utils.BaseCharmTest):
     def _add_unit(number_of_units=1):
         """Add specified number of units to ovn-central application.
 
-        This function also waits unit the application reaches active state.
+        This function also waits until the application reaches active state.
         """
         zaza.model.add_unit(
             "ovn-central",
@@ -752,11 +753,13 @@ class OVNCentralDownscaleTests(test_utils.BaseCharmTest):
 
     @staticmethod
     def _remove_unit(unit_name):
-        """Add specified unit from ovn-central application.
+        """Remove specified unit from ovn-central application.
 
-        This function also waits unit the application reaches active state.
+        This function also waits until the application reaches active state
+        again.
         """
         zaza.model.destroy_unit("ovn-central", unit_name)
+        zaza.model.block_until_all_units_idle()
         zaza.model.wait_for_application_states()
 
     def _assert_servers_cleanly_removed(self, sb_id, nb_id):
