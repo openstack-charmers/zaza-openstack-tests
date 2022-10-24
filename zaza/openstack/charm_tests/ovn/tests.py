@@ -896,6 +896,10 @@ class OVNCentralDownscaleTests(test_utils.BaseCharmTest):
         application = zaza.model.get_application("ovn-central")
 
         logging.info("Removing unit that hosts OVN follower server.")
+        # Run `update-status` hook. This updates the workload status message,
+        # helping us to correctly identify unit that does not host OVN leader
+        # servers.
+        zaza.run(application.run("hooks/update-status"))
         for unit in application.units:
             if leader_status not in unit.workload_status_message:
                 non_leader_unit = unit.entity_id
@@ -911,6 +915,9 @@ class OVNCentralDownscaleTests(test_utils.BaseCharmTest):
         self._assert_servers_cleanly_removed(non_leader_sb, non_leader_nb)
 
         logging.info("Removing unit that hosts OVN leader server.")
+        # Run `update-status` hook. This updates the workload status message,
+        # helping us to correctly identify unit that hosts OVN leader server.
+        zaza.run(application.run("hooks/update-status"))
         for unit in application.units:
             if leader_status in unit.workload_status_message:
                 leader_unit = unit.entity_id
@@ -918,7 +925,7 @@ class OVNCentralDownscaleTests(test_utils.BaseCharmTest):
         else:
             leader_unit = ""
 
-        if not non_leader_unit:
+        if not leader_unit:
             self.fail("Did not find a unit that's an OVN cluster leader.")
 
         leader_sb, leader_nb = self._get_server_ids(leader_unit)
