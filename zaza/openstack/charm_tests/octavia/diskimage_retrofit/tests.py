@@ -15,6 +15,7 @@
 """Encapsulate ``octavia-diskimage-retrofit`` testing."""
 import logging
 
+import distro_info
 import zaza.model
 
 import zaza.openstack.utilities.openstack as openstack
@@ -49,16 +50,31 @@ class OctaviaDiskimageRetrofitTest(test_utils.OpenStackBaseTest):
             action_params={'force': True})
         self.assertEqual(action.status, 'completed')
 
-    def test_retrofit_image_source_image(self):
-        """Run ``retrofit-image`` action specifying source image."""
+    def _check_retrofit_image_source_image(self, filters):
         session = openstack.get_overcloud_keystone_session()
         glance = openstack.get_glance_session_client(session)
 
-        for image in glance.images.list(filters={'os_distro': 'ubuntu',
-                                                 'os_version': '18.04'}):
+        for image in glance.images.list(filters=filters):
+            logging.info('Image found %s with filters %s', image.id, str(filters))
             action = zaza.model.run_action(
                 'octavia-diskimage-retrofit/0',
                 'retrofit-image',
                 action_params={'source-image': image.id})
             self.assertEqual(action.status, 'completed')
             break
+
+    def test_retrofit_image_source_image(self):
+        """Run ``retrofit-image`` action specifying an LTS as source image."""
+        distro = distro_info.UbuntuDistroInfo()
+        for version in distro.supported(result="object"):
+            if not distro.is_lts(version.series):
+                # skip non-LTS releases
+                continue
+
+            # distro.version for the LTS releases has the LTS suffix
+            os_version = distro.version.replace(' LTS', '')
+            logging.info('Testing retrofit-image action with ubuntu %s', os_version)
+            self._check_retrofit_image_source_image(
+                {'os_distro': 'ubuntu',
+                 'os_version': os_version}
+            )
