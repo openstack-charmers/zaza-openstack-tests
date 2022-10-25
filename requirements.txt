@@ -11,7 +11,8 @@ async_generator
 pyopenssl<22.1.0
 
 boto3<1.25
-PyYAML<=4.2,>=3.0
+PyYAML<=4.2,>=3.0; python_version < '3.10'
+PyYAML>=5.1; python_version >= '3.10'
 flake8>=2.2.4
 flake8-docstrings
 flake8-per-file-ignores
