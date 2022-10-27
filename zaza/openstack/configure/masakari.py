@@ -21,6 +21,7 @@ and recovery.
 import logging
 import openstack.exceptions as ostack_except
 import tenacity
+import urllib3
 
 import zaza.model
 import zaza.openstack.utilities.openstack as openstack_utils
@@ -57,6 +58,10 @@ HOST_ASSIGNMENT_METHODS = {
 }
 
 
+@tenacity.retry(
+    wait=tenacity.wait_exponential(multiplier=2, max=60),
+    reraise=True, stop=tenacity.stop_after_attempt(10),
+    retry=tenacity.retry_if_exception_type(urllib3.connection.HTTPSConnection))
 def create_segments(segment_number=1, host_assignment_method=None):
     """Create a masakari segment and populate it with hypervisors.
 
