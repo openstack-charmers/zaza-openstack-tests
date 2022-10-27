@@ -62,6 +62,7 @@ class CephLowLevelTest(test_utils.OpenStackBaseTest):
         # Process name and quantity of processes to expect on each unit
         ceph_mon_processes = {
             'ceph-mon': 1,
+            'ceph-mgr': 1,
         }
 
         ceph_osd_processes = {
@@ -90,7 +91,7 @@ class CephLowLevelTest(test_utils.OpenStackBaseTest):
         """
         logging.info('Checking ceph-osd and ceph-mon services...')
         services = {}
-        ceph_services = ['ceph-mon']
+        ceph_services = ['ceph-mon', 'ceph-mgr']
         services['ceph-osd/0'] = ['ceph-osd']
 
         services['ceph-mon/0'] = ceph_services
