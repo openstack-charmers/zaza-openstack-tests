@@ -807,6 +807,30 @@ class OVNCentralDownscaleTests(test_utils.BaseCharmTest):
 
         return sb_id, nb_id
 
+    def _get_unit_hosting_ovn(self, leader):
+        """Return ID of a unit with at least one OVN server leader/follower.
+
+        :param leader: If `True`, this method returns ID of a unit that host
+            at least one leader. Otherwise, the ID of a unit hosting at least
+            one follower will be returned.
+        :type leader: bool
+        :return: ID of a unit hosting OVN leader/follower (based on the
+            `leader` param)
+        :rtype: str
+        """
+        # It's sufficient to parse only one of the cluster statuses To
+        # determine if unit holds at least one leader or one follower.
+        cluster_status, _ = self._cluster_status_action()
+        leader_id = cluster_status["leader"]
+        if leader_id == "self":
+            leader_id = cluster_status["server_id"][:4]
+
+        for unit_id, server_id in cluster_status["unit_map"].items():
+            if (server_id == leader_id) == leader:
+                return unit_id
+        else:
+            self.fail("Test failed to locate unit that hosts OVN leader.")
+
     def test_cluster_status(self):
         """Test that cluster-status action returns expected results."""
         application = zaza.model.get_application("ovn-central")
@@ -892,41 +916,24 @@ class OVNCentralDownscaleTests(test_utils.BaseCharmTest):
         """
         logging.info("Adding units needed for downscaling test.")
         self._add_unit(2)
-        leader_status = "leader:"
-        application = zaza.model.get_application("ovn-central")
 
-        logging.info("Removing unit that hosts OVN follower server.")
-        # Run `update-status` hook. This updates the workload status message,
-        # helping us to correctly identify unit that does not host OVN leader
-        # servers.
-        zaza.run(application.run("hooks/update-status"))
-        for unit in application.units:
-            if leader_status not in unit.workload_status_message:
-                non_leader_unit = unit.entity_id
-                break
-        else:
-            non_leader_unit = ""
-
-        if not non_leader_unit:
-            self.fail("Did not find a unit that's not an OVN cluster leader.")
+        # Remove unit hosting at least one follower
+        non_leader_unit = self._get_unit_hosting_ovn(leader=False)
+        logging.info(
+            "Removing unit (%s) that hosts OVN follower server.",
+            non_leader_unit
+        )
 
         non_leader_sb, non_leader_nb = self._get_server_ids(non_leader_unit)
         self._remove_unit(non_leader_unit)
         self._assert_servers_cleanly_removed(non_leader_sb, non_leader_nb)
 
-        logging.info("Removing unit that hosts OVN leader server.")
-        # Run `update-status` hook. This updates the workload status message,
-        # helping us to correctly identify unit that hosts OVN leader server.
-        zaza.run(application.run("hooks/update-status"))
-        for unit in application.units:
-            if leader_status in unit.workload_status_message:
-                leader_unit = unit.entity_id
-                break
-        else:
-            leader_unit = ""
-
-        if not leader_unit:
-            self.fail("Did not find a unit that's an OVN cluster leader.")
+        # Remove unit hosting at least one leader
+        leader_unit = self._get_unit_hosting_ovn(leader=True)
+        logging.info(
+            "Removing unit (%s) that hosts OVN leader server.",
+            leader_unit
+        )
 
         leader_sb, leader_nb = self._get_server_ids(leader_unit)
         self._remove_unit(leader_unit)
