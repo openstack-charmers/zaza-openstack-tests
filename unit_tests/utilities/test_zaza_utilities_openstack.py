@@ -180,13 +180,6 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             network_msg)
 
     def test_get_keystone_scope(self):
-        self.patch_object(openstack_utils, "get_current_os_versions")
-
-        # <= Liberty
-        self.get_current_os_versions.return_value = {"keystone": "liberty"}
-        self.assertEqual(openstack_utils.get_keystone_scope(), "DOMAIN")
-        # > Liberty
-        self.get_current_os_versions.return_value = {"keystone": "mitaka"}
         self.assertEqual(openstack_utils.get_keystone_scope(), "PROJECT")
 
     def _test_get_overcloud_auth(self, tls_relation=False, ssl_cert=False,
@@ -197,6 +190,8 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.patch_object(openstack_utils, "get_current_os_versions")
         self.patch_object(openstack_utils, "get_remote_ca_cert_file")
         self.patch_object(openstack_utils.juju_utils, 'leader_get')
+        self.patch_object(openstack_utils.juju_utils, 'is_k8s_deployment')
+        self.is_k8s_deployment.return_value = False
         if tls_relation:
             self.patch_object(openstack_utils.model, "scp_from_unit")
             self.patch_object(openstack_utils.model, "get_first_unit_name")

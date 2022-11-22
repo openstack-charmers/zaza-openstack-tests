@@ -94,7 +94,8 @@ def launch_instance_retryer(instance_key, **kwargs):
 def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
                     private_network_name=None, image_name=None,
                     flavor_name=None, external_network_name=None, meta=None,
-                    userdata=None, attach_to_external_network=False):
+                    userdata=None, attach_to_external_network=False,
+                    keystone_session=None):
     """Launch an instance.
 
     :param instance_key: Key to collect associated config data with.
@@ -120,10 +121,14 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
     :param attach_to_external_network: Attach instance directly to external
                                        network.
     :type attach_to_external_network: bool
+    :param keystone_session: Keystone session to use.
+    :type keystone_session: Optional[keystoneauth1.session.Session]
     :returns: the created instance
     :rtype: novaclient.Server
     """
-    keystone_session = openstack_utils.get_overcloud_keystone_session()
+    if not keystone_session:
+        keystone_session = openstack_utils.get_overcloud_keystone_session()
+
     nova_client = openstack_utils.get_nova_session_client(keystone_session)
     neutron_client = openstack_utils.get_neutron_session_client(
         keystone_session)

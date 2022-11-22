@@ -31,9 +31,10 @@ import zaza.openstack.charm_tests.nova.utils as nova_utils
 
 
 def ensure_lts_images():
-    """Ensure that bionic and focal images are available for the tests."""
+    """Ensure LTS images are available for the tests."""
     glance_setup.add_lts_image(image_name='bionic', release='bionic')
     glance_setup.add_lts_image(image_name='focal', release='focal')
+    glance_setup.add_lts_image(image_name='jammy', release='jammy')
 
 
 def add_amphora_image(image_url=None):

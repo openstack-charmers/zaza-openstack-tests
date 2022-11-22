@@ -299,10 +299,26 @@ def get_ks_creds(cloud_creds, scope='PROJECT'):
                 'username': cloud_creds['OS_USERNAME'],
                 'password': cloud_creds['OS_PASSWORD'],
                 'auth_url': cloud_creds['OS_AUTH_URL'],
-                'user_domain_name': cloud_creds['OS_USER_DOMAIN_NAME'],
                 'project_domain_name': cloud_creds['OS_PROJECT_DOMAIN_NAME'],
                 'project_name': cloud_creds['OS_PROJECT_NAME'],
             }
+            # the FederationBaseAuth class doesn't support the
+            # 'user_domain_name' argument, so only setting it in the 'auth'
+            # dict when it's passed in the cloud_creds.
+            if cloud_creds.get('OS_USER_DOMAIN_NAME'):
+                auth['user_domain_name'] = cloud_creds['OS_USER_DOMAIN_NAME']
+
+        if cloud_creds.get('OS_AUTH_TYPE') == 'v3oidcpassword':
+            auth.update({
+                'identity_provider': cloud_creds['OS_IDENTITY_PROVIDER'],
+                'protocol': cloud_creds['OS_PROTOCOL'],
+                'client_id': cloud_creds['OS_CLIENT_ID'],
+                'client_secret': cloud_creds['OS_CLIENT_SECRET'],
+                # optional configuration options:
+                'access_token_endpoint': cloud_creds.get(
+                    'OS_ACCESS_TOKEN_ENDPOINT'),
+                'discovery_endpoint': cloud_creds.get('OS_DISCOVERY_ENDPOINT')
+            })
     return auth
 
 
@@ -487,15 +503,7 @@ def get_keystone_scope(model_name=None):
     :returns: String keystone scope
     :rtype: string
     """
-    os_version = get_current_os_versions("keystone",
-                                         model_name=model_name)["keystone"]
-    # Keystone policy.json shipped the charm with liberty requires a domain
-    # scoped token. Bug #1649106
-    if os_version == "liberty":
-        scope = "DOMAIN"
-    else:
-        scope = "PROJECT"
-    return scope
+    return "PROJECT"
 
 
 def get_keystone_session(openrc_creds, scope='PROJECT', verify=None):
@@ -519,7 +527,10 @@ def get_keystone_session(openrc_creds, scope='PROJECT', verify=None):
     if openrc_creds.get('API_VERSION', 2) == 2:
         auth = v2.Password(**keystone_creds)
     else:
-        auth = v3.Password(**keystone_creds)
+        if openrc_creds.get('OS_AUTH_TYPE') == 'v3oidcpassword':
+            auth = v3.OidcPassword(**keystone_creds)
+        else:
+            auth = v3.Password(**keystone_creds)
     return session.Session(auth=auth, verify=verify)
 
 
@@ -2100,6 +2111,60 @@ def get_keystone_api_version(model_name=None):
 
 
 def get_overcloud_auth(address=None, model_name=None):
+    """Get overcloud OpenStack authentication from the environment.
+
+    :param model_name: Name of model to query.
+    :type model_name: str
+    :returns: Dictionary of authentication settings
+    :rtype: dict
+    """
+    if juju_utils.is_k8s_deployment():
+        return _get_overcloud_auth_k8s(address=address, model_name=None)
+    else:
+        return _get_overcloud_auth(address=address, model_name=None)
+
+
+def _get_overcloud_auth_k8s(address=None, model_name=None):
+    """Get overcloud OpenStack authentication from the k8s environment.
+
+    :param model_name: Name of model to query.
+    :type model_name: str
+    :returns: Dictionary of authentication settings
+    :rtype: dict
+    """
+    logging.warning('Assuming http keystone endpoint')
+    transport = 'http'
+    port = 5000
+    if not address:
+        address = zaza.model.get_status()[
+            'applications']['keystone'].public_address
+    address = network_utils.format_addr(address)
+
+    logging.info('Retrieving admin password from keystone')
+    action = zaza.model.run_action_on_leader(
+        'keystone',
+        'get-admin-password',
+        action_params={}
+    )
+    password = action.data['results']['password']
+
+    # V3 or later
+    logging.info('Using keystone API V3 (or later) for overcloud auth')
+    auth_settings = {
+        'OS_AUTH_URL': '%s://%s:%i/v3' % (transport, address, port),
+        'OS_USERNAME': 'admin',
+        'OS_PASSWORD': password,
+        'OS_REGION_NAME': 'RegionOne',
+        'OS_DOMAIN_NAME': 'admin_domain',
+        'OS_USER_DOMAIN_NAME': 'admin_domain',
+        'OS_PROJECT_NAME': 'admin',
+        'OS_PROJECT_DOMAIN_NAME': 'admin_domain',
+        'API_VERSION': 3,
+    }
+    return auth_settings
+
+
+def _get_overcloud_auth(address=None, model_name=None):
     """Get overcloud OpenStack authentication from the environment.
 
     :param model_name: Name of model to query.

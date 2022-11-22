@@ -62,6 +62,7 @@ class CephLowLevelTest(test_utils.OpenStackBaseTest):
         # Process name and quantity of processes to expect on each unit
         ceph_mon_processes = {
             'ceph-mon': 1,
+            'ceph-mgr': 1,
         }
 
         ceph_osd_processes = {
@@ -90,7 +91,7 @@ class CephLowLevelTest(test_utils.OpenStackBaseTest):
         """
         logging.info('Checking ceph-osd and ceph-mon services...')
         services = {}
-        ceph_services = ['ceph-mon']
+        ceph_services = ['ceph-mon', 'ceph-mgr']
         services['ceph-osd/0'] = ['ceph-osd']
 
         services['ceph-mon/0'] = ceph_services
@@ -140,50 +141,6 @@ class CephRelationTest(test_utils.OpenStackBaseTest):
         rel_private_ip = relation.get('private-address')
         # The private address in relation should match ceph-mon/0 address
         self.assertEqual(rel_private_ip, remote_ip)
-
-    def _ceph_to_ceph_osd_relation(self, remote_unit_name):
-        """Verify the cephX to ceph-osd relation data.
-
-        Helper function to test the relation.
-        """
-        logging.info('Checking {}:ceph-osd mon relation data...'.
-                     format(remote_unit_name))
-        unit_name = 'ceph-osd/0'
-        relation_name = 'osd'
-        remote_unit = zaza_model.get_unit_from_name(remote_unit_name)
-        remote_ip = zaza_model.get_unit_public_address(remote_unit)
-        cmd = 'leader-get fsid'
-        result = zaza_model.run_on_unit(remote_unit_name, cmd)
-        fsid = result.get('Stdout').strip()
-        expected = {
-            'private-address': remote_ip,
-            'ceph-public-address': remote_ip,
-            'fsid': fsid,
-        }
-        relation = juju_utils.get_relation_from_unit(
-            unit_name,
-            remote_unit_name,
-            relation_name
-        )
-        for e_key, e_value in expected.items():
-            a_value = relation[e_key]
-            self.assertEqual(e_value, a_value)
-        self.assertTrue(relation['osd_bootstrap_key'] is not None)
-
-    def test_ceph0_to_ceph_osd_relation(self):
-        """Verify the ceph0 to ceph-osd relation data."""
-        remote_unit_name = 'ceph-mon/0'
-        self._ceph_to_ceph_osd_relation(remote_unit_name)
-
-    def test_ceph1_to_ceph_osd_relation(self):
-        """Verify the ceph1 to ceph-osd relation data."""
-        remote_unit_name = 'ceph-mon/1'
-        self._ceph_to_ceph_osd_relation(remote_unit_name)
-
-    def test_ceph2_to_ceph_osd_relation(self):
-        """Verify the ceph2 to ceph-osd relation data."""
-        remote_unit_name = 'ceph-mon/2'
-        self._ceph_to_ceph_osd_relation(remote_unit_name)
 
 
 class CephTest(test_utils.OpenStackBaseTest):
