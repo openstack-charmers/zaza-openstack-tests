@@ -21,6 +21,7 @@ import tenacity
 import pprint
 
 import zaza.model as zaza_model
+import zaza.charm_lifecycle.utils as lifecycle_utils
 import zaza.openstack.utilities.generic as generic_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 
@@ -77,3 +78,17 @@ def sync_images():
         logging.info('Contents of Keystone service catalog: "{}"'
                      .format(pprint.pformat(catalog)))
         raise
+
+
+def set_latest_property_config():
+    """Enable set_latest_property config.
+
+    This config adds `latest=true` to new synced images.
+    """
+    logging.info("Change config `set_latest_property=true`")
+    zaza_model.set_application_config('glance-simplestreams-sync',
+                                      {'set_latest_property': 'true',
+                                       'snap-channel': 'edge'})
+    test_config = lifecycle_utils.get_charm_config(fatal=False)
+    zaza_model.wait_for_application_states(
+        states=test_config.get('target_deploy_status', {}))

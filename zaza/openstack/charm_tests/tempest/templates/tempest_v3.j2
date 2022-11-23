@@ -121,3 +121,6 @@ test_with_ipv6 = false
 test_server_path = {{ workspace_path }}/test_server.bin
 provider = amphora
 {% endif %}
+
+[dns]
+nameservers = {{ test_name_server }}
