@@ -21,7 +21,7 @@ coverage<6.0.0  # coverage 6.0+ drops support for py3.5/py2.7
 mock>=1.2
 pytest
 pytest-cov
-pbr>=1.8.0,<1.9.0
+pbr>=1.8.0
 simplejson>=2.2.0
 netifaces>=0.10.4
 netaddr>=0.7.12,!=0.7.16
