@@ -33,23 +33,23 @@ from tenacity import (
 
 boot_tests = {
     'cirros': {
-        'image_name': 'cirros',
+        'image_name': openstack_utils.CIRROS_IMAGE_NAME,
         'flavor_name': 'm1.tiny',
         'username': 'cirros',
         'bootstring': 'gocubsgo',
         'password': 'gocubsgo'},
     'bionic': {
-        'image_name': 'bionic',
+        'image_name': openstack_utils.BIONIC_IMAGE_NAME,
         'flavor_name': 'm1.small',
         'username': 'ubuntu',
         'bootstring': 'finished at'},
     'focal': {
-        'image_name': 'focal',
+        'image_name': openstack_utils.FOCAL_IMAGE_NAME,
         'flavor_name': 'm1.small',
         'username': 'ubuntu',
         'bootstring': 'finished at'},
     'jammy': {
-        'image_name': 'jammy',
+        'image_name': openstack_utils.JAMMY_IMAGE_NAME,
         'flavor_name': 'm1.small',
         'username': 'ubuntu',
         'bootstring': 'finished at'}
@@ -142,10 +142,10 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
     flavor_name = flavor_name or boot_tests[instance_key]['flavor_name']
     flavor = nova_client.flavors.find(name=flavor_name)
 
-    private_network_name = private_network_name or "private"
+    private_network_name = private_network_name or openstack_utils.PRIVATE_NET
 
     meta = meta or {}
-    external_network_name = external_network_name or "ext_net"
+    external_network_name = external_network_name or openstack_utils.EXT_NET
 
     if attach_to_external_network:
         instance_network_name = external_network_name

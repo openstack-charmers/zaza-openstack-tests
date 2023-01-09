@@ -26,8 +26,6 @@ from zaza.openstack.utilities import (
 )
 
 
-EXT_NET = "ext_net"
-PRIVATE_NET = "private"
 FIP_TEST = "FIP TEST"
 
 
@@ -71,9 +69,9 @@ def setup_bgp_speaker(peer_application_name, keystone_session=None):
     # Add networks to bgp speaker
     logging.info("Advertising BGP routes")
     openstack_utils.add_network_to_bgp_speaker(
-        neutron_client, bgp_speaker, EXT_NET)
+        neutron_client, bgp_speaker, openstack_utils.EXT_NET)
     openstack_utils.add_network_to_bgp_speaker(
-        neutron_client, bgp_speaker, PRIVATE_NET)
+        neutron_client, bgp_speaker, openstack_utils.PRIVATE_NET)
     logging.debug("Advertised routes: {}"
                   .format(
                       neutron_client.list_route_advertised_from_bgp_speaker(
@@ -91,8 +89,10 @@ def setup_bgp_speaker(peer_application_name, keystone_session=None):
 
     # Create Floating IP to advertise
     logging.info("Creating floating IP to advertise")
-    port = openstack_utils.create_port(neutron_client, FIP_TEST, PRIVATE_NET)
-    floating_ip = openstack_utils.create_floating_ip(neutron_client, EXT_NET,
+    port = openstack_utils.create_port(neutron_client,
+                                       FIP_TEST, openstack_utils.PRIVATE_NET)
+    floating_ip = openstack_utils.create_floating_ip(neutron_client,
+                                                     openstack_utils.EXT_NET,
                                                      port=port)
     logging.info(
         "Advertised floating IP: {}".format(

@@ -65,7 +65,7 @@ class MagnumBasicDeployment(test_utils.OpenStackBaseTest):
         template_fields = {
             'name': TEMPLATE_NAME,
             'image_id': IMAGE_NAME,
-            'external_network_id': 'ext_net',
+            'external_network_id': openstack_utils.EXT_NET,
             'dns_nameserver': '1.1.1.1',
             'master_flavor_id': FLAVOR_NAME,
             'flavor_id': FLAVOR_NAME,

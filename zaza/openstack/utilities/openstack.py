@@ -194,6 +194,16 @@ KEYSTONE_CACERT = "keystone_juju_ca_cert.crt"
 KEYSTONE_REMOTE_CACERT = (
     "/usr/local/share/ca-certificates/{}".format(KEYSTONE_CACERT))
 
+EXT_NET = os.environ.get('TEST_EXT_NET', 'ext_net')
+EXT_NET_SUBNET = os.environ.get('TEST_EXT_NET_SUBNET', 'ext_net_subnet')
+PRIVATE_NET = os.environ.get('TEST_PRIVATE_NET', 'private')
+PRIVATE_NET_SUBNET = os.environ.get('TEST_PRIVATE_NET_SUBNET',
+                                    'private_subnet')
+CIRROS_IMAGE_NAME = os.environ.get('TEST_CIRROS_IMAGE_NAME', 'cirros')
+BIONIC_IMAGE_NAME = os.environ.get('TEST_BIONIC_IMAGE_NAME', 'bionic')
+FOCAL_IMAGE_NAME = os.environ.get('TEST_FOCAL_IMAGE_NAME', 'focal')
+JAMMY_IMAGE_NAME = os.environ.get('TEST_JAMMY_IMAGE_NAME', 'jammy')
+
 
 async def async_block_until_ca_exists(application_name, ca_cert,
                                       model_name=None, timeout=2700):
@@ -1142,7 +1152,7 @@ def get_mac_from_port(port, neutronclient):
     return refresh_port['port']['mac_address']
 
 
-def create_project_network(neutron_client, project_id, net_name='private',
+def create_project_network(neutron_client, project_id, net_name=PRIVATE_NET,
                            shared=False, network_type='gre', domain=None):
     """Create the project network.
 
@@ -1182,7 +1192,7 @@ def create_project_network(neutron_client, project_id, net_name='private',
     return network
 
 
-def create_provider_network(neutron_client, project_id, net_name='ext_net',
+def create_provider_network(neutron_client, project_id, net_name=EXT_NET,
                             external=True, shared=False, network_type='flat',
                             vlan_id=None):
     """Create a provider network.
@@ -1229,7 +1239,7 @@ def create_provider_network(neutron_client, project_id, net_name='ext_net',
 
 
 def create_project_subnet(neutron_client, project_id, network, cidr, dhcp=True,
-                          subnet_name='private_subnet', domain=None,
+                          subnet_name=PRIVATE_NET_SUBNET, domain=None,
                           subnetpool=None, ip_version=4, prefix_len=24):
     """Create the project subnet.
 
@@ -1282,7 +1292,7 @@ def create_project_subnet(neutron_client, project_id, network, cidr, dhcp=True,
 
 
 def create_provider_subnet(neutron_client, project_id, network,
-                           subnet_name='ext_net_subnet',
+                           subnet_name=EXT_NET_SUBNET,
                            default_gateway=None, cidr=None,
                            start_floating_ip=None, end_floating_ip=None,
                            dhcp=False):
@@ -2860,6 +2870,10 @@ def get_private_key_file(keypair_name):
     :returns: Path to file containing key
     :rtype: str
     """
+    key = os.environ.get("TEST_PRIVKEY")
+    if key:
+        return key
+
     tmp_dir = deployment_env.get_tmpdir()
     return '{}/id_rsa_{}'.format(tmp_dir, keypair_name)
 
