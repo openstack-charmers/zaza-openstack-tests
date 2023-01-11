@@ -1,0 +1,42 @@
+version: 2
+charm_name: keystone
+
+bundles:
+- jammy-yoga
+- jammy-zed
+- kinetic-zed
+
+comment: |
+  the glance configure job validates operation of identity-service relation.
+  The policyd test is generic and validates the policy.d overrides work
+
+configure:
+- vault:
+  - zaza.openstack.charm_tests.vault.setup.auto_initialize_no_validation_no_wait
+- keystone:
+  - zaza.openstack.charm_tests.keystone.setup.wait_for_cacert
+  - zaza.openstack.charm_tests.glance.setup.add_lts_image
+  - zaza.openstack.charm_tests.keystone.setup.add_demo_user
+- zaza.openstack.charm_tests.glance.setup.add_lts_image
+- zaza.openstack.charm_tests.keystone.setup.add_demo_user
+
+tests:
+- keystone:
+  - zaza.openstack.charm_tests.keystone.tests.AuthenticationAuthorizationTest
+  - zaza.openstack.charm_tests.keystone.tests.CharmOperationTest
+  - zaza.openstack.charm_tests.keystone.tests.SecurityTests
+  - zaza.openstack.charm_tests.policyd.tests.KeystoneTests
+- zaza.openstack.charm_tests.keystone.tests.AuthenticationAuthorizationTest
+- zaza.openstack.charm_tests.keystone.tests.CharmOperationTest
+- zaza.openstack.charm_tests.keystone.tests.SecurityTests
+- zaza.openstack.charm_tests.policyd.tests.KeystoneTests
+
+tests_options:
+  policyd:
+    service: keystone
+  force_deploy:
+    - kinetic-zed
+target_deploy_status:
+  vault:
+    workload-status: blocked
+    workload-status-message: Vault needs to be initialized
