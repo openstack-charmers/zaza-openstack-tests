@@ -44,7 +44,6 @@ name>.charm>`.  i.e. the deployment will us
 
 import argparse
 import logging
-import os
 import pathlib
 
 import zaza
@@ -104,4 +103,3 @@ def run_tests(args):
         force=False,
         test_directory=str(path),
         trust=False)
-
