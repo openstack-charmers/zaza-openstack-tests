@@ -194,11 +194,15 @@ KEYSTONE_CACERT = "keystone_juju_ca_cert.crt"
 KEYSTONE_REMOTE_CACERT = (
     "/usr/local/share/ca-certificates/{}".format(KEYSTONE_CACERT))
 
+# Network/router names
 EXT_NET = os.environ.get('TEST_EXT_NET', 'ext_net')
 EXT_NET_SUBNET = os.environ.get('TEST_EXT_NET_SUBNET', 'ext_net_subnet')
 PRIVATE_NET = os.environ.get('TEST_PRIVATE_NET', 'private')
 PRIVATE_NET_SUBNET = os.environ.get('TEST_PRIVATE_NET_SUBNET',
                                     'private_subnet')
+PROVIDER_ROUTER = os.environ.get('TEST_PROVIDER_ROUTER', 'provider-router')
+
+# Image names
 CIRROS_IMAGE_NAME = os.environ.get('TEST_CIRROS_IMAGE_NAME', 'cirros')
 BIONIC_IMAGE_NAME = os.environ.get('TEST_BIONIC_IMAGE_NAME', 'bionic')
 FOCAL_IMAGE_NAME = os.environ.get('TEST_FOCAL_IMAGE_NAME', 'focal')
@@ -1397,19 +1401,19 @@ def create_provider_router(neutron_client, project_id):
     :returns: Router object
     :rtype: dict
     """
-    routers = neutron_client.list_routers(name='provider-router')
+    routers = neutron_client.list_routers(name=PROVIDER_ROUTER)
     if len(routers['routers']) == 0:
         logging.info('Creating provider router for external network access')
         router_info = {
             'router': {
-                'name': 'provider-router',
+                'name': PROVIDER_ROUTER,
                 'tenant_id': project_id
             }
         }
         router = neutron_client.create_router(router_info)['router']
         logging.info('New router created: %s', (router['id']))
     else:
-        logging.warning('Router provider-router already exists.')
+        logging.warning('Router %s already exists.', (PROVIDER_ROUTER))
         router = routers['routers'][0]
     return router
 

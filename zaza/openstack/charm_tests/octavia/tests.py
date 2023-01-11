@@ -510,7 +510,8 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
 
             lb_fp = openstack_utils.create_floating_ip(
                 self.neutron_client,
-                openstack_utils.EXT_NET, port={'id': lb['vip_port_id']})
+                openstack_utils.EXT_NET,
+                port={'id': lb['vip_port_id']})
 
             snippet = 'This is the default welcome page'
             assert snippet in self._get_payload(lb_fp['floating_ip_address'])

@@ -34,7 +34,7 @@ DEFAULT_PEER_APPLICATION_NAME = "quagga"
 # These are the network configuration settings under test.
 OVERCLOUD_NETWORK_CONFIG = {
     "network_type": "gre",
-    "router_name": "provider-router",
+    "router_name": openstack_utils.PROVIDER_ROUTER,
     "ip_version": "4",
     "address_scope": "public",
     "external_net_name": openstack_utils.EXT_NET,
