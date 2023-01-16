@@ -1199,7 +1199,7 @@ class NeutronNetworkingVRRPTests(NeutronNetworkingBase):
         self.check_connectivity(instance_1, instance_2)
 
         routers = self.neutron_client.list_routers(
-            name='provider-router')['routers']
+            name=openstack_utils.PROVIDER_ROUTER)['routers']
         assert len(routers) == 1, "Unexpected router count {}".format(
             len(routers))
         provider_router = routers[0]

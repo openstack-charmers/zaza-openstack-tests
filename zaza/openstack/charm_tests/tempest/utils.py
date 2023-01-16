@@ -251,7 +251,8 @@ def _add_neutron_config(ctxt, keystone_session, missing_fatal=True):
     try:
         net = neutron_client.find_resource("network", "ext_net")
         ctxt['ext_net'] = net['id']
-        router = neutron_client.find_resource("router", "provider-router")
+        router = neutron_client.find_resource("router",
+                                              openstack_utils.PROVIDER_ROUTER)
         ctxt['provider_router_id'] = router['id']
     except neutronexceptions.NotFound:
         if missing_fatal:

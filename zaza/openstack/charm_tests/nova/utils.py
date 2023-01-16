@@ -14,6 +14,8 @@
 
 """Data for nova tests."""
 
+import os
+
 FLAVORS = {
     'm1.tiny': {
         'flavorid': 1,
@@ -75,4 +77,4 @@ FLAVORS = {
         },
     },
 }
-KEYPAIR_NAME = 'zaza'
+KEYPAIR_NAME = os.environ.get('TEST_KEYPAIR_NAME', 'zaza')
