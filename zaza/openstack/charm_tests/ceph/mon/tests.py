@@ -26,7 +26,7 @@ from zaza.openstack.utilities import (
 import zaza.openstack.charm_tests.test_utils as test_utils
 
 
-class CinderCephMonTest(test_utils.OpenStackBaseTest):
+class CinderCephMonTest(test_utils.BaseCharmTest):
     """Verify that the ceph mon units are healthy."""
 
     @classmethod
@@ -40,7 +40,8 @@ class CinderCephMonTest(test_utils.OpenStackBaseTest):
         logging.info("Checking exit values are 0 on ceph commands.")
 
         units = zaza.model.get_units("ceph-mon", model_name=self.model_name)
-        current_release = openstack_utils.get_os_release()
+        current_release = openstack_utils.get_os_release(
+            application='ceph-mon')
         bionic_train = openstack_utils.get_os_release('bionic_train')
         if current_release < bionic_train:
             units.extend(zaza.model.get_units("cinder-ceph",
@@ -62,7 +63,8 @@ class CinderCephMonTest(test_utils.OpenStackBaseTest):
         """Check ceph alternatives removed when ceph-mon relation is broken."""
         # Skip this test if release is less than xenial_ocata as in that case
         # cinder HAS a relation with ceph directly and this test would fail
-        current_release = openstack_utils.get_os_release()
+        current_release = openstack_utils.get_os_release(
+            application='ceph-mon')
         xenial_ocata = openstack_utils.get_os_release('xenial_ocata')
         if current_release < xenial_ocata:
             logging.info("Skipping test as release < xenial-ocata")

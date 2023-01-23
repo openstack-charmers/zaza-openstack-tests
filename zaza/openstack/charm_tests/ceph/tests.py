@@ -44,7 +44,7 @@ urllib3.disable_warnings(
 )
 
 
-class CephLowLevelTest(test_utils.OpenStackBaseTest):
+class CephLowLevelTest(test_utils.BaseCharmTest):
     """Ceph Low Level Test Class."""
 
     @classmethod
@@ -116,7 +116,7 @@ class CephLowLevelTest(test_utils.OpenStackBaseTest):
             self.assertEqual(pool['pg_autoscale_mode'], 'on')
 
 
-class CephRelationTest(test_utils.OpenStackBaseTest):
+class CephRelationTest(test_utils.BaseCharmTest):
     """Ceph's relations test class."""
 
     @classmethod
@@ -143,7 +143,7 @@ class CephRelationTest(test_utils.OpenStackBaseTest):
         self.assertEqual(rel_private_ip, remote_ip)
 
 
-class CephTest(test_utils.OpenStackBaseTest):
+class CephTest(test_utils.BaseCharmTest):
     """Ceph common functional tests."""
 
     @classmethod
@@ -210,6 +210,10 @@ class CephTest(test_utils.OpenStackBaseTest):
         Check osd pools on all ceph units, expect them to be
         identical, and expect specific pools to be present.
         """
+        try:
+            zaza_model.get_application('cinder-ceph')
+        except KeyError:
+            raise unittest.SkipTest("Skipping OpenStack dependent test")
         logging.info('Checking pools on ceph units...')
 
         expected_pools = zaza_ceph.get_expected_pools()
@@ -262,7 +266,7 @@ class CephTest(test_utils.OpenStackBaseTest):
         Verify that the new disk is added with encryption by checking for
         Ceph's encryption keys directory.
         """
-        current_release = zaza_openstack.get_os_release()
+        current_release = zaza_openstack.get_os_release(application='ceph-mon')
         trusty_mitaka = zaza_openstack.get_os_release('trusty_mitaka')
         if current_release >= trusty_mitaka:
             logging.warn("Skipping encryption test for Mitaka and higher")
@@ -346,7 +350,7 @@ class CephTest(test_utils.OpenStackBaseTest):
         As the ephemeral device will have data on it we can use it to validate
         that these checks work as intended.
         """
-        current_release = zaza_openstack.get_os_release()
+        current_release = zaza_openstack.get_os_release(application='ceph-mon')
         focal_ussuri = zaza_openstack.get_os_release('focal_ussuri')
         if current_release >= focal_ussuri:
             # NOTE(ajkavanagh) - focal (on ServerStack) is broken for /dev/vdb
@@ -410,7 +414,6 @@ class CephTest(test_utils.OpenStackBaseTest):
             'osd-devices': '/dev/vdb',
         }
 
-        current_release = zaza_openstack.get_os_release()
         bionic_train = zaza_openstack.get_os_release('bionic_train')
         if current_release < bionic_train:
             set_default['osd-devices'] = '/dev/vdb /srv/ceph'
@@ -1465,7 +1468,7 @@ class CephAuthTest(unittest.TestCase):
                          "entity client.sandbox does not exist\n")
 
 
-class CephMonActionsTest(test_utils.OpenStackBaseTest):
+class CephMonActionsTest(test_utils.BaseCharmTest):
     """Test miscellaneous actions of the ceph-mon charm."""
 
     @classmethod
@@ -1517,8 +1520,11 @@ class CephMonActionsTest(test_utils.OpenStackBaseTest):
         unit = 'ceph-mon/0'
         logging.debug('Creating secondary test pool')
         cmd = 'sudo ceph osd pool create test2 32'
+        cmd2 = 'sudo ceph osd pool create test3 32'
         try:
             result = zaza_model.run_on_unit(unit, cmd)
+            self.assertEqual(int(result.get('Code')), 0)
+            result = zaza_model.run_on_unit(unit, cmd2)
             self.assertEqual(int(result.get('Code')), 0)
 
             action_obj = zaza_model.run_action(
@@ -1528,12 +1534,13 @@ class CephMonActionsTest(test_utils.OpenStackBaseTest):
             )
             zaza_utils.assertActionRanOK(action_obj)
             self.assertIn('test2', action_obj.data['results']['message'])
+            self.assertIn('test3', action_obj.data['results']['message'])
 
             logging.debug('Copying test pool')
             action_obj = zaza_model.run_action(
                 unit_name=unit,
                 action_name='copy-pool',
-                action_params={'source': 'nova', 'target': 'test2'}
+                action_params={'source': 'test2', 'target': 'test3'}
             )
             zaza_utils.assertActionRanOK(action_obj)
         finally:
@@ -1541,5 +1548,10 @@ class CephMonActionsTest(test_utils.OpenStackBaseTest):
             zaza_model.run_on_unit(
                 unit,
                 ('sudo ceph osd pool delete test2 test2 '
+                 '--yes-i-really-really-mean-it')
+            )
+            zaza_model.run_on_unit(
+                unit,
+                ('sudo ceph osd pool delete test3 test3 '
                  '--yes-i-really-really-mean-it')
             )
