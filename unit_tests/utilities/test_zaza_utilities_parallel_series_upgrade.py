@@ -19,6 +19,7 @@ import unit_tests.utils as ut_utils
 import zaza.openstack.utilities.generic as generic_utils
 import zaza.openstack.utilities.series_upgrade as series_upgrade
 import zaza.openstack.utilities.parallel_series_upgrade as upgrade_utils
+import zaza
 
 FAKE_STATUS = {
     'can-upgrade-to': '',
@@ -88,7 +89,7 @@ class Test_ParallelSeriesUpgradeSync(ut_utils.BaseTestCase):
 
     def test_app_config_openstack_charm(self):
         expected = {
-            'origin': 'openstack-origin',
+            'origin': 'auto',
             'pause_non_leader_subordinate': True,
             'pause_non_leader_primary': True,
             'post_upgrade_functions': [],
@@ -189,7 +190,7 @@ class TestParallelSeriesUpgrade(ut_utils.AioTestCase):
     @mock.patch.object(upgrade_utils.series_upgrade_utils, 'async_set_series')
     @mock.patch.object(upgrade_utils, 'maybe_pause_things')
     @mock.patch.object(upgrade_utils, 'series_upgrade_machine')
-    async def test_parallel_series_upgrade_mongo(
+    async def test_async_parallel_series_upgrade_mongo(
         self,
         mock_series_upgrade_machine,
         mock_maybe_pause_things,
@@ -200,7 +201,7 @@ class TestParallelSeriesUpgrade(ut_utils.AioTestCase):
         self.juju_status.return_value.applications.__getitem__.return_value = \
             FAKE_STATUS_MONGO
         upgrade_config = upgrade_utils.app_config('mongodb')
-        await upgrade_utils.parallel_series_upgrade(
+        await upgrade_utils.async_parallel_series_upgrade(
             'mongodb',
             from_series='trusty',
             to_series='xenial',
@@ -249,7 +250,7 @@ class TestParallelSeriesUpgrade(ut_utils.AioTestCase):
     @mock.patch.object(upgrade_utils.series_upgrade_utils, 'async_set_series')
     @mock.patch.object(upgrade_utils, 'maybe_pause_things')
     @mock.patch.object(upgrade_utils, 'series_upgrade_machine')
-    async def test_serial_series_upgrade_mongo(
+    async def test_async_serial_series_upgrade_mongo(
         self,
         mock_series_upgrade_machine,
         mock_maybe_pause_things,
@@ -260,7 +261,7 @@ class TestParallelSeriesUpgrade(ut_utils.AioTestCase):
         self.juju_status.return_value.applications.__getitem__.return_value = \
             FAKE_STATUS_MONGO
         upgrade_config = upgrade_utils.app_config('mongodb')
-        await upgrade_utils.serial_series_upgrade(
+        await upgrade_utils.async_serial_series_upgrade(
             'mongodb',
             from_series='trusty',
             to_series='xenial',
@@ -306,7 +307,7 @@ class TestParallelSeriesUpgrade(ut_utils.AioTestCase):
     @mock.patch.object(upgrade_utils.series_upgrade_utils, 'async_set_series')
     @mock.patch.object(upgrade_utils, 'maybe_pause_things')
     @mock.patch.object(upgrade_utils, 'series_upgrade_machine')
-    async def test_parallel_series_upgrade(
+    async def test_async_parallel_series_upgrade(
         self,
         mock_series_upgrade_machine,
         mock_maybe_pause_things,
@@ -314,7 +315,7 @@ class TestParallelSeriesUpgrade(ut_utils.AioTestCase):
         mock_async_prepare_series_upgrade,
         mock_post_application_upgrade_functions,
     ):
-        await upgrade_utils.parallel_series_upgrade(
+        await upgrade_utils.async_parallel_series_upgrade(
             'app',
             from_series='trusty',
             to_series='xenial',
@@ -361,7 +362,7 @@ class TestParallelSeriesUpgrade(ut_utils.AioTestCase):
     @mock.patch.object(upgrade_utils.series_upgrade_utils, 'async_set_series')
     @mock.patch.object(upgrade_utils, 'maybe_pause_things')
     @mock.patch.object(upgrade_utils, 'series_upgrade_machine')
-    async def test_serial_series_upgrade(
+    async def test_async_serial_series_upgrade(
         self,
         mock_series_upgrade_machine,
         mock_maybe_pause_things,
@@ -369,7 +370,7 @@ class TestParallelSeriesUpgrade(ut_utils.AioTestCase):
         mock_async_prepare_series_upgrade,
         mock_post_application_upgrade_functions,
     ):
-        await upgrade_utils.serial_series_upgrade(
+        await upgrade_utils.async_serial_series_upgrade(
             'app',
             from_series='trusty',
             to_series='xenial',
@@ -472,11 +473,22 @@ class TestParallelSeriesUpgrade(ut_utils.AioTestCase):
         mock_remove_confdef_file.assert_called_once_with('1')
         mock_add_confdef_file.assert_called_once_with('1')
 
+    @mock.patch.object(zaza.model, "async_run_action")
+    @mock.patch.object(zaza.model, "async_get_application")
     @mock.patch("asyncio.gather")
-    async def test_maybe_pause_things_primary(self, mock_gather):
+    async def test_maybe_pause_things_primary(
+        self, mock_gather, mock_async_get_application, mock_async_run_action
+    ):
+        if sys.version_info < (3, 6, 0):
+            raise unittest.SkipTest("Can't AsyncMock in py35")
+
         async def _gather(*args):
             for f in args:
                 await f
+
+        mock_app = mock.AsyncMock()
+        mock_app.get_actions.return_value = ["pause", "resume"]
+        mock_async_get_application.return_value = mock_app
 
         mock_gather.side_effect = _gather
         await upgrade_utils.maybe_pause_things(
@@ -484,16 +496,27 @@ class TestParallelSeriesUpgrade(ut_utils.AioTestCase):
             ['app/1', 'app/2'],
             pause_non_leader_subordinate=False,
             pause_non_leader_primary=True)
-        self.async_run_action.assert_has_calls([
+        mock_async_run_action.assert_has_calls([
             mock.call('app/1', "pause", action_params={}),
             mock.call('app/2', "pause", action_params={}),
         ])
 
+    @mock.patch.object(zaza.model, "async_run_action")
+    @mock.patch.object(zaza.model, "async_get_application")
     @mock.patch("asyncio.gather")
-    async def test_maybe_pause_things_subordinates(self, mock_gather):
+    async def test_maybe_pause_things_subordinates(
+        self, mock_gather, mock_async_get_application, mock_async_run_action
+    ):
+        if sys.version_info < (3, 6, 0):
+            raise unittest.SkipTest("Can't AsyncMock in py35")
+
         async def _gather(*args):
             for f in args:
                 await f
+
+        mock_app = mock.AsyncMock()
+        mock_app.get_actions.return_value = ["pause", "resume"]
+        mock_async_get_application.return_value = mock_app
 
         mock_gather.side_effect = _gather
         await upgrade_utils.maybe_pause_things(
@@ -501,16 +524,27 @@ class TestParallelSeriesUpgrade(ut_utils.AioTestCase):
             ['app/1', 'app/2'],
             pause_non_leader_subordinate=True,
             pause_non_leader_primary=False)
-        self.async_run_action.assert_has_calls([
+        mock_async_run_action.assert_has_calls([
             mock.call('app-hacluster/1', "pause", action_params={}),
             mock.call('app-hacluster/2', "pause", action_params={}),
         ])
 
+    @mock.patch.object(zaza.model, "async_run_action")
+    @mock.patch.object(zaza.model, "async_get_application")
     @mock.patch("asyncio.gather")
-    async def test_maybe_pause_things_all(self, mock_gather):
+    async def test_maybe_pause_things_all(
+        self, mock_gather, mock_async_get_application, mock_async_run_action
+    ):
+        if sys.version_info < (3, 6, 0):
+            raise unittest.SkipTest("Can't AsyncMock in py35")
+
         async def _gather(*args):
             for f in args:
                 await f
+
+        mock_app = mock.AsyncMock()
+        mock_app.get_actions.return_value = ["pause", "resume"]
+        mock_async_get_application.return_value = mock_app
 
         mock_gather.side_effect = _gather
         await upgrade_utils.maybe_pause_things(
@@ -518,7 +552,7 @@ class TestParallelSeriesUpgrade(ut_utils.AioTestCase):
             ['app/1', 'app/2'],
             pause_non_leader_subordinate=True,
             pause_non_leader_primary=True)
-        self.async_run_action.assert_has_calls([
+        mock_async_run_action.assert_has_calls([
             mock.call('app-hacluster/1', "pause", action_params={}),
             mock.call('app/1', "pause", action_params={}),
             mock.call('app-hacluster/2', "pause", action_params={}),
