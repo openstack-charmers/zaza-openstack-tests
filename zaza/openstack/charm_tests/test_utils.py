@@ -80,16 +80,29 @@ def audit_assertions(action,
     :type expected_failures: List[str]
     :raises: AssertionError if the assertion fails.
     """
+    # Updated status is in action._status
+    # https://github.com/juju/python-libjuju/commit/bfcbc0ba968555e317909972c28101b149854b0c
+    status = None
+    try:
+        status = action._status
+    except (AttributeError, KeyError):
+        status = action.data.get("status")
     if expected_failures is None:
         expected_failures = []
     if expected_to_pass:
-        assert action.data["status"] == "completed", \
+        assert status == "completed", \
             "Security check is expected to pass by default"
     else:
-        assert action.data["status"] == "failed", \
+        assert status == "failed", \
             "Security check is not expected to pass by default"
 
-    results = action.data['results']
+    # https://github.com/juju/python-libjuju/commit/fb837cc2a630bb407cf059dc1871a2cc832cf801
+    results = None
+    try:
+        results = action.results
+    except (AttributeError, KeyError):
+        results = action.data.get('results')
+    assert results is not None
     for key, value in results.items():
         if key in expected_failures:
             assert "FAIL" in value, "Unexpected test pass: {}".format(key)
