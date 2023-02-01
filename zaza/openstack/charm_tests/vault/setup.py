@@ -162,7 +162,12 @@ def auto_initialize(cacert=None, validation_application='keystone', wait=True,
     basic_setup(cacert=cacert, unseal_and_authorize=True)
 
     action = vault_utils.run_get_csr()
-    intermediate_csr = action.data['results']['output']
+    action_result = {}
+    try:
+        action_result = action.results
+    except (AttributeError, KeyError):
+        action_result = action.data.get('results', {})
+    intermediate_csr = action_result.get('output')
     (cakey, cacertificate) = zaza.openstack.utilities.cert.generate_cert(
         'DivineAuthority',
         generate_ca=True)

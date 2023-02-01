@@ -720,7 +720,11 @@ class OVNCentralDownscaleTests(test_utils.BaseCharmTest):
         yaml_load_err = "Status of '{}' could not be loaded as yaml:\n{}"
         status_raw = zaza.model.run_action_on_leader("ovn-central",
                                                      "cluster-status")
-        status_data = status_raw.data["results"]
+        status_data = {}
+        try:
+            status_data = status_raw.results
+        except (AttributeError, KeyError):
+            status_data = status_raw.data.get('results', {})
         # Verify expected items in the action result
         self.assertIn("ovnnb", status_data)
         self.assertIn("ovnsb", status_data)

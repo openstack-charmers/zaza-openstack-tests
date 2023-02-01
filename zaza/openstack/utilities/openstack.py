@@ -2160,7 +2160,12 @@ def _get_overcloud_auth_k8s(address=None, model_name=None):
         'get-admin-password',
         action_params={}
     )
-    password = action.data['results']['password']
+    results = None
+    try:
+        results = action.results
+    except (AttributeError, KeyError):
+        results = action.data.get('results')
+    password = results.get('password')
 
     # V3 or later
     logging.info('Using keystone API V3 (or later) for overcloud auth')
