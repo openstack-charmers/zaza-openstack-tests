@@ -61,6 +61,10 @@ def parse_args(args):
     parser = argparse.ArgumentParser()
     parser.add_argument('charm',
                         help='The charm name to lookup.')
+    parser.add_argument('branch',
+                        help=('The branch to target tests/bundles for. '
+                              'Note that the branch name is just either '
+                              'master, main, or the <x> part of stable/<x>.'))
     parser.add_argument('bundle',
                         help='The bundle to load and run against.')
     parser.set_defaults(loglevel='INFO')
@@ -82,7 +86,7 @@ def run_tests(args):
     # test_directory needs to be ../bundles/charms/<charm>
     logging.debug("run_test: here is %s", str(pathlib.Path(__file__)))
     path = (pathlib.Path(__file__) / '..' / '..' / 'bundles' / 'charms' /
-            parsed_args.charm)
+            parsed_args.charm / parsed_args.branch)
     path = path.resolve()
     logging.debug("run_test: test_directory path is %s", str(path))
     # check that tests.yaml exists in the path.
@@ -92,7 +96,6 @@ def run_tests(args):
         logging.error(msg)
         raise RuntimeError(msg)
 
-    # TODO: need to work out how to reference the local charm
     zaza.charm_lifecycle.func_test_runner.func_test_runner(
         keep_last_model=True,
         keep_all_models=False,

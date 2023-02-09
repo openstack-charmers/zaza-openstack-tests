@@ -38,7 +38,7 @@ applications:
     channel: latest/edge
 
   keystone:
-    charm: ../../keystone.charm
+    charm: "{{ charm_location }}/keystone.charm"
     num_units: 3
     options:
       openstack-origin: *openstack-origin
