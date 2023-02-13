@@ -442,11 +442,22 @@ class CephTest(test_utils.BaseCharmTest):
             'active'
         )
 
+        action_obj = zaza_model.run_action(
+            unit_name=unit_name,
+            action_name='list-disks',
+        )
+        disks = action_obj.data['results']['disks']
+        if '/dev/vda' in disks:
+            disk = 'vda'
+        elif '/dev/sda' in disks:
+            disk = 'sda'
+        else:
+            raise unittest.SkipTest('Could not find disk to test blacklist')
         # Attempt to add device with non-absolute path should fail
         action_obj = zaza_model.run_action(
             unit_name=unit_name,
             action_name='blacklist-add-disk',
-            action_params={'osd-devices': 'vda'}
+            action_params={'osd-devices': disk}
         )
         self.assertTrue(action_obj.status != 'completed')
         zaza_model.block_until_unit_wl_status(
@@ -470,7 +481,7 @@ class CephTest(test_utils.BaseCharmTest):
         action_obj = zaza_model.run_action(
             unit_name=unit_name,
             action_name='blacklist-add-disk',
-            action_params={'osd-devices': '/dev/vda'}
+            action_params={'osd-devices': '/dev/' + disk}
         )
         self.assertEqual('completed', action_obj.status)
         zaza_model.block_until_unit_wl_status(
@@ -482,7 +493,7 @@ class CephTest(test_utils.BaseCharmTest):
         action_obj = zaza_model.run_action(
             unit_name=unit_name,
             action_name='blacklist-remove-disk',
-            action_params={'osd-devices': '/dev/vda'}
+            action_params={'osd-devices': '/dev/' + disk}
         )
         self.assertEqual('completed', action_obj.status)
         zaza_model.block_until_unit_wl_status(
