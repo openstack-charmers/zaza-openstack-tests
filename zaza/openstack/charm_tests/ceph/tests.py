@@ -1319,12 +1319,12 @@ class BlueStoreCompressionCharmOperation(test_utils.BaseCharmTest):
                 if pd['pool_name'] == pool:
                     if 'options' in expected_properties:
                         for k, v in expected_properties['options'].items():
-                            self.assertEquals(pd['options'][k], v)
+                            self.assertEqual(pd['options'][k], v)
                             log_func("['options']['{}'] == {}".format(k, v))
                     for k, v in expected_properties.items():
                         if k == 'options':
                             continue
-                        self.assertEquals(pd[k], v)
+                        self.assertEqual(pd[k], v)
                         log_func("{} == {}".format(k, v))
 
     def test_configure_compression(self):
