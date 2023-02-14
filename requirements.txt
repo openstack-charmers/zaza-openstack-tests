@@ -13,7 +13,8 @@ juju_wait
 # https://github.com/pyca/pyopenssl/commit/a145fc3bc6d2e943434beb2f04bbf9b18930296f
 pyopenssl<22.1.0
 
-PyYAML<=4.2,>=3.0
+PyYAML<=4.2,>=3.0; python_version < '3.9'
+PyYAML>=5.1; python_version >= '3.9'
 flake8>=2.2.4
 flake8-docstrings
 flake8-per-file-ignores
