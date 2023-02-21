@@ -201,7 +201,7 @@ class CharmOperationTest(BaseKeystoneTest):
         def _get_password_from_leader():
             conf = zaza.model.file_contents('glance/leader', GLANCE_CONF_FILE)
             config = configparser.ConfigParser()
-            config.read(conf)
+            config.read_string(conf)
             return config['image_format']['password'].strip()
 
         # Only do the test if glance is in the model.
