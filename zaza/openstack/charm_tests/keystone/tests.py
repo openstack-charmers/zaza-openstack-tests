@@ -197,7 +197,7 @@ class CharmOperationTest(BaseKeystoneTest):
         GLANCE_APP = "glance"
 
         # Only do the test if glance is in the model.
-        applications = juju_utils.sync_deployed(self.model_name)
+        applications = zaza.model.sync_deployed(self.model_name)
         if GLANCE_APP not in applications:
             self.skipTest(
                 '{} is not deployed, so not doing password change'
