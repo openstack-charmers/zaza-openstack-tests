@@ -191,6 +191,39 @@ class CharmOperationTest(BaseKeystoneTest):
         new_passwd = juju_utils.leader_get(self.application_name, ADMIN_PASSWD)
         assert old_passwd != new_passwd
 
+    def test_rotate_service_user_password(self):
+        """Verify action used to rotate a service user (glance) password."""
+        GLANCE_PASSWD_KEY = "glance_passwd"
+        GLANCE_APP = "glance"
+
+        # Only do the test if glance is in the model.
+        applications = juju_utils.sync_deployed(self.model_name)
+        if GLANCE_APP not in applications:
+            self.skipTest(
+                '{} is not deployed, so not doing password change'
+                .format(GLANCE_APP))
+        # keep the old password to verify it is changed.
+        old_passwd = juju_utils.leader_get(GLANCE_APP, GLANCE_PASSWD_KEY)
+
+        # verify that images can be listed.
+        glance_client = openstack_utils.get_glance_session_client(self.admin_keystone_session)
+        glance_client.images.list()
+
+        # run the action to rotate the password.
+        zaza.model.run_action_on_leader(
+            self.application_name,
+            'rotate-service-user-password',
+            action_params={'service-user': 'glance'},
+        )
+
+        # verify that the password has changed
+        new_passwd = juju_utils.leader_get(GLANCE_APP, GLANCE_PASSWD_KEY)
+        self.assertNotEqual(old_passwd, new_passwd)
+
+        # verify that the images can still be listed.
+        glance_client = openstack_utils.get_glance_session_client(self.admin_keystone_session)
+        glance_client.images.list()
+
 
 class AuthenticationAuthorizationTest(BaseKeystoneTest):
     """Keystone authentication and authorization tests."""
