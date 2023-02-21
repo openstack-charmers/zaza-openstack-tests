@@ -206,7 +206,8 @@ class CharmOperationTest(BaseKeystoneTest):
         old_passwd = juju_utils.leader_get(GLANCE_APP, GLANCE_PASSWD_KEY)
 
         # verify that images can be listed.
-        glance_client = openstack_utils.get_glance_session_client(self.admin_keystone_session)
+        glance_client = openstack_utils.get_glance_session_client(
+            self.admin_keystone_session)
         glance_client.images.list()
 
         # run the action to rotate the password.
@@ -221,7 +222,8 @@ class CharmOperationTest(BaseKeystoneTest):
         self.assertNotEqual(old_passwd, new_passwd)
 
         # verify that the images can still be listed.
-        glance_client = openstack_utils.get_glance_session_client(self.admin_keystone_session)
+        glance_client = openstack_utils.get_glance_session_client(
+            self.admin_keystone_session)
         glance_client.images.list()
 
 
