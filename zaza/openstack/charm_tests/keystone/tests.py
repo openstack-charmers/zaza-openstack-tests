@@ -203,7 +203,8 @@ class CharmOperationTest(BaseKeystoneTest):
                 '{} is not deployed, so not doing password change'
                 .format(GLANCE_APP))
         # keep the old password to verify it is changed.
-        old_passwd = juju_utils.leader_get(GLANCE_APP, GLANCE_PASSWD_KEY)
+        old_passwd = juju_utils.leader_get(
+            self.application_name, GLANCE_PASSWD_KEY)
 
         # verify that images can be listed.
         glance_client = openstack_utils.get_glance_session_client(
@@ -218,7 +219,8 @@ class CharmOperationTest(BaseKeystoneTest):
         )
 
         # verify that the password has changed
-        new_passwd = juju_utils.leader_get(GLANCE_APP, GLANCE_PASSWD_KEY)
+        new_passwd = juju_utils.leader_get(
+            self.application_name, GLANCE_PASSWD_KEY)
         self.assertNotEqual(old_passwd, new_passwd)
 
         # verify that the images can still be listed.
