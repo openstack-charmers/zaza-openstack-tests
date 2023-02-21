@@ -202,7 +202,7 @@ class CharmOperationTest(BaseKeystoneTest):
             conf = zaza.model.file_contents('glance/leader', GLANCE_CONF_FILE)
             config = configparser.ConfigParser()
             config.read_string(conf)
-            return config['image_format']['password'].strip()
+            return config['keystone_authtoken']['password'].strip()
 
         # Only do the test if glance is in the model.
         applications = zaza.model.sync_deployed(self.model_name)
