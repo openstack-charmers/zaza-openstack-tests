@@ -6,7 +6,9 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Running on ubuntu-20.04 which has py3.6 support, ubuntu-latest (22.04)
+    # does not (see https://github.com/actions/setup-python/issues/544 ).
+    runs-on: ubuntu-20.04
     strategy:
       matrix:
         python-version: [3.6, 3.8]
