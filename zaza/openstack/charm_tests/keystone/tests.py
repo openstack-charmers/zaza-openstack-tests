@@ -237,7 +237,6 @@ class CharmOperationTest(BaseKeystoneTest):
                             new_passwd_conf)
         self.assertEqual(new_passwd_leader_storage, new_passwd_conf)
 
-
         # verify that the images can still be listed.
         glance_client = openstack_utils.get_glance_session_client(
             self.admin_keystone_session)
