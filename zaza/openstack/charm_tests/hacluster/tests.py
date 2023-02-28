@@ -87,6 +87,11 @@ class HaclusterScaleBackAndForthTest(HaclusterBaseTest):
         cls._principle_app_name = test_config['principle-app-name']
         cls._hacluster_charm_name = test_config['hacluster-charm-name']
 
+    @test_utils.skipVersion(application='hacluster',
+                            package='crmsh',
+                            releases=['4.4.0-1ubuntu1'],
+                            op='eq',
+                            reason='http://pad.lv/1972730')
     def test_930_scaleback(self):
         """Remove one unit, recalculate quorum and re-add one unit.
 
