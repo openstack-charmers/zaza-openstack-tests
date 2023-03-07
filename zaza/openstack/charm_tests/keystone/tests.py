@@ -26,6 +26,8 @@ import zaza.utilities.juju as juju_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.charm_lifecycle.utils as lifecycle_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
+import zaza.openstack.charm_tests.tempest.tests as tempest_tests
+
 from zaza.openstack.charm_tests.keystone import (
     BaseKeystoneTest,
     DEMO_DOMAIN,
@@ -772,3 +774,9 @@ class LdapExplicitCharmConfigTests(LdapTests):
                 self.assertIn("group_tree_dn = ou=groups", result['stdout'],
                               "user_tree_dn value is expected to be present "
                               "and set to dc=test,dc=com in the config file")
+
+
+class KeystoneTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
+    """Test keystone k8s scale out and scale back."""
+
+    application_name = "keystone"
