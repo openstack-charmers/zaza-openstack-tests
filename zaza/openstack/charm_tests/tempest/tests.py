@@ -144,7 +144,9 @@ class TempestTestWithKeystoneMinimal(TempestTestBase):
 class TempestTestScaleK8SBase(TempestTestBase):
     """Tempest test class to validate an OpenStack setup after scaling."""
 
-    application_name = None
+    @property
+    def application_name(self):
+        raise NotImplementedError()
 
     @property
     def expected_statuses(self):
@@ -160,6 +162,9 @@ class TempestTestScaleK8SBase(TempestTestBase):
         Due to Bug: #2009503 the old units remain in the model but
         are marked as dying
         """
+        logging.warning(
+            "Waiting for dying units to work around Bug #2009503. If this is "
+            "fixed please update this test")
         app_status = zaza.model.get_status()['applications'][
             application_name]
         dead_units = [ustatus
