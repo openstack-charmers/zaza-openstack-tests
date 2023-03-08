@@ -146,6 +146,7 @@ class TempestTestScaleK8SBase(TempestTestBase):
 
     @property
     def application_name(self):
+        """Name of application to scale."""
         raise NotImplementedError()
 
     @property
