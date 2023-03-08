@@ -15,7 +15,7 @@
 """Encapsulate placement testing."""
 import zaza.openstack.charm_tests.tempest.tests as tempest_tests
 
-class KeystoneTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
+class PlacementTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
     """Test keystone k8s scale out and scale back."""
 
     application_name = "placement"
