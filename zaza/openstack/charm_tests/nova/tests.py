@@ -35,6 +35,7 @@ import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.generic as generic_utils
 import zaza.openstack.configure.guest as guest
 import zaza.openstack.utilities.openstack as openstack_utils
+import zaza.openstack.charm_tests.tempest.tests as tempest_tests
 from zaza.utilities import juju as juju_utils
 
 
@@ -1165,3 +1166,9 @@ class SecurityTests(test_utils.OpenStackBaseTest):
                 expected_passes,
                 expected_failures,
                 expected_to_pass=not len(expected_failures))
+
+
+class NovaTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
+    """Test nova k8s scale out and scale back."""
+
+    application_name = "nova"
