@@ -23,6 +23,7 @@ import boto3
 import zaza.model as model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
+import zaza.openstack.charm_tests.tempest.tests as tempest_tests
 
 
 class GlanceTest(test_utils.OpenStackBaseTest):
@@ -266,3 +267,9 @@ class GlanceCinderBackendTest(test_utils.OpenStackBaseTest):
         image_size_in_gb = int(math.ceil(float(image["size"]) / 1024 ** 3))
         self.assertEqual(image_size_in_gb, volume.size)
         openstack_utils.delete_image(self.glance_client, image["id"])
+
+
+class GlanceTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
+    """Test glance k8s scale out and scale back."""
+
+    application_name = "glance"
