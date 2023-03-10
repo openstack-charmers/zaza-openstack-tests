@@ -150,16 +150,6 @@ class CephTest(test_utils.BaseCharmTest):
     def setUpClass(cls):
         """Run the ceph's common class setup."""
         super(CephTest, cls).setUpClass()
-        cls.loop_devs = {}   # Maps osd -> loop device
-        for osd in (x.entity_id for x in zaza_model.get_units('ceph-osd')):
-            loop_dev = zaza_utils.add_loop_device(osd, size=10).get('Stdout')
-            cls.loop_devs[osd] = loop_dev
-
-    @classmethod
-    def tearDownClass(cls):
-        """Run the ceph's common class teardown."""
-        for osd, loop_dev in cls.loop_devs.items():
-            zaza_utils.remove_loop_device(osd, loop_dev)
 
     def osd_out_in(self, services):
         """Run OSD out and OSD in tests.
@@ -522,68 +512,142 @@ class CephTest(test_utils.BaseCharmTest):
         local = list(json.loads(ret['Stdout']))[-1]
         return local if local.startswith('osd.') else 'osd.' + local
 
-    def get_num_osds(self, osd):
+    def get_num_osds(self, osd, is_up_only=False):
         """Compute the number of active OSD's."""
         result = zaza_model.run_on_unit(osd, 'ceph osd stat --format=json')
         result = json.loads(result['Stdout'])
-        return int(result['num_osds'])
+        if is_up_only:
+            return int(result['num_up_osds'])
+        else:
+            return int(result['num_osds'])
+
+    def get_osd_devices_on_unit(self, unit_name):
+        """Get information for osd devices present on a particular unit.
+
+        :param unit: Unit name to be queried for osd device info.
+        :type unit: str
+        """
+        osd_devices = json.loads(
+            zaza_model.run_on_unit(
+                unit_name, 'ceph-volume lvm list --format=json'
+            ).get('Stdout', '')
+        )
+
+        return osd_devices
+
+    def remove_disk_from_osd_unit(self, unit, osd_id, is_purge=False):
+        """Remove osd device with provided osd_id from unit.
+
+        :param unit: Unit name where the osd device is to be removed from.
+        :type unit: str
+
+        :param osd_id: osd-id for the osd device to be removed.
+        :type osd_id: str
+
+        :param is_purge: whether to purge the osd device
+        :type is_purge: bool
+        """
+        action_obj = zaza_model.run_action(
+            unit_name=unit,
+            action_name='remove-disk',
+            action_params={
+                'osd-ids': osd_id,
+                'timeout': 5,
+                'format': 'json',
+                'purge': is_purge
+            }
+        )
+        zaza_utils.assertActionRanOK(action_obj)
+        results = json.loads(action_obj.data['results']['message'])
+        results = results[next(iter(results))]
+        self.assertEqual(results['osd-ids'], osd_id)
+        zaza_model.run_on_unit(unit, 'partprobe')
+
+    def remove_one_osd(self, unit):
+        """Remove one device from osd unit.
+
+        :param unit: Unit name where the osd device is to be removed from.
+        :type unit: str
+        """
+        block_devs = self.get_osd_devices_on_unit(unit)
+        # Should have more than 1 OSDs to take one out and test.
+        self.assertGreater(len(block_devs), 1)
+
+        # Get complete device details for an OSD.
+        key = list(block_devs)[-1]
+        device = {
+            'osd-id': key if key.startswith('osd.') else 'osd.' + key,
+            'block-device': block_devs[key][0]['devices'][0]
+        }
+
+        self.remove_disk_from_osd_unit(unit, device['osd-id'], is_purge=True)
+        return device
 
     def test_cache_device(self):
         """Test replacing a disk in use."""
         logging.info('Running add-disk action with a caching device')
         mon = next(iter(zaza_model.get_units('ceph-mon'))).entity_id
         osds = [x.entity_id for x in zaza_model.get_units('ceph-osd')]
-        params = []
+        osd_info = dict()
+
+        # Remove one of the two disks.
+        logging.info('Removing single disk from each OSD')
         for unit in osds:
-            loop_dev = self.loop_devs[unit]
-            params.append({'unit': unit, 'device': loop_dev})
+            device_info = self.remove_one_osd(unit)
+            block_dev = device_info['block-device']
+            logging.info("Removing device %s from unit %s" % (block_dev, unit))
+            osd_info[unit] = device_info
+        logging.debug('Removed OSD Info: {}'.format(osd_info))
+        zaza_model.wait_for_application_states()
+
+        logging.info('Recycling previously removed disks')
+        for unit, device_info in osd_info.items():
+            osd_id = device_info['osd-id']
+            block_dev = device_info['block-device']
+            logging.info("Found device %s on unit %s" % (block_dev, unit))
+            self.assertNotEqual(block_dev, None)
             action_obj = zaza_model.run_action(
                 unit_name=unit,
                 action_name='add-disk',
-                action_params={'osd-devices': loop_dev,
+                action_params={'osd-devices': block_dev,
+                               'osd-ids': osd_id,
                                'partition-size': 5}
             )
             zaza_utils.assertActionRanOK(action_obj)
         zaza_model.wait_for_application_states()
 
-        logging.info('Removing previously added disks')
-        for param in params:
-            osd_id = self.get_local_osd_id(param['unit'])
-            param.update({'osd-id': osd_id})
-            action_obj = zaza_model.run_action(
-                unit_name=param['unit'],
-                action_name='remove-disk',
-                action_params={'osd-ids': osd_id, 'timeout': 5,
-                               'format': 'json', 'purge': False}
+        logging.info('Removing previously added OSDs')
+        for unit, device_info in osd_info.items():
+            osd_id = device_info['osd-id']
+            block_dev = device_info['block-device']
+            logging.info(
+                "Removing block device %s from unit %s" %
+                (block_dev, unit)
             )
-            zaza_utils.assertActionRanOK(action_obj)
-            results = json.loads(action_obj.data['results']['message'])
-            results = results[next(iter(results))]
-            self.assertEqual(results['osd-ids'], osd_id)
-            zaza_model.run_on_unit(param['unit'], 'partprobe')
+            self.remove_disk_from_osd_unit(unit, osd_id, is_purge=False)
         zaza_model.wait_for_application_states()
 
-        logging.info('Recycling previously removed OSDs')
-        for param in params:
+        logging.info('Finally adding back OSDs')
+        for unit, device_info in osd_info.items():
+            block_dev = device_info['block-device']
             action_obj = zaza_model.run_action(
-                unit_name=param['unit'],
+                unit_name=unit,
                 action_name='add-disk',
-                action_params={'osd-devices': param['device'],
-                               'osd-ids': param['osd-id'],
-                               'partition-size': 4}
+                action_params={'osd-devices': block_dev,
+                               'partition-size': 5}
             )
             zaza_utils.assertActionRanOK(action_obj)
         zaza_model.wait_for_application_states()
-        self.assertEqual(len(osds) * 2, self.get_num_osds(mon))
 
-        # Finally, remove all the added OSDs that are backed by loop devices.
-        for param in params:
-            osd_id = self.get_local_osd_id(param['unit'])
-            zaza_model.run_action(
-                unit_name=param['unit'],
-                action_name='remove-disk',
-                action_params={'osd-ids': osd_id, 'purge': True}
-            )
+        for attempt in tenacity.Retrying(
+            wait=tenacity.wait_exponential(multiplier=2, max=32),
+            reraise=True, stop=tenacity.stop_after_attempt(10),
+            retry=tenacity.retry_if_exception_type(AssertionError)
+        ):
+            with attempt:
+                self.assertEqual(
+                    len(osds) * 2, self.get_num_osds(mon, is_up_only=True)
+                )
 
 
 class CephRGWTest(test_utils.BaseCharmTest):
