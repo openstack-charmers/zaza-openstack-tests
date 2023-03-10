@@ -31,6 +31,7 @@ from zaza.openstack.charm_tests.glance.setup import (
 
 
 DEFAULT_CINDER_RBD_MIRRORING_MODE = 'pool'
+INTERNAL_POOLS = frozenset(('.mgr', 'device_health_metrics'))
 
 
 def get_cinder_rbd_mirroring_mode(cinder_ceph_app_name='cinder-ceph'):
@@ -182,7 +183,7 @@ class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
             action_params=action_params)
         return json.loads(result.results['output'])
 
-    def get_pools(self):
+    def get_pools(self, include_internal_pools=False):
         """Retrieve list of pools from both sites.
 
         :returns: Tuple with list of pools on each side.
@@ -197,9 +198,14 @@ class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
                 'ceph-mon' + self.site_b_app_suffix,
                 model_name=self.site_b_model),
             model_name=self.site_b_model)
-        return sorted(site_a_pools.keys()), sorted(site_b_pools.keys())
+        site_a_pools = set(site_a_pools.keys())
+        site_b_pools = set(site_b_pools.keys())
+        if not include_internal_pools:
+            site_a_pools -= INTERNAL_POOLS
+            site_b_pools -= INTERNAL_POOLS
+        return list(site_a_pools), list(site_b_pools)
 
-    def get_failover_pools(self):
+    def get_failover_pools(self, **kwargs):
         """Get the failover Ceph pools' names, from both sites.
 
         If the Cinder RBD mirroring mode is 'image', the 'cinder-ceph' pool
@@ -208,7 +214,7 @@ class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
         :returns: Tuple with site-a pools and site-b pools.
         :rtype: Tuple[List[str], List[str]]
         """
-        site_a_pools, site_b_pools = self.get_pools()
+        site_a_pools, site_b_pools = self.get_pools(**kwargs)
         if get_cinder_rbd_mirroring_mode(self.cinder_ceph_app_name) == 'image':
             site_a_pools.remove(self.cinder_ceph_app_name)
             site_b_pools.remove(self.cinder_ceph_app_name)
@@ -667,13 +673,17 @@ class CephRBDMirrorControlledFailoverTest(CephRBDMirrorBase):
         # Validate that the Ceph images from site-b report 'up+replaying'
         # (which is reported by secondary Ceph images). And check that images
         # exist in Cinder and Glance pools.
-        self.wait_for_mirror_state(
-            'up+replaying',
-            check_entries_behind_master=True,
-            application_name=site_b_app_name,
-            model_name=self.site_b_model,
-            require_images_in=[self.cinder_ceph_app_name, 'glance'],
-            pools=site_b_pools)
+        if result.results['output']:
+            # Depending on timing, there may be no images that were resynced.
+            # As such, only run the following check when there are images,
+            # to avoid going into an infinite loop.
+            self.wait_for_mirror_state(
+                'up+replaying',
+                check_entries_behind_master=True,
+                application_name=site_b_app_name,
+                model_name=self.site_b_model,
+                require_images_in=[self.cinder_ceph_app_name, 'glance'],
+                pools=site_b_pools)
 
 
 class CephRBDMirrorDisasterFailoverTest(CephRBDMirrorBase):
@@ -738,7 +748,7 @@ class CephRBDMirrorDisasterFailoverTest(CephRBDMirrorBase):
         * Execute the forced failover via Juju actions
         """
         # Get the site-b Ceph pools that need to be promoted
-        _, site_b_pools = self.get_failover_pools()
+        _, site_b_pools = self.get_failover_pools(include_internal_pools=True)
         site_b_app_name = self.application_name + self.site_b_app_suffix
 
         # Simulate primary site unexpected shutdown
@@ -765,7 +775,8 @@ class CephRBDMirrorDisasterFailoverTest(CephRBDMirrorBase):
             model_name=self.site_b_model,
             action_params={
                 'force': True,
-                'pools': ','.join(site_b_pools),
+                'pools': ','.join(pool for pool in site_b_pools
+                                  if pool not in INTERNAL_POOLS)
             })
         self.assertEqual(int(result.results['Code']), 0)
 
