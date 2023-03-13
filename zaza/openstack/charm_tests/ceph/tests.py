@@ -563,13 +563,14 @@ class CephTest(test_utils.BaseCharmTest):
         self.assertEqual(results['osd-ids'], osd_id)
         zaza_model.run_on_unit(unit, 'partprobe')
 
-    def remove_one_osd(self, unit):
+    def remove_one_osd(self, unit, block_devs):
         """Remove one device from osd unit.
 
         :param unit: Unit name where the osd device is to be removed from.
         :type unit: str
+        :params block_devs: list of block devices on the scpecified unit
+        :type block_devs: list[str]
         """
-        block_devs = self.get_osd_devices_on_unit(unit)
         # Should have more than 1 OSDs to take one out and test.
         self.assertGreater(len(block_devs), 1)
 
@@ -593,10 +594,17 @@ class CephTest(test_utils.BaseCharmTest):
         # Remove one of the two disks.
         logging.info('Removing single disk from each OSD')
         for unit in osds:
-            device_info = self.remove_one_osd(unit)
+            block_devs = self.get_osd_devices_on_unit(unit)
+            if len(block_devs) < 2:
+                continue
+            device_info = self.remove_one_osd(unit, block_devs)
             block_dev = device_info['block-device']
             logging.info("Removing device %s from unit %s" % (block_dev, unit))
             osd_info[unit] = device_info
+        if not osd_info:
+            raise unittest.SkipTest(
+                'Skipping OSD replacement Test, no spare devices added')
+
         logging.debug('Removed OSD Info: {}'.format(osd_info))
         zaza_model.wait_for_application_states()
 
