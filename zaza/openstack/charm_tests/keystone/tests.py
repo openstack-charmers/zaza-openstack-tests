@@ -18,7 +18,9 @@ import configparser
 import json
 import logging
 import pprint
+import tenacity
 import keystoneauth1
+from keystoneauth1.exceptions.connection import ConnectFailure
 
 import zaza.model
 import zaza.openstack.utilities.exceptions as zaza_exceptions
@@ -511,6 +513,9 @@ class LdapTests(BaseKeystoneTest):
             }
         }
 
+    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=2, max=60),
+                    reraise=True, stop=tenacity.stop_after_attempt(5),
+                    retry=tenacity.retry_if_exception_type(ConnectFailure))
     def _find_keystone_v3_user(self, username, domain, group=None):
         """Find a user within a specified keystone v3 domain.
 
