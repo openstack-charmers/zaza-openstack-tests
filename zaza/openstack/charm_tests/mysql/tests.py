@@ -14,6 +14,7 @@
 
 """MySQL/Percona Cluster Testing."""
 
+import configparser
 import json
 import logging
 import os
@@ -547,6 +548,101 @@ class MySQLInnoDBClusterTests(MySQLCommonTests):
             "Set cluster option {}={} action failed: {}"
             .format(_key, _value, action.data))
         logging.info("Passed set cluster option action test.")
+
+
+class MySQLInnoDBClusterRotatePasswordTests(MySQLCommonTests):
+    """Mysql-innodb-cluster charm tests.
+
+    Note: The restart on changed and pause/resume tests also validate the
+    changing of the R/W primary. On each mysqld shutodown a new R/W primary is
+    elected automatically by MySQL.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running mysql-innodb-cluster tests."""
+        super().setUpClass()
+        cls.application = "mysql-innodb-cluster"
+
+    def test_rotate_keystone_service_user_password(self):
+        """Verify action used to rotate a service user (keystone) password."""
+        KEYSTONE_APP = 'keystone'
+        KEYSTONE_PASSWD_KEY = "mysql-keystone.passwd"
+        KEYSTONE_CONF_FILE = '/etc/keystone/keystone.conf'
+
+        def _get_password_from_keystone_leader():
+            conf = zaza.model.file_contents(
+                'keystone/leader', KEYSTONE_CONF_FILE)
+            config = configparser.ConfigParser()
+            config.read_string(conf)
+            connection_info = config['database']['connection']
+            match = re.match(r"^mysql.*keystone:(.+)@", connection_info)
+            if match:
+                return match[1]
+            self.fail("Couldn't find mysql password in {}"
+                      .format(connection_info))
+
+        # only do the test if keystone is in the model
+        applications = zaza.model.sync_deployed(self.model_name)
+        if KEYSTONE_APP not in applications:
+            self.skipTest(
+                '{} is not deployed, so not doing password rotation'
+                .format(KEYSTONE_APP))
+
+        # get the users via the 'list-service-usernames' action.
+        logging.info(
+            "Getting usernames from mysql that can have password rotated.")
+        action = zaza.model.run_action_on_leader(
+            self.application,
+            'list-service-usernames',
+            action_params={}
+        )
+        usernames = action.data['results']['usernames']
+        self.assertIn('keystone', usernames)
+        logging.info("... usernames: %s", ', '.join(usernames))
+
+        # grab the password for keystone from the leader / to verify the change
+        old_keystone_passwd_on_mysql = juju_utils.leader_get(
+            self.application_name, KEYSTONE_PASSWD_KEY).strip()
+        old_keystone_passwd_conf = _get_password_from_keystone_leader()
+
+        # verify that keystone is working.
+        admin_keystone_session = (
+            openstack_utils.get_overcloud_keystone_session())
+        keystone_client = openstack_utils.get_keystone_session_client(
+            admin_keystone_session)
+        keystone_client.users.list()
+
+        # now rotate the password for keystone
+        # run the action to rotate the password.
+        logging.info("Rotating password for keystone in mysql.")
+        zaza.model.run_action_on_leader(
+            self.application_name,
+            'rotate-service-user-password',
+            action_params={'service-user': 'keystone'},
+        )
+
+        # let everything settle.
+        logging.info("Waiting for model to settle.")
+        zaza.model.block_until_all_units_idle()
+
+        # verify that the password has changed.
+        new_keystone_passwd_on_mysql = juju_utils.leader_get(
+            self.application_name, KEYSTONE_PASSWD_KEY).strip()
+        new_keystone_passwd_conf = _get_password_from_keystone_leader()
+        self.assertNotEqual(old_keystone_passwd_on_mysql,
+                            new_keystone_passwd_on_mysql)
+        self.assertNotEqual(old_keystone_passwd_conf,
+                            new_keystone_passwd_conf)
+        self.assertEqual(new_keystone_passwd_on_mysql,
+                         new_keystone_passwd_conf)
+
+        # finally, verify that keystone is still working.
+        admin_keystone_session = (
+            openstack_utils.get_overcloud_keystone_session())
+        keystone_client = openstack_utils.get_keystone_session_client(
+            admin_keystone_session)
+        keystone_client.users.list()
 
 
 class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
