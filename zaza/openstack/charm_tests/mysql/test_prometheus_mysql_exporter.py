@@ -118,7 +118,7 @@ class PrometheusMySQLExporterTest(MySQLBaseTest):
             self.assertEqual(
                 json_mysql_config,
                 {
-                    "host": unit.public_address,
+                    "host": zaza_model.get_unit_public_address(unit),
                     "port": 3306,
                     "user": "prom_exporter"
                 }
