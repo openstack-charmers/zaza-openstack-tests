@@ -642,6 +642,7 @@ class MySQLInnoDBClusterRotatePasswordTests(MySQLCommonTests):
 
         # let everything settle.
         logging.info("Waiting for model to settle.")
+        zaza.model.wait_for_agent_status()
         zaza.model.block_until_all_units_idle()
 
         # verify that the password has changed.
