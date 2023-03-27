@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import tempfile
+import tenacity
 import unittest
 import urllib
 from configparser import ConfigParser
@@ -769,6 +770,8 @@ class NovaCloudControllerActionTest(test_utils.OpenStackBaseTest):
     to avoid breaking older version.
     """
 
+    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
+                    reraise=True, stop=tenacity.stop_after_attempt(4))
     def test_sync_compute_az_action(self):
         """Test sync-compute-availability-zones action."""
         juju_units_az_map = {}

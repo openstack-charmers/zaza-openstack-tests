@@ -616,6 +616,8 @@ class CinderTests(BasePolicydSpecialization):
         super(CinderTests, cls).setUpClass(application_name="cinder")
         cls.application_name = "cinder"
 
+    @tenacity.retry(wait=tenacity.wait_fixed(1),
+                    reraise=True, stop=tenacity.stop_after_delay(8))
     def get_client_and_attempt_operation(self, ip):
         """Attempt to list the images as a policyd override.
 
