@@ -358,6 +358,10 @@ class BasicStringComparator(object):
         """Do less than or equals."""
         return not self.__gt__(other)
 
+    def __repr__(self):
+        """Return the representation of CompareOpenStack."""
+        return "%s<%s>" % (self.__class__.__name__, self._list[self.index])
+
     def __str__(self):
         """Give back the item at the index.
 
@@ -383,3 +387,15 @@ class CompareHostReleases(BasicStringComparator):
     """
 
     _list = UBUNTU_RELEASES
+
+
+class CompareOpenStack(BasicStringComparator):
+    """Provide comparisons of OpenStack releases.
+
+    Use in the form of
+
+    if CompareOpenStack(release) > 'yoga':
+        # do something
+    """
+
+    _list = list(OPENSTACK_CODENAMES.values())
