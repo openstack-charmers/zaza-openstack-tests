@@ -615,7 +615,7 @@ class MySQLInnoDBClusterRotatePasswordTests(MySQLCommonTests):
             'list-service-usernames',
             action_params={}
         )
-        usernames = action.data['results']['usernames']
+        usernames = action.data['results']['usernames'].split(',')
         self.assertIn('keystone', usernames)
         logging.info("... usernames: %s", ', '.join(usernames))
 
