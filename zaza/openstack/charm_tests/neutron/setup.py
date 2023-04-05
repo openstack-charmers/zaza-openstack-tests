@@ -25,9 +25,8 @@ from zaza.openstack.utilities import (
     generic as generic_utils,
     openstack as openstack_utils,
 )
-
+import zaza.model
 import zaza.utilities.juju as juju_utils
-
 import zaza.charm_lifecycle.utils as lifecycle_utils
 
 
@@ -160,6 +159,15 @@ def vlan_provider_overcloud_network():
     # Configure the overcloud network
     network.setup_sdn_provider_vlan(network_config,
                                     keystone_session=keystone_session)
+
+
+def workaround_lp2015090():
+    """Restart neutron DHCP agent (LP: #2015090)."""
+    logging.info('Running workaround for bug http://pad.lv/2015090')
+    cmd_restart = "sudo systemctl restart neutron-dhcp-agent.service"
+    for unit in zaza.model.get_units('neutron-openvswitch'):
+        logging.info('Restarting neutron-dhcp-agent on %s', unit.entity_id)
+        zaza.model.run_on_unit(unit.entity_id, cmd_restart)
 
 
 # Configure function to get one gateway with external network

@@ -1283,3 +1283,11 @@ class NeutronTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
     """Test neutron k8s scale out and scale back."""
 
     application_name = "neutron"
+
+
+class WorkaroundLP2015090(test_utils.OpenStackBaseTest):
+    """Workaround for bug 2015090."""
+
+    def test_lp2015090(self):
+        """Restart neutron DHCP agent (LP: #2015090)."""
+        neutron_setup.workaround_lp2015090()
