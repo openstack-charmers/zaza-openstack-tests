@@ -646,15 +646,28 @@ class MySQLInnoDBClusterRotatePasswordTests(MySQLCommonTests):
         zaza.model.block_until_all_units_idle()
 
         # verify that the password has changed.
-        new_keystone_passwd_on_mysql = juju_utils.leader_get(
-            self.application_name, KEYSTONE_PASSWD_KEY).strip()
-        new_keystone_passwd_conf = _get_password_from_keystone_leader()
-        self.assertNotEqual(old_keystone_passwd_on_mysql,
-                            new_keystone_passwd_on_mysql)
-        self.assertNotEqual(old_keystone_passwd_conf,
-                            new_keystone_passwd_conf)
-        self.assertEqual(new_keystone_passwd_on_mysql,
-                         new_keystone_passwd_conf)
+        # Due to the async-ness of the whole model and when the various hooks
+        # will fire between mysql-innodb-cluster, the mysql-router and
+        # keystone, so we retry a reasonable time to wait for everything to
+        # propagate through.
+        for attempt in tenacity.Retrying(
+            reraise=True,
+            wait=tenacity.wait_fixed(30),
+            stop=tenacity.stop_after_attempt(20),  # wait for max 10m
+        ):
+            with attempt:
+                new_keystone_passwd_on_mysql = juju_utils.leader_get(
+                    self.application_name, KEYSTONE_PASSWD_KEY).strip()
+                new_keystone_passwd_conf = _get_password_from_keystone_leader()
+                self.assertNotEqual(old_keystone_passwd_on_mysql,
+                                    new_keystone_passwd_on_mysql)
+                self.assertNotEqual(old_keystone_passwd_conf,
+                                    new_keystone_passwd_conf)
+                self.assertEqual(new_keystone_passwd_on_mysql,
+                                 new_keystone_passwd_conf)
+
+        # really wait for keystone to finish it's thing
+        zaza.model.block_until_all_units_idle()
 
         # finally, verify that keystone is still working.
         admin_keystone_session = (
