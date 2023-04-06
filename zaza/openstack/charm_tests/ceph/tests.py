@@ -401,12 +401,11 @@ class CephTest(test_utils.BaseCharmTest):
         logging.info('Checking pause and resume actions...')
         self.pause_resume(['ceph-osd'])
 
-    def get_unused_device(self, unit):
-        """Return an unusued (i.e: pristine) device for a specific unit."""
-        obj = zaza_model.run_action(unit_name=unit, action_name='list-disks')
-        disks = obj.data['results']['disks']
-        disks = json.loads(disks.replace("'", '"'))
-        return disks[0] if disks else None
+    def get_device_for_blacklist(self, unit):
+        """Return a device to be used by the blacklist tests."""
+        cmd = "mount | grep 'on / ' | awk '{print $1}'"
+        obj = zaza_model.run_on_unit(unit, cmd)
+        return obj.get('Stdout').strip()
 
     def test_blacklist(self):
         """Check the blacklist action.
@@ -447,15 +446,15 @@ class CephTest(test_utils.BaseCharmTest):
         )
 
         # Attempt to add device with existent path should succeed
-        unused_dev = self.get_unused_device(unit_name)
-        if unused_dev is None:
+        device = self.get_device_for_blacklist(unit_name)
+        if not device:
             raise unittest.SkipTest(
-                "Skipping rest of test because there are no unused devices")
+                "Skipping test because no device was found")
 
         action_obj = zaza_model.run_action(
             unit_name=unit_name,
             action_name='blacklist-add-disk',
-            action_params={'osd-devices': unused_dev}
+            action_params={'osd-devices': device}
         )
         self.assertEqual('completed', action_obj.status)
         zaza_model.block_until_unit_wl_status(
@@ -467,7 +466,7 @@ class CephTest(test_utils.BaseCharmTest):
         action_obj = zaza_model.run_action(
             unit_name=unit_name,
             action_name='blacklist-remove-disk',
-            action_params={'osd-devices': unused_dev}
+            action_params={'osd-devices': device}
         )
         self.assertEqual('completed', action_obj.status)
         zaza_model.block_until_unit_wl_status(
