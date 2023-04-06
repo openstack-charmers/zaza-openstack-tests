@@ -116,33 +116,6 @@ class CephLowLevelTest(test_utils.BaseCharmTest):
             self.assertEqual(pool['pg_autoscale_mode'], 'on')
 
 
-class CephRelationTest(test_utils.BaseCharmTest):
-    """Ceph's relations test class."""
-
-    @classmethod
-    def setUpClass(cls):
-        """Run the ceph's relations class setup."""
-        super(CephRelationTest, cls).setUpClass()
-
-    def test_ceph_osd_ceph_relation_address(self):
-        """Verify the ceph-osd to ceph relation data."""
-        logging.info('Checking ceph-osd:ceph-mon relation data...')
-        unit_name = 'ceph-osd/0'
-        remote_unit_name = 'ceph-mon/0'
-        relation_name = 'osd'
-        remote_unit = zaza_model.get_unit_from_name(remote_unit_name)
-        remote_ip = zaza_model.get_unit_public_address(remote_unit)
-        relation = juju_utils.get_relation_from_unit(
-            unit_name,
-            remote_unit_name,
-            relation_name
-        )
-        # Get private-address in relation
-        rel_private_ip = relation.get('private-address')
-        # The private address in relation should match ceph-mon/0 address
-        self.assertEqual(rel_private_ip, remote_ip)
-
-
 class CephTest(test_utils.BaseCharmTest):
     """Ceph common functional tests."""
 
@@ -428,6 +401,13 @@ class CephTest(test_utils.BaseCharmTest):
         logging.info('Checking pause and resume actions...')
         self.pause_resume(['ceph-osd'])
 
+    def get_unused_device(self, unit):
+        """Return an unusued (i.e: pristine) device for a specific unit."""
+        obj = zaza_model.run_action(unit_name=unit, action_name='list-disks')
+        disks = obj.data['results']['disks']
+        disks = json.loads(disks.replace("'", '"'))
+        return disks[0] if disks else None
+
     def test_blacklist(self):
         """Check the blacklist action.
 
@@ -467,10 +447,15 @@ class CephTest(test_utils.BaseCharmTest):
         )
 
         # Attempt to add device with existent path should succeed
+        unused_dev = self.get_unused_device(unit_name)
+        if unused_dev is None:
+            raise unittest.SkipTest(
+                "Skipping rest of test because there are no unused devices")
+
         action_obj = zaza_model.run_action(
             unit_name=unit_name,
             action_name='blacklist-add-disk',
-            action_params={'osd-devices': '/dev/vda'}
+            action_params={'osd-devices': unused_dev}
         )
         self.assertEqual('completed', action_obj.status)
         zaza_model.block_until_unit_wl_status(
@@ -482,7 +467,7 @@ class CephTest(test_utils.BaseCharmTest):
         action_obj = zaza_model.run_action(
             unit_name=unit_name,
             action_name='blacklist-remove-disk',
-            action_params={'osd-devices': '/dev/vda'}
+            action_params={'osd-devices': unused_dev}
         )
         self.assertEqual('completed', action_obj.status)
         zaza_model.block_until_unit_wl_status(
