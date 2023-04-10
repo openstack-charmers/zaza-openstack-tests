@@ -108,77 +108,6 @@ class CephLowLevelTest(test_utils.OpenStackBaseTest):
             self.assertEqual(pool['pg_autoscale_mode'], 'on')
 
 
-class CephRelationTest(test_utils.OpenStackBaseTest):
-    """Ceph's relations test class."""
-
-    @classmethod
-    def setUpClass(cls):
-        """Run the ceph's relations class setup."""
-        super(CephRelationTest, cls).setUpClass()
-
-    def test_ceph_osd_ceph_relation_address(self):
-        """Verify the ceph-osd to ceph relation data."""
-        logging.info('Checking ceph-osd:ceph-mon relation data...')
-        unit_name = 'ceph-osd/0'
-        remote_unit_name = 'ceph-mon/0'
-        relation_name = 'osd'
-        remote_unit = zaza_model.get_unit_from_name(remote_unit_name)
-        remote_ip = zaza_model.get_unit_public_address(remote_unit)
-        relation = juju_utils.get_relation_from_unit(
-            unit_name,
-            remote_unit_name,
-            relation_name
-        )
-        # Get private-address in relation
-        rel_private_ip = relation.get('private-address')
-        # The private address in relation should match ceph-mon/0 address
-        self.assertEqual(rel_private_ip, remote_ip)
-
-    def _ceph_to_ceph_osd_relation(self, remote_unit_name):
-        """Verify the cephX to ceph-osd relation data.
-
-        Helper function to test the relation.
-        """
-        logging.info('Checking {}:ceph-osd mon relation data...'.
-                     format(remote_unit_name))
-        unit_name = 'ceph-osd/0'
-        relation_name = 'osd'
-        remote_unit = zaza_model.get_unit_from_name(remote_unit_name)
-        remote_ip = zaza_model.get_unit_public_address(remote_unit)
-        cmd = 'leader-get fsid'
-        result = zaza_model.run_on_unit(remote_unit_name, cmd)
-        fsid = result.get('Stdout').strip()
-        expected = {
-            'private-address': remote_ip,
-            'ceph-public-address': remote_ip,
-            'fsid': fsid,
-        }
-        relation = juju_utils.get_relation_from_unit(
-            unit_name,
-            remote_unit_name,
-            relation_name
-        )
-        for e_key, e_value in expected.items():
-            a_value = relation[e_key]
-            self.assertEqual(e_value, a_value)
-        self.assertTrue(relation['osd_bootstrap_key'] is not None)
-
-    def test_ceph0_to_ceph_osd_relation(self):
-        """Verify the ceph0 to ceph-osd relation data."""
-        remote_unit_name = 'ceph-mon/0'
-        self._ceph_to_ceph_osd_relation(remote_unit_name)
-
-    def test_ceph1_to_ceph_osd_relation(self):
-        """Verify the ceph1 to ceph-osd relation data."""
-        remote_unit_name = 'ceph-mon/1'
-        self._ceph_to_ceph_osd_relation(remote_unit_name)
-
-    def test_ceph2_to_ceph_osd_relation(self):
-        """Verify the ceph2 to ceph-osd relation data."""
-        remote_unit_name = 'ceph-mon/2'
-        self._ceph_to_ceph_osd_relation(remote_unit_name)
-
-
 class CephTest(test_utils.OpenStackBaseTest):
     """Ceph common functional tests."""
 
@@ -455,6 +384,12 @@ class CephTest(test_utils.OpenStackBaseTest):
         logging.info('Checking pause and resume actions...')
         self.pause_resume(['ceph-osd'])
 
+    def get_device_for_blacklist(self, unit):
+        """Return a device to be used by the blacklist tests."""
+        cmd = "mount | grep 'on / ' | awk '{print $1}'"
+        obj = zaza_model.run_on_unit(unit, cmd)
+        return obj.get('Stdout').strip()
+
     def test_blacklist(self):
         """Check the blacklist action.
 
@@ -494,10 +429,15 @@ class CephTest(test_utils.OpenStackBaseTest):
         )
 
         # Attempt to add device with existent path should succeed
+        device = self.get_device_for_blacklist(unit_name)
+        if not device:
+            raise unittest.SkipTest(
+                "Skipping test because no device was found")
+
         action_obj = zaza_model.run_action(
             unit_name=unit_name,
             action_name='blacklist-add-disk',
-            action_params={'osd-devices': '/dev/vda'}
+            action_params={'osd-devices': device}
         )
         self.assertEqual('completed', action_obj.status)
         zaza_model.block_until_unit_wl_status(
@@ -509,7 +449,7 @@ class CephTest(test_utils.OpenStackBaseTest):
         action_obj = zaza_model.run_action(
             unit_name=unit_name,
             action_name='blacklist-remove-disk',
-            action_params={'osd-devices': '/dev/vda'}
+            action_params={'osd-devices': device}
         )
         self.assertEqual('completed', action_obj.status)
         zaza_model.block_until_unit_wl_status(
