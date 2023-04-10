@@ -16,6 +16,9 @@
 
 import logging
 import tempfile
+import tenacity
+from keystoneauth1.exceptions.connection import ConnectFailure
+
 import zaza.model
 from zaza.openstack.utilities import openstack as openstack_utils
 from zaza.openstack.charm_tests.kerberos import KerberosConfigurationError
@@ -125,6 +128,9 @@ def retrieve_and_attach_keytab():
     zaza.model.block_until_all_units_idle()
 
 
+@tenacity.retry(wait=tenacity.wait_exponential(multiplier=2, max=60),
+                reraise=True, stop=tenacity.stop_after_attempt(5),
+                retry=tenacity.retry_if_exception_type(ConnectFailure))
 def openstack_setup_kerberos():
     """Create a test domain, project, and user for kerberos tests."""
     kerberos_domain = 'k8s'

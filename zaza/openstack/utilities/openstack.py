@@ -38,6 +38,7 @@ import urllib
 
 
 from .os_versions import (
+    CompareOpenStack,
     OPENSTACK_CODENAMES,
     SWIFT_CODENAMES,
     OVN_CODENAMES,
@@ -2116,7 +2117,7 @@ def get_keystone_api_version(model_name=None):
         'keystone',
         'preferred-api-version',
         model_name=model_name)
-    if os_version >= 'queens':
+    if CompareOpenStack(os_version) >= 'queens':
         api_version = 3
     elif api_version is None:
         api_version = 2

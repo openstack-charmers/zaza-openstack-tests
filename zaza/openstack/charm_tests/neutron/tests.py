@@ -33,6 +33,7 @@ import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.configure.guest as guest
 import zaza.openstack.utilities.openstack as openstack_utils
+import zaza.openstack.charm_tests.tempest.tests as tempest_tests
 import zaza.utilities.machine_os
 
 
@@ -1276,3 +1277,9 @@ class NeutronGatewayDeferredRestartTest(test_utils.BaseDeferredRestartTest):
     def check_clear_hooks(self):
         """Gateway does not defer hooks so noop."""
         return
+
+
+class NeutronTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
+    """Test neutron k8s scale out and scale back."""
+
+    application_name = "neutron"

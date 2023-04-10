@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import tempfile
+import tenacity
 import unittest
 import urllib
 from configparser import ConfigParser
@@ -35,6 +36,7 @@ import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.generic as generic_utils
 import zaza.openstack.configure.guest as guest
 import zaza.openstack.utilities.openstack as openstack_utils
+import zaza.openstack.charm_tests.tempest.tests as tempest_tests
 from zaza.utilities import juju as juju_utils
 
 
@@ -768,6 +770,8 @@ class NovaCloudControllerActionTest(test_utils.OpenStackBaseTest):
     to avoid breaking older version.
     """
 
+    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
+                    reraise=True, stop=tenacity.stop_after_attempt(4))
     def test_sync_compute_az_action(self):
         """Test sync-compute-availability-zones action."""
         juju_units_az_map = {}
@@ -1165,3 +1169,9 @@ class SecurityTests(test_utils.OpenStackBaseTest):
                 expected_passes,
                 expected_failures,
                 expected_to_pass=not len(expected_failures))
+
+
+class NovaTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
+    """Test nova k8s scale out and scale back."""
+
+    application_name = "nova"

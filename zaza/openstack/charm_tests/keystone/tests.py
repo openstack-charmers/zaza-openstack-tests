@@ -18,7 +18,9 @@ import configparser
 import json
 import logging
 import pprint
+import tenacity
 import keystoneauth1
+from keystoneauth1.exceptions.connection import ConnectFailure
 
 import zaza.model
 import zaza.openstack.utilities.exceptions as zaza_exceptions
@@ -26,6 +28,8 @@ import zaza.utilities.juju as juju_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.charm_lifecycle.utils as lifecycle_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
+import zaza.openstack.charm_tests.tempest.tests as tempest_tests
+
 from zaza.openstack.charm_tests.keystone import (
     BaseKeystoneTest,
     DEMO_DOMAIN,
@@ -509,6 +513,9 @@ class LdapTests(BaseKeystoneTest):
             }
         }
 
+    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=2, max=60),
+                    reraise=True, stop=tenacity.stop_after_attempt(5),
+                    retry=tenacity.retry_if_exception_type(ConnectFailure))
     def _find_keystone_v3_user(self, username, domain, group=None):
         """Find a user within a specified keystone v3 domain.
 
@@ -772,3 +779,9 @@ class LdapExplicitCharmConfigTests(LdapTests):
                 self.assertIn("group_tree_dn = ou=groups", result['stdout'],
                               "user_tree_dn value is expected to be present "
                               "and set to dc=test,dc=com in the config file")
+
+
+class KeystoneTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
+    """Test keystone k8s scale out and scale back."""
+
+    application_name = "keystone"
