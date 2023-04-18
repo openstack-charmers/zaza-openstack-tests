@@ -55,8 +55,7 @@ class DesignateBindServiceIPsTest(test_utils.OpenStackBaseTest):
                                 reraise=True,
                                 stop=stop_after_attempt(10)):
             with attempt:
-                configured_ips = zaza_model.run_on_unit(self.UNIT,
-                                                        "ip addr")
+                configured_ips = zaza_model.run_on_unit(self.UNIT, "ip addr")
                 self.assertIn(self.VIP, configured_ips["Stdout"])
 
         logging.info("Removing service IP configuration from %s unit.",
@@ -65,5 +64,10 @@ class DesignateBindServiceIPsTest(test_utils.OpenStackBaseTest):
         zaza_model.set_application_config(self.APPLICATION, config)
         zaza_model.wait_for_application_states()
 
-        configured_ips = zaza_model.run_on_unit(self.UNIT, "ip addr")
-        self.assertNotIn(self.VIP, configured_ips["Stdout"])
+        for attempt in Retrying(wait=wait_fixed(2),
+                                retry=retry_if_exception_type(AssertionError),
+                                reraise=True,
+                                stop=stop_after_attempt(10)):
+            with attempt:
+                configured_ips = zaza_model.run_on_unit(self.UNIT, "ip addr")
+                self.assertNotIn(self.VIP, configured_ips["Stdout"])
