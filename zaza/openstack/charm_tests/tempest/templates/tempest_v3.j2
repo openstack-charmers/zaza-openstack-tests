@@ -138,3 +138,7 @@ insecure_registry = {{ test_registry_prefix }}
 
 [dns]
 nameservers = {{ test_name_server }}
+
+[service-clients]
+# Default is 60s which is not enough for resource constrained environments.
+http_timeout = 120
