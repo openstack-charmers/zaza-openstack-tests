@@ -46,8 +46,7 @@ install_require = [
     'PyYAML',
     'tenacity',
     'oslo.config<6.12.0',
-    'pyparsing<3.0.0',  # pin for aodhclient which is held for py35
-    'aodhclient<1.4.0',
+    'aodhclient',
     'gnocchiclient>=7.0.5,<8.0.0',
     'pika>=1.1.0,<2.0.0',
     'python-barbicanclient>=4.0.1,<5.0.0',
