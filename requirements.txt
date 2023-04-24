@@ -1,20 +1,28 @@
 # pin lxml < 4.6.3 for py35 as no wheels exist for 4.6.3 (deprecated platform)
 # This is necessary for Xenial builders
 # BUG: https://github.com/openstack-charmers/zaza-openstack-tests/issues/530
-lxml<4.6.3
-pyparsing<3.0.0  # pin for aodhclient which is held for py35
+lxml<4.6.3; python_version < '3.8'
+lxml; python_version >= '3.8'
+pyparsing<3.0.0; python_version <= '3.5'  # pin for aodhclient which is held for py35
 aiounittest
 async_generator
+# pyopenssl depends on a newer version of cryptography since 22.1.0
+# TypeError: deprecated() got an unexpected keyword argument 'name'
+# https://github.com/pyca/pyopenssl/commit/a145fc3bc6d2e943434beb2f04bbf9b18930296f
+pyopenssl<22.1.0
+
 boto3<1.25
-PyYAML<=4.2,>=3.0
+PyYAML<=4.2,>=3.0; python_version < '3.9'
+PyYAML>=5.1; python_version >= '3.9'
 flake8>=2.2.4
 flake8-docstrings
 flake8-per-file-ignores
 pydocstyle<4.0.0
 coverage<6.0.0  # coverage 6.0+ drops support for py3.5/py2.7
 mock>=1.2
-nose>=1.3.7
-pbr>=1.8.0,<1.9.0
+pytest
+pytest-cov
+pbr>=1.8.0
 simplejson>=2.2.0
 netifaces>=0.10.4
 netaddr>=0.7.12,!=0.7.16

@@ -31,9 +31,10 @@ import zaza.openstack.charm_tests.nova.utils as nova_utils
 
 
 def ensure_lts_images():
-    """Ensure that bionic and focal images are available for the tests."""
+    """Ensure LTS images are available for the tests."""
     glance_setup.add_lts_image(image_name='bionic', release='bionic')
     glance_setup.add_lts_image(image_name='focal', release='focal')
+    glance_setup.add_lts_image(image_name='jammy', release='jammy')
 
 
 def add_amphora_image(image_url=None):
@@ -142,9 +143,6 @@ def configure_octavia():
         'octavia',
         'configure-resources',
         action_params={})
-    # When bug #1964117 is fix released for all affected releases this call can
-    # be removed.
-    bug_1964117_workaround()
 
 
 def disable_ohm_port_security():
@@ -164,41 +162,6 @@ def disable_ohm_port_security():
                     {
                         'port_security_enabled': False,
                         'security_groups': []}})
-
-
-def bug_1964117_workaround():
-    """Apply Bug #1964117 if allowed."""
-    if openstack.ovn_present():
-        # Issue only known to affect ml2 ovs so if do not apply work around
-        # to ovn deploys.
-        return
-    allow_pkg_list = ['2.16.0-0ubuntu2.1~cloud0']
-    allow_release_list = ['focal_xena']
-    _allow_release_list = [
-        openstack.get_os_release(r)
-        for r in allow_release_list
-    ]
-    current_release = openstack.get_os_release()
-    if current_release in _allow_release_list:
-        cmd_out = zaza.model.run_on_leader(
-            'octavia',
-            """dpkg -l | awk '/openvswitch-switch/ {print $3;}'""")
-        pkg_version = cmd_out['Stdout'].strip()
-        if pkg_version in allow_pkg_list:
-            logging.info('Disabling port security to work around bug #1964117')
-            disable_ohm_port_security()
-        else:
-            msg = (
-                "Detected Xena deploy and package version {} is not in the "
-                "allow list {}. If you believe that bug #1964117 has been "
-                "resolved please remove the call to this function. If the "
-                "new package does not resolve bug #1964117 then please add "
-                "the new package version to the 'allow_pkg_list' defined at "
-                "the start of this function. If changes are required please "
-                "raise a PR againt "
-                "https://github.com/openstack-charmers/zaza-openstack-tests"
-                "".format(pkg_version, allow_pkg_list))
-            raise Exception(msg)
 
 
 def centralized_fip_network():

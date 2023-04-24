@@ -22,14 +22,9 @@ import logging
 import os
 import time
 
-from zaza import model
+from zaza import model, sync_wrapper
 from zaza.charm_lifecycle import utils as cl_utils
 import zaza.openstack.utilities.generic as os_utils
-
-
-SUBORDINATE_PAUSE_RESUME_BLACKLIST = [
-    "cinder-ceph",
-]
 
 
 def app_config(charm_name, is_async=True):
@@ -166,17 +161,9 @@ def series_upgrade_non_leaders_first(
         if pause_non_leader_subordinate:
             if status["units"][unit].get("subordinates"):
                 for subordinate in status["units"][unit]["subordinates"]:
-                    _app = subordinate.split('/')[0]
-                    if _app in SUBORDINATE_PAUSE_RESUME_BLACKLIST:
-                        logging.info("Skipping pausing {} - blacklisted"
-                                     .format(subordinate))
-                    else:
-                        logging.info("Pausing {}".format(subordinate))
-                        model.run_action(
-                            subordinate, "pause", action_params={})
+                    pause_helper("subordinate", subordinate)
         if pause_non_leader_primary:
-            logging.info("Pausing {}".format(unit))
-            model.run_action(unit, "pause", action_params={})
+            pause_helper("leader", unit)
 
     # Series upgrade the non-leaders first
     for unit in non_leaders:
@@ -270,14 +257,7 @@ async def async_series_upgrade_non_leaders_first(
         if pause_non_leader_subordinate:
             if status["units"][unit].get("subordinates"):
                 for subordinate in status["units"][unit]["subordinates"]:
-                    _app = subordinate.split('/')[0]
-                    if _app in SUBORDINATE_PAUSE_RESUME_BLACKLIST:
-                        logging.info("Skipping pausing {} - blacklisted"
-                                     .format(subordinate))
-                    else:
-                        logging.info("Pausing {}".format(subordinate))
-                        await model.async_run_action(
-                            subordinate, "pause", action_params={})
+                    pause_helper("subordinate", subordinate)
         if pause_non_leader_primary:
             logging.info("Pausing {}".format(unit))
             await model.async_run_action(unit, "pause", action_params={})
@@ -375,17 +355,9 @@ def series_upgrade_application(application, pause_non_leader_primary=True,
         if pause_non_leader_subordinate:
             if status["units"][unit].get("subordinates"):
                 for subordinate in status["units"][unit]["subordinates"]:
-                    _app = subordinate.split('/')[0]
-                    if _app in SUBORDINATE_PAUSE_RESUME_BLACKLIST:
-                        logging.info("Skipping pausing {} - blacklisted"
-                                     .format(subordinate))
-                    else:
-                        logging.info("Pausing {}".format(subordinate))
-                        model.run_action(
-                            subordinate, "pause", action_params={})
+                    pause_helper("subordinate", subordinate)
         if pause_non_leader_primary:
-            logging.info("Pausing {}".format(unit))
-            model.run_action(unit, "pause", action_params={})
+            pause_helper("leader", unit)
 
     machine = status["units"][leader]["machine"]
     # Series upgrade the leader
@@ -491,23 +463,14 @@ async def async_series_upgrade_application(
             leader = unit
         else:
             non_leaders.append(unit)
-
     # Pause the non-leaders
     for unit in non_leaders:
         if pause_non_leader_subordinate:
             if status["units"][unit].get("subordinates"):
                 for subordinate in status["units"][unit]["subordinates"]:
-                    _app = subordinate.split('/')[0]
-                    if _app in SUBORDINATE_PAUSE_RESUME_BLACKLIST:
-                        logging.info("Skipping pausing {} - blacklisted"
-                                     .format(subordinate))
-                    else:
-                        logging.info("Pausing {}".format(subordinate))
-                        await model.async_run_action(
-                            subordinate, "pause", action_params={})
+                    pause_helper("subordinate", subordinate)
         if pause_non_leader_primary:
-            logging.info("Pausing {}".format(unit))
-            await model.async_run_action(unit, "pause", action_params={})
+            pause_helper("leader", unit)
 
     machine = status["units"][leader]["machine"]
     # Series upgrade the leader
@@ -970,3 +933,21 @@ async def async_do_release_upgrade(unit_name):
         'DEBIAN_FRONTEND=noninteractive '
         'do-release-upgrade -f DistUpgradeViewNonInteractive',
         raise_exceptions=True)
+
+
+async def async_pause_helper(_type, unit):
+    """Pause helper to ensure that the log happens nearer to the action.
+
+    :param _type: Type of unit (subordinate/leader), used for logging only
+    :param unit: Unit to pause
+    """
+    logging.info("Pausing ({}) {}".format(_type, unit))
+    app = await model.async_get_application(unit.split('/')[0])
+    if "pause" not in await app.get_actions():
+        logging.info("Skipping pausing {} - no pause action"
+                     .format(unit))
+        return
+    await model.async_run_action(unit, "pause", action_params={})
+    logging.info("Finished Pausing ({}) {}".format(_type, unit))
+
+pause_helper = sync_wrapper(async_pause_helper)

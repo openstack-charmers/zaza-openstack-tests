@@ -473,10 +473,11 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         # Get IP of the prepared payload instances
         payload_ips = []
         for server in (instance_1, instance_2):
-            payload_ips.append(server.networks['private'][0])
+            payload_ips.append(server.networks[openstack_utils.PRIVATE_NET][0])
         self.assertTrue(len(payload_ips) > 0)
 
-        resp = self.neutron_client.list_networks(name='private')
+        resp = self.neutron_client.list_networks(
+            name=openstack_utils.PRIVATE_NET)
         subnet_id = resp['networks'][0]['subnets'][0]
         if openstack_utils.dvr_enabled():
             resp = self.neutron_client.list_networks(
@@ -508,7 +509,9 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
                 raise final_exc
 
             lb_fp = openstack_utils.create_floating_ip(
-                self.neutron_client, 'ext_net', port={'id': lb['vip_port_id']})
+                self.neutron_client,
+                openstack_utils.EXT_NET,
+                port={'id': lb['vip_port_id']})
 
             snippet = 'This is the default welcome page'
             assert snippet in self._get_payload(lb_fp['floating_ip_address'])

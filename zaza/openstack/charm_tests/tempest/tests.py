@@ -17,11 +17,13 @@
 import logging
 import os
 import subprocess
+import tenacity
 
 import zaza
 import zaza.charm_lifecycle.utils
 import zaza.charm_lifecycle.test
 import zaza.openstack.charm_tests.tempest.utils as tempest_utils
+import zaza.charm_lifecycle.utils as lifecycle_utils
 import tempfile
 
 
@@ -119,6 +121,92 @@ class TempestTestWithKeystoneV3(TempestTestBase):
         :rtype: bool
         """
         tempest_utils.render_tempest_config_keystone_v3()
+        return super().run()
+
+
+class TempestTestWithKeystoneMinimal(TempestTestBase):
+    """Tempest test class to validate an OpenStack setup with Keystone V2."""
+
+    def run(self):
+        """Run tempest tests as specified in tests/tests.yaml.
+
+        Allow test to run even if some components are missing (like
+        external network setup).
+        See TempestTestBase.run() for the available test options.
+
+        :returns: Status of tempest run
+        :rtype: bool
+        """
+        tempest_utils.render_tempest_config_keystone_v3(minimal=True)
+        return super().run()
+
+
+class TempestTestScaleK8SBase(TempestTestBase):
+    """Tempest test class to validate an OpenStack setup after scaling."""
+
+    @property
+    def application_name(self):
+        """Name of application to scale."""
+        raise NotImplementedError()
+
+    @property
+    def expected_statuses(self):
+        """Collect expected statuses from config."""
+        test_config = lifecycle_utils.get_charm_config(fatal=False)
+        return test_config.get("target_deploy_status", {})
+
+    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
+                    reraise=True, stop=tenacity.stop_after_attempt(8))
+    def wait_for_dead_units(self, application_name, dead_count):
+        """Check that dying units have appeared.
+
+        Due to Bug: #2009503 the old units remain in the model but
+        are marked as dying
+        """
+        logging.warning(
+            "Waiting for dying units to work around Bug #2009503. If this is "
+            "fixed please update this test")
+        app_status = zaza.model.get_status()['applications'][
+            application_name]
+        dead_units = [ustatus
+                      for ustatus in app_status['units'].values()
+                      if ustatus.agent_status.life == 'dying']
+        assert len(dead_units) == dead_count
+
+    def run(self):
+        """Run tempest tests as specified in tests/tests.yaml.
+
+        Allow test to run even if some components are missing (like
+        external network setup).
+        See TempestTestBase.run() for the available test options.
+
+        :returns: Status of tempest run
+        :rtype: bool
+        """
+        tempest_utils.render_tempest_config_keystone_v3(minimal=True)
+        if not super().run():
+            return False
+
+        logging.info("Adding unit ...")
+        zaza.model.scale(self.application_name, scale_change=1, wait=True)
+        logging.info("Wait till model is idle ...")
+        zaza.model.block_until_all_units_idle()
+        logging.info("Wait for status ready ...")
+        zaza.model.wait_for_application_states(states=self.expected_statuses)
+        tempest_utils.render_tempest_config_keystone_v3(minimal=True)
+        if not super().run():
+            return False
+
+        # Cannot use normal wait as removed units remain in juju status
+        # Bug: #2009503
+        logging.info("Scaling back ...")
+        zaza.model.scale(self.application_name, scale_change=-1, wait=False)
+        self.wait_for_dead_units(self.application_name, 1)
+        logging.info("Wait till model is idle ...")
+        zaza.model.block_until_all_units_idle()
+        logging.info("Wait for status ready ...")
+        zaza.model.wait_for_application_states(states=self.expected_statuses)
+        tempest_utils.render_tempest_config_keystone_v3(minimal=True)
         return super().run()
 
 

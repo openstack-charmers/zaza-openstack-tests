@@ -22,6 +22,7 @@ import os
 import sys
 import unittest
 import juju
+import zaza
 
 from zaza import model
 from zaza.openstack.utilities import (
@@ -66,6 +67,7 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
         cls.from_series = None
         cls.to_series = None
         cls.workaround_script = None
+        cls.vault_unsealer = None
         cls.files = []
 
     def test_200_run_series_upgrade(self):
@@ -77,6 +79,7 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
             target_series=self.to_series)
         from_series = self.from_series
         to_series = self.to_series
+        vault_unsealer = self.vault_unsealer
         completed_machines = []
         workaround_script = None
         files = []
@@ -102,9 +105,14 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
             # unstable if all the applications are done at the same time.
             sem = asyncio.Semaphore(4)
             for charm_name in apps:
+                if applications[charm_name]["series"] == to_series:
+                    logging.warn("{} already has series {}, skipping".format(
+                        charm_name, to_series))
+                    continue
                 charm = applications[charm_name]['charm']
                 name = upgrade_utils.extract_charm_name_from_url(charm)
-                upgrade_config = parallel_series_upgrade.app_config(name)
+                upgrade_config = parallel_series_upgrade.app_config(
+                    name, vault_unsealer)
                 upgrade_functions.append(
                     wrap_coroutine_with_sem(
                         sem,
@@ -116,8 +124,7 @@ class ParallelSeriesUpgradeTest(unittest.TestCase):
                             completed_machines=completed_machines,
                             workaround_script=workaround_script,
                             files=files)))
-            asyncio.get_event_loop().run_until_complete(
-                asyncio.gather(*upgrade_functions))
+            zaza.run(asyncio.gather(*upgrade_functions))
             model.block_until_all_units_idle()
             logging.info("Finished {}".format(group_name))
         logging.info("Done!")
@@ -191,10 +198,21 @@ class BionicFocalSeriesUpgrade(OpenStackParallelSeriesUpgrade):
 
     @classmethod
     def setUpClass(cls):
-        """Run setup for Xenial to Bionic Series Upgrades."""
+        """Run setup for Bionic to Focal Series Upgrades."""
         super(BionicFocalSeriesUpgrade, cls).setUpClass()
         cls.from_series = "bionic"
         cls.to_series = "focal"
+
+
+class FocalJammySeriesUpgrade(OpenStackParallelSeriesUpgrade):
+    """OpenStack Bionic to FocalSeries Upgrade."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run setup for Focal to Jammy Series Upgrades."""
+        super(BionicFocalSeriesUpgrade, cls).setUpClass()
+        cls.from_series = "focal"
+        cls.to_series = "jammy"
 
 
 class UbuntuLiteParallelSeriesUpgrade(unittest.TestCase):

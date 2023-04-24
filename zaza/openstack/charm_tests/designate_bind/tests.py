@@ -16,6 +16,13 @@
 import logging
 import os
 
+from tenacity import (
+    Retrying,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_fixed,
+)
+
 import zaza.model as zaza_model
 import zaza.openstack.charm_tests.test_utils as test_utils
 
@@ -43,8 +50,13 @@ class DesignateBindServiceIPsTest(test_utils.OpenStackBaseTest):
         zaza_model.set_application_config(self.APPLICATION, config)
         zaza_model.wait_for_application_states()
 
-        configured_ips = zaza_model.run_on_unit(self.UNIT, "ip addr")
-        self.assertIn(self.VIP, configured_ips["Stdout"])
+        for attempt in Retrying(wait=wait_fixed(2),
+                                retry=retry_if_exception_type(AssertionError),
+                                reraise=True,
+                                stop=stop_after_attempt(10)):
+            with attempt:
+                configured_ips = zaza_model.run_on_unit(self.UNIT, "ip addr")
+                self.assertIn(self.VIP, configured_ips["Stdout"])
 
         logging.info("Removing service IP configuration from %s unit.",
                      self.UNIT)
@@ -52,5 +64,10 @@ class DesignateBindServiceIPsTest(test_utils.OpenStackBaseTest):
         zaza_model.set_application_config(self.APPLICATION, config)
         zaza_model.wait_for_application_states()
 
-        configured_ips = zaza_model.run_on_unit(self.UNIT, "ip addr")
-        self.assertNotIn(self.VIP, configured_ips["Stdout"])
+        for attempt in Retrying(wait=wait_fixed(2),
+                                retry=retry_if_exception_type(AssertionError),
+                                reraise=True,
+                                stop=stop_after_attempt(10)):
+            with attempt:
+                configured_ips = zaza_model.run_on_unit(self.UNIT, "ip addr")
+                self.assertNotIn(self.VIP, configured_ips["Stdout"])

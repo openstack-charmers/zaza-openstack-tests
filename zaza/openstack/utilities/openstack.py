@@ -38,6 +38,7 @@ import urllib
 
 
 from .os_versions import (
+    CompareOpenStack,
     OPENSTACK_CODENAMES,
     SWIFT_CODENAMES,
     OVN_CODENAMES,
@@ -91,6 +92,8 @@ UBUNTU_IMAGE_URLS = {
                '{release}-server-cloudimg-{arch}.img'),
     'focal': ('http://cloud-images.ubuntu.com/{release}/current/'
               '{release}-server-cloudimg-{arch}.img'),
+    'default': ('http://cloud-images.ubuntu.com/{release}/current/'
+                '{release}-server-cloudimg-{arch}.img'),
 }
 
 CHARM_TYPES = {
@@ -191,6 +194,20 @@ REMOTE_CERT_DIR = "/usr/local/share/ca-certificates"
 KEYSTONE_CACERT = "keystone_juju_ca_cert.crt"
 KEYSTONE_REMOTE_CACERT = (
     "/usr/local/share/ca-certificates/{}".format(KEYSTONE_CACERT))
+
+# Network/router names
+EXT_NET = os.environ.get('TEST_EXT_NET', 'ext_net')
+EXT_NET_SUBNET = os.environ.get('TEST_EXT_NET_SUBNET', 'ext_net_subnet')
+PRIVATE_NET = os.environ.get('TEST_PRIVATE_NET', 'private')
+PRIVATE_NET_SUBNET = os.environ.get('TEST_PRIVATE_NET_SUBNET',
+                                    'private_subnet')
+PROVIDER_ROUTER = os.environ.get('TEST_PROVIDER_ROUTER', 'provider-router')
+
+# Image names
+CIRROS_IMAGE_NAME = os.environ.get('TEST_CIRROS_IMAGE_NAME', 'cirros')
+BIONIC_IMAGE_NAME = os.environ.get('TEST_BIONIC_IMAGE_NAME', 'bionic')
+FOCAL_IMAGE_NAME = os.environ.get('TEST_FOCAL_IMAGE_NAME', 'focal')
+JAMMY_IMAGE_NAME = os.environ.get('TEST_JAMMY_IMAGE_NAME', 'jammy')
 
 
 async def async_block_until_ca_exists(application_name, ca_cert,
@@ -297,10 +314,26 @@ def get_ks_creds(cloud_creds, scope='PROJECT'):
                 'username': cloud_creds['OS_USERNAME'],
                 'password': cloud_creds['OS_PASSWORD'],
                 'auth_url': cloud_creds['OS_AUTH_URL'],
-                'user_domain_name': cloud_creds['OS_USER_DOMAIN_NAME'],
                 'project_domain_name': cloud_creds['OS_PROJECT_DOMAIN_NAME'],
                 'project_name': cloud_creds['OS_PROJECT_NAME'],
             }
+            # the FederationBaseAuth class doesn't support the
+            # 'user_domain_name' argument, so only setting it in the 'auth'
+            # dict when it's passed in the cloud_creds.
+            if cloud_creds.get('OS_USER_DOMAIN_NAME'):
+                auth['user_domain_name'] = cloud_creds['OS_USER_DOMAIN_NAME']
+
+        if cloud_creds.get('OS_AUTH_TYPE') == 'v3oidcpassword':
+            auth.update({
+                'identity_provider': cloud_creds['OS_IDENTITY_PROVIDER'],
+                'protocol': cloud_creds['OS_PROTOCOL'],
+                'client_id': cloud_creds['OS_CLIENT_ID'],
+                'client_secret': cloud_creds['OS_CLIENT_SECRET'],
+                # optional configuration options:
+                'access_token_endpoint': cloud_creds.get(
+                    'OS_ACCESS_TOKEN_ENDPOINT'),
+                'discovery_endpoint': cloud_creds.get('OS_DISCOVERY_ENDPOINT')
+            })
     return auth
 
 
@@ -485,15 +518,7 @@ def get_keystone_scope(model_name=None):
     :returns: String keystone scope
     :rtype: string
     """
-    os_version = get_current_os_versions("keystone",
-                                         model_name=model_name)["keystone"]
-    # Keystone policy.json shipped the charm with liberty requires a domain
-    # scoped token. Bug #1649106
-    if os_version == "liberty":
-        scope = "DOMAIN"
-    else:
-        scope = "PROJECT"
-    return scope
+    return "PROJECT"
 
 
 def get_keystone_session(openrc_creds, scope='PROJECT', verify=None):
@@ -517,7 +542,10 @@ def get_keystone_session(openrc_creds, scope='PROJECT', verify=None):
     if openrc_creds.get('API_VERSION', 2) == 2:
         auth = v2.Password(**keystone_creds)
     else:
-        auth = v3.Password(**keystone_creds)
+        if openrc_creds.get('OS_AUTH_TYPE') == 'v3oidcpassword':
+            auth = v3.OidcPassword(**keystone_creds)
+        else:
+            auth = v3.Password(**keystone_creds)
     return session.Session(auth=auth, verify=verify)
 
 
@@ -1129,7 +1157,7 @@ def get_mac_from_port(port, neutronclient):
     return refresh_port['port']['mac_address']
 
 
-def create_project_network(neutron_client, project_id, net_name='private',
+def create_project_network(neutron_client, project_id, net_name=PRIVATE_NET,
                            shared=False, network_type='gre', domain=None):
     """Create the project network.
 
@@ -1169,7 +1197,7 @@ def create_project_network(neutron_client, project_id, net_name='private',
     return network
 
 
-def create_provider_network(neutron_client, project_id, net_name='ext_net',
+def create_provider_network(neutron_client, project_id, net_name=EXT_NET,
                             external=True, shared=False, network_type='flat',
                             vlan_id=None):
     """Create a provider network.
@@ -1216,7 +1244,7 @@ def create_provider_network(neutron_client, project_id, net_name='ext_net',
 
 
 def create_project_subnet(neutron_client, project_id, network, cidr, dhcp=True,
-                          subnet_name='private_subnet', domain=None,
+                          subnet_name=PRIVATE_NET_SUBNET, domain=None,
                           subnetpool=None, ip_version=4, prefix_len=24):
     """Create the project subnet.
 
@@ -1269,7 +1297,7 @@ def create_project_subnet(neutron_client, project_id, network, cidr, dhcp=True,
 
 
 def create_provider_subnet(neutron_client, project_id, network,
-                           subnet_name='ext_net_subnet',
+                           subnet_name=EXT_NET_SUBNET,
                            default_gateway=None, cidr=None,
                            start_floating_ip=None, end_floating_ip=None,
                            dhcp=False):
@@ -1374,19 +1402,19 @@ def create_provider_router(neutron_client, project_id):
     :returns: Router object
     :rtype: dict
     """
-    routers = neutron_client.list_routers(name='provider-router')
+    routers = neutron_client.list_routers(name=PROVIDER_ROUTER)
     if len(routers['routers']) == 0:
         logging.info('Creating provider router for external network access')
         router_info = {
             'router': {
-                'name': 'provider-router',
+                'name': PROVIDER_ROUTER,
                 'tenant_id': project_id
             }
         }
         router = neutron_client.create_router(router_info)['router']
         logging.info('New router created: %s', (router['id']))
     else:
-        logging.warning('Router provider-router already exists.')
+        logging.warning('Router %s already exists.', (PROVIDER_ROUTER))
         router = routers['routers'][0]
     return router
 
@@ -2089,7 +2117,7 @@ def get_keystone_api_version(model_name=None):
         'keystone',
         'preferred-api-version',
         model_name=model_name)
-    if os_version >= 'queens':
+    if CompareOpenStack(os_version) >= 'queens':
         api_version = 3
     elif api_version is None:
         api_version = 2
@@ -2098,6 +2126,60 @@ def get_keystone_api_version(model_name=None):
 
 
 def get_overcloud_auth(address=None, model_name=None):
+    """Get overcloud OpenStack authentication from the environment.
+
+    :param model_name: Name of model to query.
+    :type model_name: str
+    :returns: Dictionary of authentication settings
+    :rtype: dict
+    """
+    if juju_utils.is_k8s_deployment():
+        return _get_overcloud_auth_k8s(address=address, model_name=None)
+    else:
+        return _get_overcloud_auth(address=address, model_name=None)
+
+
+def _get_overcloud_auth_k8s(address=None, model_name=None):
+    """Get overcloud OpenStack authentication from the k8s environment.
+
+    :param model_name: Name of model to query.
+    :type model_name: str
+    :returns: Dictionary of authentication settings
+    :rtype: dict
+    """
+    logging.warning('Assuming http keystone endpoint')
+    transport = 'http'
+    port = 5000
+    if not address:
+        address = zaza.model.get_status()[
+            'applications']['keystone'].public_address
+    address = network_utils.format_addr(address)
+
+    logging.info('Retrieving admin password from keystone')
+    action = zaza.model.run_action_on_leader(
+        'keystone',
+        'get-admin-password',
+        action_params={}
+    )
+    password = action.data['results']['password']
+
+    # V3 or later
+    logging.info('Using keystone API V3 (or later) for overcloud auth')
+    auth_settings = {
+        'OS_AUTH_URL': '%s://%s:%i/v3' % (transport, address, port),
+        'OS_USERNAME': 'admin',
+        'OS_PASSWORD': password,
+        'OS_REGION_NAME': 'RegionOne',
+        'OS_DOMAIN_NAME': 'admin_domain',
+        'OS_USER_DOMAIN_NAME': 'admin_domain',
+        'OS_PROJECT_NAME': 'admin',
+        'OS_PROJECT_DOMAIN_NAME': 'admin_domain',
+        'API_VERSION': 3,
+    }
+    return auth_settings
+
+
+def _get_overcloud_auth(address=None, model_name=None):
     """Get overcloud OpenStack authentication from the environment.
 
     :param model_name: Name of model to query.
@@ -2299,7 +2381,8 @@ def find_cirros_image(arch):
 
 def find_ubuntu_image(release, arch):
     """Return url for image."""
-    return UBUNTU_IMAGE_URLS[release].format(release=release, arch=arch)
+    loc_str = UBUNTU_IMAGE_URLS.get(release) or UBUNTU_IMAGE_URLS['default']
+    return loc_str.format(release=release, arch=arch)
 
 
 def download_image(image_url, target_file):
@@ -2663,6 +2746,27 @@ def attach_volume(nova, volume_id, instance_id):
                                              device='/dev/vdx')
 
 
+def detach_volume(nova, volume_id, instance_id):
+    """Detach a cinder volume to a nova instance.
+
+    :param nova: Authenticated nova client
+    :type nova: novaclient.v2.client.Client
+    :param volume_id: the id of the volume to attach
+    :type volume_id: str
+    :param instance_id: the id of the instance to attach the volume to
+    :type instance_id: str
+    :returns: nova volume pointer
+    :rtype: novaclient.v2.volumes.Volume
+    """
+    logging.info(
+        'Detaching volume {} from instance {}'.format(
+            volume_id, instance_id
+        )
+    )
+    return nova.volumes.delete_server_volume(server_id=instance_id,
+                                             volume_id=volume_id)
+
+
 def failover_cinder_volume_host(cinder, backend_name='cinder-ceph',
                                 target_backend_id='ceph',
                                 target_status='disabled',
@@ -2771,6 +2875,10 @@ def get_private_key_file(keypair_name):
     :returns: Path to file containing key
     :rtype: str
     """
+    key = os.environ.get("TEST_PRIVKEY")
+    if key:
+        return key
+
     tmp_dir = deployment_env.get_tmpdir()
     return '{}/id_rsa_{}'.format(tmp_dir, keypair_name)
 

@@ -26,6 +26,7 @@ from zaza.openstack.charm_tests.manila_ganesha.setup import (
 import zaza.openstack.utilities.generic as generic_utils
 import zaza.openstack.charm_tests.manila.tests as manila_tests
 import zaza.model
+import zaza.utilities.juju as zaza_utils_juju
 
 
 class ManilaGaneshaTests(manila_tests.ManilaBaseTest):
@@ -47,16 +48,33 @@ class ManilaGaneshaTests(manila_tests.ManilaBaseTest):
         # this is a best-guestimate arrived at by looking for applications
         # with the word 'ganesha' in their names.
         ganeshas = [
-            app for app in zaza.model.sync_deployed()
+            app for app in zaza.model.sync_deployed(model_name=self.model_name)
             if 'ganesha' in app and 'mysql' not in app]
+        logging.info('Found ganeshas in model {}: {}'.format(
+            self.model_name,
+            ganeshas))
         for ganesha in ganeshas:
+            ganesha_unit = zaza.model.get_units(ganesha)[0]
+            hacluster_unit = zaza_utils_juju.get_subordinate_units(
+                [ganesha_unit.entity_id],
+                charm_name='hacluster')
+            logging.info('Ganesha in hacluster mode: {}'.format(
+                bool(hacluster_unit)))
+
             for unit in zaza.model.get_units(ganesha):
-                # While we really only need to run this on the machine hosting
-                # nfs-ganesha and manila-share, running it everywhere isn't
-                # harmful. Pacemaker handles restarting the services
-                zaza.model.run_on_unit(
-                    unit.entity_id,
-                    "systemctl stop manila-share nfs-ganesha")
+                if hacluster_unit:
+                    # While we really only need to run this on the machine
+                    # hosting # nfs-ganesha and manila-share, running it
+                    # everywhere isn't harmful. Pacemaker handles restarting
+                    # the services
+                    zaza.model.run_on_unit(
+                        unit.entity_id,
+                        "systemctl stop manila-share nfs-ganesha")
+                else:
+                    zaza.model.run_on_unit(
+                        unit.entity_id,
+                        "systemctl restart manila-share nfs-ganesha")
+
         return True
 
     def _run_nrpe_check_command(self, commands):

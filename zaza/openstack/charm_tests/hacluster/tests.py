@@ -86,6 +86,8 @@ class HaclusterScaleBackAndForthTest(HaclusterBaseTest):
         test_config = cls.test_config['tests_options']['hacluster']
         cls._principle_app_name = test_config['principle-app-name']
         cls._hacluster_charm_name = test_config['hacluster-charm-name']
+        cls._hacluster_app_name = ("{}-{}".format(
+            cls._principle_app_name, cls._hacluster_charm_name))
 
     def test_930_scaleback(self):
         """Remove one unit, recalculate quorum and re-add one unit.
@@ -96,6 +98,16 @@ class HaclusterScaleBackAndForthTest(HaclusterBaseTest):
         considers having 3 nodes online out of 4, instead of just 3 out of 3.
         This test covers this scenario.
         """
+        package = 'crmsh'
+        package_version = test_utils.package_version_matches(
+            self._hacluster_app_name, package=package,
+            versions=['4.4.0-1ubuntu1'], op='eq')
+        if package_version:
+            logging.warning("Skipping test on application %s (%s:%s), "
+                            "reason: http://pad.lv/1972730",
+                            self._hacluster_app_name, package,
+                            package_version)
+            return
         principle_units = sorted(zaza.model.get_status().applications[
             self._principle_app_name]['units'].keys())
         self.assertEqual(len(principle_units), 3)

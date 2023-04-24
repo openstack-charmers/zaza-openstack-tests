@@ -21,6 +21,7 @@ import hvac
 import logging
 import requests
 import tempfile
+import time
 import urllib3
 import yaml
 import tenacity
@@ -60,14 +61,13 @@ class VaultFacade:
             self.unseal_client = self.vip_client
         else:
             self.unseal_client = self.clients[0]
-        self.initialized = is_initialized(self.unseal_client)
         if initialize:
             self.initialize()
 
     @property
     def is_initialized(self):
         """Check if vault is initialized."""
-        return self.initialized
+        return is_initialized(self.unseal_client)
 
     def initialize(self):
         """Initialise vault and store resulting credentials."""
@@ -76,11 +76,14 @@ class VaultFacade:
         else:
             self.vault_creds = init_vault(self.unseal_client)
             store_credentials(self.vault_creds)
-        self.initialized = is_initialized(self.unseal_client)
+            self.unseal_client = wait_and_get_initialized_client(self.clients)
 
     def unseal(self):
         """Unseal all the vaults clients."""
+        unseal_all([self.unseal_client], self.vault_creds['keys'][0])
+        wait_until_all_initialised(self.clients)
         unseal_all(self.clients, self.vault_creds['keys'][0])
+        wait_for_ha_settled(self.clients)
 
     def authorize(self):
         """Authorize charm to perfom certain actions.
@@ -89,6 +92,7 @@ class VaultFacade:
         set of calls against the vault API.
         """
         auth_all(self.clients, self.vault_creds['root_token'])
+        wait_for_ha_settled(self.clients)
         run_charm_authorize(self.vault_creds['root_token'])
 
 
@@ -278,6 +282,75 @@ def ensure_secret_backend(client):
             options={'version': 1})
     except hvac.exceptions.InvalidRequest:
         pass
+
+
+def wait_for_ha_settled(clients):
+    """Wait until vault ha is settled (for all passed clients).
+
+    Raise an AssertionError if any are not settled within 2 minutes.
+    This function is effectively a no-op for non-ha vault.
+    Requires all vault units to be unsealed.
+
+    :param clients: Clients to use to talk to vault
+    :type clients: List[CharmVaultClient]
+    :raises: AssertionError
+    """
+    for client in clients:
+        for attempt in tenacity.Retrying(
+            reraise=True,
+            wait=tenacity.wait_fixed(10),
+            stop=tenacity.stop_after_attempt(12),  # wait for max 2 minutes
+        ):
+            with attempt:
+                # ha_status could also raise other errors,
+                # eg. if unsealing still in progress.
+                # This is why we're using tenacity here;
+                # avoids needing to manually handle other exceptions.
+                ha_status = client.hvac_client.ha_status
+                if (
+                    not ha_status.get('leader_address') and
+                    ha_status.get('ha_enabled')
+                ):
+                    raise AssertionError('Timeout waiting for ha to settle')
+
+
+def wait_until_all_initialised(clients):
+    """Wait until vault is initialized (for all passed clients).
+
+    Raise an AssertionError if any are not initialized within 2 minutes.
+
+    :param clients: Clients to use to talk to vault
+    :type clients: List[CharmVaultClient]
+    :raises: AssertionError
+    """
+    for client in clients:
+        for _ in range(12):
+            if is_initialized(client):
+                break
+            time.sleep(10)  # max 2 minutes (12 x 10s)
+        else:
+            raise AssertionError("Timeout waiting for vault to initialize")
+
+
+def wait_and_get_initialized_client(clients):
+    """Wait until at least one vault unit is initialized.
+
+    And return the initialized client.
+    Raise an AssertionError
+    if no initialized clients are found within 2 minutes.
+
+    :param clients: Clients to use to talk to vault
+    :type clients: List[CharmVaultClient]
+    :raises: AssertionError
+    :returns: an initialized client
+    :rtype: CharmVaultClient
+    """
+    for _ in range(12):
+        for client in clients:
+            if is_initialized(client):
+                return client
+        time.sleep(10)  # max 2 minutes (12 x 10s)
+    raise AssertionError("Timeout waiting for vault to initialize")
 
 
 def find_unit_with_creds():

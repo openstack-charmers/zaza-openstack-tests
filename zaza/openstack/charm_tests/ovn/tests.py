@@ -19,13 +19,12 @@ import logging
 import juju
 
 import tenacity
-
+import yaml
 import zaza
 
 import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.generic as generic_utils
-import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.utilities.juju
 
 
@@ -41,9 +40,6 @@ class BaseCharmOperationTest(test_utils.BaseCharmTest):
         super(BaseCharmOperationTest, cls).setUpClass()
         cls.services = ['NotImplemented']  # This must be overridden
         cls.nrpe_checks = ['NotImplemented']  # This must be overridden
-        cls.current_release = openstack_utils.get_os_release(
-            openstack_utils.get_current_os_release_pair(
-                cls.release_application or cls.application_name))
 
     @tenacity.retry(
         retry=tenacity.retry_if_result(lambda ret: ret is not None),
@@ -65,9 +61,11 @@ class BaseCharmOperationTest(test_utils.BaseCharmTest):
 
     def test_nrpe_configured(self):
         """Confirm that the NRPE service check files are created."""
-        if self.current_release == openstack_utils.get_os_release(
-                'jammy_yoga'):
-            self.skipTest('The NRPE charm does not support Jammy yet')
+        if not zaza.model.get_relation_id(
+                self.application_name, 'nrpe',
+                remote_interface_name='nrpe-external-master'):
+            self.skipTest('The NRPE charm is not related to the '
+                          'charm under test.')
         units = zaza.model.get_units(self.application_name)
         cmds = []
         for check_name in self.nrpe_checks:
@@ -196,6 +194,10 @@ class ChassisCharmOperationTest(BaseCharmOperationTest):
                          'configuration')
             self.test_config[
                 'target_deploy_status'] = stored_target_deploy_status
+
+
+class DPDKTest(test_utils.BaseCharmTest):
+    """DPDK-related tests."""
 
     def _openvswitch_switch_dpdk_installed(self):
         """Assert that the openvswitch-switch-dpdk package is installed.
@@ -336,8 +338,6 @@ class OVSOVNMigrationTest(test_utils.BaseCharmTest):
     def setUpClass(cls):
         """Run class setup for OVN migration tests."""
         super(OVSOVNMigrationTest, cls).setUpClass()
-        cls.current_release = openstack_utils.get_os_release(
-            openstack_utils.get_current_os_release_pair())
 
     def setUp(self):
         """Perform migration steps prior to validation."""
@@ -623,22 +623,9 @@ class OVSOVNMigrationTest(test_utils.BaseCharmTest):
             except KeyError:
                 pass
         zaza.model.wait_for_agent_status()
+        zaza.model.block_until_all_units_idle()
         zaza.model.wait_for_application_states(
             states=self.target_deploy_status)
-        # Workaround for our old friend LP: #1852221 which hit us again on
-        # Groovy. We make the os_release check explicit so that we can
-        # re-evaluate the need for the workaround at the next release.
-        if self.current_release == openstack_utils.get_os_release(
-                'groovy_victoria'):
-            try:
-                for application in ('ovn-chassis', 'ovn-dedicated-chassis'):
-                    for unit in zaza.model.get_units(application):
-                        zaza.model.run_on_unit(
-                            unit.entity_id,
-                            'systemctl restart ovs-vswitchd')
-            except KeyError:
-                # One of the applications is not in the model, which is fine
-                pass
 
 
 class OVNChassisDeferredRestartTest(test_utils.BaseDeferredRestartTest):
@@ -715,3 +702,239 @@ class OVNCentralDeferredRestartTest(
         self.run_package_change_test(
             'ovn-central',
             'ovn-central')
+
+
+class OVNCentralDownscaleTests(test_utils.BaseCharmTest):
+    """Tests for cluster-status and cluster-kick actions."""
+
+    SB_CMD = "ovn-appctl -t /var/run/ovn/ovnsb_db.ctl {}"
+    NB_CMD = "ovn-appctl -t /var/run/ovn/ovnnb_db.ctl {}"
+
+    def _cluster_status_action(self):
+        """Return Southbound and Northbound cluster status.
+
+        This function returns data as reported by "cluster-status" action
+        parsed into two dictionaries in the following order:
+        "Southbound status", "Northbound status"
+        """
+        yaml_load_err = "Status of '{}' could not be loaded as yaml:\n{}"
+        status_raw = zaza.model.run_action_on_leader("ovn-central",
+                                                     "cluster-status")
+        status_data = status_raw.data["results"]
+        # Verify expected items in the action result
+        self.assertIn("ovnnb", status_data)
+        self.assertIn("ovnsb", status_data)
+
+        try:
+            nb_status = yaml.safe_load(status_data["ovnnb"])
+        except yaml.YAMLError:
+            self.fail(yaml_load_err.format("northbound-cluster",
+                                           status_data["ovnnb"]))
+        try:
+            sb_status = yaml.safe_load(status_data["ovnsb"])
+        except yaml.YAMLError:
+            self.fail(yaml_load_err.format("southbound-cluster",
+                                           status_data["ovnsb"]))
+
+        return sb_status, nb_status
+
+    @staticmethod
+    def _add_unit(number_of_units=1):
+        """Add specified number of units to ovn-central application.
+
+        This function also waits until the application reaches active state.
+        """
+        zaza.model.add_unit(
+            "ovn-central",
+            count=number_of_units,
+            wait_appear=True
+        )
+        zaza.model.wait_for_application_states()
+
+    @staticmethod
+    def _remove_unit(unit_name):
+        """Remove specified unit from ovn-central application.
+
+        This function also waits until the application reaches active state
+        again.
+        """
+        zaza.model.destroy_unit("ovn-central", unit_name)
+        zaza.model.block_until_all_units_idle()
+        zaza.model.wait_for_application_states()
+
+    def _assert_servers_cleanly_removed(self, sb_id, nb_id):
+        """Assert that specified members were removed from cluster.
+
+        This checks that they are no longer listed in cluster_status
+        and that there are no missing server.
+        :param sb_id: ID of a Southbound server that should no longer be
+            present
+        :type sb_id: str
+        :param nb_id: ID of a Northbound server that should no longer be
+            present
+        :type nb_id: str
+        """
+        sb_status, nb_status = self._cluster_status_action()
+
+        self.assertNotIn(sb_id, sb_status["unit_map"])
+        self.assertNotIn("UNKNOWN", sb_status["unit_map"])
+        self.assertNotIn(nb_id, nb_status["unit_map"])
+        self.assertNotIn("UNKNOWN", nb_status["unit_map"])
+
+    def _get_server_ids(self, unit_name):
+        """Return SB and NB server id belonging to the servers on the unit.
+
+        :return: Southbound and Northbound IDs (in this order)
+        :rtype: str, str
+        """
+        missing_unit_err = ("Failed to find Server IDs. Unit {} is already"
+                            " missing from the {} cluster status")
+        sb_status, nb_status = self._cluster_status_action()
+
+        for unit, server_id in sb_status["unit_map"].items():
+            if unit_name == unit:
+                sb_id = server_id
+                break
+        else:
+            self.fail(missing_unit_err.format(unit_name, "Southbound"))
+
+        for unit, server_id in nb_status["unit_map"].items():
+            if unit_name == unit:
+                nb_id = server_id
+                break
+        else:
+            self.fail(missing_unit_err.format(unit_name, "Northbound"))
+
+        return sb_id, nb_id
+
+    def _get_unit_hosting_ovn(self, leader):
+        """Return ID of a unit with at least one OVN server leader/follower.
+
+        :param leader: If `True`, this method returns ID of a unit that host
+            at least one leader. Otherwise, the ID of a unit hosting at least
+            one follower will be returned.
+        :type leader: bool
+        :return: ID of a unit hosting OVN leader/follower (based on the
+            `leader` param)
+        :rtype: str
+        """
+        # It's sufficient to parse only one of the cluster statuses To
+        # determine if unit holds at least one leader or one follower.
+        cluster_status, _ = self._cluster_status_action()
+        leader_id = cluster_status["leader"]
+        if leader_id == "self":
+            leader_id = cluster_status["server_id"][:4]
+
+        for unit_id, server_id in cluster_status["unit_map"].items():
+            if (server_id == leader_id) == leader:
+                return unit_id
+        else:
+            self.fail("Test failed to locate unit that hosts OVN leader.")
+
+    def test_cluster_status(self):
+        """Test that cluster-status action returns expected results."""
+        application = zaza.model.get_application("ovn-central")
+        sb_status, nb_status = self._cluster_status_action()
+
+        # Verify that cluster status includes "unit_map" field with correct
+        # type
+        for status in (nb_status, sb_status):
+            self.assertIn("unit_map", status)
+            self.assertIsInstance(status["unit_map"], dict)
+
+        # Verify that units and their Server IDs are properly paired
+        expected_mapping = {}
+        for unit in application.units:
+            unit_name = unit.entity_id
+            nb_status_cmd = self.NB_CMD.format("cluster/status OVN_Northbound")
+            sb_status_cmd = self.SB_CMD.format("cluster/status OVN_Southbound")
+            nb_cluster_status = zaza.model.run_on_unit(unit_name,
+                                                       nb_status_cmd)
+            sb_cluster_status = zaza.model.run_on_unit(unit_name,
+                                                       sb_status_cmd)
+            nb_id = nb_cluster_status["Stdout"].splitlines()[0]
+            sb_id = sb_cluster_status["Stdout"].splitlines()[0]
+            expected_mapping[unit_name] = {"sb_id": sb_id, "nb_id": nb_id}
+
+        for unit_name, unit_data in expected_mapping.items():
+            sb_id = unit_data["sb_id"]
+            nb_id = unit_data["nb_id"]
+            self.assertEqual(sb_status["unit_map"][unit_name], sb_id)
+            self.assertEqual(nb_status["unit_map"][unit_name], nb_id)
+
+    def test_cluster_kick(self):
+        """Test forcefully removing a member of an ovn cluster.
+
+        If unit fails to remove itself gracefully from the
+        Southbound/Northbound OVN clusters, it can be kicked using
+        "cluster-kick" action. This test simulates such scenario by removing
+        contents of "/var/run/ovn/*" to mess with OVN communication before
+        removal of the unit which prevents the unit from gracefully leaving
+        the OVN cluster.
+        """
+        logging.info("Add a ovn-central unit to be kicked")
+        self._add_unit()
+        application = zaza.model.get_application("ovn-central")
+        removed_unit = application.units[-1].entity_id
+        removed_sb_id, removed_nb_id = self._get_server_ids(removed_unit)
+
+        logging.info("Killing OVN services on %s unit" % removed_unit)
+        zaza.model.run_on_unit(removed_unit, "rm -rf /var/run/ovn/*")
+
+        logging.info("Removing unit %s", removed_unit)
+        self._remove_unit(removed_unit)
+
+        # Verify that Server IDs of the removed unit are no longer associated
+        # with the units ID and show in "UNKNOWN" instead
+        sb_status, nb_status = self._cluster_status_action()
+
+        self.assertNotIn(removed_sb_id, sb_status["unit_map"])
+        self.assertIn(removed_sb_id, sb_status["unit_map"]["UNKNOWN"])
+        self.assertNotIn(removed_nb_id, nb_status["unit_map"])
+        self.assertIn(removed_nb_id, nb_status["unit_map"]["UNKNOWN"])
+
+        logging.info("Requesting kick of removed servers (Southbound ID: %s, "
+                     "Northbound ID: %s) from OVN clusters",
+                     removed_sb_id,
+                     removed_nb_id)
+        action_params = {"sb-server-id": removed_sb_id,
+                         "nb-server-id": removed_nb_id,
+                         "i-really-mean-it": True}
+        zaza.model.run_action_on_leader("ovn-central",
+                                        "cluster-kick",
+                                        action_params=action_params)
+
+        # Verify that Server IDs of the removed unit are completely removed
+        # from the cluster status
+        self._assert_servers_cleanly_removed(removed_sb_id, removed_nb_id)
+
+    def test_cluster_downscale(self):
+        """Test unit's graceful departure from OVN cluster.
+
+        When ovn-central unit is removed. It should automatically leave from
+        OVN clusters (Northbound and Southbound) as well.
+        """
+        logging.info("Adding units needed for downscaling test.")
+        self._add_unit(2)
+
+        # Remove unit hosting at least one follower
+        non_leader_unit = self._get_unit_hosting_ovn(leader=False)
+        logging.info(
+            "Removing unit (%s) that hosts OVN follower server.",
+            non_leader_unit
+        )
+
+        non_leader_sb, non_leader_nb = self._get_server_ids(non_leader_unit)
+        self._remove_unit(non_leader_unit)
+        self._assert_servers_cleanly_removed(non_leader_sb, non_leader_nb)
+
+        # Remove unit hosting at least one leader
+        leader_unit = self._get_unit_hosting_ovn(leader=True)
+        logging.info(
+            "Removing unit (%s) that hosts OVN leader server.",
+            leader_unit
+        )
+
+        leader_sb, leader_nb = self._get_server_ids(leader_unit)
+        self._remove_unit(leader_unit)
+        self._assert_servers_cleanly_removed(leader_sb, leader_nb)

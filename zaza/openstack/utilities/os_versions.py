@@ -39,6 +39,8 @@ UBUNTU_OPENSTACK_RELEASE = OrderedDict([
     ('hirsute', 'wallaby'),
     ('impish', 'xena'),
     ('jammy', 'yoga'),
+    ('kinetic', 'zed'),
+    ('lunar', 'antelope'),
 ])
 
 
@@ -65,6 +67,8 @@ OPENSTACK_CODENAMES = OrderedDict([
     ('2021.1', 'wallaby'),
     ('2021.2', 'xena'),
     ('2022.1', 'yoga'),
+    ('2022.2', 'zed'),
+    ('2023.1', 'antelope'),
 ])
 
 OPENSTACK_RELEASES_PAIRS = [
@@ -78,7 +82,8 @@ OPENSTACK_RELEASES_PAIRS = [
     'focal_victoria', 'groovy_victoria',
     'focal_wallaby', 'hirsute_wallaby',
     'focal_xena', 'impish_xena',
-    'focal_yoga', 'jammy_yoga',
+    'focal_yoga', 'jammy_yoga', 'jammy_zed',
+    'kinetic_zed', 'jammy_antelope', 'lunar_antelope',
 ]
 
 SWIFT_CODENAMES = OrderedDict([
@@ -308,6 +313,8 @@ UBUNTU_RELEASES = (
     'hirsute',
     'impish',
     'jammy',
+    'kinetic',
+    'lunar',
 )
 
 
@@ -358,6 +365,10 @@ class BasicStringComparator(object):
         """Do less than or equals."""
         return not self.__gt__(other)
 
+    def __repr__(self):
+        """Return the representation of CompareOpenStack."""
+        return "%s<%s>" % (self.__class__.__name__, self._list[self.index])
+
     def __str__(self):
         """Give back the item at the index.
 
@@ -383,3 +394,15 @@ class CompareHostReleases(BasicStringComparator):
     """
 
     _list = UBUNTU_RELEASES
+
+
+class CompareOpenStack(BasicStringComparator):
+    """Provide comparisons of OpenStack releases.
+
+    Use in the form of
+
+    if CompareOpenStack(release) > 'yoga':
+        # do something
+    """
+
+    _list = list(OPENSTACK_CODENAMES.values())

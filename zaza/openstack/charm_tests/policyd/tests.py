@@ -536,7 +536,7 @@ class NeutronApiTests(BasePolicydSpecialization):
     # will fail intermittently unless we gracefully accept this.
     # Issue: openstack-charmers/zaza-openstack-tests#138
     @tenacity.retry(wait=tenacity.wait_fixed(1),
-                    reraise=True, stop=tenacity.stop_after_delay(8))
+                    reraise=True, stop=tenacity.stop_after_delay(16))
     def get_client_and_attempt_operation(self, ip):
         """Attempt to list the networks as a policyd override.
 
@@ -581,7 +581,7 @@ class GlanceTests(BasePolicydSpecialization):
     # accept this.
     # Issue: openstack-charmers/zaza-openstack-tests#578
     @tenacity.retry(wait=tenacity.wait_fixed(1),
-                    reraise=True, stop=tenacity.stop_after_delay(8))
+                    reraise=True, stop=tenacity.stop_after_delay(16))
     def get_client_and_attempt_operation(self, ip):
         """Attempt to list the images as a policyd override.
 
@@ -616,6 +616,8 @@ class CinderTests(BasePolicydSpecialization):
         super(CinderTests, cls).setUpClass(application_name="cinder")
         cls.application_name = "cinder"
 
+    @tenacity.retry(wait=tenacity.wait_fixed(1),
+                    reraise=True, stop=tenacity.stop_after_delay(16))
     def get_client_and_attempt_operation(self, ip):
         """Attempt to list the images as a policyd override.
 

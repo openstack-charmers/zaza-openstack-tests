@@ -14,10 +14,13 @@
 
 """Encapsulate keystone testing."""
 import collections
+import configparser
 import json
 import logging
 import pprint
+import tenacity
 import keystoneauth1
+from keystoneauth1.exceptions.connection import ConnectFailure
 
 import zaza.model
 import zaza.openstack.utilities.exceptions as zaza_exceptions
@@ -25,6 +28,8 @@ import zaza.utilities.juju as juju_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.charm_lifecycle.utils as lifecycle_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
+import zaza.openstack.charm_tests.tempest.tests as tempest_tests
+
 from zaza.openstack.charm_tests.keystone import (
     BaseKeystoneTest,
     DEMO_DOMAIN,
@@ -190,6 +195,56 @@ class CharmOperationTest(BaseKeystoneTest):
         # make sure the password was actually changed
         new_passwd = juju_utils.leader_get(self.application_name, ADMIN_PASSWD)
         assert old_passwd != new_passwd
+
+    def test_rotate_service_user_password(self):
+        """Verify action used to rotate a service user (glance) password."""
+        GLANCE_PASSWD_KEY = "glance_passwd"
+        GLANCE_APP = "glance"
+        GLANCE_CONF_FILE = '/etc/glance/glance-api.conf'
+
+        def _get_password_from_leader():
+            conf = zaza.model.file_contents('glance/leader', GLANCE_CONF_FILE)
+            config = configparser.ConfigParser()
+            config.read_string(conf)
+            return config['keystone_authtoken']['password'].strip()
+
+        # Only do the test if glance is in the model.
+        applications = zaza.model.sync_deployed(self.model_name)
+        if GLANCE_APP not in applications:
+            self.skipTest(
+                '{} is not deployed, so not doing password change'
+                .format(GLANCE_APP))
+        # keep the old password to verify it is changed.
+        old_passwd_leader_storage = juju_utils.leader_get(
+            self.application_name, GLANCE_PASSWD_KEY)
+        old_passwd_conf = _get_password_from_leader()
+
+        # verify that images can be listed.
+        glance_client = openstack_utils.get_glance_session_client(
+            self.admin_keystone_session)
+        glance_client.images.list()
+
+        # run the action to rotate the password.
+        zaza.model.run_action_on_leader(
+            self.application_name,
+            'rotate-service-user-password',
+            action_params={'service-user': 'glance'},
+        )
+
+        # verify that the password has changed
+        new_passwd_leader_storage = juju_utils.leader_get(
+            self.application_name, GLANCE_PASSWD_KEY)
+        new_passwd_conf = _get_password_from_leader()
+        self.assertNotEqual(old_passwd_leader_storage,
+                            new_passwd_leader_storage)
+        self.assertNotEqual(old_passwd_conf,
+                            new_passwd_conf)
+        self.assertEqual(new_passwd_leader_storage, new_passwd_conf)
+
+        # verify that the images can still be listed.
+        glance_client = openstack_utils.get_glance_session_client(
+            self.admin_keystone_session)
+        glance_client.images.list()
 
 
 class AuthenticationAuthorizationTest(BaseKeystoneTest):
@@ -458,6 +513,9 @@ class LdapTests(BaseKeystoneTest):
             }
         }
 
+    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=2, max=60),
+                    reraise=True, stop=tenacity.stop_after_attempt(5),
+                    retry=tenacity.retry_if_exception_type(ConnectFailure))
     def _find_keystone_v3_user(self, username, domain, group=None):
         """Find a user within a specified keystone v3 domain.
 
@@ -721,3 +779,9 @@ class LdapExplicitCharmConfigTests(LdapTests):
                 self.assertIn("group_tree_dn = ou=groups", result['stdout'],
                               "user_tree_dn value is expected to be present "
                               "and set to dc=test,dc=com in the config file")
+
+
+class KeystoneTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
+    """Test keystone k8s scale out and scale back."""
+
+    application_name = "keystone"

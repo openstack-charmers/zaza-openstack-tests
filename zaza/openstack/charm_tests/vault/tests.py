@@ -31,7 +31,6 @@ import zaza.openstack.charm_tests.vault.utils as vault_utils
 import zaza.openstack.utilities.cert
 import zaza.openstack.utilities.openstack
 import zaza.model
-import zaza.utilities.juju as juju_utils
 
 
 @tenacity.retry(
@@ -63,8 +62,18 @@ class BaseVaultTest(test_utils.OpenStackBaseTest):
         if cls.vip_client:
             cls.clients.append(cls.vip_client)
         cls.vault_creds = vault_utils.get_credentials()
+
+        # This little dance is to ensure a correct init and unseal sequence,
+        # for the case of vault with the raft backend.
+        # It will also work fine in other cases.
+        # The wait functions will raise AssertionErrors on timeouts.
+        init_client = vault_utils.wait_and_get_initialized_client(cls.clients)
+        vault_utils.unseal_all([init_client], cls.vault_creds['keys'][0])
+        vault_utils.wait_until_all_initialised(cls.clients)
         vault_utils.unseal_all(cls.clients, cls.vault_creds['keys'][0])
+
         vault_utils.auth_all(cls.clients, cls.vault_creds['root_token'])
+        vault_utils.wait_for_ha_settled(cls.clients)
         vault_utils.ensure_secret_backend(cls.clients[0])
 
     def tearDown(self):
@@ -296,12 +305,16 @@ class VaultTest(BaseVaultTest):
         logging.info("Waiting for model to be idle ...")
         zaza.model.block_until_all_units_idle(model_name=self.model_name)
 
-        logging.info("Testing action reload on {}".format(lead_client))
-        zaza.model.run_action(
-            juju_utils.get_unit_name_from_ip_address(
-                lead_client.addr, 'vault'),
-            'reload',
-            model_name=self.model_name)
+        # Reload all vault units to ensure the new value is loaded.
+        # Note that charm-vault since 4fccd710 will auto-reload
+        # vault on config change, so this will be unecessary.
+        for unit in zaza.model.get_units(
+            application_name="vault",
+            model_name=self.model_name
+        ):
+            zaza.model.run_action(
+                unit.name, 'reload',
+                model_name=self.model_name)
 
         logging.info("Getting new value ...")
         new_value = vault_utils.get_running_config(lead_client)[

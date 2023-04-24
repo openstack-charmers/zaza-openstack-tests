@@ -108,6 +108,7 @@ class DesignateAPITests(BaseDesignateTest):
     TEST_NS2_RECORD = 'ns2.{}'.format(TEST_DOMAIN)
     TEST_WWW_RECORD = "www.{}".format(TEST_DOMAIN)
     TEST_RECORD = {TEST_WWW_RECORD: '10.0.0.23'}
+    TEST_DOMAIN_EMAIL = 'fred@amuletexample.com'
 
     def _get_server_id(self, server_name=None, server_id=None):
         for srv in self.server_list():
@@ -142,13 +143,16 @@ class DesignateAPITests(BaseDesignateTest):
         with self.config_change({}, alternate_config, "designate",
                                 reset_to_charm_default=True):
             for key, value in alternate_config.items():
-                expected = "\n%s = %s\n" % (key.replace('-', '_'), value)
+                config_key = key.replace('-', '_')
+                logging.info('Blocking until %s has key %s',
+                             self.DESIGNATE_CONF, config_key)
+                expected = "\n%s = %s\n" % (config_key, value)
                 zaza.model.block_until_file_has_contents(self.application_name,
                                                          self.DESIGNATE_CONF,
                                                          expected)
-            logging.debug('Creating domain %s' % test_domain)
+            logging.info('Creating domain %s', test_domain)
             domain = domains.Domain(name=test_domain,
-                                    email="fred@amuletexample.com")
+                                    email=self.TEST_DOMAIN_EMAIL)
 
             if self.post_xenial_queens:
                 new_domain = self.domain_create(
@@ -161,9 +165,9 @@ class DesignateAPITests(BaseDesignateTest):
             self.assertIsNotNone(new_domain)
             self.assertEqual(new_domain['ttl'], DEFAULT_TTL)
 
-            logging.debug('Tidy up delete test record %s' % domain_id)
+            logging.info('Tidy up delete test record %s', domain_id)
             self._wait_on_domain_gone(domain_id)
-            logging.debug('Done with deletion of domain %s' % domain_id)
+            logging.info('Done with deletion of domain %s', domain_id)
 
     def test_400_server_creation(self):
         """Simple api calls to create a server."""
@@ -205,7 +209,7 @@ class DesignateAPITests(BaseDesignateTest):
             reraise=True
         )
         def wait():
-            logging.debug('Waiting for domain %s to disappear', domain_id)
+            logging.info('Waiting for domain %s to disappear', domain_id)
             if self._get_domain_id(domain_id=domain_id):
                 raise Exception("Domain Exists")
         self.domain_delete(domain_id)
@@ -242,7 +246,7 @@ class DesignateAPITests(BaseDesignateTest):
         logging.debug('Creating new domain')
         domain = domains.Domain(
             name=self.TEST_DOMAIN,
-            email="fred@amuletexample.com")
+            email=self.TEST_DOMAIN_EMAIL)
 
         if self.post_xenial_queens:
             new_domain = self.domain_create(

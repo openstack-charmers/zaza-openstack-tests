@@ -24,6 +24,7 @@ from os import (
 import requests
 import tempfile
 import boto3
+import botocore.exceptions
 import urllib3
 
 import tenacity
@@ -43,7 +44,7 @@ urllib3.disable_warnings(
 )
 
 
-class CephLowLevelTest(test_utils.OpenStackBaseTest):
+class CephLowLevelTest(test_utils.BaseCharmTest):
     """Ceph Low Level Test Class."""
 
     @classmethod
@@ -61,6 +62,7 @@ class CephLowLevelTest(test_utils.OpenStackBaseTest):
         # Process name and quantity of processes to expect on each unit
         ceph_mon_processes = {
             'ceph-mon': 1,
+            'ceph-mgr': 1,
         }
 
         ceph_osd_processes = {
@@ -89,7 +91,7 @@ class CephLowLevelTest(test_utils.OpenStackBaseTest):
         """
         logging.info('Checking ceph-osd and ceph-mon services...')
         services = {}
-        ceph_services = ['ceph-mon']
+        ceph_services = ['ceph-mon', 'ceph-mgr']
         services['ceph-osd/0'] = ['ceph-osd']
 
         services['ceph-mon/0'] = ceph_services
@@ -114,94 +116,13 @@ class CephLowLevelTest(test_utils.OpenStackBaseTest):
             self.assertEqual(pool['pg_autoscale_mode'], 'on')
 
 
-class CephRelationTest(test_utils.OpenStackBaseTest):
-    """Ceph's relations test class."""
-
-    @classmethod
-    def setUpClass(cls):
-        """Run the ceph's relations class setup."""
-        super(CephRelationTest, cls).setUpClass()
-
-    def test_ceph_osd_ceph_relation_address(self):
-        """Verify the ceph-osd to ceph relation data."""
-        logging.info('Checking ceph-osd:ceph-mon relation data...')
-        unit_name = 'ceph-osd/0'
-        remote_unit_name = 'ceph-mon/0'
-        relation_name = 'osd'
-        remote_unit = zaza_model.get_unit_from_name(remote_unit_name)
-        remote_ip = zaza_model.get_unit_public_address(remote_unit)
-        relation = juju_utils.get_relation_from_unit(
-            unit_name,
-            remote_unit_name,
-            relation_name
-        )
-        # Get private-address in relation
-        rel_private_ip = relation.get('private-address')
-        # The private address in relation should match ceph-mon/0 address
-        self.assertEqual(rel_private_ip, remote_ip)
-
-    def _ceph_to_ceph_osd_relation(self, remote_unit_name):
-        """Verify the cephX to ceph-osd relation data.
-
-        Helper function to test the relation.
-        """
-        logging.info('Checking {}:ceph-osd mon relation data...'.
-                     format(remote_unit_name))
-        unit_name = 'ceph-osd/0'
-        relation_name = 'osd'
-        remote_unit = zaza_model.get_unit_from_name(remote_unit_name)
-        remote_ip = zaza_model.get_unit_public_address(remote_unit)
-        cmd = 'leader-get fsid'
-        result = zaza_model.run_on_unit(remote_unit_name, cmd)
-        fsid = result.get('Stdout').strip()
-        expected = {
-            'private-address': remote_ip,
-            'ceph-public-address': remote_ip,
-            'fsid': fsid,
-        }
-        relation = juju_utils.get_relation_from_unit(
-            unit_name,
-            remote_unit_name,
-            relation_name
-        )
-        for e_key, e_value in expected.items():
-            a_value = relation[e_key]
-            self.assertEqual(e_value, a_value)
-        self.assertTrue(relation['osd_bootstrap_key'] is not None)
-
-    def test_ceph0_to_ceph_osd_relation(self):
-        """Verify the ceph0 to ceph-osd relation data."""
-        remote_unit_name = 'ceph-mon/0'
-        self._ceph_to_ceph_osd_relation(remote_unit_name)
-
-    def test_ceph1_to_ceph_osd_relation(self):
-        """Verify the ceph1 to ceph-osd relation data."""
-        remote_unit_name = 'ceph-mon/1'
-        self._ceph_to_ceph_osd_relation(remote_unit_name)
-
-    def test_ceph2_to_ceph_osd_relation(self):
-        """Verify the ceph2 to ceph-osd relation data."""
-        remote_unit_name = 'ceph-mon/2'
-        self._ceph_to_ceph_osd_relation(remote_unit_name)
-
-
-class CephTest(test_utils.OpenStackBaseTest):
+class CephTest(test_utils.BaseCharmTest):
     """Ceph common functional tests."""
 
     @classmethod
     def setUpClass(cls):
         """Run the ceph's common class setup."""
         super(CephTest, cls).setUpClass()
-        cls.loop_devs = {}   # Maps osd -> loop device
-        for osd in (x.entity_id for x in zaza_model.get_units('ceph-osd')):
-            loop_dev = zaza_utils.add_loop_device(osd, size=10).get('Stdout')
-            cls.loop_devs[osd] = loop_dev
-
-    @classmethod
-    def tearDownClass(cls):
-        """Run the ceph's common class teardown."""
-        for osd, loop_dev in cls.loop_devs.items():
-            zaza_utils.remove_loop_device(osd, loop_dev)
 
     def osd_out_in(self, services):
         """Run OSD out and OSD in tests.
@@ -252,6 +173,10 @@ class CephTest(test_utils.OpenStackBaseTest):
         Check osd pools on all ceph units, expect them to be
         identical, and expect specific pools to be present.
         """
+        try:
+            zaza_model.get_application('cinder-ceph')
+        except KeyError:
+            raise unittest.SkipTest("Skipping OpenStack dependent test")
         logging.info('Checking pools on ceph units...')
 
         expected_pools = zaza_ceph.get_expected_pools()
@@ -304,7 +229,7 @@ class CephTest(test_utils.OpenStackBaseTest):
         Verify that the new disk is added with encryption by checking for
         Ceph's encryption keys directory.
         """
-        current_release = zaza_openstack.get_os_release()
+        current_release = zaza_openstack.get_os_release(application='ceph-mon')
         trusty_mitaka = zaza_openstack.get_os_release('trusty_mitaka')
         if current_release >= trusty_mitaka:
             logging.warn("Skipping encryption test for Mitaka and higher")
@@ -388,7 +313,7 @@ class CephTest(test_utils.OpenStackBaseTest):
         As the ephemeral device will have data on it we can use it to validate
         that these checks work as intended.
         """
-        current_release = zaza_openstack.get_os_release()
+        current_release = zaza_openstack.get_os_release(application='ceph-mon')
         focal_ussuri = zaza_openstack.get_os_release('focal_ussuri')
         if current_release >= focal_ussuri:
             # NOTE(ajkavanagh) - focal (on ServerStack) is broken for /dev/vdb
@@ -452,7 +377,6 @@ class CephTest(test_utils.OpenStackBaseTest):
             'osd-devices': '/dev/vdb',
         }
 
-        current_release = zaza_openstack.get_os_release()
         bionic_train = zaza_openstack.get_os_release('bionic_train')
         if current_release < bionic_train:
             set_default['osd-devices'] = '/dev/vdb /srv/ceph'
@@ -466,6 +390,12 @@ class CephTest(test_utils.OpenStackBaseTest):
         """The services can be paused and resumed."""
         logging.info('Checking pause and resume actions...')
         self.pause_resume(['ceph-osd'])
+
+    def get_device_for_blacklist(self, unit):
+        """Return a device to be used by the blacklist tests."""
+        cmd = "mount | grep 'on / ' | awk '{print $1}'"
+        obj = zaza_model.run_on_unit(unit, cmd)
+        return obj.get('Stdout').strip()
 
     def test_blacklist(self):
         """Check the blacklist action.
@@ -506,10 +436,15 @@ class CephTest(test_utils.OpenStackBaseTest):
         )
 
         # Attempt to add device with existent path should succeed
+        device = self.get_device_for_blacklist(unit_name)
+        if not device:
+            raise unittest.SkipTest(
+                "Skipping test because no device was found")
+
         action_obj = zaza_model.run_action(
             unit_name=unit_name,
             action_name='blacklist-add-disk',
-            action_params={'osd-devices': '/dev/vda'}
+            action_params={'osd-devices': device}
         )
         self.assertEqual('completed', action_obj.status)
         zaza_model.block_until_unit_wl_status(
@@ -521,7 +456,7 @@ class CephTest(test_utils.OpenStackBaseTest):
         action_obj = zaza_model.run_action(
             unit_name=unit_name,
             action_name='blacklist-remove-disk',
-            action_params={'osd-devices': '/dev/vda'}
+            action_params={'osd-devices': device}
         )
         self.assertEqual('completed', action_obj.status)
         zaza_model.block_until_unit_wl_status(
@@ -561,68 +496,150 @@ class CephTest(test_utils.OpenStackBaseTest):
         local = list(json.loads(ret['Stdout']))[-1]
         return local if local.startswith('osd.') else 'osd.' + local
 
-    def get_num_osds(self, osd):
+    def get_num_osds(self, osd, is_up_only=False):
         """Compute the number of active OSD's."""
         result = zaza_model.run_on_unit(osd, 'ceph osd stat --format=json')
         result = json.loads(result['Stdout'])
-        return int(result['num_osds'])
+        if is_up_only:
+            return int(result['num_up_osds'])
+        else:
+            return int(result['num_osds'])
+
+    def get_osd_devices_on_unit(self, unit_name):
+        """Get information for osd devices present on a particular unit.
+
+        :param unit: Unit name to be queried for osd device info.
+        :type unit: str
+        """
+        osd_devices = json.loads(
+            zaza_model.run_on_unit(
+                unit_name, 'ceph-volume lvm list --format=json'
+            ).get('Stdout', '')
+        )
+
+        return osd_devices
+
+    def remove_disk_from_osd_unit(self, unit, osd_id, is_purge=False):
+        """Remove osd device with provided osd_id from unit.
+
+        :param unit: Unit name where the osd device is to be removed from.
+        :type unit: str
+
+        :param osd_id: osd-id for the osd device to be removed.
+        :type osd_id: str
+
+        :param is_purge: whether to purge the osd device
+        :type is_purge: bool
+        """
+        action_obj = zaza_model.run_action(
+            unit_name=unit,
+            action_name='remove-disk',
+            action_params={
+                'osd-ids': osd_id,
+                'timeout': 10,
+                'format': 'json',
+                'purge': is_purge
+            }
+        )
+        zaza_utils.assertActionRanOK(action_obj)
+        results = json.loads(action_obj.data['results']['message'])
+        results = results[next(iter(results))]
+        self.assertEqual(results['osd-ids'], osd_id)
+        zaza_model.run_on_unit(unit, 'partprobe')
+
+    def remove_one_osd(self, unit, block_devs):
+        """Remove one device from osd unit.
+
+        :param unit: Unit name where the osd device is to be removed from.
+        :type unit: str
+        :params block_devs: list of block devices on the scpecified unit
+        :type block_devs: list[str]
+        """
+        # Should have more than 1 OSDs to take one out and test.
+        self.assertGreater(len(block_devs), 1)
+
+        # Get complete device details for an OSD.
+        key = list(block_devs)[-1]
+        device = {
+            'osd-id': key if key.startswith('osd.') else 'osd.' + key,
+            'block-device': block_devs[key][0]['devices'][0]
+        }
+
+        self.remove_disk_from_osd_unit(unit, device['osd-id'], is_purge=True)
+        return device
 
     def test_cache_device(self):
         """Test replacing a disk in use."""
         logging.info('Running add-disk action with a caching device')
         mon = next(iter(zaza_model.get_units('ceph-mon'))).entity_id
         osds = [x.entity_id for x in zaza_model.get_units('ceph-osd')]
-        params = []
+        osd_info = dict()
+
+        # Remove one of the two disks.
+        logging.info('Removing single disk from each OSD')
         for unit in osds:
-            loop_dev = self.loop_devs[unit]
-            params.append({'unit': unit, 'device': loop_dev})
+            block_devs = self.get_osd_devices_on_unit(unit)
+            if len(block_devs) < 2:
+                continue
+            device_info = self.remove_one_osd(unit, block_devs)
+            block_dev = device_info['block-device']
+            logging.info("Removing device %s from unit %s" % (block_dev, unit))
+            osd_info[unit] = device_info
+        if not osd_info:
+            raise unittest.SkipTest(
+                'Skipping OSD replacement Test, no spare devices added')
+
+        logging.debug('Removed OSD Info: {}'.format(osd_info))
+        zaza_model.wait_for_application_states()
+
+        logging.info('Recycling previously removed disks')
+        for unit, device_info in osd_info.items():
+            osd_id = device_info['osd-id']
+            block_dev = device_info['block-device']
+            logging.info("Found device %s on unit %s" % (block_dev, unit))
+            self.assertNotEqual(block_dev, None)
             action_obj = zaza_model.run_action(
                 unit_name=unit,
                 action_name='add-disk',
-                action_params={'osd-devices': loop_dev,
+                action_params={'osd-devices': block_dev,
+                               'osd-ids': osd_id,
                                'partition-size': 5}
             )
             zaza_utils.assertActionRanOK(action_obj)
         zaza_model.wait_for_application_states()
 
-        logging.info('Removing previously added disks')
-        for param in params:
-            osd_id = self.get_local_osd_id(param['unit'])
-            param.update({'osd-id': osd_id})
-            action_obj = zaza_model.run_action(
-                unit_name=param['unit'],
-                action_name='remove-disk',
-                action_params={'osd-ids': osd_id, 'timeout': 5,
-                               'format': 'json', 'purge': False}
+        logging.info('Removing previously added OSDs')
+        for unit, device_info in osd_info.items():
+            osd_id = device_info['osd-id']
+            block_dev = device_info['block-device']
+            logging.info(
+                "Removing block device %s from unit %s" %
+                (block_dev, unit)
             )
-            zaza_utils.assertActionRanOK(action_obj)
-            results = json.loads(action_obj.data['results']['message'])
-            results = results[next(iter(results))]
-            self.assertEqual(results['osd-ids'], osd_id)
-            zaza_model.run_on_unit(param['unit'], 'partprobe')
+            self.remove_disk_from_osd_unit(unit, osd_id, is_purge=False)
         zaza_model.wait_for_application_states()
 
-        logging.info('Recycling previously removed OSDs')
-        for param in params:
+        logging.info('Finally adding back OSDs')
+        for unit, device_info in osd_info.items():
+            block_dev = device_info['block-device']
             action_obj = zaza_model.run_action(
-                unit_name=param['unit'],
+                unit_name=unit,
                 action_name='add-disk',
-                action_params={'osd-devices': param['device'],
-                               'osd-ids': param['osd-id'],
-                               'partition-size': 4}
+                action_params={'osd-devices': block_dev,
+                               'partition-size': 5}
             )
             zaza_utils.assertActionRanOK(action_obj)
         zaza_model.wait_for_application_states()
-        self.assertEqual(len(osds) * 2, self.get_num_osds(mon))
 
-        # Finally, remove all the added OSDs that are backed by loop devices.
-        for param in params:
-            osd_id = self.get_local_osd_id(param['unit'])
-            zaza_model.run_action(
-                unit_name=param['unit'],
-                action_name='remove-disk',
-                action_params={'osd-ids': osd_id, 'purge': True}
-            )
+        for attempt in tenacity.Retrying(
+            wait=tenacity.wait_exponential(multiplier=2, max=32),
+            reraise=True, stop=tenacity.stop_after_attempt(10),
+            retry=tenacity.retry_if_exception_type(AssertionError)
+        ):
+            with attempt:
+                self.assertEqual(
+                    len(osds) * 2, self.get_num_osds(mon, is_up_only=True)
+                )
 
 
 class CephRGWTest(test_utils.BaseCharmTest):
@@ -682,16 +699,32 @@ class CephRGWTest(test_utils.BaseCharmTest):
         hostname = unit_hostnames[unit_name]
         return 'radosgw-admin --id=rgw.{} '.format(hostname)
 
-    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=10, max=300),
-                    reraise=True, stop=tenacity.stop_after_attempt(12),
-                    retry=tenacity.retry_if_exception_type(AssertionError))
-    def wait_for_sync(self, application, is_primary=False):
+    def purge_bucket(self, application, bucket_name):
+        """Remove a bucket and all it's objects.
+
+        :param application: RGW application name
+        :type application: str
+        :param bucket_name: Name for RGW bucket to be deleted
+        :type bucket_name: str
+        """
+        juju_units = zaza_model.get_units(application)
+        unit_hostnames = generic_utils.get_unit_hostnames(juju_units)
+        for unit_name, hostname in unit_hostnames.items():
+            key_name = "rgw.{}".format(hostname)
+            cmd = 'radosgw-admin --id={} bucket rm --bucket={}' \
+                  ' --purge-objects'.format(key_name, bucket_name)
+            zaza_model.run_on_unit(unit_name, cmd)
+
+    def wait_for_status(self, application,
+                        is_primary=False, sync_expected=True):
         """Wait for required RGW endpoint to finish sync for data and metadata.
 
         :param application: RGW application which has to be waited for
         :type application: str
-        :param is_primary: whether application is primary site endpoint
+        :param is_primary: whether RGW application is primary or secondary
         :type is_primary: boolean
+        :param sync_expected: whether sync details should be expected in status
+        :type sync_expected: boolean
         """
         juju_units = zaza_model.get_units(application)
         unit_hostnames = generic_utils.get_unit_hostnames(juju_units)
@@ -699,15 +732,28 @@ class CephRGWTest(test_utils.BaseCharmTest):
         meta_primary = 'metadata sync no sync (zone is master)'
         meta_secondary = 'metadata is caught up with master'
         meta_check = meta_primary if is_primary else meta_secondary
-        for unit_name, hostname in unit_hostnames.items():
-            key_name = "rgw.{}".format(hostname)
-            cmd = 'radosgw-admin --id={} sync status'.format(key_name)
-            stdout = zaza_model.run_on_unit(unit_name, cmd).get('Stdout', '')
-            assert data_check in stdout
-            assert meta_check in stdout
 
-    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
-                    reraise=True, stop=tenacity.stop_after_attempt(12))
+        for attempt in tenacity.Retrying(
+            wait=tenacity.wait_exponential(multiplier=10, max=300),
+            reraise=True, stop=tenacity.stop_after_attempt(12),
+            retry=tenacity.retry_if_exception_type(AssertionError)
+        ):
+            with attempt:
+                for unit_name, hostname in unit_hostnames.items():
+                    key_name = "rgw.{}".format(hostname)
+                    cmd = 'radosgw-admin --id={} sync status'.format(key_name)
+                    stdout = zaza_model.run_on_unit(
+                        unit_name, cmd
+                    ).get('Stdout', '')
+                    if sync_expected:
+                        # Both data and meta sync.
+                        self.assertIn(data_check, stdout)
+                        self.assertIn(meta_check, stdout)
+                    else:
+                        #  ExpectPrimary's Meta Status and no Data sync status
+                        self.assertIn(meta_primary, stdout)
+                        self.assertNotIn(data_check, stdout)
+
     def fetch_rgw_object(self, target_client, container_name, object_name):
         """Fetch RGW object content.
 
@@ -718,9 +764,14 @@ class CephRGWTest(test_utils.BaseCharmTest):
         :param object_name: Object name for desired object.
         :type object_name: str
         """
-        return target_client.Object(container_name, object_name).get()[
-            'Body'
-        ].read().decode('UTF-8')
+        for attempt in tenacity.Retrying(
+            wait=tenacity.wait_exponential(multiplier=1, max=60),
+            reraise=True, stop=tenacity.stop_after_attempt(12)
+        ):
+            with attempt:
+                return target_client.Object(
+                    container_name, object_name
+                ).get()['Body'].read().decode('UTF-8')
 
     def promote_rgw_to_primary(self, app_name: str):
         """Promote provided app to Primary and update period at new secondary.
@@ -947,7 +998,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
         # 1. Migrate to multisite
         if zaza_model.get_relation_id(
                 self.primary_rgw_app, self.secondary_rgw_app,
-                remote_interface_name='slave'
+                remote_interface_name='secondary'
         ) is not None:
             logging.info('Skipping Test, Multisite relation already present.')
             return
@@ -956,8 +1007,8 @@ class CephRGWTest(test_utils.BaseCharmTest):
         self.configure_rgw_apps_for_multisite()
         zaza_model.add_relation(
             self.primary_rgw_app,
-            self.primary_rgw_app + ":master",
-            self.secondary_rgw_app + ":slave"
+            self.primary_rgw_app + ":primary",
+            self.secondary_rgw_app + ":secondary"
         )
 
         # 2. Verify secondary fails migration due to existing Bucket.
@@ -976,12 +1027,12 @@ class CephRGWTest(test_utils.BaseCharmTest):
         self.clean_rgw_multisite_config(self.secondary_rgw_app)
         zaza_model.remove_relation(
             self.primary_rgw_app,
-            self.primary_rgw_app + ":master",
-            self.secondary_rgw_app + ":slave"
+            self.primary_rgw_app + ":primary",
+            self.secondary_rgw_app + ":secondary"
         )
 
-        secondary_client.Object(container_name, obj_name).delete()
-        secondary_client.Bucket(container_name).delete()
+        # Make secondary pristine.
+        self.purge_bucket(self.secondary_rgw_app, container_name)
 
         zaza_model.block_until_unit_wl_status(self.secondary_rgw_unit,
                                               'active')
@@ -1012,17 +1063,17 @@ class CephRGWTest(test_utils.BaseCharmTest):
             'prefile'
         ).put(Body=obj_data)
 
-        # If Master/Slave relation does not exist, add it.
+        # If Primary/Secondary relation does not exist, add it.
         if zaza_model.get_relation_id(
                 self.primary_rgw_app, self.secondary_rgw_app,
-                remote_interface_name='slave'
+                remote_interface_name='secondary'
         ) is None:
             logging.info('Configuring Multisite')
             self.configure_rgw_apps_for_multisite()
             zaza_model.add_relation(
                 self.primary_rgw_app,
-                self.primary_rgw_app + ":master",
-                self.secondary_rgw_app + ":slave"
+                self.primary_rgw_app + ":primary",
+                self.secondary_rgw_app + ":secondary"
             )
             zaza_model.block_until_unit_wl_status(
                 self.secondary_rgw_unit, "waiting"
@@ -1032,8 +1083,8 @@ class CephRGWTest(test_utils.BaseCharmTest):
             self.secondary_rgw_unit, "active"
         )
         logging.info('Waiting for Data and Metadata to Synchronize')
-        self.wait_for_sync(self.secondary_rgw_app, is_primary=False)
-        self.wait_for_sync(self.primary_rgw_app, is_primary=True)
+        self.wait_for_status(self.secondary_rgw_app, is_primary=False)
+        self.wait_for_status(self.primary_rgw_app, is_primary=True)
 
         logging.info('Performing post migration IO tests.')
         # Add another object at primary
@@ -1068,16 +1119,16 @@ class CephRGWTest(test_utils.BaseCharmTest):
         self.assertEqual(post_migration_data, obj_data)
 
         logging.info('Checking multisite failover/failback')
-        # Failover Scenario, Promote Slave-Ceph-RadosGW to Primary
+        # Failover Scenario, Promote Secondary-Ceph-RadosGW to Primary
         self.promote_rgw_to_primary(self.secondary_rgw_app)
 
         # Wait for Sites to be syncronised.
-        self.wait_for_sync(self.primary_rgw_app, is_primary=False)
-        self.wait_for_sync(self.secondary_rgw_app, is_primary=True)
+        self.wait_for_status(self.primary_rgw_app, is_primary=False)
+        self.wait_for_status(self.secondary_rgw_app, is_primary=True)
 
         # IO Test
-        container = 'demo-container-for-failover'
-        test_data = 'Test data from Zaza on Slave'
+        container = 'failover-container'
+        test_data = 'Test data from Zaza on Secondary'
         secondary_client.Bucket(container).create()
         secondary_object = secondary_client.Object(container, 'testfile')
         secondary_object.put(
@@ -1089,8 +1140,8 @@ class CephRGWTest(test_utils.BaseCharmTest):
 
         # Recovery scenario, reset ceph-rgw as primary.
         self.promote_rgw_to_primary(self.primary_rgw_app)
-        self.wait_for_sync(self.primary_rgw_app, is_primary=True)
-        self.wait_for_sync(self.secondary_rgw_app, is_primary=False)
+        self.wait_for_status(self.primary_rgw_app, is_primary=True)
+        self.wait_for_status(self.secondary_rgw_app, is_primary=False)
 
         # Fetch Syncronised copy of testfile from primary site.
         primary_content = self.fetch_rgw_object(
@@ -1099,6 +1150,50 @@ class CephRGWTest(test_utils.BaseCharmTest):
 
         # Verify Data Integrity.
         self.assertEqual(secondary_content, primary_content)
+
+        # Scaledown and verify replication has stopped.
+        logging.info('Checking multisite scaledown')
+        zaza_model.remove_relation(
+            self.primary_rgw_app,
+            self.primary_rgw_app + ":primary",
+            self.secondary_rgw_app + ":secondary"
+        )
+
+        # wait for sync stop
+        self.wait_for_status(self.primary_rgw_app, sync_expected=False)
+        self.wait_for_status(self.secondary_rgw_app, sync_expected=False)
+
+        # Refresh client and verify objects are not replicating.
+        primary_client = boto3.resource("s3",
+                                        verify=False,
+                                        endpoint_url=primary_endpoint,
+                                        aws_access_key_id=access_key,
+                                        aws_secret_access_key=secret_key)
+        secondary_client = boto3.resource("s3",
+                                          verify=False,
+                                          endpoint_url=secondary_endpoint,
+                                          aws_access_key_id=access_key,
+                                          aws_secret_access_key=secret_key)
+
+        # IO Test
+        container = 'scaledown-container'
+        test_data = 'Scaledown Test data'
+        secondary_client.Bucket(container).create()
+        secondary_object = secondary_client.Object(container, 'scaledown')
+        secondary_object.put(
+            Body=test_data
+        )
+
+        # Since bucket is not replicated.
+        with self.assertRaises(botocore.exceptions.ClientError):
+            primary_content = self.fetch_rgw_object(
+                primary_client, container, 'scaledown'
+            )
+
+        # Cleanup of scaledown resources and synced resources.
+        self.purge_bucket(self.secondary_rgw_app, container)
+        self.purge_bucket(self.secondary_rgw_app, 'zaza-container')
+        self.purge_bucket(self.secondary_rgw_app, 'failover-container')
 
 
 class CephProxyTest(unittest.TestCase):
@@ -1284,12 +1379,12 @@ class BlueStoreCompressionCharmOperation(test_utils.BaseCharmTest):
                 if pd['pool_name'] == pool:
                     if 'options' in expected_properties:
                         for k, v in expected_properties['options'].items():
-                            self.assertEquals(pd['options'][k], v)
+                            self.assertEqual(pd['options'][k], v)
                             log_func("['options']['{}'] == {}".format(k, v))
                     for k, v in expected_properties.items():
                         if k == 'options':
                             continue
-                        self.assertEquals(pd[k], v)
+                        self.assertEqual(pd[k], v)
                         log_func("{} == {}".format(k, v))
 
     def test_configure_compression(self):
@@ -1333,25 +1428,29 @@ class BlueStoreCompressionCharmOperation(test_utils.BaseCharmTest):
         with self.config_change(
                 {'bluestore-compression-mode': 'none'},
                 {'bluestore-compression-mode': 'force'}):
-            # Retrieve pool details from Ceph after changing configuration
-            ceph_pools_detail = zaza_ceph.get_ceph_pool_details(
-                model_name=self.model_name)
-            logging.debug('CONFIG_CHANGE: {}'.format(ceph_pools_detail))
             logging.info('Checking Ceph pool compression_mode after to change')
-            self._assert_pools_properties(
-                app_pools, ceph_pools_detail,
-                {'options': {'compression_mode': 'force'}})
+            self._check_pool_compression_mode(app_pools, 'force')
+
+        logging.info('Checking Ceph pool compression_mode after '
+                     'restoring config to previous value')
+        self._check_pool_compression_mode(app_pools, 'none')
+
+    @tenacity.retry(
+        wait=tenacity.wait_exponential(multiplier=1, min=2, max=10),
+        stop=tenacity.stop_after_attempt(10),
+        reraise=True,
+        retry=tenacity.retry_if_exception_type(AssertionError)
+    )
+    def _check_pool_compression_mode(self, app_pools, mode):
         ceph_pools_detail = zaza_ceph.get_ceph_pool_details(
             model_name=self.model_name)
-        logging.debug('AFTER: {}'.format(ceph_pools_detail))
+        logging.debug('ceph_pools_details: %s', ceph_pools_detail)
         logging.debug(juju_utils.get_relation_from_unit(
             'ceph-mon', self.application_name, None,
             model_name=self.model_name))
-        logging.info('Checking Ceph pool compression_mode after restoring '
-                     'config to previous value')
         self._assert_pools_properties(
             app_pools, ceph_pools_detail,
-            {'options': {'compression_mode': 'none'}})
+            {'options': {'compression_mode': mode}})
 
     def test_invalid_compression_configuration(self):
         """Set invalid configuration and validate charm response."""
@@ -1427,3 +1526,92 @@ class CephAuthTest(unittest.TestCase):
         delete_results = action_obj.data['results']['message']
         self.assertEqual(delete_results,
                          "entity client.sandbox does not exist\n")
+
+
+class CephMonActionsTest(test_utils.BaseCharmTest):
+    """Test miscellaneous actions of the ceph-mon charm."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running ceph-mon actions."""
+        super(CephMonActionsTest, cls).setUpClass()
+        # Allow mons to delete pools.
+        zaza_model.run_on_unit(
+            'ceph-mon/0',
+            "ceph tell mon.\\* injectargs '--mon-allow-pool-delete=true'"
+        )
+
+    def _get_osd_weight(self, osd, unit):
+        """Fetch the CRUSH weight of an OSD."""
+        cmd = 'sudo ceph osd crush tree --format=json'
+        result = zaza_model.run_on_unit(unit, cmd)
+        self.assertEqual(int(result.get('Code')), 0)
+
+        tree = json.loads(result.get('Stdout'))
+        for node in tree['nodes']:
+            if node.get('name') == osd:
+                return node['crush_weight']
+
+    def test_reweight_osd(self):
+        """Test the change-osd-weight action."""
+        unit = 'ceph-mon/0'
+        osd = 0
+        osd_str = 'osd.' + str(osd)
+        weight = 700
+        prev_weight = self._get_osd_weight(osd_str, unit)
+        try:
+            action_obj = zaza_model.run_action(
+                unit_name=unit,
+                action_name='change-osd-weight',
+                action_params={'osd': osd, 'weight': 700}
+            )
+            zaza_utils.assertActionRanOK(action_obj)
+            self.assertEqual(weight, self._get_osd_weight(osd_str, unit))
+        finally:
+            # Reset the weight.
+            zaza_model.run_action(
+                unit_name=unit,
+                action_name='change-osd-weight',
+                action_params={'osd': osd, 'weight': prev_weight}
+            )
+
+    def test_copy_pool(self):
+        """Test the copy-pool (and list-pool) action."""
+        unit = 'ceph-mon/0'
+        logging.debug('Creating secondary test pool')
+        cmd = 'sudo ceph osd pool create test2 32'
+        cmd2 = 'sudo ceph osd pool create test3 32'
+        try:
+            result = zaza_model.run_on_unit(unit, cmd)
+            self.assertEqual(int(result.get('Code')), 0)
+            result = zaza_model.run_on_unit(unit, cmd2)
+            self.assertEqual(int(result.get('Code')), 0)
+
+            action_obj = zaza_model.run_action(
+                unit_name=unit,
+                action_name='list-pools',
+                action_params={}
+            )
+            zaza_utils.assertActionRanOK(action_obj)
+            self.assertIn('test2', action_obj.data['results']['message'])
+            self.assertIn('test3', action_obj.data['results']['message'])
+
+            logging.debug('Copying test pool')
+            action_obj = zaza_model.run_action(
+                unit_name=unit,
+                action_name='copy-pool',
+                action_params={'source': 'test2', 'target': 'test3'}
+            )
+            zaza_utils.assertActionRanOK(action_obj)
+        finally:
+            # Clean up our mess.
+            zaza_model.run_on_unit(
+                unit,
+                ('sudo ceph osd pool delete test2 test2 '
+                 '--yes-i-really-really-mean-it')
+            )
+            zaza_model.run_on_unit(
+                unit,
+                ('sudo ceph osd pool delete test3 test3 '
+                 '--yes-i-really-really-mean-it')
+            )

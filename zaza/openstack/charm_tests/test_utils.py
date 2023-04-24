@@ -48,7 +48,12 @@ def skipIfNotHA(service_name):
 
 
 def skipUntilVersion(service, package, release):
-    """Run decorator to skip this test if application version is too low."""
+    """Run decorator to skip this test if application version is too low.
+
+    :param service: the name of the application to check the package's version
+    :param package: the name of the package to check
+    :param releases: package version to compare with.
+    """
     def _skipUntilVersion_inner_1(f):
         def _skipUntilVersion_inner_2(*args, **kwargs):
             package_version = generic_utils.get_pkg_version(service, package)
@@ -64,6 +69,44 @@ def skipUntilVersion(service, package, release):
                                  package_version, service, release))
         return _skipUntilVersion_inner_2
     return _skipUntilVersion_inner_1
+
+
+def package_version_matches(application, package, versions, op):
+    """Determine if the application is running any matching package versions.
+
+    The version comparison is delegated to `dpkg --compare-versions`, if the
+    command returns 0, means the version matches.
+
+    Usage examples:
+
+    * Return true if hacluster application has crmsh-4.4.0-1ubuntu1 installed
+
+        def test_hacluster():
+            if package_version_matches('keystone-hacluster', 'crmsh',
+                                       ['4.4.0-1ubuntu1'], 'eq')
+                return
+            ...
+
+    :param application: the name of the application to check the package's
+           versions.
+    :param package: the name of the package to check
+    :param versions: list of versions to compare with
+    :param op: operation to do the comparison (e.g. lt le eq ne ge gt, see for
+               more details dpkg(1))
+    :return: Matching package version
+    :rtype: str
+
+    """
+    package_version = generic_utils.get_pkg_version(application, package)
+    for version in versions:
+        p = subprocess.run(['dpkg', '--compare-versions',
+                            package_version, op, version],
+                           stderr=subprocess.STDOUT,
+                           universal_newlines=True)
+        if p.returncode == 0:
+            logging.info("Package version {version} matches")
+            return package_version
+    return None
 
 
 def audit_assertions(action,
@@ -752,7 +795,8 @@ class OpenStackBaseTest(BaseCharmTest):
 
     def launch_guest(self, guest_name, userdata=None, use_boot_volume=False,
                      instance_key=None, flavor_name=None,
-                     attach_to_external_network=False):
+                     attach_to_external_network=False,
+                     keystone_session=None):
         """Launch one guest to use in tests.
 
         Note that it is up to the caller to have set the RESOURCE_PREFIX class
@@ -772,6 +816,8 @@ class OpenStackBaseTest(BaseCharmTest):
         :param attach_to_external_network: Attach instance directly to external
                                            network.
         :type attach_to_external_network: bool
+        :param keystone_session: Keystone session to use.
+        :type keystone_session: Optional[keystoneauth1.session.Session]
         :returns: Nova instance objects
         :rtype: Server
         """
@@ -801,7 +847,8 @@ class OpenStackBaseTest(BaseCharmTest):
                     use_boot_volume=use_boot_volume,
                     userdata=userdata,
                     flavor_name=flavor_name,
-                    attach_to_external_network=attach_to_external_network)
+                    attach_to_external_network=attach_to_external_network,
+                    keystone_session=keystone_session)
 
     def launch_guests(self, userdata=None, attach_to_external_network=False,
                       flavor_name=None):

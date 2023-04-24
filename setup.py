@@ -29,6 +29,11 @@ install_require = [
     'async_generator',
     'boto3',
 
+    # pyopenssl depends on a newer version of cryptography since 22.1.0
+    # TypeError: deprecated() got an unexpected keyword argument 'name'
+    # https://github.com/pyca/pyopenssl/commit/a145fc3bc6d2e943434beb2f04bbf9b18930296f
+    'pyopenssl<22.1.0',
+
     # Newer versions require a Rust compiler to build, see
     # * https://github.com/openstack-charmers/zaza/issues/421
     # * https://mail.python.org/pipermail/cryptography-dev/2021-January/001003.html
@@ -41,15 +46,15 @@ install_require = [
     'PyYAML',
     'tenacity',
     'oslo.config<6.12.0',
-    'pyparsing<3.0.0',  # pin for aodhclient which is held for py35
-    'aodhclient<1.4.0',
+    'aodhclient',
     'gnocchiclient>=7.0.5,<8.0.0',
     'pika>=1.1.0,<2.0.0',
     'python-barbicanclient>=4.0.1,<5.0.0',
+    'python-cloudkittyclient',
     'python-designateclient>=1.5,<3.0.0',
     'python-heatclient<2.0.0',
     'python-ironicclient',
-    'python-glanceclient<3.0.0',
+    'python-glanceclient',
     'python-keystoneclient<3.22.0',
     'python-magnumclient',
     'python-manilaclient<2.0.0',

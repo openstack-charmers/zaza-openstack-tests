@@ -15,42 +15,99 @@
 """Encapsulate CephFS testing."""
 
 import logging
-import asyncio
+import json
+import subprocess
 from tenacity import retry, Retrying, stop_after_attempt, wait_exponential
+import unittest
+import zaza
 import zaza.model as model
-import zaza.openstack.charm_tests.neutron.tests as neutron_tests
-import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
-import zaza.openstack.configure.guest as guest
-
-from zaza.openstack.utilities import (
-    openstack as openstack_utils,
-)
 
 
-class CephFSTests(test_utils.OpenStackBaseTest):
+class CephFSTests(unittest.TestCase):
     """Encapsulate CephFS tests."""
 
-    RESOURCE_PREFIX = 'zaza-cephfstests'
-    INSTANCE_USERDATA = """#cloud-config
-packages:
-- ceph-fuse
-- python
-mounts:
-  - [ 'none', '/mnt/cephfs', 'fuse.ceph', 'ceph.id=admin,ceph.conf=/etc/ceph/ceph.conf,_netdev,defaults', '0', '0' ]
-write_files:
--   content: |
-{}
-    path: /etc/ceph/ceph.conf
--   content: |
-{}
-    path: /etc/ceph/ceph.client.admin.keyring
-""" # noqa
+    mounts_share = False
+    mount_dir = '/mnt/cephfs'
+
+    def tearDown(self):
+        """Cleanup after running tests."""
+        if self.mounts_share:
+            for unit in ['ubuntu/0', 'ubuntu/1']:
+                try:
+                    zaza.utilities.generic.run_via_ssh(
+                        unit_name=unit,
+                        cmd='sudo fusermount -u {0} && sudo rmdir {0}'.format(
+                            self.mount_dir))
+                except subprocess.CalledProcessError:
+                    logging.warning(
+                        "Failed to cleanup mounts on {}".format(unit))
+
+    def _mount_share(self, unit_name: str,
+                     retry: bool = True):
+        self._install_dependencies(unit_name)
+        self._install_keyring(unit_name)
+        ssh_cmd = (
+            'sudo mkdir -p {0} && '
+            'sudo ceph-fuse {0}'.format(self.mount_dir)
+        )
+        if retry:
+            for attempt in Retrying(
+                    stop=stop_after_attempt(5),
+                    wait=wait_exponential(multiplier=3,
+                                          min=2, max=10)):
+                with attempt:
+                    zaza.utilities.generic.run_via_ssh(
+                        unit_name=unit_name,
+                        cmd=ssh_cmd)
+        else:
+            zaza.utilities.generic.run_via_ssh(
+                unit_name=unit_name,
+                cmd=ssh_cmd)
+        self.mounts_share = True
+
+    def _install_keyring(self, unit_name: str):
+
+        keyring = model.run_on_leader(
+            'ceph-mon', 'cat /etc/ceph/ceph.client.admin.keyring')['Stdout']
+        config = model.run_on_leader(
+            'ceph-mon', 'cat /etc/ceph/ceph.conf')['Stdout']
+        commands = [
+            'sudo mkdir -p /etc/ceph',
+            "echo '{}' | sudo tee /etc/ceph/ceph.conf".format(config),
+            "echo '{}' | "
+            'sudo tee /etc/ceph/ceph.client.admin.keyring'.format(keyring)
+        ]
+        for cmd in commands:
+            zaza.utilities.generic.run_via_ssh(
+                unit_name=unit_name,
+                cmd=cmd)
+
+    def _install_dependencies(self, unit: str):
+        zaza.utilities.generic.run_via_ssh(
+            unit_name=unit,
+            cmd='sudo apt-get install -yq ceph-fuse')
 
     @classmethod
     def setUpClass(cls):
         """Run class setup for running tests."""
         super(CephFSTests, cls).setUpClass()
+
+    @retry(
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=3, min=2, max=10))
+    def _write_testing_file_on_instance(self, instance_name: str):
+        zaza.utilities.generic.run_via_ssh(
+            unit_name=instance_name,
+            cmd='echo -n "test" | sudo tee {}/test'.format(self.mount_dir))
+
+    @retry(
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=3, min=2, max=10))
+    def _verify_testing_file_on_instance(self, instance_name: str):
+        output = zaza.model.run_on_unit(
+            instance_name, 'sudo cat {}/test'.format(self.mount_dir))['Stdout']
+        self.assertEqual('test', output.strip())
 
     def test_cephfs_share(self):
         """Test that CephFS shares can be accessed on two instances.
@@ -61,76 +118,25 @@ write_files:
         4. read it on the other
         5. profit
         """
-        keyring = model.run_on_leader(
-            'ceph-mon', 'cat /etc/ceph/ceph.client.admin.keyring')['Stdout']
-        conf = model.run_on_leader(
-            'ceph-mon', 'cat /etc/ceph/ceph.conf')['Stdout']
-        # Spawn Servers
-        instance_1, instance_2 = self.launch_guests(
-            userdata=self.INSTANCE_USERDATA.format(
-                _indent(conf, 8),
-                _indent(keyring, 8)))
+        self._mount_share('ubuntu/0')
+        self._mount_share('ubuntu/1')
 
-        # Write a file on instance_1
-        def verify_setup(stdin, stdout, stderr):
-            status = stdout.channel.recv_exit_status()
-            self.assertEqual(status, 0)
-
-        fip_1 = neutron_tests.floating_ips_from_instance(instance_1)[0]
-        fip_2 = neutron_tests.floating_ips_from_instance(instance_2)[0]
-        username = guest.boot_tests['bionic']['username']
-        password = guest.boot_tests['bionic'].get('password')
-        privkey = openstack_utils.get_private_key(nova_utils.KEYPAIR_NAME)
-
-        for attempt in Retrying(
-                stop=stop_after_attempt(3),
-                wait=wait_exponential(multiplier=1, min=2, max=10)):
-            with attempt:
-                openstack_utils.ssh_command(
-                    username, fip_1, 'instance-1',
-                    'sudo mount -a && '
-                    'echo "test" | sudo tee /mnt/cephfs/test',
-                    password=password, privkey=privkey, verify=verify_setup)
-
-        def verify(stdin, stdout, stderr):
-            status = stdout.channel.recv_exit_status()
-            self.assertEqual(status, 0)
-            out = ""
-            for line in iter(stdout.readline, ""):
-                out += line
-            self.assertEqual(out, "test\n")
-
-        openstack_utils.ssh_command(
-            username, fip_2, 'instance-2',
-            'sudo mount -a && '
-            'sudo cat /mnt/cephfs/test',
-            password=password, privkey=privkey, verify=verify)
+        self._write_testing_file_on_instance('ubuntu/0')
+        self._verify_testing_file_on_instance('ubuntu/1')
 
     def test_conf(self):
         """Test ceph to ensure juju config options are properly set."""
         self.TESTED_UNIT = 'ceph-fs/0'
 
         def _get_conf():
-            """get/parse ceph daemon response into dict for specified configs.
+            """get/parse ceph daemon response into dict.
 
-            :returns dict: conf options selected from configs
+            :returns dict: Current configuration of the Ceph MDS daemon
             :rtype: dict
             """
-            configs = ["mds_cache_memory_limit",
-                       "mds_cache_reservation",
-                       "mds_health_cache_threshold"]
-            holder = {}
-            for config in configs:
-                cmd = "sudo ceph daemon mds." \
-                      "$HOSTNAME config show | grep {}".format(config)
-                conf = model.run_on_unit(self.TESTED_UNIT, cmd)
-                for i in (conf['Stdout'].replace('"', '')
-                                        .replace(',', '')
-                                        .strip()
-                                        .split("\n")):
-                    key, val = i.split(":")
-                    holder[key] = val.strip()
-            return holder
+            cmd = "sudo ceph daemon mds.$HOSTNAME config show"
+            conf = model.run_on_unit(self.TESTED_UNIT, cmd)
+            return json.loads(conf['Stdout'])
 
         @retry(wait=wait_exponential(multiplier=1, min=4, max=10),
                stop=stop_after_attempt(10))
@@ -139,11 +145,9 @@ write_files:
 
             Doesn't return a value.
             """
-            loop = asyncio.get_event_loop()
-            crt = model.async_set_application_config('ceph-fs', mds_config)
-            loop.run_until_complete(crt)
+            model.set_application_config('ceph-fs', mds_config)
             results = _get_conf()
-            self.assertEquals(
+            self.assertEqual(
                 results['mds_cache_memory_limit'],
                 mds_config['mds-cache-memory-limit'])
             self.assertAlmostEqual(
@@ -154,7 +158,6 @@ write_files:
                 float(mds_config['mds-health-cache-threshold']))
 
         # ensure defaults are set
-        _get_conf()
         mds_config = {'mds-cache-memory-limit': '4294967296',
                       'mds-cache-reservation': '0.05',
                       'mds-health-cache-threshold': '1.5'}

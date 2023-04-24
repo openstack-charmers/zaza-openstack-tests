@@ -427,17 +427,25 @@ def connect_amqp_by_unit(unit, ssl=False,
                   '{}...'.format(host, port, unit_name, username))
 
     try:
-        credentials = pika.PlainCredentials(username, password)
-        parameters = pika.ConnectionParameters(host=host, port=port,
-                                               credentials=credentials,
-                                               ssl_options=ssl_options,
-                                               connection_attempts=3,
-                                               retry_delay=5,
-                                               socket_timeout=1)
-        connection = pika.BlockingConnection(parameters)
-        assert connection.is_open is True
-        logging.debug('Connect OK')
-        return connection
+        # retry connections; it's possible during the testing that a
+        # leader-setting-change hook will be running on the unit (which takes
+        # up to 30s to run) and results in a restart of the underlying rabbitmq
+        # process.  This retry get's past the restart.
+        for attempt in tenacity.Retrying(
+                stop=tenacity.stop_after_attempt(5),
+                wait=tenacity.wait_exponential(multiplier=1, min=2, max=10)):
+            with attempt:
+                credentials = pika.PlainCredentials(username, password)
+                parameters = pika.ConnectionParameters(host=host, port=port,
+                                                       credentials=credentials,
+                                                       ssl_options=ssl_options,
+                                                       connection_attempts=3,
+                                                       retry_delay=5,
+                                                       socket_timeout=1)
+                connection = pika.BlockingConnection(parameters)
+                assert connection.is_open is True
+                logging.debug('Connect OK')
+                return connection
     except Exception as e:
         msg = ('amqp connection failed to {}:{} as '
                '{} ({})'.format(host, port, username, str(e)))

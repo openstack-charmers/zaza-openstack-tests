@@ -42,8 +42,8 @@ class TestBaseCharmTest(ut_utils.BaseTestCase):
                 return self.get_my_tests_options('aKey', 'aDefault')
 
         f = FakeTest()
-        self.assertEquals(f.method({}), 'aDefault')
-        self.assertEquals(f.method({
+        self.assertEqual(f.method({}), 'aDefault')
+        self.assertEqual(f.method({
             'tests_options': {
                 'unit_tests.charm_tests.test_utils.'
                 'FakeTest.method.aKey': 'aValue',
@@ -184,6 +184,25 @@ class TestBaseCharmTest(ut_utils.BaseTestCase):
         self.assertEqual(expected_result_special, non_string)
 
         self.config_current.assert_called_once_with(None, None)
+
+    @mock.patch('zaza.openstack.utilities.generic.get_pkg_version')
+    def test_package_version_matches(self, get_pkg_version):
+        versions = ['4.3.0', '4.0.0']
+
+        def _check_should_not_run():
+            package_version = test_utils.package_version_matches(
+                'hacluster', 'crmsh', versions=versions, op='eq')
+            if package_version and package_version != '4.4.1':
+                return
+            raise Exception('should not run')
+
+        for version in versions:
+            get_pkg_version.return_value = version
+            _check_should_not_run()
+            get_pkg_version.reset_mock()
+
+        get_pkg_version.return_value = '4.4.1'
+        self.assertRaises(Exception, _check_should_not_run)
 
 
 class TestOpenStackBaseTest(ut_utils.BaseTestCase):
