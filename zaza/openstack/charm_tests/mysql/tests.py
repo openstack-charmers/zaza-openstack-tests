@@ -615,9 +615,9 @@ class MySQLInnoDBClusterRotatePasswordTests(MySQLCommonTests):
             'list-service-usernames',
             action_params={}
         )
-        usernames = action.data['results']['usernames'].split(',')
-        self.assertIn('keystone', usernames)
+        usernames = json.loads(action.data['results']['usernames'])
         logging.info("... usernames: %s", ', '.join(usernames))
+        self.assertIn('keystone', usernames)
 
         # grab the password for keystone from the leader / to verify the change
         old_keystone_passwd_on_mysql = juju_utils.leader_get(
