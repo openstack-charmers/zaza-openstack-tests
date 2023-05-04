@@ -517,7 +517,7 @@ class RmqRotateServiceUserPasswordTests(test_utils.OpenStackBaseTest):
             'list-service-usernames',
             action_params={}
         )
-        usernames = action.data['results']['usernames'].split(',')
+        usernames = json.loads(action.data['results']['usernames'])
         self.assertIn(CINDER_APP, usernames)
         logging.info("... usernames: %s", ', '.join(usernames))
 
