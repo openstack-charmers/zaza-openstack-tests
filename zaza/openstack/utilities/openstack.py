@@ -53,6 +53,7 @@ from cinderclient import client as cinderclient
 from heatclient import client as heatclient
 from magnumclient import client as magnumclient
 from glanceclient import Client as GlanceClient
+from glanceclient.exc import CommunicationError
 from designateclient.client import Client as DesignateClient
 
 from keystoneclient.v2_0 import client as keystoneclient_v2
@@ -2333,6 +2334,9 @@ def get_urllib_opener():
     return urllib.request.build_opener(handler)
 
 
+@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
+                reraise=True,
+                retry=tenacity.retry_if_exception_type(CommunicationError))
 def get_images_by_name(glance, image_name):
     """Get all glance image objects with the given name.
 
