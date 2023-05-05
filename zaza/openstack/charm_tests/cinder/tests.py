@@ -20,6 +20,7 @@ import logging
 import time
 
 from pprint import pformat
+
 import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
@@ -29,10 +30,12 @@ import zaza.openstack.configure.guest as guest
 import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.charm_tests.tempest.tests as tempest_tests
 
+from novaclient import exceptions as nova_exceptions
 from tenacity import (
     Retrying,
     retry_if_exception_type,
     stop_after_attempt,
+    stop_after_delay,
     wait_exponential,
 )
 
@@ -132,6 +135,8 @@ class CinderTests(test_utils.OpenStackBaseTest):
         :param volumes: the volumes to delete
         :type volumes: List[volume objects]
         """
+        # first detach all volumes
+        detached_volumes = set()  # type: Set[str]
         for volume in volumes:
             if volume.name.startswith(cls.RESOURCE_PREFIX):
                 for attachment in volume.attachments:
@@ -139,36 +144,52 @@ class CinderTests(test_utils.OpenStackBaseTest):
                     logging.info("detaching volume: %s", volume.name)
                     logging.info("volume details: %s",
                                  pformat(volume.to_dict()))
-                    openstack_utils.detach_volume(cls.nova_client,
-                                                  volume.id, instance_id)
-                logging.info(
-                    "Waiting for volume %s (%s) to reach 'available' status",
-                    volume.name, volume.id
-                )
-                for attempt in Retrying(
-                        stop=stop_after_attempt(10),
-                        wait=wait_exponential(multiplier=1, min=2, max=60),
-                        retry=retry_if_exception_type(ValueError)):
-                    with attempt:
-                        # getting a new volume object to get a fresh status.
-                        vol = cls.cinder_client.volumes.get(volume.id)
-                        logging.info('Volume %s (%s) status %s',
-                                     vol.name, vol.id, vol.status)
-                        if vol.status != 'available':
-                            msg = 'Volume %s not in available status: %s' % (
-                                vol.name, vol.status)
-                            raise ValueError(msg)
-                logging.info("removing volume: {}".format(volume.name))
-                try:
-                    openstack_utils.delete_resource(
-                        cls.cinder_client.volumes,
-                        volume.id,
-                        msg="volume")
-                except Exception as e:
-                    logging.info("Volume: %s", str(volume))
-                    logging.error("error removing volume %s: %s",
-                                  volume.id, str(e))
-                    raise
+                    try:
+                        openstack_utils.detach_volume(cls.nova_client,
+                                                      volume.id, instance_id)
+                    except Exception as ex:
+                        logging.error('Error detaching volume %s (%s): %s',
+                                      volume.name, volume.id, str(ex))
+                        raise
+
+                detached_volumes.add(volume.id)
+
+        # second stage delete volumes as the become 'available'
+        deleted_volumes = set()
+        for attempt in Retrying(
+                stop=stop_after_delay(3600),  # 1 hour
+                wait=wait_exponential(multiplier=1, min=2, max=60),
+                retry=retry_if_exception_type(ValueError),
+                reraise=True):
+            with attempt:
+                for volume_id in detached_volumes:
+                    # getting a new volume object to get a fresh status.
+                    volume = cls.cinder_client.volumes.get(volume_id)
+                    logging.info('Volume %s (%s) status %s', volume.name,
+                                 volume.id, volume.status)
+                    if volume.status != 'available':
+                        logging.info(
+                            'Skipping deletion of volume %s (%s), status: %s',
+                            volume.name, volume.id, volume.status
+                        )
+                        continue
+
+                    logging.info("removing volume: %s", volume.name)
+                    try:
+                        openstack_utils.delete_resource(
+                            cls.cinder_client.volumes,
+                            volume.id,
+                            msg="volume")
+                        deleted_volumes.add(volume.id)
+                    except nova_exceptions.BadRequest as e:
+                        logging.info("Volume: %s", str(volume))
+                        logging.error("error removing volume %s: %s",
+                                      volume.id, str(e))
+                    pending_volumes = detached_volumes - deleted_volumes
+                    if len(pending_volumes) > 0:
+                        msg = 'Pending volumes to be deleted: %s'
+                        logging.info(msg, pending_volumes)
+                        raise ValueError(msg % str(pending_volumes))
 
     def test_100_volume_create_extend_delete(self):
         """Test creating, extending a volume."""
