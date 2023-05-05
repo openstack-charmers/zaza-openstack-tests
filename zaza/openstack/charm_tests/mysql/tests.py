@@ -21,6 +21,7 @@ import os
 import re
 import tempfile
 import tenacity
+import yaml
 
 import zaza.charm_lifecycle.utils as lifecycle_utils
 import zaza.model
@@ -615,7 +616,7 @@ class MySQLInnoDBClusterRotatePasswordTests(MySQLCommonTests):
             'list-service-usernames',
             action_params={}
         )
-        usernames = json.loads(action.data['results']['usernames'])
+        usernames = yaml.safe_load(action.data['results']['usernames'])
         logging.info("... usernames: %s", ', '.join(usernames))
         self.assertIn('keystone', usernames)
 
