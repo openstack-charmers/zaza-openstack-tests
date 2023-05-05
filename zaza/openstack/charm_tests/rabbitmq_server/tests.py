@@ -21,6 +21,7 @@ import re
 import time
 import uuid
 import unittest
+import yaml
 
 import juju
 import tenacity
@@ -455,7 +456,7 @@ class RmqRotateServiceUserPasswordTests(test_utils.OpenStackBaseTest):
                 'cinder/leader', CINDER_CONF_FILE)
             config = configparser.ConfigParser()
             config.read_string(conf)
-            connection_info = config['DEFAULT']['transport']
+            connection_info = config['DEFAULT']['transport_url']
             match = re.match(r"^rabbit.*cinder:(.+)@", connection_info)
             if match:
                 return match[1]
@@ -478,7 +479,7 @@ class RmqRotateServiceUserPasswordTests(test_utils.OpenStackBaseTest):
             'list-service-usernames',
             action_params={}
         )
-        usernames = action.data['results']['usernames']
+        usernames = yaml.safe_load(action.data['results']['usernames'])
         self.assertIn(CINDER_APP, usernames)
         logging.info("... usernames: %s", ', '.join(usernames))
 
@@ -506,15 +507,25 @@ class RmqRotateServiceUserPasswordTests(test_utils.OpenStackBaseTest):
         zaza.model.block_until_all_units_idle()
 
         # verify that the password has changed.
-        new_cinder_passwd_on_rmq = juju_utils.leader_get(
-            self.application_name, CINDER_PASSWD_KEY).strip()
-        new_cinder_passwd_conf = _get_password_from_cinder_leader()
-        self.assertNotEqual(old_cinder_passwd_on_rmq,
-                            new_cinder_passwd_on_rmq)
-        self.assertNotEqual(old_cinder_passwd_conf,
-                            new_cinder_passwd_conf)
-        self.assertEqual(new_cinder_passwd_on_rmq,
-                         new_cinder_passwd_conf)
+        # Due to the async-ness of the whole model and when the various hooks
+        # will fire between rabbitmq-server and cinder, we retry a reasonable
+        # time to wait for everything to propagate through to the
+        # /etc/cinder/cinder.conf file.
+        for attempt in tenacity.Retrying(
+            reraise=True,
+            wait=tenacity.wait_fixed(30),
+            stop=tenacity.stop_after_attempt(20),  # wait for max 10m
+        ):
+            with attempt:
+                new_cinder_passwd_on_rmq = juju_utils.leader_get(
+                    self.application_name, CINDER_PASSWD_KEY).strip()
+                new_cinder_passwd_conf = _get_password_from_cinder_leader()
+                self.assertNotEqual(old_cinder_passwd_on_rmq,
+                                    new_cinder_passwd_on_rmq)
+                self.assertNotEqual(old_cinder_passwd_conf,
+                                    new_cinder_passwd_conf)
+                self.assertEqual(new_cinder_passwd_on_rmq,
+                                 new_cinder_passwd_conf)
 
         # finally, verify that cinder is still working.
         cinder_client = openstack_utils.get_cinder_session_client(
