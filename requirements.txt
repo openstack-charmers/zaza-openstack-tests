@@ -14,11 +14,11 @@ pyopenssl<22.1.0
 boto3<1.25
 PyYAML<=4.2,>=3.0; python_version < '3.9'
 PyYAML>=5.1; python_version >= '3.9'
-flake8>=2.2.4
+flake8>=5  # Python 3.8 compatibility in pyflakes 2.1.0+
 flake8-docstrings
 flake8-per-file-ignores
 pydocstyle<4.0.0
-coverage<6.0.0  # coverage 6.0+ drops support for py3.5/py2.7
+coverage<6.0.0; python_version <= '3.5'  # coverage 6.0+ drops support for py3.5/py2.7
 mock>=1.2
 pytest
 pytest-cov
