@@ -19,6 +19,7 @@
 import logging
 import time
 
+from pprint import pformat
 import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
@@ -30,6 +31,7 @@ import zaza.openstack.charm_tests.tempest.tests as tempest_tests
 
 from tenacity import (
     Retrying,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
 )
@@ -134,9 +136,28 @@ class CinderTests(test_utils.OpenStackBaseTest):
             if volume.name.startswith(cls.RESOURCE_PREFIX):
                 for attachment in volume.attachments:
                     instance_id = attachment['server_id']
-                    logging.info("detaching volume: {}".format(volume.name))
+                    logging.info("detaching volume: %s", volume.name)
+                    logging.info("volume details: %s",
+                                 pformat(volume.to_dict()))
                     openstack_utils.detach_volume(cls.nova_client,
                                                   volume.id, instance_id)
+                logging.info(
+                    "Waiting for volume %s (%s) to reach 'available' status",
+                    volume.name, volume.id
+                )
+                for attempt in Retrying(
+                        stop=stop_after_attempt(10),
+                        wait=wait_exponential(multiplier=1, min=2, max=60),
+                        retry=retry_if_exception_type(ValueError)):
+                    with attempt:
+                        # getting a new volume object to get a fresh status.
+                        vol = cls.cinder_client.volumes.get(volume.id)
+                        logging.info('Volume %s (%s) status %s',
+                                     vol.name, vol.id, vol.status)
+                        if vol.status != 'available':
+                            msg = 'Volume %s not in available status: %s' % (
+                                vol.name, vol.status)
+                            raise ValueError(msg)
                 logging.info("removing volume: {}".format(volume.name))
                 try:
                     openstack_utils.delete_resource(
@@ -144,7 +165,9 @@ class CinderTests(test_utils.OpenStackBaseTest):
                         volume.id,
                         msg="volume")
                 except Exception as e:
-                    logging.error("error removing volume: {}".format(str(e)))
+                    logging.info("Volume: %s", str(volume))
+                    logging.error("error removing volume %s: %s",
+                                  volume.id, str(e))
                     raise
 
     def test_100_volume_create_extend_delete(self):
