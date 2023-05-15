@@ -1275,6 +1275,12 @@ class CheckPoolTypes(unittest.TestCase):
             ('glance', 'glance'),
             ('nova-compute', 'nova'),
             ('cinder-ceph', 'cinder-ceph')]
+        self._perform_pool_type_check(app_pools)
+
+    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1,
+                    min=5, max=10),
+                    reraise=True)
+    def _perform_pool_type_check(self, app_pools):
         runtime_pool_details = zaza_ceph.get_ceph_pool_details()
         for app, pool_name in app_pools:
             try:
@@ -1316,8 +1322,9 @@ class CheckPoolTypes(unittest.TestCase):
                         expected_pool_code)
                     break
             else:
-                raise CephPoolConfig(
-                    "Failed to find config for {}".format(pool_name))
+                msg = "Failed to find config for {}, retry".format(pool_name)
+                logging.info(msg)
+                raise CephPoolConfig(msg)
 
 
 # NOTE: We might query before prometheus has fetch data
