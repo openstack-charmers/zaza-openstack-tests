@@ -19,6 +19,7 @@ import json
 import logging
 import pprint
 import keystoneauth1
+import unittest
 
 import zaza.model
 import zaza.openstack.utilities.exceptions as zaza_exceptions
@@ -151,6 +152,7 @@ class CharmOperationTest(BaseKeystoneTest):
                              .format(pprint.pformat(unit_repo),
                                      pprint.pformat(lead_repo)))
 
+    @unittest.skip("Action 'rotate-admin-password' isn't yet backported")
     def test_rotate_admin_password(self):
         """Verify action used to rotate admin user's password."""
         ADMIN_PASSWD = 'admin_passwd'
