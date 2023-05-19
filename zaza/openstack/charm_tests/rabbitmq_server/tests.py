@@ -14,17 +14,22 @@
 
 """RabbitMQ Testing."""
 
+import configparser
 import json
 import logging
+import re
 import time
 import uuid
 import unittest
+import yaml
 
 import juju
 import tenacity
 import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.generic as generic_utils
+import zaza.openstack.utilities.juju as juju_utils
+import zaza.openstack.utilities.openstack as openstack_utils
 
 from charmhelpers.core.host import CompareHostReleases
 from zaza.openstack.utilities.generic import get_series
@@ -429,6 +434,103 @@ class RmqTests(test_utils.OpenStackBaseTest):
         check_units(all_units)
 
         logging.info('OK')
+
+
+class RmqRotateServiceUserPasswordTests(test_utils.OpenStackBaseTest):
+    """RMQ service user password rotation tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running RMQ service user rotation tests."""
+        super().setUpClass()
+        cls.application = "rabbitmq-server"
+
+    def test_rotate_cinder_service_user_password(self):
+        """Verify action used to rotate a service user (cinder) password."""
+        CINDER_APP = 'cinder'
+        CINDER_PASSWD_KEY = "cinder.passwd"
+        CINDER_CONF_FILE = '/etc/cinder/cinder.conf'
+
+        def _get_password_from_cinder_leader():
+            conf = zaza.model.file_contents(
+                'cinder/leader', CINDER_CONF_FILE)
+            config = configparser.ConfigParser()
+            config.read_string(conf)
+            connection_info = config['DEFAULT']['transport_url']
+            match = re.match(r"^rabbit.*cinder:(.+)@", connection_info)
+            if match:
+                return match[1]
+            self.fail("Couldn't find mysql password in {}"
+                      .format(connection_info))
+
+        # only do the test if keystone is in the model
+        applications = zaza.model.sync_deployed(self.model_name)
+        if CINDER_APP not in applications:
+            self.skipTest(
+                '{} is not deployed, so not doing password rotation'
+                .format(CINDER_APP))
+
+        # get the users via the 'list-service-usernames' action.
+        logging.info(
+            "Getting usernames from rabbitmq-server that can have password "
+            "rotated.")
+        action = zaza.model.run_action_on_leader(
+            self.application,
+            'list-service-usernames',
+            action_params={}
+        )
+        usernames = yaml.safe_load(action.data['results']['usernames'])
+        self.assertIn(CINDER_APP, usernames)
+        logging.info("... usernames: %s", ', '.join(usernames))
+
+        # grab the password for cinder from the leader / to verify the change
+        old_cinder_passwd_on_rmq = juju_utils.leader_get(
+            self.application_name, CINDER_PASSWD_KEY).strip()
+        old_cinder_passwd_conf = _get_password_from_cinder_leader()
+
+        # verify that cinder is working.
+        cinder_client = openstack_utils.get_cinder_session_client(
+            self.keystone_session, version=3.42)
+        cinder_client.volumes.list()
+
+        # now rotate the password for keystone
+        # run the action to rotate the password.
+        logging.info("Rotating password for cinder in rabbitmq-server.")
+        zaza.model.run_action_on_leader(
+            self.application_name,
+            'rotate-service-user-password',
+            action_params={'service-user': 'cinder'},
+        )
+
+        # let everything settle.
+        logging.info("Waiting for model to settle.")
+        zaza.model.block_until_all_units_idle()
+
+        # verify that the password has changed.
+        # Due to the async-ness of the whole model and when the various hooks
+        # will fire between rabbitmq-server and cinder, we retry a reasonable
+        # time to wait for everything to propagate through to the
+        # /etc/cinder/cinder.conf file.
+        for attempt in tenacity.Retrying(
+            reraise=True,
+            wait=tenacity.wait_fixed(30),
+            stop=tenacity.stop_after_attempt(20),  # wait for max 10m
+        ):
+            with attempt:
+                new_cinder_passwd_on_rmq = juju_utils.leader_get(
+                    self.application_name, CINDER_PASSWD_KEY).strip()
+                new_cinder_passwd_conf = _get_password_from_cinder_leader()
+                self.assertNotEqual(old_cinder_passwd_on_rmq,
+                                    new_cinder_passwd_on_rmq)
+                self.assertNotEqual(old_cinder_passwd_conf,
+                                    new_cinder_passwd_conf)
+                self.assertEqual(new_cinder_passwd_on_rmq,
+                                 new_cinder_passwd_conf)
+
+        # finally, verify that cinder is still working.
+        cinder_client = openstack_utils.get_cinder_session_client(
+            self.keystone_session, version=3.42)
+        cinder_client.volumes.list()
 
 
 class RabbitMQDeferredRestartTest(test_utils.BaseDeferredRestartTest):
