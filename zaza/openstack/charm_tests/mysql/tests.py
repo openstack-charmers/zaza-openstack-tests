@@ -599,7 +599,7 @@ class MySQLInnoDBClusterRotatePasswordTests(MySQLCommonTests):
             action_params={}
         )
         usernames = yaml.safe_load(action.data['results']['usernames'])
-        logging.info("... usernames: %s", ', '.join(usernames))
+        logging.info("... usernames: %s", usernames)
         self.assertIn('keystone', usernames)
 
         # grab the password for keystone from the leader / to verify the change
