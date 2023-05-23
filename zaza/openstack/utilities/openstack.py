@@ -1603,7 +1603,7 @@ def add_network_to_bgp_speaker(neutron_client, bgp_speaker, network_name):
         logging.warning('{} network already advertised.'.format(network_name))
 
 
-def create_bgp_peer(neutron_client, peer_application_name='quagga',
+def create_bgp_peer(neutron_client, peer_application_name='osci-frr',
                     remote_as=10000, auth_type='none'):
     """Create BGP peer.
 
