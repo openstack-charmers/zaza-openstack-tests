@@ -1513,19 +1513,14 @@ class CephAuthTest(unittest.TestCase):
             action_params={'username': 'sandbox'}
         )
         logging.debug('Result of action: {}'.format(action_obj))
-        delete_results = action_obj.data['results']['message']
-        self.assertEqual(delete_results, "updated\n")
 
-        logging.info('Deleting non-existing user...')
-        action_obj = zaza_model.run_action_on_leader(
+        logging.info('Verify user is deleted...')
+        result = zaza_model.run_on_leader(
             'ceph-mon',
-            'delete-user',
-            action_params={'username': 'sandbox'}
+            'sudo ceph auth get client.sandbox',
         )
-        logging.debug('Result of action: {}'.format(action_obj))
-        delete_results = action_obj.data['results']['message']
-        self.assertEqual(delete_results,
-                         "entity client.sandbox does not exist\n")
+        logging.debug('ceph auth get: {}'.format(result))
+        self.assertIn("failed to find client.sandbox", result.get('Stderr'))
 
 
 class CephMonActionsTest(test_utils.BaseCharmTest):
