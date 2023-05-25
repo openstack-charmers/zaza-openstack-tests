@@ -1610,3 +1610,32 @@ class CephMonActionsTest(test_utils.BaseCharmTest):
                 ('sudo ceph osd pool delete test3 test3 '
                  '--yes-i-really-really-mean-it')
             )
+
+
+class CephMonJujuPersistent(test_utils.BaseCharmTest):
+    """Check juju persistent config is working."""
+
+    def test_persistent_config(self):
+        """Check persistent config will update if config change."""
+        set_default = {
+            'loglevel': 1,
+        }
+        set_alternate = {
+            'loglevel': 2,
+        }
+        unit = 'ceph-mon/0'
+        cmd = (
+            'cat /var/lib/juju/agents'
+            '/unit-ceph-mon-0/charm/.juju-persistent-config'
+        )
+        with self.config_change(
+            default_config=set_default,
+            alternate_config=set_alternate,
+            application_name='ceph-mon',
+        ):
+            result = zaza_model.run_on_unit(
+                unit,
+                cmd,
+            )
+            data = json.loads(result['Stdout'])
+            assert data['loglevel'] == 2
