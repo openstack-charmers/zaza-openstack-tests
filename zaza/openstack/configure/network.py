@@ -167,7 +167,7 @@ def setup_sdn(network_config, keystone_session=None):
         project_id,
         shared=False,
         network_type=network_config["network_type"],
-        net_name=network_config["project_net_name"])
+        net_name=network_config.get("project_net_name", "private"))
     project_subnet = openstack_utils.create_project_subnet(
         neutron_client,
         project_id,
@@ -175,7 +175,8 @@ def setup_sdn(network_config, keystone_session=None):
         network_config.get("private_net_cidr"),
         subnetpool=subnetpool,
         ip_version=ip_version,
-        subnet_name=network_config["project_subnet_name"])
+        subnet_name=network_config.get("project_subnet_name",
+                                       "private_subnet"))
     openstack_utils.update_subnet_dns(
         neutron_client,
         project_subnet,

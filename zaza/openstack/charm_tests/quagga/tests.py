@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Encapsulating `quagga` testing."""
+"""Encapsulating `FRR` testing."""
 
 import logging
 import re
@@ -23,13 +23,13 @@ import unittest
 import zaza
 
 
-class QuaggaTest(unittest.TestCase):
-    """Class for `quagga` tests."""
+class FrrTest(unittest.TestCase):
+    """Class for `FRR` tests."""
 
     @classmethod
     def setUpClass(cls):
-        """Run class setup for `quagga` tests."""
-        super(QuaggaTest, cls).setUpClass()
+        """Run class setup for `FRR` tests."""
+        super(FrrTest, cls).setUpClass()
 
     def test_bgp_peer_datapath(self):
         """Get peers from BGP neighbour list and ping them."""

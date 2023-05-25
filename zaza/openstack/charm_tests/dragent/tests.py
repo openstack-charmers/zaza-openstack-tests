@@ -25,7 +25,7 @@ from zaza.openstack.charm_tests.dragent import test
 class DRAgentTest(unittest.TestCase):
     """Class to encapsulate BPG tests."""
 
-    BGP_PEER_APPLICATION = 'quagga'
+    BGP_PEER_APPLICATION = 'osci-frr'
 
     @classmethod
     def setUpClass(cls):

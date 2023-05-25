@@ -108,8 +108,8 @@ def run_from_cli():
     cli_utils.setup_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument("--peer-application", "-a",
-                        help="BGP peer application name. Default: quagga",
-                        default="quagga")
+                        help="BGP peer application name. Default: osci-frr",
+                        default="osci-frr")
 
     options = parser.parse_args()
     peer_application_name = cli_utils.parse_arg(options,

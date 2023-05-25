@@ -29,7 +29,7 @@ from zaza.openstack.utilities import (
 )
 
 
-def test_bgp_routes(peer_application_name="quagga", keystone_session=None):
+def test_bgp_routes(peer_application_name="osci-frr", keystone_session=None):
     """Test BGP routes.
 
     :param peer_application_name: String name of BGP peer application
@@ -90,8 +90,8 @@ def run_from_cli():
     cli_utils.setup_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument("--peer-application", "-a",
-                        help="BGP Peer application name. Default: quagga",
-                        default="quagga")
+                        help="BGP Peer application name. Default: osci-frr",
+                        default="osci-frr")
     options = parser.parse_args()
 
     peer_application_name = cli_utils.parse_arg(options,

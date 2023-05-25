@@ -28,7 +28,7 @@ from zaza.openstack.utilities import (
     openstack as openstack_utils,
 )
 
-DEFAULT_PEER_APPLICATION_NAME = "quagga"
+DEFAULT_PEER_APPLICATION_NAME = "osci-frr"
 
 # The overcloud network configuration settings are declared.
 # These are the network configuration settings under test.
