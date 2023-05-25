@@ -16,6 +16,7 @@
 import json
 import logging
 import re
+import time
 
 import cinderclient.exceptions as cinder_exceptions
 
@@ -180,6 +181,9 @@ class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
             'status',
             model_name=model_name,
             action_params=action_params)
+        if result.status == "failed":
+            logging.error("status action failed: %s", result.message)
+            return
         return json.loads(result.results['output'])
 
     def get_pools(self):
@@ -205,6 +209,8 @@ class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
         If the Cinder RBD mirroring mode is 'image', the 'cinder-ceph' pool
         needs to be excluded, since Cinder orchestrates the failover then.
 
+        Also remove .mgr pools as they're not failed over
+
         :returns: Tuple with site-a pools and site-b pools.
         :rtype: Tuple[List[str], List[str]]
         """
@@ -212,6 +218,10 @@ class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
         if get_cinder_rbd_mirroring_mode(self.cinder_ceph_app_name) == 'image':
             site_a_pools.remove(self.cinder_ceph_app_name)
             site_b_pools.remove(self.cinder_ceph_app_name)
+
+        site_a_pools.remove(".mgr")
+        site_b_pools.remove(".mgr")
+
         return site_a_pools, site_b_pools
 
     def wait_for_mirror_state(self, state, application_name=None,
@@ -242,17 +252,14 @@ class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
         :type pools: list of str
         :returns: True on success, never returns on failure
         """
-        rep = re.compile(r'.*entries_behind_master=(\d+)')
+        rep = re.compile(r'.*"entries_behind_primary":(\d+),')
         while True:
-            try:
-                # encapsulate in try except to work around LP: #1820976
-                pool_status = self.run_status_action(
-                    application_name=application_name, model_name=model_name,
-                    pools=pools)
-            except KeyError:
-                continue
+            pool_status = self.run_status_action(
+                application_name=application_name, model_name=model_name,
+                pools=pools)
             for pool, status in pool_status.items():
                 images = status.get('images', [])
+                logging.debug("checking pool %s, images: %s", pool, images)
                 if not len(images) and pool in require_images_in:
                     break
                 for image in images:
@@ -263,7 +270,7 @@ class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
                         # NOTE(fnordahl): Tactical fix for upstream Ceph
                         # Luminous bug https://tracker.ceph.com/issues/23516
                         if m and int(m.group(1)) > 42:
-                            logging.info('entries_behind_master={}'
+                            logging.info('entries_behind_primary:{}'
                                          .format(m.group(1)))
                             break
                 else:
@@ -274,6 +281,7 @@ class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
             else:
                 # all images with state has expected state
                 return True
+            time.sleep(5)  # don't spam juju run-action
 
     def setup_test_cinder_volume(self):
         """Set up the test Cinder volume into the Ceph RBD mirror environment.
