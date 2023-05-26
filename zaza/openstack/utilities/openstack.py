@@ -2490,8 +2490,14 @@ def _resource_removed(resource, resource_id, msg="resource"):
     :raises: AssertionError
     """
     matching = [r for r in resource.list() if r.id == resource_id]
-    logging.debug("{}: resource {} still present".format(msg, resource_id))
-    assert len(matching) == 0
+    for r in matching:
+        # Info level used, because the gate logs at that level, and if anything
+        # gets logged here it means the next assert will fail and this
+        # information will be needed for troubleshooting.
+        logging.info(r.to_dict())
+
+    msg = "{}: resource {} still present".format(msg, resource_id)
+    assert len(matching) == 0, msg
 
 
 def resource_removed(resource,
