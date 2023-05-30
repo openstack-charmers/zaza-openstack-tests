@@ -316,6 +316,11 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         return resp
 
     @staticmethod
+    @tenacity.retry(
+        retry=tenacity.retry_if_exception_type(keystone_exceptions.http.
+                                               NotFound),
+        wait=tenacity.wait_fixed(5), reraise=True,
+        stop=tenacity.stop_after_delay(300))
     def get_lb_providers(octavia_client):
         """Retrieve loadbalancer providers.
 
