@@ -146,10 +146,13 @@ def _login(dashboard_url, domain, username, password, cafile=None):
 # NOTE(ajkavanagh): it seems that apache2 doesn't start quickly enough
 # for the test, and so it gets reset errors; repeat until either that
 # stops or there is a failure
-@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, min=5, max=10),
-                retry=tenacity.retry_if_exception_type(
-                    http.client.RemoteDisconnected),
-                reraise=True)
+@tenacity.retry(
+    wait=tenacity.wait_exponential(multiplier=1, min=5, max=10),
+    retry=(
+        tenacity.retry_if_exception_type(http.client.RemoteDisconnected) |
+        tenacity.retry_if_exception_type(urllib.error.URLError)
+    ),
+    reraise=True)
 def _do_request(request, cafile=None):
     """Open a webpage via urlopen.
 
