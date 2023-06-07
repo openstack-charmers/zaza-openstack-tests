@@ -41,8 +41,9 @@ def setup():
     :returns: None
     :rtype: None
     """
-    # Reuse the existing network configuration code.
-    basic_overcloud_network()
+    # Reuse the existing network configuration code but ask for a separate
+    # service subnet to be created for FIPs.
+    basic_overcloud_network(use_separate_fip_subnet=True)
 
     # Get a keystone session
     keystone_session = openstack_utils.get_overcloud_keystone_session()

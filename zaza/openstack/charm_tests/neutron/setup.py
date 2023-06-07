@@ -68,6 +68,17 @@ DEFAULT_UNDERCLOUD_NETWORK_CONFIG = {
     "default_gateway": "10.5.0.1",
 }
 
+# For Neutron Dynamic Tests it is useful to avoid relying on the directly
+# connected routes and instead using the advertised routes on the southbound
+# path and default routes on the northbound path. To do that, a separate
+# service subnet may be optionally created to force Neutron to use that instead
+# of the external network subnet without concrete service IPs which is used as
+# a fallback only.
+DEFAULT_FIP_SERVICE_SUBNET_CONFIG = {
+    "fip_service_subnet_name": openstack_utils.FIP_SERVICE_SUBNET_NAME,
+    "fip_service_subnet_cidr": "100.64.0.0/24"
+}
+
 
 def undercloud_and_charm_setup(limit_gws=None):
     """Perform undercloud and charm setup for network plumbing.
@@ -111,7 +122,7 @@ def undercloud_and_charm_setup(limit_gws=None):
                         .format(provider_type))
 
 
-def basic_overcloud_network(limit_gws=None):
+def basic_overcloud_network(limit_gws=None, use_separate_fip_subnet=False):
     """Run setup for neutron networking.
 
     Configure the following:
@@ -119,6 +130,10 @@ def basic_overcloud_network(limit_gws=None):
 
     :param limit_gws: Limit the number of gateways that get a port attached
     :type limit_gws: int
+    :param use_separate_fip_subnet: Use a separate service subnet for floating
+                                    ips instead of relying on the external
+                                    network subnet for FIP allocations.
+    :type use_separate_fip_subnet: bool
     """
     cli_utils.setup_logging()
 
@@ -128,6 +143,10 @@ def basic_overcloud_network(limit_gws=None):
     network_config.update(OVERCLOUD_NETWORK_CONFIG)
     # Default undercloud settings
     network_config.update(DEFAULT_UNDERCLOUD_NETWORK_CONFIG)
+
+    if use_separate_fip_subnet:
+        network_config.update(DEFAULT_FIP_SERVICE_SUBNET_CONFIG)
+
     # Environment specific settings
     network_config.update(generic_utils.get_undercloud_env_vars())
 

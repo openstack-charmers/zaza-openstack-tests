@@ -132,6 +132,23 @@ def setup_sdn(network_config, keystone_session=None):
         neutron_client,
         project_id,
         network_config["external_net_name"])
+
+    # If a separate service subnet for FIPs is requested, create one. This is
+    # useful for testing dynamic routing scenarios to avoid relying on directly
+    # connected routes to the external network subnet.
+    if network_config.get('fip_service_subnet_name'):
+        openstack_utils.create_provider_subnet(
+            neutron_client,
+            project_id,
+            ext_network,
+            subnet_name=network_config["fip_service_subnet_name"],
+            cidr=network_config["fip_service_subnet_cidr"],
+            # Disable DHCP as we don't need a metadata port serving this
+            # subnet while Neutron would fail to allocate a fixed IP for it
+            # with a service subnet constraint below.
+            dhcp=False,
+            service_types=['network:floatingip']
+        )
     openstack_utils.create_provider_subnet(
         neutron_client,
         project_id,

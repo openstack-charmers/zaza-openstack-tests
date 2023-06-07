@@ -199,6 +199,9 @@ KEYSTONE_REMOTE_CACERT = (
 # Network/router names
 EXT_NET = os.environ.get('TEST_EXT_NET', 'ext_net')
 EXT_NET_SUBNET = os.environ.get('TEST_EXT_NET_SUBNET', 'ext_net_subnet')
+# An optional service subnet for FIPs is necessary.
+FIP_SERVICE_SUBNET_NAME = os.environ.get('TEST_FIP_SERVICE_SUBNET_NAME',
+                                         'fip_service_subnet')
 PRIVATE_NET = os.environ.get('TEST_PRIVATE_NET', 'private')
 PRIVATE_NET_SUBNET = os.environ.get('TEST_PRIVATE_NET_SUBNET',
                                     'private_subnet')
@@ -1301,7 +1304,7 @@ def create_provider_subnet(neutron_client, project_id, network,
                            subnet_name=EXT_NET_SUBNET,
                            default_gateway=None, cidr=None,
                            start_floating_ip=None, end_floating_ip=None,
-                           dhcp=False):
+                           dhcp=False, service_types=None):
     """Create the provider subnet.
 
     :param neutron_client: Authenticated neutronclient
@@ -1322,6 +1325,8 @@ def create_provider_subnet(neutron_client, project_id, network,
     :type end_floating_ip: string or None
     :param dhcp: Run DHCP on this subnet
     :type dhcp: boolean
+    :param service_types: Optional subnet service types
+    :type service_types: List[str]
     :returns: Subnet object
     :rtype: dict
     """
@@ -1345,6 +1350,8 @@ def create_provider_subnet(neutron_client, project_id, network,
                 'end': end_floating_ip,
             }
             subnet_msg['allocation_pools'] = [allocation_pool]
+        if service_types:
+            subnet_msg['service_types'] = service_types
 
         logging.info('Creating new subnet')
         subnet = neutron_client.create_subnet({'subnet': subnet_msg})['subnet']
