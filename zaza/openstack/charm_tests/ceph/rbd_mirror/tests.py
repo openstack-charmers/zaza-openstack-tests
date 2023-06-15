@@ -257,6 +257,10 @@ class CephRBDMirrorBase(test_utils.OpenStackBaseTest):
             pool_status = self.run_status_action(
                 application_name=application_name, model_name=model_name,
                 pools=pools)
+            if pool_status is None:
+                logging.debug("status action failed, retrying")
+                time.sleep(5)  # don't spam juju run-action
+                continue
             for pool, status in pool_status.items():
                 images = status.get('images', [])
                 logging.debug("checking pool %s, images: %s", pool, images)
