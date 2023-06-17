@@ -26,6 +26,7 @@ from zaza.openstack.utilities import (
     cli as cli_utils,
     juju as juju_utils,
 )
+from zaza.openstack.configure.bgp_speaker import NDR_TEST_FIP
 
 
 class DRAgentTest(neutron_tests.NeutronNetworkingBase):
@@ -83,7 +84,7 @@ class DRAgentTest(neutron_tests.NeutronNetworkingBase):
         # Get expected advertised routes
         private_cidr = self.project_subnet['cidr']
         floating_ip_cidr = "{}/32".format(
-            self.neutron_client.list_floatingips()
+            self.neutron_client.list_floatingips(name=NDR_TEST_FIP)
             ["floatingips"][0]["floating_ip_address"])
 
         # This test may run immediately after configuration.

@@ -26,7 +26,7 @@ from zaza.openstack.utilities import (
 )
 
 
-FIP_TEST = "FIP TEST"
+NDR_TEST_FIP = "NDR_TEST_FIP"
 
 
 def setup_bgp_speaker(peer_application_name, keystone_session=None):
@@ -90,7 +90,8 @@ def setup_bgp_speaker(peer_application_name, keystone_session=None):
     # Create Floating IP to advertise
     logging.info("Creating floating IP to advertise")
     port = openstack_utils.create_port(neutron_client,
-                                       FIP_TEST, openstack_utils.PRIVATE_NET)
+                                       NDR_TEST_FIP,
+                                       openstack_utils.PRIVATE_NET)
     floating_ip = openstack_utils.create_floating_ip(neutron_client,
                                                      openstack_utils.EXT_NET,
                                                      port=port)
