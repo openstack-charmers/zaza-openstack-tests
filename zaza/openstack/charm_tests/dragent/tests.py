@@ -120,7 +120,8 @@ class DRAgentTest(neutron_tests.NeutronNetworkingBase):
             object after the instance creation so a retry logic is necessary.
             """
             # The reason for looking up an instance object again is that the
-            # Nova client does not refresh address information after
+            # Nova client does not refresh address information after the
+            # initial retrieval.
             instance = nova_client.servers.find(id=instance_id)
             fips = neutron_tests.floating_ips_from_instance(instance)
             if not fips:
