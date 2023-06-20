@@ -42,8 +42,7 @@ def _assert_speaker_added(local_as):
                 f' /var/log/neutron/neutron-bgp-dragent.log')
     # Usually we only have one unit in test bundles but let's be generic.
     for unit in zaza.model.get_units("neutron-dynamic-routing"):
-        juju_utils.remote_run(unit, fatal=True,
-                              remote_cmd=grep_cmd)
+        juju_utils.remote_run(unit.name, fatal=True, remote_cmd=grep_cmd)
 
 
 def setup_bgp_speaker(peer_application_name, keystone_session=None):
