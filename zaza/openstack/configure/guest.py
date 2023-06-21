@@ -95,7 +95,7 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
                     private_network_name=None, image_name=None,
                     flavor_name=None, external_network_name=None, meta=None,
                     userdata=None, attach_to_external_network=False,
-                    keystone_session=None):
+                    keystone_session=None, perform_connectivity_check=True):
     """Launch an instance.
 
     :param instance_key: Key to collect associated config data with.
@@ -123,6 +123,8 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
     :type attach_to_external_network: bool
     :param keystone_session: Keystone session to use.
     :type keystone_session: Optional[keystoneauth1.session.Session]
+    :param perform_connectivity_check: Whether to perform a connectivity check.
+    :type perform_connectivity_check: bool
     :returns: the created instance
     :rtype: novaclient.Server
     """
@@ -211,28 +213,30 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
             external_network_name,
             port=port)['floating_ip_address']
         logging.info('Assigned floating IP {} to {}'.format(ip, vm_name))
-    try:
-        for attempt in Retrying(
-                stop=stop_after_attempt(8),
-                wait=wait_exponential(multiplier=1, min=2, max=60)):
-            with attempt:
-                try:
-                    openstack_utils.ping_response(ip)
-                except subprocess.CalledProcessError as e:
-                    logging.error('Pinging {} failed with {}'
-                                  .format(ip, e.returncode))
-                    logging.error('stdout: {}'.format(e.stdout))
-                    logging.error('stderr: {}'.format(e.stderr))
-                    raise
-    except RetryError:
-        raise openstack_exceptions.NovaGuestNoPingResponse()
 
-    # Check ssh'ing to instance.
-    logging.info('Testing ssh access.')
-    openstack_utils.ssh_test(
-        username=boot_tests[instance_key]['username'],
-        ip=ip,
-        vm_name=vm_name,
-        password=boot_tests[instance_key].get('password'),
-        privkey=openstack_utils.get_private_key(nova_utils.KEYPAIR_NAME))
+    if perform_connectivity_check:
+        try:
+            for attempt in Retrying(
+                    stop=stop_after_attempt(8),
+                    wait=wait_exponential(multiplier=1, min=2, max=60)):
+                with attempt:
+                    try:
+                        openstack_utils.ping_response(ip)
+                    except subprocess.CalledProcessError as e:
+                        logging.error('Pinging {} failed with {}'
+                                      .format(ip, e.returncode))
+                        logging.error('stdout: {}'.format(e.stdout))
+                        logging.error('stderr: {}'.format(e.stderr))
+                        raise
+        except RetryError:
+            raise openstack_exceptions.NovaGuestNoPingResponse()
+
+        # Check ssh'ing to instance.
+        logging.info('Testing ssh access.')
+        openstack_utils.ssh_test(
+            username=boot_tests[instance_key]['username'],
+            ip=ip,
+            vm_name=vm_name,
+            password=boot_tests[instance_key].get('password'),
+            privkey=openstack_utils.get_private_key(nova_utils.KEYPAIR_NAME))
     return instance

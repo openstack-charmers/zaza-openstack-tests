@@ -19,6 +19,9 @@
 import argparse
 import logging
 import sys
+import tenacity
+import zaza.model
+
 from zaza.openstack.utilities import (
     cli as cli_utils,
     openstack as openstack_utils,
@@ -26,7 +29,20 @@ from zaza.openstack.utilities import (
 )
 
 
-FIP_TEST = "FIP TEST"
+NDR_TEST_FIP = "NDR_TEST_FIP"
+
+
+@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
+                reraise=True, stop=tenacity.stop_after_attempt(10))
+def _assert_speaker_added(local_as):
+    logging.debug(f"Checking that a BGP speaker for {local_as} has been added")
+    # As soon as this message appears in the log on a pristine machine we can
+    # proceed with adding routes. The check is due to LP: #2024481.
+    grep_cmd = (f'grep "Added BGP Speaker for local_as={local_as}"'
+                f' /var/log/neutron/neutron-bgp-dragent.log')
+    # Usually we only have one unit in test bundles but let's be generic.
+    for unit in zaza.model.get_units("neutron-dynamic-routing"):
+        juju_utils.remote_run(unit.name, fatal=True, remote_cmd=grep_cmd)
 
 
 def setup_bgp_speaker(peer_application_name, keystone_session=None):
@@ -66,6 +82,10 @@ def setup_bgp_speaker(peer_application_name, keystone_session=None):
     bgp_speaker = openstack_utils.create_bgp_speaker(
         neutron_client, local_as=dr_asn)
 
+    # Due to LP: #2024481 make sure the BGP speaker is actually scheduled
+    # on this unit before adding any networks to it.
+    _assert_speaker_added(local_as=bgp_speaker["local_as"])
+
     # Add networks to bgp speaker
     logging.info("Advertising BGP routes")
     openstack_utils.add_network_to_bgp_speaker(
@@ -90,7 +110,8 @@ def setup_bgp_speaker(peer_application_name, keystone_session=None):
     # Create Floating IP to advertise
     logging.info("Creating floating IP to advertise")
     port = openstack_utils.create_port(neutron_client,
-                                       FIP_TEST, openstack_utils.PRIVATE_NET)
+                                       NDR_TEST_FIP,
+                                       openstack_utils.PRIVATE_NET)
     floating_ip = openstack_utils.create_floating_ip(neutron_client,
                                                      openstack_utils.EXT_NET,
                                                      port=port)
