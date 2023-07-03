@@ -22,10 +22,12 @@ import datetime
 import enum
 import io
 import itertools
+import json
 import juju_wait
 import logging
 import os
 import paramiko
+import pathlib
 import re
 import shutil
 import six
@@ -2612,7 +2614,7 @@ def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
     :type local_path: str
     :param image_name: The label to give the image in glance
     :type image_name: str
-    :param disk_format: The of the underlying disk image.
+    :param disk_format: The format of the underlying disk image.
     :type disk_format: str
     :param visibility: Who can access image
     :type visibility: str (public, private, shared or community)
@@ -2651,10 +2653,65 @@ def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
     return image
 
 
+def is_ceph_image_backend(model_name=None):
+    """Check if glance is related to ceph, therefore using ceph as backend.
+
+    :returns: True if glance is related to Ceph, otherwise False
+    :rtype: bool
+    """
+    status = juju_utils.get_full_juju_status(model_name=model_name)
+    result = False
+    try:
+        result = 'ceph-mon' in (
+            status['applications']['glance']['relations']['ceph'])
+    except KeyError:
+        pass
+    logging.debug("Detected Ceph related to Glance?: {}".format(result))
+    return result
+
+
+def convert_image_format_to_raw_if_qcow2(local_path):
+    """Convert the image format to raw if the detected format is qcow2.
+
+    :param local_path: The path to the original image file.
+    :type local_path: str
+    :returns: The path to the final image file
+    :rtype: str
+    """
+    try:
+        output = subprocess.check_output([
+            "qemu-img", "info", "--output=json", local_path])
+    except subprocess.CalledProcessError:
+        logging.error("Image conversion: Failed to detect image format "
+                      "of file {}".format(local_path))
+        return local_path
+    result = json.loads(output)
+    if result['format'] == 'qcow2':
+        logging.info("Image conversion: Detected qcow2 vs desired raw format"
+                     " of file {}".format(local_path))
+        converted_path = pathlib.Path(local_path).resolve().with_suffix('.raw')
+        converted_path_str = str(converted_path)
+        if converted_path.exists():
+            logging.info("Image conversion: raw converted file already"
+                         " exists: {}".format(converted_path_str))
+            return converted_path_str
+        logging.info("Image conversion: Converting image {} to raw".format(
+            local_path))
+        try:
+            output = subprocess.check_output([
+                "qemu-img", "convert", local_path, converted_path_str])
+        except subprocess.CalledProcessError:
+            logging.error("Image conversion: Failed to convert image"
+                          " {} to raw".format(local_path))
+            return local_path
+        return converted_path_str
+    return local_path
+
+
 def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[],
                  properties=None, backend=None, disk_format='qcow2',
                  visibility='public', container_format='bare',
-                 force_import=False):
+                 force_import=False, convert_image_to_raw_if_ceph_used=True):
     """Download the image and upload it to glance.
 
     Download an image from image_url and upload it to glance labelling
@@ -2676,6 +2733,10 @@ def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[],
     :param force_import: Force the use of glance image import
         instead of direct upload
     :type force_import: boolean
+    :param convert_image_to_raw_if_ceph_used: force conversion of requested
+        image to raw upon download if Ceph is present in the model and
+        has a relation to Glance
+    :type convert_image_to_raw_if_ceph_used: boolean
     :returns: glance image pointer
     :rtype: glanceclient.common.utils.RequestIdProxy
     """
@@ -2694,6 +2755,12 @@ def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[],
     else:
         logging.info('Cached image found at {} - Skipping download'.format(
             local_path))
+
+    if convert_image_to_raw_if_ceph_used and is_ceph_image_backend():
+        logging.info("Image conversion: Detected ceph backend, forcing"
+                     " use of raw image format")
+        disk_format = 'raw'
+        local_path = convert_image_format_to_raw_if_qcow2(local_path)
 
     image = upload_image_to_glance(
         glance, local_path, image_name, backend=backend,
