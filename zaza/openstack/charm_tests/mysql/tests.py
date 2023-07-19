@@ -1123,7 +1123,7 @@ class MySQLRouterTests(test_utils.OpenStackBaseTest):
         cls.services = ["mysqlrouter"]
         # Config file affected by juju set config change
         cls.conf_file = (
-            "/var/lib/mysql/{}-mysql-router/mysqlrouter.conf"
+            "/var/lib/mysql/{}/mysqlrouter.conf"
             .format(application_name))
 
     def test_910_restart_on_config_change(self):
@@ -1145,3 +1145,73 @@ class MySQLRouterTests(test_utils.OpenStackBaseTest):
             {}, {},
             self.services)
         logging.info("Passed restart on changed test.")
+
+    def test_action_bootstrap_mysqlrouter(self):
+        """Checking bootstrap-mysqlrouter action.
+
+        Run the bootstrap-mysqlrouter action
+        """
+        logging.info("Starting bootstrap-mysqlrouter test")
+
+        # put empty string to conf_file and make it wrong
+        logging.info("Breaking configuration file")
+        zaza.model.run_on_leader(self.application,
+                                 "echo '[DEFAULT]\n \
+                                        [metadata_cache:[\\w$]+$] \
+                                        ' > {}".format(
+                                     self.conf_file))
+
+        # verify it is in error state
+        for attempt in tenacity.Retrying(
+            reraise=True,
+            wait=tenacity.wait_fixed(10),
+            stop=tenacity.stop_after_attempt(30),
+        ):
+            with attempt:
+                # update status to make the status error
+                logging.info("Run update-status")
+                self.run_update_status_hooks(['keystone-mysql-router/0'])
+
+                # get current status
+                unit_status = (zaza.model.get_status()
+                               .applications['keystone-mysql-router']['status'])
+                logging.info("Status:{}".format(unit_status))
+                self.assertEqual(unit_status['status'], "error")
+
+        # run bootstrap-mysqlrouter
+        logging.info("Running bootstrap-mysqlrouter action")
+        action = zaza.model.run_action_on_leader(
+            self.application,
+            "bootstrap-mysqlrouter",
+            action_params={})
+
+        # verify it is in error state
+        for attempt in tenacity.Retrying(
+            reraise=True,
+            wait=tenacity.wait_fixed(10),
+            stop=tenacity.stop_after_attempt(30),
+        ):
+            with attempt:
+                logging.info("Running resolved unit")
+                zaza.model.resolve_units(self.application)
+
+                # get current status
+                unit_status = (zaza.model.get_status()
+                               .applications['keystone-mysql-router']['status'])
+                logging.info("Status:{}".format(unit_status))
+                self.assertEqual(unit_status['status'], "active")
+
+        logging.info("Getting configuration file")
+        recovered = zaza.model.run_on_leader(self.application,
+                                             "cat {}".format(
+                                                 self.conf_file))['Stdout']
+
+        # Checking bootstrap action result
+        assert "Success" in action.data["results"]["outcome"], (
+            "Bootstrap mysqlrouter action failed.")
+        # Checking conf file length,
+        # if file is broken it is around 250
+        assert len(recovered) > 1000, (
+            "Bootstrap mysqlrouter action failed.")
+
+        logging.info("Passed bootstrap-mysqlrouter action test.")
