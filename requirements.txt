@@ -11,6 +11,7 @@ async_generator
 # https://github.com/pyca/pyopenssl/commit/a145fc3bc6d2e943434beb2f04bbf9b18930296f
 pyopenssl<22.1.0
 
+trustme
 boto3<1.25
 PyYAML<=4.2,>=3.0; python_version < '3.9'
 PyYAML>=5.1; python_version >= '3.9'
