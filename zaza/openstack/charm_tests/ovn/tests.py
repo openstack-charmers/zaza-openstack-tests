@@ -26,6 +26,7 @@ import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.generic as generic_utils
 import zaza.openstack.utilities.openstack as openstack_utils
+import zaza.utilities.juju
 
 
 class BaseCharmOperationTest(test_utils.BaseCharmTest):
@@ -177,7 +178,8 @@ class ChassisCharmOperationTest(BaseCharmOperationTest):
             'target_deploy_status', {})
         new_target_deploy_status = stored_target_deploy_status.copy()
         new_target_deploy_status[self.application_name] = {
-            'ovn-chassis': 'blocked',
+            'workload-status': 'blocked',
+            'workload-status-message': 'Wrong format',
         }
         if 'target_deploy_status' in self.test_config:
             self.test_config['target_deploy_status'].update(
@@ -186,12 +188,149 @@ class ChassisCharmOperationTest(BaseCharmOperationTest):
             self.test_config['target_deploy_status'] = new_target_deploy_status
 
         with self.config_change(
-                {'bridge-interface-mappings': ''},
+                self.config_current(
+                    application_name=self.application_name,
+                    keys=['bridge-interface-mappings']),
                 {'bridge-interface-mappings': 'incorrect'}):
             logging.info('Charm went into blocked state as expected, restore '
                          'configuration')
             self.test_config[
                 'target_deploy_status'] = stored_target_deploy_status
+
+
+class DPDKTest(test_utils.BaseCharmTest):
+    """DPDK-related tests."""
+
+    def _openvswitch_switch_dpdk_installed(self):
+        """Assert that the openvswitch-switch-dpdk package is installed.
+
+        :raises: zaza.model.CommandRunFailed
+        """
+        cmd = 'dpkg-query -s openvswitch-switch-dpdk'
+        for unit in zaza.model.get_units(self.application_name):
+            zaza.utilities.juju.remote_run(
+                unit.name, cmd, model_name=self.model_name, fatal=True)
+
+    def _ovs_dpdk_init_configured(self):
+        """Assert that DPDK is configured.
+
+        :raises: AssertionError, zaza.model.CommandRunFailed
+        """
+        cmd = 'ovs-vsctl get open-vswitch . other_config:dpdk-init'
+        for unit in zaza.model.get_units(self.application_name):
+            result = zaza.utilities.juju.remote_run(
+                unit.name,
+                cmd,
+                model_name=self.model_name,
+                fatal=True).rstrip()
+            assert result == '"true"', (
+                'DPDK not configured on {}'.format(unit.name))
+
+    def _ovs_dpdk_initialized(self):
+        """Assert that OVS successfully initialized DPDK.
+
+        :raises: AssertionError, zaza.model.CommandRunFailed
+        """
+        cmd = 'ovs-vsctl get open-vswitch . dpdk_initialized'
+        for unit in zaza.model.get_units(self.application_name):
+            result = zaza.utilities.juju.remote_run(
+                unit.name,
+                cmd,
+                model_name=self.model_name,
+                fatal=True).rstrip()
+            assert result == 'true', (
+                'DPDK not initialized on {}'.format(unit.name))
+
+    def _ovs_br_ex_port_is_system_interface(self):
+        """Assert br-ex bridge is created and has system port in it.
+
+        :raises: zaza.model.CommandRunFailed
+        """
+        cmd = ('ip link show dev $(ovs-vsctl --bare --columns name '
+               'find port external_ids:charm-ovn-chassis=br-ex)')
+        for unit in zaza.model.get_units(self.application_name):
+            zaza.utilities.juju.remote_run(
+                unit.name, cmd, model_name=self.model_name, fatal=True)
+
+    def _ovs_br_ex_port_is_dpdk_interface(self):
+        """Assert br-ex bridge is created and has DPDK port in it.
+
+        :raises: zaza.model.CommandRunFailed
+        """
+        cmd = (
+            'dpdk-devbind.py --status-dev net '
+            '| grep ^$(ovs-vsctl --bare --columns options '
+            'find interface external_ids:charm-ovn-chassis=br-ex '
+            '|cut -f2 -d=)'
+            '|grep "drv=vfio-pci unused=$"')
+        for unit in zaza.model.get_units(self.application_name):
+            zaza.utilities.juju.remote_run(
+                unit.name, cmd, model_name=self.model_name, fatal=True)
+
+    def _ovs_br_ex_interface_not_in_error(self):
+        """Assert br-ex bridge is created and interface is not in error.
+
+        :raises: AssertionError, zaza.model.CommandRunFailed
+        """
+        cmd = (
+            'ovs-vsctl --bare --columns error '
+            'find interface external_ids:charm-ovn-chassis=br-ex')
+        for unit in zaza.model.get_units(self.application_name):
+            result = zaza.utilities.juju.remote_run(
+                unit.name,
+                cmd,
+                model_name=self.model_name,
+                fatal=True).rstrip()
+            assert result == '', result
+
+    def _dpdk_pre_post_flight_check(self):
+        """Assert state of the system before and after enable/disable DPDK."""
+        with self.assertRaises(
+                zaza.model.CommandRunFailed,
+                msg='openvswitch-switch-dpdk unexpectedly installed'):
+            self._openvswitch_switch_dpdk_installed()
+        with self.assertRaises(
+                zaza.model.CommandRunFailed,
+                msg='OVS unexpectedly configured for DPDK'):
+            self._ovs_dpdk_init_configured()
+        with self.assertRaises(
+                AssertionError,
+                msg='OVS unexpectedly has DPDK initialized'):
+            self._ovs_dpdk_initialized()
+
+    def test_enable_dpdk(self):
+        """Confirm that transitioning to/from DPDK works."""
+        logging.info('Pre-flight check')
+        self._dpdk_pre_post_flight_check()
+        self._ovs_br_ex_port_is_system_interface()
+
+        self.enable_hugepages_vfio_on_hvs_in_vms(4)
+        with self.config_change(
+                {
+                    'enable-dpdk': False,
+                    'dpdk-driver': '',
+                },
+                {
+                    'enable-dpdk': True,
+                    'dpdk-driver': 'vfio-pci',
+                },
+                application_name='ovn-chassis'):
+            logging.info('Checking openvswitch-switch-dpdk is installed')
+            self._openvswitch_switch_dpdk_installed()
+            logging.info('Checking DPDK is configured in OVS')
+            self._ovs_dpdk_init_configured()
+            logging.info('Checking DPDK is successfully initialized in OVS')
+            self._ovs_dpdk_initialized()
+            logging.info('Checking that br-ex configed with DPDK interface...')
+            self._ovs_br_ex_port_is_dpdk_interface()
+            logging.info('and is not in error.')
+            self._ovs_br_ex_interface_not_in_error()
+
+        logging.info('Post-flight check')
+        self._dpdk_pre_post_flight_check()
+
+        self.disable_hugepages_vfio_on_hvs_in_vms()
+        self._ovs_br_ex_port_is_system_interface()
 
 
 class OVSOVNMigrationTest(test_utils.BaseCharmTest):
