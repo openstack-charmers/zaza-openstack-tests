@@ -19,6 +19,7 @@
 import logging
 import os
 
+import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.configure.hacluster
 import zaza.utilities.juju as juju_utils
@@ -32,6 +33,15 @@ class HaclusterBaseTest(test_utils.OpenStackBaseTest):
         """Run class setup for running hacluster tests."""
         super(HaclusterBaseTest, cls).setUpClass()
         cls.vip = os.environ.get("TEST_VIP00")
+        test_config = cls.test_config['tests_options']['hacluster']
+        cls._principle_app_name = test_config['principle-app-name']
+        cls._hacluster_charm_name = test_config['hacluster-charm-name']
+        cls._hacluster_app_name = ("{}-{}".format(
+            cls._principle_app_name, cls._hacluster_charm_name))
+        cls.lead_unit = zaza.model.get_lead_unit_name(
+            cls._hacluster_app_name,
+            model_name=cls.model_name)
+        logging.debug('Leader unit is {}'.format(cls.lead_unit))
 
 
 class HaclusterTest(HaclusterBaseTest):
@@ -40,7 +50,7 @@ class HaclusterTest(HaclusterBaseTest):
     def test_900_action_cleanup(self):
         """The services can be cleaned up."""
         zaza.model.run_action_on_leader(
-            self.application_name,
+            self._hacluster_app_name,
             'cleanup',
             raise_on_failure=True)
 
@@ -56,13 +66,13 @@ class HaclusterTest(HaclusterBaseTest):
         """
         config = {"maintenance-mode": expected}
         logging.info("Setting config to {}".format(config))
-        zaza.model.set_application_config(self.application_name, config)
+        zaza.model.set_application_config(self._hacluster_app_name, config)
         if expected == 'true':
-            _states = {"hacluster": {
+            _states = {self._hacluster_app_name: {
                 "workload-status": "maintenance",
                 "workload-status-message": "Pacemaker in maintenance mode"}}
         else:
-            _states = {"hacluster": {
+            _states = {self._hacluster_app_name: {
                 "workload-status": "active",
                 "workload-status-message": "Unit is ready and clustered"}}
         zaza.model.wait_for_application_states(states=_states)
@@ -78,16 +88,6 @@ class HaclusterTest(HaclusterBaseTest):
 
 class HaclusterScaleBackAndForthTest(HaclusterBaseTest):
     """hacluster tests scaling back and forth."""
-
-    @classmethod
-    def setUpClass(cls):
-        """Run class setup for running hacluster tests."""
-        super(HaclusterScaleBackAndForthTest, cls).setUpClass()
-        test_config = cls.test_config['tests_options']['hacluster']
-        cls._principle_app_name = test_config['principle-app-name']
-        cls._hacluster_charm_name = test_config['hacluster-charm-name']
-        cls._hacluster_app_name = ("{}-{}".format(
-            cls._principle_app_name, cls._hacluster_charm_name))
 
     def test_930_scaleback(self):
         """Remove one unit, recalculate quorum and re-add one unit.
