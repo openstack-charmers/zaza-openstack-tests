@@ -29,6 +29,7 @@ import urllib3
 
 import tenacity
 
+import zaza.charm_lifecycle.utils as lifecycle_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.model as zaza_model
 import zaza.openstack.utilities.ceph as zaza_ceph
@@ -1204,10 +1205,14 @@ class CephProxyTest(unittest.TestCase):
         """Run class setup for running tests."""
         super(CephProxyTest, cls).setUpClass()
 
+        test_config = lifecycle_utils.get_charm_config(fatal=False)
+        cls.target_deploy_status = test_config.get('target_deploy_status', {})
+
     def test_ceph_health(self):
         """Make sure ceph-proxy can communicate with ceph."""
         logging.info('Wait for idle/ready status...')
-        zaza_model.wait_for_application_states()
+        zaza_model.wait_for_application_states(
+            states=self.target_deploy_status)
 
         self.assertEqual(
             zaza_model.run_on_leader("ceph-proxy", "sudo ceph health")["Code"],
@@ -1217,7 +1222,8 @@ class CephProxyTest(unittest.TestCase):
     def test_cinder_ceph_restrict_pool_setup(self):
         """Make sure cinder-ceph restrict pool was created successfully."""
         logging.info('Wait for idle/ready status...')
-        zaza_model.wait_for_application_states()
+        zaza_model.wait_for_application_states(
+            states=self.target_deploy_status)
 
         pools = zaza_ceph.get_ceph_pools('ceph-mon/0')
         if 'cinder-ceph' not in pools:
