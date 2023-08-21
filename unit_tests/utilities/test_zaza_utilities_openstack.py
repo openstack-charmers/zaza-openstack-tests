@@ -543,10 +543,99 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 expected_status='active',
                 msg='Image status wait')
 
+    def test_is_ceph_image_backend_True(self):
+        self.patch_object(openstack_utils.juju_utils, "get_full_juju_status",
+                          return_value={
+                              "applications": {
+                                  "glance": {
+                                      "relations": {
+                                          "ceph": [
+                                              "ceph-mon"
+                                          ]
+                                      }
+                                  }
+                              }
+                          })
+        self.assertTrue(openstack_utils.is_ceph_image_backend())
+        self.get_full_juju_status.assert_called_once_with(model_name=None)
+
+    def test_is_ceph_image_backend_False(self):
+        self.patch_object(openstack_utils.juju_utils, "get_full_juju_status",
+                          return_value={
+                              "applications": {
+                                  "glance": {
+                                      "relations": {
+                                      }
+                                  }
+                              }
+                          })
+        self.assertFalse(openstack_utils.is_ceph_image_backend('foo'))
+        self.get_full_juju_status.assert_called_once_with(model_name='foo')
+
+    def test_convert_image_format_to_raw_if_qcow2_qemu_cmd_error(self):
+        self.patch_object(openstack_utils.subprocess, "check_output")
+        self.check_output.side_effect = subprocess.CalledProcessError(
+            returncode=42, cmd='mycmd')
+        self.assertEqual("/tmp/original_path",
+                         openstack_utils.convert_image_format_to_raw_if_qcow2(
+                             "/tmp/original_path"))
+        self.check_output.assert_called_once_with([
+            "qemu-img", "info", "--output=json", '/tmp/original_path'])
+
+    def test_convert_image_format_to_raw_if_qcow2_raw_error(self):
+        self.patch_object(openstack_utils.os.path, "exists",
+                          return_value=False)
+        self.patch_object(openstack_utils.subprocess, "check_output",
+                          side_effect=[
+                              '{"format": "qcow2"}',
+                              subprocess.CalledProcessError(
+                                  returncode=42, cmd='mycmd')])
+        self.assertEqual("/tmp/original_path",
+                         openstack_utils.convert_image_format_to_raw_if_qcow2(
+                             "/tmp/original_path"))
+        self.check_output.assert_has_calls([
+            mock.call(["qemu-img", "info", "--output=json",
+                       '/tmp/original_path']),
+            mock.call(["qemu-img", "convert", '/tmp/original_path',
+                      '/tmp/original_path.raw'])
+        ])
+
+    def test_convert_image_format_to_raw_if_qcow2_raw_success(self):
+        self.patch_object(openstack_utils.os.path, "exists",
+                          return_value=False)
+        self.patch_object(openstack_utils.subprocess, "check_output",
+                          side_effect=['{"format": "qcow2"}', 'success'])
+
+        self.assertEqual("/tmp/original_path.raw",
+                         openstack_utils.convert_image_format_to_raw_if_qcow2(
+                             "/tmp/original_path"))
+        self.check_output.assert_has_calls([
+            mock.call(["qemu-img", "info", "--output=json",
+                       '/tmp/original_path']),
+            mock.call(["qemu-img", "convert", '/tmp/original_path',
+                      '/tmp/original_path.raw'])
+        ])
+
+    def test_convert_image_format_to_raw_if_qcow2_raw_already_exists(self):
+        self.patch_object(openstack_utils.pathlib.Path, "exists",
+                          return_value=True)
+        self.patch_object(openstack_utils.subprocess, "check_output",
+                          return_value='{"format": "qcow2"}')
+        self.assertEqual("/tmp/original_path.raw",
+                         openstack_utils.convert_image_format_to_raw_if_qcow2(
+                             "/tmp/original_path"))
+        self.check_output.assert_called_once_with([
+            "qemu-img", "info", "--output=json", '/tmp/original_path'])
+
     def test_create_image_use_tempdir(self):
         glance_mock = mock.MagicMock()
         self.patch_object(openstack_utils.os.path, "exists")
         self.patch_object(openstack_utils, "download_image")
+        self.patch_object(openstack_utils, "is_ceph_image_backend",
+                          return_value=True)
+        self.patch_object(openstack_utils,
+                          "convert_image_format_to_raw_if_qcow2",
+                          return_value='wibbly/c.img.raw')
         self.patch_object(openstack_utils, "upload_image_to_glance")
         self.patch_object(openstack_utils.tempfile, "gettempdir")
         self.gettempdir.return_value = "wibbly"
@@ -560,6 +649,37 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             'wibbly/c.img')
         self.upload_image_to_glance.assert_called_once_with(
             glance_mock,
+            'wibbly/c.img.raw',
+            'bob',
+            backend=None,
+            disk_format='raw',
+            visibility='public',
+            container_format='bare',
+            force_import=False)
+        self.convert_image_format_to_raw_if_qcow2.assert_called_once_with(
+            'wibbly/c.img')
+
+    def test_create_image_not_convert(self):
+        glance_mock = mock.MagicMock()
+        self.patch_object(openstack_utils.os.path, "exists")
+        self.patch_object(openstack_utils, "download_image")
+        self.patch_object(openstack_utils, "is_ceph_image_backend")
+        self.patch_object(openstack_utils,
+                          "convert_image_format_to_raw_if_qcow2")
+        self.patch_object(openstack_utils, "upload_image_to_glance")
+        self.patch_object(openstack_utils.tempfile, "gettempdir")
+        self.gettempdir.return_value = "wibbly"
+        openstack_utils.create_image(
+            glance_mock,
+            'http://cirros/c.img',
+            'bob',
+            convert_image_to_raw_if_ceph_used=False)
+        self.exists.return_value = False
+        self.download_image.assert_called_once_with(
+            'http://cirros/c.img',
+            'wibbly/c.img')
+        self.upload_image_to_glance.assert_called_once_with(
+            glance_mock,
             'wibbly/c.img',
             'bob',
             backend=None,
@@ -567,11 +687,17 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             visibility='public',
             container_format='bare',
             force_import=False)
+        self.is_ceph_image_backend.assert_not_called()
+        self.convert_image_format_to_raw_if_qcow2.assert_not_called()
 
     def test_create_image_pass_directory(self):
         glance_mock = mock.MagicMock()
         self.patch_object(openstack_utils.os.path, "exists")
         self.patch_object(openstack_utils, "download_image")
+        self.patch_object(openstack_utils,
+                          "convert_image_format_to_raw_if_qcow2")
+        self.patch_object(openstack_utils, "is_ceph_image_backend",
+                          return_value=False)
         self.patch_object(openstack_utils, "upload_image_to_glance")
         self.patch_object(openstack_utils.tempfile, "gettempdir")
         openstack_utils.create_image(
@@ -593,6 +719,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             container_format='bare',
             force_import=False)
         self.gettempdir.assert_not_called()
+        self.convert_image_format_to_raw_if_qcow2.assert_not_called()
 
     def test_create_ssh_key(self):
         nova_mock = mock.MagicMock()
