@@ -93,7 +93,7 @@ class GlanceTest(test_utils.OpenStackBaseTest):
                 image_url,
                 'cirros-test-import',
                 force_import=True,
-                convert_if_ceph=False)
+                convert_image_to_raw_if_ceph_used=False)
 
             disk_format = self.glance_client.images.get(image.id).disk_format
             self.assertEqual('raw', disk_format)
