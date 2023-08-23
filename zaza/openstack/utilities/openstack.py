@@ -62,6 +62,7 @@ from keystoneauth1.identity import (
     v3,
     v2,
 )
+from watcherclient import client as watcher_client
 import zaza.openstack.utilities.cert as cert
 import zaza.utilities.deployment_env as deployment_env
 import zaza.utilities.juju as juju_utils
@@ -463,6 +464,15 @@ def get_manila_session_client(session, version='2'):
     :rtype: manilaclient.Client
     """
     return manilaclient.Client(session=session, client_version=version)
+
+
+def get_watcher_session_client(session):
+    """Return Watcher client authenticated by keystone session.
+
+    :param session: Keystone session object
+    :returns: Authenticated watcher client
+    """
+    return watcher_client.get_client(session=session, api_version='1')
 
 
 def get_keystone_scope(model_name=None):
