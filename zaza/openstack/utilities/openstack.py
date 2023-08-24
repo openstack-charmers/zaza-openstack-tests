@@ -2348,7 +2348,13 @@ def _resource_reaches_status(resource, resource_id,
     :raises: AssertionError
     :raises: StatusError
     """
-    resource_status = getattr(resource.get(resource_id), resource_attribute)
+    try:
+        res_object = resource.get(resource_id)
+        resource_status = getattr(res_object, resource_attribute)
+    except AttributeError:
+        logging.error('attributes available: %s' % str(dir(res_object)))
+        raise
+
     logging.info("{}: resource {} in {} state, waiting for {}".format(
         msg, resource_id, resource_status, expected_status))
     if stop_status:
