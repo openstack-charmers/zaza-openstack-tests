@@ -220,3 +220,9 @@ class LoadBalancerUnrecoverableError(Exception):
     """The LoadBalancer has reached to an unrecoverable error state."""
 
     pass
+
+
+class StatusError(Exception):
+    """The resource status is in error state."""
+
+    pass
