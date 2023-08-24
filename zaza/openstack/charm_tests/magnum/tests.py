@@ -19,6 +19,7 @@
 import logging
 import urllib
 
+import zaza.openstack.charm_tests.tempest.tests as tempest_tests
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.utilities.generic as generic_utils
@@ -155,3 +156,9 @@ class MagnumBasicDeployment(test_utils.OpenStackBaseTest):
         return
         with self.pause_resume(self.services):
             logging.info("Testing pause resume")
+
+
+class MagnumTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
+    """Test magnum k8s scale out and scale back."""
+
+    application_name = "magnum"
