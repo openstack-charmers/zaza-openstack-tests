@@ -2426,7 +2426,8 @@ def download_image(image_url, target_file):
 def _resource_reaches_status(resource, resource_id,
                              expected_status='available',
                              msg='resource',
-                             resource_attribute='status'):
+                             resource_attribute='status',
+                             stop_status=None):
     """Wait for an openstack resources status to reach an expected status.
 
        Wait for an openstack resources status to reach an expected status
@@ -2444,11 +2445,20 @@ def _resource_reaches_status(resource, resource_id,
     :type msg: str
     :param resource_attribute: Resource attribute to check against
     :type resource_attribute: str
+    :param stop_status: Stop retrying when this status is reached
+    :type stop_status: str
     :raises: AssertionError
+    :raises: StatusError
     """
     resource_status = getattr(resource.get(resource_id), resource_attribute)
     logging.info("{}: resource {} in {} state, waiting for {}".format(
         msg, resource_id, resource_status, expected_status))
+    if stop_status:
+        if isinstance(stop_status, list) and resource_status in stop_status:
+            raise exceptions.StatusError(resource_status, expected_status)
+        elif isinstance(stop_status, str) and resource_status == stop_status:
+            raise exceptions.StatusError(resource_status, expected_status)
+
     assert resource_status == expected_status
 
 
@@ -2460,6 +2470,7 @@ def resource_reaches_status(resource,
                             wait_exponential_multiplier=1,
                             wait_iteration_max_time=60,
                             stop_after_attempt=8,
+                            stop_status=None,
                             ):
     """Wait for an openstack resources status to reach an expected status.
 
@@ -2484,23 +2495,28 @@ def resource_reaches_status(resource,
     :param wait_iteration_max_time: Wait a max of wait_iteration_max_time
                                     between retries.
     :type wait_iteration_max_time: int
-    :param stop_after_attempt: Stop after stop_after_attempt retires.
+    :param stop_after_attempt: Stop after stop_after_attempt retries
     :type stop_after_attempt: int
     :raises: AssertionError
+    :raises: StatusError
     """
     retryer = tenacity.Retrying(
         wait=tenacity.wait_exponential(
             multiplier=wait_exponential_multiplier,
             max=wait_iteration_max_time),
         reraise=True,
-        stop=tenacity.stop_after_attempt(stop_after_attempt))
+        stop=tenacity.stop_after_attempt(stop_after_attempt),
+        retry=tenacity.retry_if_exception_type(AssertionError),
+    )
     retryer(
         _resource_reaches_status,
         resource,
         resource_id,
         expected_status,
         msg,
-        resource_attribute)
+        resource_attribute,
+        stop_status,
+    )
 
 
 def _resource_removed(resource, resource_id, msg="resource"):
