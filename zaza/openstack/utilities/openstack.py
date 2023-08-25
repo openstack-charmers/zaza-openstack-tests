@@ -335,7 +335,7 @@ def get_nova_session_client(session, version=None):
     :param session: Keystone session object
     :type session: keystoneauth1.session.Session object
     :param version: Version of client to request.
-    :type version: float
+    :type version: float | str | None
     :returns: Authenticated novaclient
     :rtype: novaclient.Client object
     """
