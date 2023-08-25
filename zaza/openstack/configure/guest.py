@@ -130,7 +130,7 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
     :param host: Requested host to create servers
     :type host: str
     :param nova_api_version: Nova API version to use
-    :type nova_api_version: str
+    :type nova_api_version: str | None
     :returns: the created instance
     :rtype: novaclient.Server
     """
