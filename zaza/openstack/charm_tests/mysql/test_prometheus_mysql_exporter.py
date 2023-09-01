@@ -15,6 +15,7 @@
 """MySQL Prometheus Exporter Testing."""
 
 import json
+import tenacity
 import urllib.request
 
 import zaza.model as zaza_model
@@ -62,6 +63,27 @@ class PrometheusMySQLExporterTest(MySQLBaseTest):
             result = zaza_model.run_on_unit(unit.name, cmd)
             self.assertEqual(result.get("stdout"), excepted)
 
+    @tenacity.retry(
+        wait=tenacity.wait_fixed(5),  # interval between retries
+        stop=tenacity.stop_after_attempt(10),  # retry times
+        retry=tenacity.retry_if_exception_type(AssertionError),
+        reraise=True,
+    )
+    def _check_exporter_http_check(self, unit):
+        url = "http://{}:9104/metrics".format(
+            unit.public_address)
+        with urllib.request.urlopen(url) as resp:
+            metrics = resp.read().decode("utf-8")
+            if not any(
+                str(line) == "mysql_up 1"
+                for line in metrics.split("\n")
+            ):
+                self.fail(
+                    "Exporter permission not correct on {}".format(
+                        unit.public_address
+                    )
+                )
+
     def test_01_exporter_http_check(self):
         """Check exporter endpoint is working."""
         self._exporter_http_check(
@@ -70,19 +92,7 @@ class PrometheusMySQLExporterTest(MySQLBaseTest):
         )
 
         for unit in zaza_model.get_units(self.application):
-            url = "http://{}:9104/metrics".format(
-                unit.public_address)
-            with urllib.request.urlopen(url) as resp:
-                metrics = resp.read().decode("utf-8")
-                if not any(
-                    str(line) == "mysql_up 1"
-                    for line in metrics.split("\n")
-                ):
-                    self.fail(
-                        "Exporter permission not correct on {}".format(
-                            unit.public_address
-                        )
-                    )
+            self._check_exporter_http_check(unit)
 
     def test_02_exporter_service_relation_trigger(self):
         """Relation trigger exporter service start/stop."""

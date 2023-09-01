@@ -28,6 +28,7 @@ install_require = [
     'futurist<2.0.0',
     'async_generator',
     'boto3',
+    'trustme',
 
     # pyopenssl depends on a newer version of cryptography since 22.1.0
     # TypeError: deprecated() got an unexpected keyword argument 'name'

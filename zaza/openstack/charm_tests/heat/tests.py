@@ -25,6 +25,7 @@ from heatclient.common import template_utils
 import zaza.model
 import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
+import zaza.openstack.charm_tests.tempest.tests as tempest_tests
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.charm_lifecycle.utils as charm_lifecycle_utils
 
@@ -256,3 +257,9 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
 
         with self.pause_resume(self.services):
             logging.info("Testing pause resume")
+
+
+class HeatTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
+    """Test heat k8s scale out and scale back."""
+
+    application_name = "heat"

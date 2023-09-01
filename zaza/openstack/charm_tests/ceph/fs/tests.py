@@ -29,6 +29,7 @@ class CephFSTests(unittest.TestCase):
 
     mounts_share = False
     mount_dir = '/mnt/cephfs'
+    CEPH_MON = 'ceph-mon'
 
     def tearDown(self):
         """Cleanup after running tests."""
@@ -69,9 +70,9 @@ class CephFSTests(unittest.TestCase):
     def _install_keyring(self, unit_name: str):
 
         keyring = model.run_on_leader(
-            'ceph-mon', 'cat /etc/ceph/ceph.client.admin.keyring')['Stdout']
+            self.CEPH_MON, 'cat /etc/ceph/ceph.client.admin.keyring')['Stdout']
         config = model.run_on_leader(
-            'ceph-mon', 'cat /etc/ceph/ceph.conf')['Stdout']
+            self.CEPH_MON, 'cat /etc/ceph/ceph.conf')['Stdout']
         commands = [
             'sudo mkdir -p /etc/ceph',
             "echo '{}' | sudo tee /etc/ceph/ceph.conf".format(config),
@@ -174,6 +175,14 @@ class CephFSTests(unittest.TestCase):
                       'mds-cache-reservation': '0.05',
                       'mds-health-cache-threshold': '1.5'}
         _change_conf_check(mds_config)
+
+
+class CephFSWithCephProxyTests(CephFSTests):
+    """Extend CephFSTests to use ceph-proxy instead of ceph-mon."""
+
+    # when ceph-proxy is being used it will be the one acting as a ceph-mon
+    # for the other charms holding the admin key and ceph.conf
+    CEPH_MON = 'ceph-proxy'
 
 
 def _indent(text, amount, ch=' '):

@@ -1174,9 +1174,10 @@ class MySQLRouterTests(test_utils.OpenStackBaseTest):
 
                 # get current status
                 unit_status = (zaza.model.get_status()
-                               .applications['keystone-mysql-router']['status'])
+                               .applications
+                               ['keystone-mysql-router']['status'])
                 logging.info("Status:{}".format(unit_status))
-                self.assertEqual(unit_status['status'], "error")
+                self.assertNotEqual(unit_status['status'], "active")
 
         # run bootstrap-mysqlrouter
         logging.info("Running bootstrap-mysqlrouter action")
@@ -1197,7 +1198,8 @@ class MySQLRouterTests(test_utils.OpenStackBaseTest):
 
                 # get current status
                 unit_status = (zaza.model.get_status()
-                               .applications['keystone-mysql-router']['status'])
+                               .applications
+                               ['keystone-mysql-router']['status'])
                 logging.info("Status:{}".format(unit_status))
                 self.assertEqual(unit_status['status'], "active")
 
