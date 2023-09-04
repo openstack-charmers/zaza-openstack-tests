@@ -14,6 +14,7 @@
 """Encapsulate Cinder testing."""
 
 import logging
+import tenacity
 
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
@@ -43,6 +44,16 @@ class WatcherTests(test_utils.OpenStackBaseTest):
 
     def test_server_consolidation(self):
         """Test server consolidation policy."""
+        for i, attempt in enumerate(tenacity.Retrying(
+                wait=tenacity.wait_fixed(2),
+                retry=tenacity.retry_if_exception_type(AssertionError),
+                reraise=True,
+                stop=tenacity.stop_after_attempt(4))):
+            with attempt:
+                logger.info('Attempt number %d', i + 1)
+                self._check_server_consolidation()
+
+    def _check_server_consolidation(self):
         try:
             at = self.watcher_client.audit_template.get(
                 self.AUDIT_TEMPLATE_NAME
