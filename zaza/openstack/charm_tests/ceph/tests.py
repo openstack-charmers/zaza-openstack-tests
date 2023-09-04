@@ -1225,10 +1225,16 @@ class CephProxyTest(unittest.TestCase):
         zaza_model.wait_for_application_states(
             states=self.target_deploy_status)
 
-        pools = zaza_ceph.get_ceph_pools('ceph-mon/0')
-        if 'cinder-ceph' not in pools:
-            msg = 'cinder-ceph pool was not found upon querying ceph-mon/0'
-            raise zaza_exceptions.CephPoolNotFound(msg)
+        for attempt in tenacity.Retrying(
+            wait=tenacity.wait_exponential(multiplier=2, max=32),
+            reraise=True, stop=tenacity.stop_after_attempt(8),
+        ):
+            with attempt:
+                pools = zaza_ceph.get_ceph_pools('ceph-mon/0')
+                if 'cinder-ceph' not in pools:
+                    msg = ('cinder-ceph pool not found querying ceph-mon/0,'
+                           'got: {}'.format(pools))
+                    raise zaza_exceptions.CephPoolNotFound(msg)
 
         # Checking for cinder-ceph specific permissions makes
         # the test more rugged when we add additional relations
