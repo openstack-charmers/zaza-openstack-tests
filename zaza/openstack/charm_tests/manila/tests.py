@@ -391,16 +391,15 @@ packages:
                 fip_1, ssh_user_name, privkey, share_path)
             self._validate_testing_file_from_instance(
                 fip_1, ssh_user_name, privkey)
-            #  Read the previous testing file from instance #1
-            self._mount_share_on_instance(
-                fip_2, ssh_user_name, privkey, share_path)
-            # Reset the test!
+            # Reset the test file
             self._clear_testing_file_on_instance(
                 fip_1, ssh_user_name, privkey
             )
-            # Write a testing file on instance #1
+            # (Re)write a test file on instance #1
             self._write_testing_file_on_instance(
                 fip_1, ssh_user_name, privkey)
             # Validate the testing file from instance #2
+            self._mount_share_on_instance(
+                fip_2, ssh_user_name, privkey, share_path)
             self._validate_testing_file_from_instance(
                 fip_2, ssh_user_name, privkey)
