@@ -244,6 +244,12 @@ class GlanceCinderBackendTest(test_utils.OpenStackBaseTest):
 
         Validate the size of the image in both Glance API and Cinder API.
         """
+        current_release = openstack_utils.get_os_release()
+        focal_xena = openstack_utils.get_os_release('focal_xena')
+        if current_release < focal_xena:
+            self.skipTest('skipping test since cinder backend not supported '
+                          'till xena')
+
         image_name = "zaza-cinder-test-image"
         openstack_utils.create_image(
             glance=self.glance_client,
