@@ -2387,6 +2387,12 @@ def find_ubuntu_image(release, arch):
     return loc_str.format(release=release, arch=arch)
 
 
+@tenacity.retry(
+    wait=tenacity.wait_fixed(2),
+    stop=tenacity.stop_after_attempt(10),
+    reraise=True,
+    retry=tenacity.retry_if_exception_type(urllib.error.ContentTooShortError),
+)
 def download_image(image_url, target_file):
     """Download the image from the given url to the specified file.
 
