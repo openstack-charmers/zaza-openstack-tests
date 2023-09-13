@@ -24,6 +24,7 @@ import designateclient.v1.servers as servers
 
 import zaza.model
 import zaza.utilities.juju as juju_utils
+import zaza.openstack.charm_tests.tempest.tests as tempest_tests
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.generic as generic_utils
 import zaza.openstack.utilities.openstack as openstack_utils
@@ -395,3 +396,9 @@ class DesignateBindExpand(BaseDesignateTest):
             self.TEST_RECORD[self.TEST_WWW_RECORD],
             self.TEST_DOMAIN,
             record_name=self.TEST_WWW_RECORD)
+
+
+class DesignateTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
+    """Test designate k8s scale out and scale back."""
+
+    application_name = "designate"
