@@ -238,6 +238,10 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
             action_params={
                 'name': self.EC_METADATA_POOL}))
 
+    def refresh_partitions(self, ctxt):
+        """Refresh kernel partition tables in client."""
+        self.run_commands(ctxt['client_entity_id'], ('partprobe', ), ctxt)
+
     def run_client_checks(self, test_ctxt):
         """Check access to mulipath device.
 
@@ -250,9 +254,11 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
         """
         self.create_iscsi_target(test_ctxt)
         self.login_iscsi_target(test_ctxt)
+        self.refresh_partitions(test_ctxt)
         self.check_client_device(test_ctxt, init_client=True)
         self.logout_iscsi_targets(test_ctxt)
         self.login_iscsi_target(test_ctxt)
+        self.refresh_partitions(test_ctxt)
         self.check_client_device(test_ctxt, init_client=False)
 
     def test_create_and_mount_volume(self):
