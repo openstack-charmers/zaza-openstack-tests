@@ -15,6 +15,12 @@
 """Module of exceptions that zaza may raise."""
 
 
+class InvalidTestConfig(Exception):
+    """Exception when the test configuration is invalid."""
+
+    pass
+
+
 class MissingOSAthenticationException(Exception):
     """Exception when some data needed to authenticate is missing."""
 
@@ -200,5 +206,23 @@ class PolicydError(Exception):
 
 class CACERTNotFound(Exception):
     """Could not find cacert."""
+
+    pass
+
+
+class LoadBalancerUnexpectedState(Exception):
+    """The LoadBalancer is in a unexpected state."""
+
+    pass
+
+
+class LoadBalancerUnrecoverableError(Exception):
+    """The LoadBalancer has reached to an unrecoverable error state."""
+
+    pass
+
+
+class StatusError(Exception):
+    """The resource status is in error state."""
 
     pass

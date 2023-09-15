@@ -18,15 +18,18 @@
 
 import base64
 import hvac
+import logging
 import requests
 import tempfile
 import time
 import urllib3
 import yaml
+import tenacity
 
 import collections
 
 import zaza.model
+import zaza.openstack.utilities.openstack
 import zaza.utilities.networking as network_utils
 
 AUTH_FILE = "vault_tests.yaml"
@@ -58,27 +61,29 @@ class VaultFacade:
             self.unseal_client = self.vip_client
         else:
             self.unseal_client = self.clients[0]
-        self.initialized = is_initialized(self.unseal_client)
         if initialize:
             self.initialize()
 
     @property
     def is_initialized(self):
         """Check if vault is initialized."""
-        return self.initialized
+        return is_initialized(self.unseal_client)
 
     def initialize(self):
         """Initialise vault and store resulting credentials."""
         if self.is_initialized:
-            self.vault_creds = get_credentails()
+            self.vault_creds = get_credentials()
         else:
             self.vault_creds = init_vault(self.unseal_client)
-            store_credentails(self.vault_creds)
-        self.initialized = is_initialized(self.unseal_client)
+            store_credentials(self.vault_creds)
+            self.unseal_client = wait_and_get_initialized_client(self.clients)
 
     def unseal(self):
         """Unseal all the vaults clients."""
+        unseal_all([self.unseal_client], self.vault_creds['keys'][0])
+        wait_until_all_initialised(self.clients)
         unseal_all(self.clients, self.vault_creds['keys'][0])
+        wait_for_ha_settled(self.clients)
 
     def authorize(self):
         """Authorize charm to perfom certain actions.
@@ -87,6 +92,7 @@ class VaultFacade:
         set of calls against the vault API.
         """
         auth_all(self.clients, self.vault_creds['root_token'])
+        wait_for_ha_settled(self.clients)
         run_charm_authorize(self.vault_creds['root_token'])
 
 
@@ -240,6 +246,15 @@ def extract_lead_unit_client(
                        .format(application_name))
 
 
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type((
+        ConnectionRefusedError,
+        urllib3.exceptions.NewConnectionError,
+        urllib3.exceptions.MaxRetryError,
+        requests.exceptions.ConnectionError)),
+    reraise=True,  # if all retries failed, reraise the last exception
+    wait=tenacity.wait_fixed(2),  # interval between retries
+    stop=tenacity.stop_after_attempt(10))  # retry 10 times
 def is_initialized(client):
     """Check if vault is initialized.
 
@@ -247,23 +262,10 @@ def is_initialized(client):
     :type client: CharmVaultClient
     :returns: Whether vault is initialized
     :rtype: bool
+
+    Raise the last exception if no value returned after retries.
     """
-    initialized = False
-    for i in range(1, 10):
-        try:
-            initialized = client.hvac_client.is_initialized()
-        except (ConnectionRefusedError,
-                urllib3.exceptions.NewConnectionError,
-                urllib3.exceptions.MaxRetryError,
-                requests.exceptions.ConnectionError):
-            # XXX time.sleep roundup
-            # https://github.com/openstack-charmers/zaza-openstack-tests/issues/46
-            time.sleep(2)
-        else:
-            break
-    else:
-        raise Exception("Cannot connect")
-    return initialized
+    return client.hvac_client.is_initialized()
 
 
 def ensure_secret_backend(client):
@@ -282,6 +284,75 @@ def ensure_secret_backend(client):
         pass
 
 
+def wait_for_ha_settled(clients):
+    """Wait until vault ha is settled (for all passed clients).
+
+    Raise an AssertionError if any are not settled within 2 minutes.
+    This function is effectively a no-op for non-ha vault.
+    Requires all vault units to be unsealed.
+
+    :param clients: Clients to use to talk to vault
+    :type clients: List[CharmVaultClient]
+    :raises: AssertionError
+    """
+    for client in clients:
+        for attempt in tenacity.Retrying(
+            reraise=True,
+            wait=tenacity.wait_fixed(10),
+            stop=tenacity.stop_after_attempt(12),  # wait for max 2 minutes
+        ):
+            with attempt:
+                # ha_status could also raise other errors,
+                # eg. if unsealing still in progress.
+                # This is why we're using tenacity here;
+                # avoids needing to manually handle other exceptions.
+                ha_status = client.hvac_client.ha_status
+                if (
+                    not ha_status.get('leader_address') and
+                    ha_status.get('ha_enabled')
+                ):
+                    raise AssertionError('Timeout waiting for ha to settle')
+
+
+def wait_until_all_initialised(clients):
+    """Wait until vault is initialized (for all passed clients).
+
+    Raise an AssertionError if any are not initialized within 2 minutes.
+
+    :param clients: Clients to use to talk to vault
+    :type clients: List[CharmVaultClient]
+    :raises: AssertionError
+    """
+    for client in clients:
+        for _ in range(12):
+            if is_initialized(client):
+                break
+            time.sleep(10)  # max 2 minutes (12 x 10s)
+        else:
+            raise AssertionError("Timeout waiting for vault to initialize")
+
+
+def wait_and_get_initialized_client(clients):
+    """Wait until at least one vault unit is initialized.
+
+    And return the initialized client.
+    Raise an AssertionError
+    if no initialized clients are found within 2 minutes.
+
+    :param clients: Clients to use to talk to vault
+    :type clients: List[CharmVaultClient]
+    :raises: AssertionError
+    :returns: an initialized client
+    :rtype: CharmVaultClient
+    """
+    for _ in range(12):
+        for client in clients:
+            if is_initialized(client):
+                return client
+        time.sleep(10)  # max 2 minutes (12 x 10s)
+    raise AssertionError("Timeout waiting for vault to initialize")
+
+
 def find_unit_with_creds():
     """Find the unit thats has stored the credentials.
 
@@ -298,7 +369,7 @@ def find_unit_with_creds():
     return unit
 
 
-def get_credentails():
+def get_credentials():
     """Retrieve vault token and keys from unit.
 
     Retrieve vault token and keys from unit. These are stored on a unit
@@ -319,7 +390,7 @@ def get_credentails():
     return creds
 
 
-def store_credentails(creds):
+def store_credentials(creds):
     """Store the supplied credentials.
 
     Store the supplied credentials on a vault unit. ONLY USE FOR FUNCTIONAL
@@ -338,7 +409,7 @@ def store_credentails(creds):
             '~/{}'.format(AUTH_FILE))
 
 
-def get_credentails_from_file(auth_file):
+def get_credentials_from_file(auth_file):
     """Read the vault credentials from the auth_file.
 
     :param auth_file: Path to file with credentials
@@ -351,7 +422,7 @@ def get_credentails_from_file(auth_file):
     return vault_creds
 
 
-def write_credentails(auth_file, vault_creds):
+def write_credentials(auth_file, vault_creds):
     """Write the vault credentials to the auth_file.
 
     :param auth_file: Path to file to write credentials
@@ -438,3 +509,37 @@ def run_upload_signed_csr(pem, root_ca, allowed_domains):
             'root-ca': base64.b64encode(root_ca).decode(),
             'allowed-domains=': allowed_domains,
             'ttl': '24h'})
+
+
+@tenacity.retry(
+    reraise=True,
+    wait=tenacity.wait_exponential(multiplier=2, min=2, max=10),
+    stop=tenacity.stop_after_attempt(3))
+def validate_ca(cacertificate, application="keystone", port=5000):
+    """Validate Certificate Authority against application.
+
+    :param cacertificate: PEM formatted CA certificate
+    :type cacertificate: str
+    :param application: Which application to validate against.
+    :type application: str
+    :param port: Port to validate against.
+    :type port: int
+    :returns: None
+    :rtype: None
+    """
+    zaza.openstack.utilities.openstack.block_until_ca_exists(
+        application,
+        cacertificate.decode().strip())
+    vip = (zaza.model.get_application_config(application)
+           .get("vip").get("value"))
+    if vip:
+        ip = vip
+    else:
+        ip = zaza.model.get_app_ips(application)[0]
+    with tempfile.NamedTemporaryFile(mode='w') as fp:
+        fp.write(cacertificate.decode())
+        fp.flush()
+        keystone_url = 'https://{}:{}'.format(ip, str(port))
+        logging.info(
+            'Attempting to connect to {}'.format(keystone_url))
+        requests.get(keystone_url, verify=fp.name)

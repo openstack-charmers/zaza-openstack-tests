@@ -24,7 +24,9 @@ import designateclient.v1.servers as servers
 
 import zaza.model
 import zaza.utilities.juju as juju_utils
+import zaza.openstack.charm_tests.tempest.tests as tempest_tests
 import zaza.openstack.charm_tests.test_utils as test_utils
+import zaza.openstack.utilities.generic as generic_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.designate.utils as designate_utils
 import zaza.charm_lifecycle.utils as lifecycle_utils
@@ -32,6 +34,8 @@ import zaza.charm_lifecycle.utils as lifecycle_utils
 
 class BaseDesignateTest(test_utils.OpenStackBaseTest):
     """Base for Designate charm tests."""
+
+    DESIGNATE_CONF = '/etc/designate/designate.conf'
 
     @classmethod
     def setUpClass(cls, application_name=None, model_alias=None):
@@ -88,6 +92,14 @@ class BaseDesignateTest(test_utils.OpenStackBaseTest):
             cls.server_create = cls.designate.servers.create
             cls.server_delete = cls.designate.servers.delete
 
+    @tenacity.retry(
+        retry=tenacity.retry_if_result(lambda ret: ret is not None),
+        # sleep for 2mins to allow 1min cron job to run...
+        wait=tenacity.wait_fixed(120),
+        stop=tenacity.stop_after_attempt(2))
+    def _retry_check_commands_on_units(self, cmds, units):
+        return generic_utils.check_commands_on_units(cmds, units)
+
 
 class DesignateAPITests(BaseDesignateTest):
     """Tests interact with designate api."""
@@ -97,6 +109,7 @@ class DesignateAPITests(BaseDesignateTest):
     TEST_NS2_RECORD = 'ns2.{}'.format(TEST_DOMAIN)
     TEST_WWW_RECORD = "www.{}".format(TEST_DOMAIN)
     TEST_RECORD = {TEST_WWW_RECORD: '10.0.0.23'}
+    TEST_DOMAIN_EMAIL = 'fred@amuletexample.com'
 
     def _get_server_id(self, server_name=None, server_id=None):
         for srv in self.server_list():
@@ -118,6 +131,44 @@ class DesignateAPITests(BaseDesignateTest):
                 raise Exception("Server Exists")
         self.server_delete(server_id)
         return wait()
+
+    def test_300_default_soa_config_options(self):
+        """Configure default SOA options."""
+        test_domain = "test_300_example.com."
+        DEFAULT_TTL = 60
+        alternate_config = {'default-soa-minimum': 600,
+                            'default-ttl': DEFAULT_TTL,
+                            'default-soa-refresh-min': 300,
+                            'default-soa-refresh-max': 400,
+                            'default-soa-retry': 30}
+        with self.config_change({}, alternate_config, "designate",
+                                reset_to_charm_default=True):
+            for key, value in alternate_config.items():
+                config_key = key.replace('-', '_')
+                logging.info('Blocking until %s has key %s',
+                             self.DESIGNATE_CONF, config_key)
+                expected = "\n%s = %s\n" % (config_key, value)
+                zaza.model.block_until_file_has_contents(self.application_name,
+                                                         self.DESIGNATE_CONF,
+                                                         expected)
+            logging.info('Creating domain %s', test_domain)
+            domain = domains.Domain(name=test_domain,
+                                    email=self.TEST_DOMAIN_EMAIL)
+
+            if self.post_xenial_queens:
+                new_domain = self.domain_create(
+                    name=domain.name, email=domain.email)
+                domain_id = new_domain['id']
+            else:
+                new_domain = self.domain_create(domain)
+                domain_id = new_domain.id
+
+            self.assertIsNotNone(new_domain)
+            self.assertEqual(new_domain['ttl'], DEFAULT_TTL)
+
+            logging.info('Tidy up delete test record %s', domain_id)
+            self._wait_on_domain_gone(domain_id)
+            logging.info('Done with deletion of domain %s', domain_id)
 
     def test_400_server_creation(self):
         """Simple api calls to create a server."""
@@ -159,7 +210,7 @@ class DesignateAPITests(BaseDesignateTest):
             reraise=True
         )
         def wait():
-            logging.debug('Waiting for domain %s to disappear', domain_id)
+            logging.info('Waiting for domain %s to disappear', domain_id)
             if self._get_domain_id(domain_id=domain_id):
                 raise Exception("Domain Exists")
         self.domain_delete(domain_id)
@@ -196,7 +247,7 @@ class DesignateAPITests(BaseDesignateTest):
         logging.debug('Creating new domain')
         domain = domains.Domain(
             name=self.TEST_DOMAIN,
-            email="fred@amuletexample.com")
+            email=self.TEST_DOMAIN_EMAIL)
 
         if self.post_xenial_queens:
             new_domain = self.domain_create(
@@ -257,7 +308,26 @@ class DesignateCharmTests(BaseDesignateTest):
             logging.info("Testing pause resume")
 
 
-class DesignateTests(DesignateAPITests, DesignateCharmTests):
+class DesignateMonitoringTests(BaseDesignateTest):
+    """Designate charm monitoring tests."""
+
+    def test_nrpe_configured(self):
+        """Confirm that the NRPE service check files are created."""
+        units = zaza.model.get_units(self.application_name)
+        cmds = []
+        for check_name in self.designate_svcs:
+            cmds.append(
+                'egrep -oh /usr/local.* /etc/nagios/nrpe.d/'
+                'check_{}.cfg'.format(check_name)
+            )
+        ret = self._retry_check_commands_on_units(cmds, units)
+        if ret:
+            logging.info(ret)
+        self.assertIsNone(ret, msg=ret)
+
+
+class DesignateTests(DesignateAPITests, DesignateCharmTests,
+                     DesignateMonitoringTests):
     """Collection of all Designate test classes."""
 
     pass
@@ -326,3 +396,9 @@ class DesignateBindExpand(BaseDesignateTest):
             self.TEST_RECORD[self.TEST_WWW_RECORD],
             self.TEST_DOMAIN,
             record_name=self.TEST_WWW_RECORD)
+
+
+class DesignateTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
+    """Test designate k8s scale out and scale back."""
+
+    application_name = "designate"

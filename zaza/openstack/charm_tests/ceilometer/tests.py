@@ -112,8 +112,8 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
         )
 
         logging.info('Checking api functionality...')
-        assert(ceil.samples.list() == [])
-        assert(ceil.meters.list() == [])
+        assert ceil.samples.list() == []
+        assert ceil.meters.list() == []
 
     def test_900_restart_on_config_change(self):
         """Checking restart happens on config change."""
@@ -126,7 +126,7 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
         current_value = openstack_utils.get_application_config_option(
             self.application_name, config_name
         )
-        assert type(current_value) == bool
+        self.assertIsInstance(current_value, bool)
         new_value = not current_value
 
         # Convert bool to str
@@ -160,5 +160,10 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
         Pause service and check services are stopped then resume and check
         they are started.
         """
+        if self.application_name == 'ceilometer-agent':
+            logging.info("ceilometer-agent doesn't have pause/resume actions "
+                         "anymore, skipping")
+            return
+
         with self.pause_resume(self.restartable_services):
             logging.info("Testing pause and resume")

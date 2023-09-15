@@ -23,16 +23,14 @@ import copy
 import logging
 import subprocess
 
-from zaza import model
+from zaza import model, sync_wrapper
 from zaza.charm_lifecycle import utils as cl_utils
 import zaza.openstack.utilities.generic as os_utils
 import zaza.openstack.utilities.series_upgrade as series_upgrade_utils
-from zaza.openstack.utilities.series_upgrade import (
-    SUBORDINATE_PAUSE_RESUME_BLACKLIST,
-)
+from zaza.openstack.utilities.series_upgrade import async_pause_helper
 
 
-def app_config(charm_name):
+def app_config(charm_name, vault_unsealer=None):
     """Return a dict with the upgrade config for an application.
 
     :param charm_name: Name of the charm about to upgrade
@@ -43,7 +41,7 @@ def app_config(charm_name):
     :rtype: Dict
     """
     default = {
-        'origin': 'openstack-origin',
+        'origin': 'auto',
         'pause_non_leader_subordinate': True,
         'pause_non_leader_primary': True,
         'post_upgrade_functions': [],
@@ -95,6 +93,7 @@ def app_config(charm_name):
             'pause_non_leader_primary': False,
             'pause_non_leader_subordinate': True,
             'post_upgrade_functions': [
+                vault_unsealer or
                 ('zaza.openstack.charm_tests.vault.setup.'
                  'async_mojo_or_default_unseal_by_unit')]
         },
@@ -119,7 +118,7 @@ def upgrade_ubuntu_lite(from_series='xenial', to_series='bionic'):
     """
     completed_machines = []
     asyncio.get_event_loop().run_until_complete(
-        parallel_series_upgrade(
+        async_parallel_series_upgrade(
             'ubuntu-lite', pause_non_leader_primary=False,
             pause_non_leader_subordinate=False,
             from_series=from_series, to_series=to_series,
@@ -127,7 +126,7 @@ def upgrade_ubuntu_lite(from_series='xenial', to_series='bionic'):
     )
 
 
-async def parallel_series_upgrade(
+async def async_parallel_series_upgrade(
     application,
     from_series='xenial',
     to_series='bionic',
@@ -229,6 +228,8 @@ async def parallel_series_upgrade(
     await run_post_application_upgrade_functions(
         post_application_upgrade_functions)
 
+parallel_series_upgrade = sync_wrapper(async_parallel_series_upgrade)
+
 
 async def wait_for_idle_then_prepare_series_upgrade(
         machine, to_series, model_name=None):
@@ -251,7 +252,7 @@ async def wait_for_idle_then_prepare_series_upgrade(
     await prepare_series_upgrade(machine, to_series=to_series)
 
 
-async def serial_series_upgrade(
+async def async_serial_series_upgrade(
     application,
     from_series='xenial',
     to_series='bionic',
@@ -379,6 +380,8 @@ async def serial_series_upgrade(
         post_application_upgrade_functions)
     logging.info("Done series upgrade for: {}".format(application))
 
+serial_series_upgrade = sync_wrapper(async_serial_series_upgrade)
+
 
 async def series_upgrade_machine(
         machine,
@@ -472,6 +475,9 @@ async def run_post_upgrade_functions(post_upgrade_functions):
     """
     if post_upgrade_functions:
         for func in post_upgrade_functions:
+            if callable(func):
+                func()
+                return
             logging.info("Running {}".format(func))
             m = cl_utils.get_class(func)
             await m()
@@ -512,24 +518,12 @@ async def maybe_pause_things(
         if pause_non_leader_subordinate:
             if status["units"][unit].get("subordinates"):
                 for subordinate in status["units"][unit]["subordinates"]:
-                    _app = subordinate.split('/')[0]
-                    if _app in SUBORDINATE_PAUSE_RESUME_BLACKLIST:
-                        logging.info("Skipping pausing {} - blacklisted"
-                                     .format(subordinate))
-                    else:
-                        unit_pauses.append(
-                            _pause_helper("subordinate", subordinate))
+                    unit_pauses.append(async_pause_helper(
+                        "subordinate", subordinate))
         if pause_non_leader_primary:
-            unit_pauses.append(_pause_helper("leader", unit))
+            unit_pauses.append(async_pause_helper("leader", unit))
     if unit_pauses:
         await asyncio.gather(*unit_pauses)
-
-
-async def _pause_helper(_type, unit):
-    """Pause helper to ensure that the log happens nearer to the action."""
-    logging.info("Pausing ({}) {}".format(_type, unit))
-    await model.async_run_action(unit, "pause", action_params={})
-    logging.info("Finished Pausing ({}) {}".format(_type, unit))
 
 
 def get_leader_and_non_leaders(status):

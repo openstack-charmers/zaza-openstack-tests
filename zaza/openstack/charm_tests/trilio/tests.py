@@ -18,6 +18,7 @@
 
 import logging
 import tenacity
+import unittest
 
 import zaza.model as zaza_model
 
@@ -157,49 +158,28 @@ class WorkloadmgrCLIHelper(object):
         self.trilio_wlm_unit = zaza_model.get_first_unit_name(
             "trilio-wlm"
         )
-        self.auth_args = self._auth_arguments(keystone_client)
+        self.auth_args = openstack_utils.get_cli_auth_args(keystone_client)
 
-    @classmethod
-    def _auth_arguments(cls, keystone_client):
-        """Generate workloadmgrcli arguments for cloud authentication.
+    @tenacity.retry(
+        retry=tenacity.retry_if_exception_type(zaza_model.CommandRunFailed),
+        wait=tenacity.wait_fixed(10),  # interval between retries
+        stop=tenacity.stop_after_attempt(5))  # retry 10 times
+    def wlm_run_cmd(self, remote_cmd):
+        """Run command on unit and return the output.
 
-        :returns: string of required cli arguments for authentication
-        :rtype: str
+        :param remote_cmd: Command to execute on unit
+        :type remote_cmd: string
+        :returns: Juju run output
+        :rtype: string
+        :raises: model.CommandRunFailed
         """
-        overcloud_auth = openstack_utils.get_overcloud_auth()
-        overcloud_auth.update(
-            {
-                "OS_DOMAIN_ID": openstack_utils.get_domain_id(
-                    keystone_client, domain_name="admin_domain"
-                ),
-                "OS_TENANT_ID": openstack_utils.get_project_id(
-                    keystone_client,
-                    project_name="admin",
-                    domain_name="admin_domain",
-                ),
-                "OS_TENANT_NAME": "admin",
-            }
-        )
-
-        _required_keys = [
-            "OS_AUTH_URL",
-            "OS_USERNAME",
-            "OS_PASSWORD",
-            "OS_REGION_NAME",
-            "OS_DOMAIN_ID",
-            "OS_TENANT_ID",
-            "OS_TENANT_NAME",
-        ]
-
-        params = []
-        for os_key in _required_keys:
-            params.append(
-                "--{}={}".format(
-                    os_key.lower().replace("_", "-"),
-                    overcloud_auth[os_key],
-                )
-            )
-        return " ".join(params)
+        logging.info("Running {}".format(remote_cmd))
+        return juju_utils.remote_run(
+            self.trilio_wlm_unit,
+            remote_cmd,
+            timeout=180,
+            fatal=True,
+        ).strip()
 
     def create_workload(self, instance_id):
         """Create a new workload.
@@ -209,14 +189,12 @@ class WorkloadmgrCLIHelper(object):
         :returns: workload ID
         :rtype: str
         """
-        workload_id = juju_utils.remote_run(
-            self.trilio_wlm_unit,
-            remote_cmd=self.WORKLOAD_CREATE_CMD.format(
-                auth_args=self.auth_args, instance_id=instance_id
-            ),
-            timeout=180,
-            fatal=True,
-        ).strip()
+        workload_id = self.wlm_run_cmd(
+            self.WORKLOAD_CREATE_CMD.format(
+                auth_args=self.auth_args,
+                instance_id=instance_id
+            )
+        )
 
         retryer = tenacity.Retrying(
             wait=tenacity.wait_exponential(multiplier=1, max=30),
@@ -243,26 +221,22 @@ class WorkloadmgrCLIHelper(object):
         :returns: snapshot ID
         :rtype: str
         """
-        juju_utils.remote_run(
-            self.trilio_wlm_unit,
-            remote_cmd=self.SNAPSHOT_CMD.format(
-                auth_args=self.auth_args, workload_id=workload_id
-            ),
-            timeout=180,
-            fatal=True,
+        self.wlm_run_cmd(
+            self.SNAPSHOT_CMD.format(
+                auth_args=self.auth_args,
+                workload_id=workload_id
+            )
         )
-        snapshot_id = juju_utils.remote_run(
-            self.trilio_wlm_unit,
-            remote_cmd=self.SNAPSHOT_ID_CMD.format(
-                auth_args=self.auth_args, workload_id=workload_id
-            ),
-            timeout=180,
-            fatal=True,
-        ).strip()
+        snapshot_id = self.wlm_run_cmd(
+            self.SNAPSHOT_ID_CMD.format(
+                auth_args=self.auth_args,
+                workload_id=workload_id
+            )
+        )
 
         retryer = tenacity.Retrying(
             wait=tenacity.wait_exponential(multiplier=1, max=30),
-            stop=tenacity.stop_after_delay(900),
+            stop=tenacity.stop_after_delay(1200),
             reraise=True,
         )
 
@@ -284,22 +258,18 @@ class WorkloadmgrCLIHelper(object):
         :param snapshot_id: snapshot ID to restore
         :type snapshot_id: str
         """
-        juju_utils.remote_run(
-            self.trilio_wlm_unit,
-            remote_cmd=self.ONECLICK_RESTORE_CMD.format(
-                auth_args=self.auth_args, snapshot_id=snapshot_id
-            ),
-            timeout=180,
-            fatal=True,
+        self.wlm_run_cmd(
+            self.ONECLICK_RESTORE_CMD.format(
+                auth_args=self.auth_args,
+                snapshot_id=snapshot_id
+            )
         )
-        restore_id = juju_utils.remote_run(
-            self.trilio_wlm_unit,
-            remote_cmd=self.RESTORE_LIST_CMD.format(
-                auth_args=self.auth_args, snapshot_id=snapshot_id
-            ),
-            timeout=180,
-            fatal=True,
-        ).strip()
+        restore_id = self.wlm_run_cmd(
+            self.RESTORE_LIST_CMD.format(
+                auth_args=self.auth_args,
+                snapshot_id=snapshot_id
+            )
+        )
 
         retryer = tenacity.Retrying(
             wait=tenacity.wait_exponential(multiplier=1, max=30),
@@ -378,7 +348,7 @@ class TrilioBaseTest(test_utils.OpenStackBaseTest):
             name="{}-100-vol".format(self.RESOURCE_PREFIX),
         )
 
-        instance = guest_utils.launch_instance(
+        instance = guest_utils.launch_instance_retryer(
             glance_setup.CIRROS_IMAGE_NAME,
             vm_name="{}-server".format(self.RESOURCE_PREFIX),
         )
@@ -424,6 +394,22 @@ class TrilioBaseTest(test_utils.OpenStackBaseTest):
         logging.info("Initiating restore")
         workloadmgrcli.oneclick_restore(snapshot_id)
 
+    def test_update_trilio_action(self):
+        """Test that the action runs successfully."""
+        action_name = 'update-trilio'
+        actions = zaza_model.get_actions(
+            self.application_name)
+        if action_name not in actions:
+            raise unittest.SkipTest(
+                'Action {} not defined'.format(action_name))
+
+        generic_utils.assertActionRanOK(zaza_model.run_action(
+            self.lead_unit,
+            action_name,
+            action_params={},
+            model_name=self.model_name)
+        )
+
 
 class TrilioGhostNFSShareTest(TrilioBaseTest):
     """Tests for Trilio charms providing the ghost-share action."""
@@ -434,7 +420,7 @@ class TrilioGhostNFSShareTest(TrilioBaseTest):
             self.lead_unit,
             'ghost-share',
             action_params={
-                'nfs-shares': '10.20.0.1:/srv/testing'
+                'nfs-shares': '10.20.0.1:/srv/ghost-testing'
             },
             model_name=self.model_name)
         )
@@ -494,3 +480,57 @@ class TrilioWLMS3Test(TrilioWLMBaseTest):
     """Tests for Trilio WLM charm backed by S3."""
 
     application_name = "trilio-wlm"
+
+
+class TrilioHorizonPluginTest(test_utils.OpenStackBaseTest):
+    """Tests for Trilio Horizon Plugin charm."""
+
+    application_name = "trilio-horizon-plugin"
+    local_settings_file = '/etc/openstack-dashboard/local_settings.py'
+
+    def installed_trilio_version(self):
+        """Get the Trilio version from the installed package."""
+        action_out = zaza_model.run_on_leader(
+            self.application_name,
+            ("dpkg-query --showformat='${Version}' "
+             "--show python3-tvault-horizon-plugin"))
+        if 'no packages found' in action_out['stderr']:
+            action_out = zaza_model.run_on_leader(
+                self.application_name,
+                ("dpkg-query --showformat='${Version}' "
+                 "--show tvault-horizon-plugin"))
+        return float('.'.join(action_out['stdout'].split('.')[:2]))
+
+    def set_openstack_encryption_support(self, os_enc_support):
+        """Set the openstack-encryption-support option."""
+        zaza_model.set_application_config(
+            self.application_name,
+            {'openstack-encryption-support': str(os_enc_support)})
+        logging.info(
+            "Checking openstack encryption support is set to {}".format(
+                os_enc_support))
+        zaza_model.block_until_file_has_contents(
+            self.application_name,
+            self.local_settings_file,
+            'OPENSTACK_ENCRYPTION_SUPPORT = {}'.format(os_enc_support))
+
+    def test_encryption_settings(self):
+        """Test trilio encryption options."""
+        expect = self.installed_trilio_version() >= 4.2
+        logging.info(
+            "Checking Trilio encryption support is set to {}".format(expect))
+        zaza_model.block_until_file_has_contents(
+            self.application_name,
+            self.local_settings_file,
+            'TRILIO_ENCRYPTION_SUPPORT = {}'.format(expect))
+        expect = zaza_model.get_application_config(
+            self.application_name)['openstack-encryption-support']['value']
+        self.set_openstack_encryption_support(
+            expect)
+        expect = not expect
+        self.set_openstack_encryption_support(
+            expect)
+        # Put config back to original setting
+        expect = not expect
+        self.set_openstack_encryption_support(
+            expect)

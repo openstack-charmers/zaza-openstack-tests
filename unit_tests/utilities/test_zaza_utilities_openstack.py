@@ -24,6 +24,7 @@ import tenacity
 import unit_tests.utils as ut_utils
 from zaza.openstack.utilities import openstack as openstack_utils
 from zaza.openstack.utilities import exceptions
+from zaza.utilities.maas import LinkMode, MachineInterfaceMac
 
 
 class TestOpenStackUtils(ut_utils.BaseTestCase):
@@ -57,11 +58,12 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
 
         self.network = {
             "network": {"id": "network_id",
-                              "name": self.ext_net,
-                              "tenant_id": self.project_id,
-                              "router:external": True,
-                              "provider:physical_network": "physnet1",
-                              "provider:network_type": "flat"}}
+                        "name": self.ext_net,
+                        "router:external": True,
+                        "shared": False,
+                        "tenant_id": self.project_id,
+                        "provider:physical_network": "physnet1",
+                        "provider:network_type": "flat"}}
 
         self.networks = {
             "networks": [self.network["network"]]}
@@ -156,12 +158,12 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.neutronclient.create_address_scope.assert_called_once_with(
             address_scope_msg)
 
-    def test_create_external_network(self):
+    def test_create_provider_network(self):
         self.patch_object(openstack_utils, "get_net_uuid")
         self.get_net_uuid.return_value = self.net_uuid
 
         # Already exists
-        network = openstack_utils.create_external_network(
+        network = openstack_utils.create_provider_network(
             self.neutronclient, self.project_id)
         self.assertEqual(network, self.network["network"])
         self.neutronclient.create_network.assert_not_called()
@@ -171,20 +173,13 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             "networks": []}
         network_msg = copy.deepcopy(self.network)
         network_msg["network"].pop("id")
-        network = openstack_utils.create_external_network(
+        network = openstack_utils.create_provider_network(
             self.neutronclient, self.project_id)
         self.assertEqual(network, self.network["network"])
         self.neutronclient.create_network.assert_called_once_with(
             network_msg)
 
     def test_get_keystone_scope(self):
-        self.patch_object(openstack_utils, "get_current_os_versions")
-
-        # <= Liberty
-        self.get_current_os_versions.return_value = {"keystone": "liberty"}
-        self.assertEqual(openstack_utils.get_keystone_scope(), "DOMAIN")
-        # > Liberty
-        self.get_current_os_versions.return_value = {"keystone": "mitaka"}
         self.assertEqual(openstack_utils.get_keystone_scope(), "PROJECT")
 
     def _test_get_overcloud_auth(self, tls_relation=False, ssl_cert=False,
@@ -195,6 +190,8 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.patch_object(openstack_utils, "get_current_os_versions")
         self.patch_object(openstack_utils, "get_remote_ca_cert_file")
         self.patch_object(openstack_utils.juju_utils, 'leader_get')
+        self.patch_object(openstack_utils.juju_utils, 'is_k8s_deployment')
+        self.is_k8s_deployment.return_value = False
         if tls_relation:
             self.patch_object(openstack_utils.model, "scp_from_unit")
             self.patch_object(openstack_utils.model, "get_first_unit_name")
@@ -343,6 +340,20 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             openstack_utils.get_images_by_name(glance_client, 'frank'),
             [])
 
+    def test_get_volumes_by_name(self):
+        volume_mock1 = mock.MagicMock()
+        volume_mock1.name = 'bob'
+        volume_mock2 = mock.MagicMock()
+        volume_mock2.name = 'bill'
+        cinder_client = mock.MagicMock()
+        cinder_client.volumes.list.return_value = [volume_mock1, volume_mock2]
+        self.assertEqual(
+            openstack_utils.get_volumes_by_name(cinder_client, 'bob'),
+            [volume_mock1])
+        self.assertEqual(
+            openstack_utils.get_volumes_by_name(cinder_client, 'frank'),
+            [])
+
     def test_find_cirros_image(self):
         urllib_opener_mock = mock.MagicMock()
         self.patch_object(openstack_utils, "get_urllib_opener")
@@ -357,6 +368,10 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             openstack_utils.find_ubuntu_image('bionic', 'aarch64'),
             ('http://cloud-images.ubuntu.com/bionic/current/'
              'bionic-server-cloudimg-aarch64.img'))
+        self.assertEqual(
+            openstack_utils.find_ubuntu_image('jammy', 'amd64'),
+            ('http://cloud-images.ubuntu.com/jammy/current/'
+             'jammy-server-cloudimg-amd64.img'))
 
     def test_download_image(self):
         urllib_opener_mock = mock.MagicMock()
@@ -528,10 +543,99 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 expected_status='active',
                 msg='Image status wait')
 
+    def test_is_ceph_image_backend_True(self):
+        self.patch_object(openstack_utils.juju_utils, "get_full_juju_status",
+                          return_value={
+                              "applications": {
+                                  "glance": {
+                                      "relations": {
+                                          "ceph": [
+                                              "ceph-mon"
+                                          ]
+                                      }
+                                  }
+                              }
+                          })
+        self.assertTrue(openstack_utils.is_ceph_image_backend())
+        self.get_full_juju_status.assert_called_once_with(model_name=None)
+
+    def test_is_ceph_image_backend_False(self):
+        self.patch_object(openstack_utils.juju_utils, "get_full_juju_status",
+                          return_value={
+                              "applications": {
+                                  "glance": {
+                                      "relations": {
+                                      }
+                                  }
+                              }
+                          })
+        self.assertFalse(openstack_utils.is_ceph_image_backend('foo'))
+        self.get_full_juju_status.assert_called_once_with(model_name='foo')
+
+    def test_convert_image_format_to_raw_if_qcow2_qemu_cmd_error(self):
+        self.patch_object(openstack_utils.subprocess, "check_output")
+        self.check_output.side_effect = subprocess.CalledProcessError(
+            returncode=42, cmd='mycmd')
+        self.assertEqual("/tmp/original_path",
+                         openstack_utils.convert_image_format_to_raw_if_qcow2(
+                             "/tmp/original_path"))
+        self.check_output.assert_called_once_with([
+            "qemu-img", "info", "--output=json", '/tmp/original_path'])
+
+    def test_convert_image_format_to_raw_if_qcow2_raw_error(self):
+        self.patch_object(openstack_utils.os.path, "exists",
+                          return_value=False)
+        self.patch_object(openstack_utils.subprocess, "check_output",
+                          side_effect=[
+                              '{"format": "qcow2"}',
+                              subprocess.CalledProcessError(
+                                  returncode=42, cmd='mycmd')])
+        self.assertEqual("/tmp/original_path",
+                         openstack_utils.convert_image_format_to_raw_if_qcow2(
+                             "/tmp/original_path"))
+        self.check_output.assert_has_calls([
+            mock.call(["qemu-img", "info", "--output=json",
+                       '/tmp/original_path']),
+            mock.call(["qemu-img", "convert", '/tmp/original_path',
+                      '/tmp/original_path.raw'])
+        ])
+
+    def test_convert_image_format_to_raw_if_qcow2_raw_success(self):
+        self.patch_object(openstack_utils.os.path, "exists",
+                          return_value=False)
+        self.patch_object(openstack_utils.subprocess, "check_output",
+                          side_effect=['{"format": "qcow2"}', 'success'])
+
+        self.assertEqual("/tmp/original_path.raw",
+                         openstack_utils.convert_image_format_to_raw_if_qcow2(
+                             "/tmp/original_path"))
+        self.check_output.assert_has_calls([
+            mock.call(["qemu-img", "info", "--output=json",
+                       '/tmp/original_path']),
+            mock.call(["qemu-img", "convert", '/tmp/original_path',
+                      '/tmp/original_path.raw'])
+        ])
+
+    def test_convert_image_format_to_raw_if_qcow2_raw_already_exists(self):
+        self.patch_object(openstack_utils.pathlib.Path, "exists",
+                          return_value=True)
+        self.patch_object(openstack_utils.subprocess, "check_output",
+                          return_value='{"format": "qcow2"}')
+        self.assertEqual("/tmp/original_path.raw",
+                         openstack_utils.convert_image_format_to_raw_if_qcow2(
+                             "/tmp/original_path"))
+        self.check_output.assert_called_once_with([
+            "qemu-img", "info", "--output=json", '/tmp/original_path'])
+
     def test_create_image_use_tempdir(self):
         glance_mock = mock.MagicMock()
         self.patch_object(openstack_utils.os.path, "exists")
         self.patch_object(openstack_utils, "download_image")
+        self.patch_object(openstack_utils, "is_ceph_image_backend",
+                          return_value=True)
+        self.patch_object(openstack_utils,
+                          "convert_image_format_to_raw_if_qcow2",
+                          return_value='wibbly/c.img.raw')
         self.patch_object(openstack_utils, "upload_image_to_glance")
         self.patch_object(openstack_utils.tempfile, "gettempdir")
         self.gettempdir.return_value = "wibbly"
@@ -545,6 +649,37 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             'wibbly/c.img')
         self.upload_image_to_glance.assert_called_once_with(
             glance_mock,
+            'wibbly/c.img.raw',
+            'bob',
+            backend=None,
+            disk_format='raw',
+            visibility='public',
+            container_format='bare',
+            force_import=False)
+        self.convert_image_format_to_raw_if_qcow2.assert_called_once_with(
+            'wibbly/c.img')
+
+    def test_create_image_not_convert(self):
+        glance_mock = mock.MagicMock()
+        self.patch_object(openstack_utils.os.path, "exists")
+        self.patch_object(openstack_utils, "download_image")
+        self.patch_object(openstack_utils, "is_ceph_image_backend")
+        self.patch_object(openstack_utils,
+                          "convert_image_format_to_raw_if_qcow2")
+        self.patch_object(openstack_utils, "upload_image_to_glance")
+        self.patch_object(openstack_utils.tempfile, "gettempdir")
+        self.gettempdir.return_value = "wibbly"
+        openstack_utils.create_image(
+            glance_mock,
+            'http://cirros/c.img',
+            'bob',
+            convert_image_to_raw_if_ceph_used=False)
+        self.exists.return_value = False
+        self.download_image.assert_called_once_with(
+            'http://cirros/c.img',
+            'wibbly/c.img')
+        self.upload_image_to_glance.assert_called_once_with(
+            glance_mock,
             'wibbly/c.img',
             'bob',
             backend=None,
@@ -552,11 +687,17 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             visibility='public',
             container_format='bare',
             force_import=False)
+        self.is_ceph_image_backend.assert_not_called()
+        self.convert_image_format_to_raw_if_qcow2.assert_not_called()
 
     def test_create_image_pass_directory(self):
         glance_mock = mock.MagicMock()
         self.patch_object(openstack_utils.os.path, "exists")
         self.patch_object(openstack_utils, "download_image")
+        self.patch_object(openstack_utils,
+                          "convert_image_format_to_raw_if_qcow2")
+        self.patch_object(openstack_utils, "is_ceph_image_backend",
+                          return_value=False)
         self.patch_object(openstack_utils, "upload_image_to_glance")
         self.patch_object(openstack_utils.tempfile, "gettempdir")
         openstack_utils.create_image(
@@ -578,6 +719,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
             container_format='bare',
             force_import=False)
         self.gettempdir.assert_not_called()
+        self.convert_image_format_to_raw_if_qcow2.assert_not_called()
 
     def test_create_ssh_key(self):
         nova_mock = mock.MagicMock()
@@ -617,14 +759,35 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
     def test_write_private_key(self):
         self.patch_object(openstack_utils.deployment_env, 'get_tmpdir',
                           return_value='/tmp/zaza-model1')
+        self.patch_object(openstack_utils.os, 'umask',
+                          return_value='fakeumask')
         m = mock.mock_open()
         with mock.patch(
             'zaza.openstack.utilities.openstack.open', m, create=False
         ):
             openstack_utils.write_private_key('mykeys', 'keycontents')
+        self.umask.assert_has_calls([
+            mock.call(0o177),
+            mock.call('fakeumask')
+        ])
         m.assert_called_once_with('/tmp/zaza-model1/id_rsa_mykeys', 'w')
         handle = m()
         handle.write.assert_called_once_with('keycontents')
+
+        # Confirm that umask is reset even if write raises an exception
+        m.reset_mock()
+        self.umask.reset_mock()
+        with mock.patch(
+            'zaza.openstack.utilities.openstack.open', m, create=False
+        ):
+            handle = m()
+            handle.write.side_effect = OSError
+            with self.assertRaises(OSError):
+                openstack_utils.write_private_key('mykeys', 'keycontents')
+        self.umask.assert_has_calls([
+            mock.call(0o177),
+            mock.call('fakeumask')
+        ])
 
     def test_get_private_key(self):
         self.patch_object(openstack_utils.deployment_env, 'get_tmpdir',
@@ -939,6 +1102,34 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         result = openstack_utils.get_os_release(application='myapp')
         self.assertEqual(expected, result)
         self._get_os_rel_pair.assert_called_once_with(application='myapp')
+
+    def test_get_keystone_ip__vip(self):
+        self.patch_object(openstack_utils, "get_application_config_option")
+        self.patch_object(openstack_utils.model, "get_units")
+        unit1 = mock.Mock(public_address='5.6.7.8')
+        self.get_application_config_option.return_value = "1.2.3.4"
+        self.get_units.return_value = [unit1]
+
+        self.assertEqual(
+            openstack_utils.get_keystone_ip(model_name='some-model'),
+            '1.2.3.4')
+        self.get_application_config_option.assert_called_once_with(
+            'keystone', 'vip', model_name='some-model')
+        self.get_application_config_option.return_value = "    1.2.3.4    11"
+        self.assertEqual(openstack_utils.get_keystone_ip(), '1.2.3.4')
+
+    def test_get_keystone_ip__from_unit(self):
+        self.patch_object(openstack_utils, "get_application_config_option")
+        self.patch_object(openstack_utils.model, "get_units")
+        self.patch_object(openstack_utils.model, 'get_unit_public_address')
+        mock_unit1 = mock.Mock()
+        self.get_unit_public_address.return_value = '5.6.7.8'
+        self.get_application_config_option.return_value = None
+        self.get_units.return_value = [mock_unit1]
+
+        self.assertEqual(openstack_utils.get_keystone_ip(), '5.6.7.8')
+        self.get_units.assert_called_once_with('keystone', model_name=None)
+        self.get_unit_public_address.assert_called_once_with(mock_unit1)
 
     def test_get_keystone_api_version(self):
         self.patch_object(openstack_utils, "get_current_os_versions")
@@ -1258,7 +1449,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.patch_object(openstack_utils.juju_utils,
                           'get_machine_uuids_for_application')
         self.get_machine_uuids_for_application.return_value = 'ret'
-        self.assertEquals(openstack_utils.get_gateway_uuids(), 'ret')
+        self.assertEqual(openstack_utils.get_gateway_uuids(), 'ret')
         self.get_machine_uuids_for_application.assert_called_once_with(
             'neutron-gateway')
 
@@ -1266,7 +1457,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.patch_object(openstack_utils.juju_utils,
                           'get_machine_uuids_for_application')
         self.get_machine_uuids_for_application.return_value = 'ret'
-        self.assertEquals(openstack_utils.get_ovs_uuids(), 'ret')
+        self.assertEqual(openstack_utils.get_ovs_uuids(), 'ret')
         self.get_machine_uuids_for_application.assert_called_once_with(
             'neutron-openvswitch')
 
@@ -1274,8 +1465,8 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.patch_object(openstack_utils.juju_utils,
                           'get_machine_uuids_for_application')
         self.get_machine_uuids_for_application.return_value = ['ret']
-        self.assertEquals(list(openstack_utils.get_ovn_uuids()),
-                          ['ret', 'ret'])
+        self.assertEqual(list(openstack_utils.get_ovn_uuids()),
+                         ['ret', 'ret'])
         self.get_machine_uuids_for_application.assert_has_calls([
             mock.call('ovn-chassis'),
             mock.call('ovn-dedicated-chassis'),
@@ -1323,7 +1514,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         with self.assertRaises(RuntimeError):
             openstack_utils.get_charm_networking_data()
         self.ngw_present.return_value = True
-        self.assertEquals(
+        self.assertEqual(
             openstack_utils.get_charm_networking_data(),
             openstack_utils.CharmedOpenStackNetworkingData(
                 openstack_utils.OpenStackNetworkingTopology.ML2_OVS,
@@ -1332,7 +1523,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 'data-port',
                 {}))
         self.dvr_enabled.return_value = True
-        self.assertEquals(
+        self.assertEqual(
             openstack_utils.get_charm_networking_data(),
             openstack_utils.CharmedOpenStackNetworkingData(
                 openstack_utils.OpenStackNetworkingTopology.ML2_OVS_DVR,
@@ -1341,7 +1532,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 'data-port',
                 {}))
         self.ngw_present.return_value = False
-        self.assertEquals(
+        self.assertEqual(
             openstack_utils.get_charm_networking_data(),
             openstack_utils.CharmedOpenStackNetworkingData(
                 openstack_utils.OpenStackNetworkingTopology.ML2_OVS_DVR_SNAT,
@@ -1351,7 +1542,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 {}))
         self.dvr_enabled.return_value = False
         self.ovn_present.return_value = True
-        self.assertEquals(
+        self.assertEqual(
             openstack_utils.get_charm_networking_data(),
             openstack_utils.CharmedOpenStackNetworkingData(
                 openstack_utils.OpenStackNetworkingTopology.ML2_OVN,
@@ -1360,7 +1551,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 'bridge-interface-mappings',
                 {'ovn-bridge-mappings': 'physnet1:br-ex'}))
         self.get_application.side_effect = None
-        self.assertEquals(
+        self.assertEqual(
             openstack_utils.get_charm_networking_data(),
             openstack_utils.CharmedOpenStackNetworkingData(
                 openstack_utils.OpenStackNetworkingTopology.ML2_OVN,
@@ -1427,6 +1618,48 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.chmod.assert_called_once_with('/tmp/default/ca1.cert', 0o644)
         self.move.assert_called_once_with(
             'tempfilename', '/tmp/default/ca1.cert')
+
+    def test_configure_charmed_openstack_on_maas(self):
+        self.patch_object(openstack_utils, 'get_charm_networking_data')
+        self.patch_object(openstack_utils.zaza.utilities.maas,
+                          'get_macs_from_cidr')
+        self.patch_object(openstack_utils.zaza.utilities.maas,
+                          'get_maas_client_from_juju_cloud_data')
+        self.patch_object(openstack_utils.zaza.model, 'get_cloud_data')
+        self.patch_object(openstack_utils, 'configure_networking_charms')
+        self.get_charm_networking_data.return_value = 'fakenetworkingdata'
+        self.get_macs_from_cidr.return_value = [
+            MachineInterfaceMac('id_a', 'ens6', '00:53:00:00:00:01',
+                                '192.0.2.0/24', LinkMode.LINK_UP),
+            MachineInterfaceMac('id_a', 'ens7', '00:53:00:00:00:02',
+                                '192.0.2.0/24', LinkMode.LINK_UP),
+            MachineInterfaceMac('id_b', 'ens6', '00:53:00:00:01:01',
+                                '192.0.2.0/24', LinkMode.LINK_UP),
+
+        ]
+        network_config = {'external_net_cidr': '192.0.2.0/24'}
+        expect = [
+            '00:53:00:00:00:01',
+            '00:53:00:00:01:01',
+        ]
+        openstack_utils.configure_charmed_openstack_on_maas(
+            network_config)
+        self.configure_networking_charms.assert_called_once_with(
+            'fakenetworkingdata', expect, use_juju_wait=False)
+
+    def test_update_subnet_dhcp(self):
+        neutron_client = mock.MagicMock()
+        openstack_utils.update_subnet_dhcp(
+            neutron_client, {'id': 'aId'}, True)
+        neutron_client.update_subnet.assert_called_once_with(
+            'aId',
+            {'subnet': {'enable_dhcp': True}})
+        neutron_client.reset_mock()
+        openstack_utils.update_subnet_dhcp(
+            neutron_client, {'id': 'aId'}, False)
+        neutron_client.update_subnet.assert_called_once_with(
+            'aId',
+            {'subnet': {'enable_dhcp': False}})
 
 
 class TestAsyncOpenstackUtils(ut_utils.AioTestCase):

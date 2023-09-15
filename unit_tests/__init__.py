@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import sys
-import unittest.mock as mock
+# force zaza to not use threads for async
+import zaza
 
-sys.modules['zaza.utilities.maas'] = mock.MagicMock()
+zaza.RUN_LIBJUJU_IN_THREAD = False

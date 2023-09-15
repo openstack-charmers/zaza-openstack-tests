@@ -17,11 +17,16 @@
 """Encapsulate Cinder testing."""
 
 import logging
+import time
 
 import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.glance.setup as glance_setup
+import zaza.openstack.charm_tests.neutron.tests as neutron_tests
+import zaza.openstack.configure.guest as guest
+import zaza.openstack.charm_tests.nova.utils as nova_utils
+import zaza.openstack.charm_tests.tempest.tests as tempest_tests
 
 from tenacity import (
     Retrying,
@@ -42,8 +47,9 @@ class CinderTests(test_utils.OpenStackBaseTest):
         cls.application_name = 'cinder'
         cls.lead_unit = zaza.model.get_lead_unit_name(
             "cinder", model_name=cls.model_name)
+        # version 3.42 is required for in-use (online) resizing lvm volumes
         cls.cinder_client = openstack_utils.get_cinder_session_client(
-            cls.keystone_session)
+            cls.keystone_session, version=3.42)
         cls.nova_client = openstack_utils.get_nova_session_client(
             cls.keystone_session)
 
@@ -74,6 +80,30 @@ class CinderTests(test_utils.OpenStackBaseTest):
                         ", ".join(v.name for v in volumes)))
                     cls._remove_volumes(volumes)
 
+                fips_reservations = []
+                for vm in cls.nova_client.servers.list():
+                    if vm.name.startswith(cls.RESOURCE_PREFIX):
+                        fips_reservations += (
+                            neutron_tests.floating_ips_from_instance(vm)
+                        )
+                        vm.delete()
+                        openstack_utils.resource_removed(
+                            cls.nova_client.servers,
+                            vm.id,
+                            msg=(
+                                "Waiting for the Nova VM {} "
+                                "to be deleted".format(vm.name)
+                            ),
+                        )
+
+                if fips_reservations:
+                    logging.info('Cleaning up test FiPs reservations')
+                    neutron = openstack_utils.get_neutron_session_client(
+                        session=cls.keystone_session)
+                    for fip in neutron.list_floatingips()['floatingips']:
+                        if fip['floating_ip_address'] in fips_reservations:
+                            neutron.delete_floatingip(fip['id'])
+
     @classmethod
     def _remove_snapshots(cls, snapshots):
         """Remove snapshots passed as param.
@@ -102,6 +132,11 @@ class CinderTests(test_utils.OpenStackBaseTest):
         """
         for volume in volumes:
             if volume.name.startswith(cls.RESOURCE_PREFIX):
+                for attachment in volume.attachments:
+                    instance_id = attachment['server_id']
+                    logging.info("detaching volume: {}".format(volume.name))
+                    openstack_utils.detach_volume(cls.nova_client,
+                                                  volume.id, instance_id)
                 logging.info("removing volume: {}".format(volume.name))
                 try:
                     openstack_utils.delete_resource(
@@ -214,6 +249,62 @@ class CinderTests(test_utils.OpenStackBaseTest):
             vol_new.id,
             msg="Volume")
 
+    def test_200_online_extend_volume(self):
+        """Test extending a volume while attached to an instance."""
+        test_vol = self.cinder_client.volumes.create(
+            name='{}-200-vol'.format(self.RESOURCE_PREFIX),
+            size='1')
+        openstack_utils.resource_reaches_status(
+            self.cinder_client.volumes,
+            test_vol.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
+            expected_status="available",
+            msg="Volume status wait")
+
+        instance_name = '{}-200'.format(self.RESOURCE_PREFIX)
+        instance = self.launch_guest(
+            instance_name,
+            instance_key=glance_setup.LTS_IMAGE_NAME,
+            flavor_name='m1.small',
+        )
+        openstack_utils.attach_volume(
+            self.nova_client, test_vol.id, instance.id
+        )
+        openstack_utils.resource_reaches_status(
+            self.cinder_client.volumes,
+            test_vol.id,
+            wait_iteration_max_time=1200,
+            stop_after_attempt=20,
+            expected_status="in-use",
+            msg="Volume status wait")
+        # refresh the volume object now that it's attached
+        test_vol = self.cinder_client.volumes.get(test_vol.id)
+        self.assertEqual(test_vol.size, 1)
+
+        # resize online and verify it's been resised from cinder's side
+        self.cinder_client.volumes.extend(test_vol.id, '2')
+        # wait for the resize to complete, then refresh the local data
+        time.sleep(5)
+        test_vol = self.cinder_client.volumes.get(test_vol.id)
+        self.assertEqual(test_vol.size, 2)
+
+        fip = neutron_tests.floating_ips_from_instance(instance)[0]
+        username = guest.boot_tests['bionic']['username']
+        privkey = openstack_utils.get_private_key(nova_utils.KEYPAIR_NAME)
+
+        # now verify that the instance sees the new size
+        def verify(stdin, stdout, stderr):
+            status = stdout.channel.recv_exit_status()
+            self.assertEqual(status, 0)
+            output = stdout.read().decode().strip()
+            self.assertEqual(output, '2G')
+
+        openstack_utils.ssh_command(
+            username, fip, instance_name,
+            'lsblk -sn -o SIZE /dev/vdb',
+            privkey=privkey, verify=verify)
+
     @property
     def services(self):
         """Return a list services for the selected OpenStack release."""
@@ -300,3 +391,9 @@ class SecurityTests(test_utils.OpenStackBaseTest):
                 expected_passes,
                 expected_failures,
                 expected_to_pass=False)
+
+
+class CinderTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
+    """Test cinder k8s scale out and scale back."""
+
+    application_name = "cinder"

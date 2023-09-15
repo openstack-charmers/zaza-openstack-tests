@@ -66,7 +66,7 @@ def _login(dashboard_url, domain, username, password, cafile=None):
 
     # start session, get csrftoken
     client = requests.session()
-    client.get(auth_url, verify=cafile)
+    client.get(auth_url, verify=cafile, timeout=30)
     if 'csrftoken' in client.cookies:
         csrftoken = client.cookies['csrftoken']
     else:
@@ -178,7 +178,7 @@ class OpenStackDashboardBase():
         else:
             unit = zaza_model.get_unit_from_name(
                 zaza_model.get_lead_unit_name(self.application_name))
-            ip = unit.public_address
+            ip = zaza_model.get_unit_public_address(unit)
 
         logging.debug("Dashboard ip is:{}".format(ip))
         scheme = 'http'
@@ -272,7 +272,8 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest,
         logging.info('Checking dashboard HAProxy settings...')
         unit = zaza_model.get_unit_from_name(
             zaza_model.get_lead_unit_name(self.application_name))
-        logging.debug("... dashboard_ip is:{}".format(unit.public_address))
+        logging.debug("... dashboard_ip is:{}".format(
+            zaza_model.get_unit_public_address(unit)))
         conf = '/etc/haproxy/haproxy.cfg'
         port = '8888'
         set_alternate = {
@@ -280,13 +281,18 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest,
         }
 
         request = urllib.request.Request(
-            'http://{}:{}'.format(unit.public_address, port))
+            'http://{}:{}'.format(
+                zaza_model.get_unit_public_address(unit), port))
 
         output = str(generic_utils.get_file_contents(unit, conf))
 
+        password = None
         for line in output.split('\n'):
             if "stats auth" in line:
                 password = line.split(':')[1]
+                break
+        else:
+            raise ValueError("'stats auth' not found in output'")
         base64string = base64.b64encode(
             bytes('{}:{}'.format('admin', password), 'ascii'))
         request.add_header(
@@ -450,6 +456,60 @@ class OpenStackDashboardTests(test_utils.OpenStackBaseTest,
         with self.pause_resume(['apache2']):
             logging.info("Testing pause resume")
 
+    def test_920_get_noncacheable_content_and_check_cookie(self):
+        """Login and check cache cookies.
+
+        All non-cacheable content should have all the following headers:
+
+        Cache-Control: no-store
+        Pragma: no-cache
+        """
+        logging.info("Testing caching headers on non-cacheable content.")
+        overcloud_auth = openstack_utils.get_overcloud_auth()
+        password = overcloud_auth['OS_PASSWORD']
+
+        domain = 'admin_domain'
+        username = 'admin'
+        client, response = _login(
+            self.get_horizon_url(), domain, username, password,
+            cafile=self.cacert)
+
+        expected_headers = {
+            "cache-control": "no-store",
+            "pragma": "no-cache"
+        }
+        for header, value in expected_headers.items():
+            self.assertIn(value, response.headers.get(header, "none").lower())
+
+    def test_930_get_cacheable_content_and_check_cookie(self):
+        """Get random static file and check cookies.
+
+        Cachable files should not have any of the following headers:
+
+        Cache-Control: no-store
+        Pragma: no-cache
+        """
+        logging.info("Testing caching headers on cacheable content.")
+        unit_name = zaza_model.get_lead_unit_name('openstack-dashboard')
+        static_files_location = "/var/lib/openstack-dashboard/static/"
+        cmd = 'find {} -iname ''*.css'' -type f | sort -R | ' \
+              'sed "s#/var/lib/openstack-dashboard##" | head -1' \
+            .format(static_files_location)
+        output = zaza_model.run_on_unit(unit_name, cmd)
+        url = "{}{}".format(self.get_horizon_url(), output['Stdout'].strip())
+
+        unexpected_headers = {
+            "cache-control": "no-store",
+            "pragma": "no-cache"
+        }
+
+        client = requests.session()
+        response = client.get(url, verify=self.cacert, timeout=30)
+
+        for header, value in unexpected_headers.items():
+            self.assertNotIn(value,
+                             response.headers.get(header, "none").lower())
+
 
 class OpenStackDashboardPolicydTests(policyd.BasePolicydSpecialization,
                                      OpenStackDashboardBase):
@@ -470,7 +530,7 @@ class OpenStackDashboardPolicydTests(policyd.BasePolicydSpecialization,
     })}
 
     # url associated with rule above that will return HTTP 403
-    url = "http://{}/horizon/identity/domains"
+    url = "{}/identity/domains"
 
     @classmethod
     def setUpClass(cls, application_name=None):
@@ -493,19 +553,20 @@ class OpenStackDashboardPolicydTests(policyd.BasePolicydSpecialization,
         """
         unit = zaza_model.get_unit_from_name(
             zaza_model.get_lead_unit_name(self.application_name))
-        logging.info("Dashboard is at {}".format(unit.public_address))
+        logging.info("Dashboard is at {}".format(
+            zaza_model.get_unit_public_address(unit)))
         overcloud_auth = openstack_utils.get_overcloud_auth()
-        password = overcloud_auth['OS_PASSWORD'],
+        password = overcloud_auth['OS_PASSWORD']
         logging.info("admin password is {}".format(password))
         # try to get the url which will either pass or fail with a 403
-        overcloud_auth = openstack_utils.get_overcloud_auth()
-        domain = 'admin_domain',
-        username = 'admin',
-        password = overcloud_auth['OS_PASSWORD'],
+        domain = 'admin_domain'
+        username = 'admin'
         client, response = _login(
-            self.get_horizon_url(), domain, username, password)
+            self.get_horizon_url(), domain, username, password,
+            cafile=self.cacert)
         # now attempt to get the domains page
-        _url = self.url.format(unit.public_address)
+        _url = self.url.format(self.get_horizon_url())
+        logging.info("URL is {}".format(_url))
         result = client.get(_url)
         if result.status_code == 403:
             raise policyd.PolicydOperationFailedException("Not authenticated")

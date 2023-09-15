@@ -351,12 +351,18 @@ def configure_ssl_off(units, model_name=None, max_wait=60):
 
 def is_ssl_enabled_on_unit(unit, port=None):
     """Check a single juju rmq unit for ssl and port in the config file."""
-    host = unit.public_address
+    host = zaza.model.get_unit_public_address(unit)
     unit_name = unit.entity_id
 
-    conf_file = '/etc/rabbitmq/rabbitmq.config'
+    conf_file = '/etc/rabbitmq/rabbitmq.conf'
     conf_contents = str(generic_utils.get_file_contents(unit,
                                                         conf_file))
+    # Fallback to old style configuration file for
+    # older RMQ releases if .conf is empty/not found
+    if not conf_contents:
+        conf_file = '/etc/rabbitmq/rabbitmq.config'
+        conf_contents = str(generic_utils.get_file_contents(unit,
+                                                            conf_file))
     # Checks
     conf_ssl = 'ssl' in conf_contents
     conf_port = str(port) in conf_contents
@@ -400,7 +406,7 @@ def connect_amqp_by_unit(unit, ssl=False,
     :param password: amqp user password
     :returns: pika amqp connection pointer or None if failed and non-fatal
     """
-    host = unit.public_address
+    host = zaza.model.get_unit_public_address(unit)
     unit_name = unit.entity_id
 
     if ssl:
@@ -421,17 +427,25 @@ def connect_amqp_by_unit(unit, ssl=False,
                   '{}...'.format(host, port, unit_name, username))
 
     try:
-        credentials = pika.PlainCredentials(username, password)
-        parameters = pika.ConnectionParameters(host=host, port=port,
-                                               credentials=credentials,
-                                               ssl_options=ssl_options,
-                                               connection_attempts=3,
-                                               retry_delay=5,
-                                               socket_timeout=1)
-        connection = pika.BlockingConnection(parameters)
-        assert connection.is_open is True
-        logging.debug('Connect OK')
-        return connection
+        # retry connections; it's possible during the testing that a
+        # leader-setting-change hook will be running on the unit (which takes
+        # up to 30s to run) and results in a restart of the underlying rabbitmq
+        # process.  This retry get's past the restart.
+        for attempt in tenacity.Retrying(
+                stop=tenacity.stop_after_attempt(5),
+                wait=tenacity.wait_exponential(multiplier=1, min=2, max=10)):
+            with attempt:
+                credentials = pika.PlainCredentials(username, password)
+                parameters = pika.ConnectionParameters(host=host, port=port,
+                                                       credentials=credentials,
+                                                       ssl_options=ssl_options,
+                                                       connection_attempts=3,
+                                                       retry_delay=5,
+                                                       socket_timeout=1)
+                connection = pika.BlockingConnection(parameters)
+                assert connection.is_open is True
+                logging.debug('Connect OK')
+                return connection
     except Exception as e:
         msg = ('amqp connection failed to {}:{} as '
                '{} ({})'.format(host, port, username, str(e)))
@@ -500,9 +514,9 @@ def get_amqp_message_by_unit(unit, queue="test",
                                       password=password)
     channel = connection.channel()
     method_frame, _, body = channel.basic_get(queue)
-    body = body.decode()
 
     if method_frame:
+        body = body.decode()
         logging.debug('Retreived message from {} queue:\n{}'.format(queue,
                                                                     body))
         channel.basic_ack(method_frame.delivery_tag)

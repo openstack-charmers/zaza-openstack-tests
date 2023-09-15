@@ -17,15 +17,23 @@
 import logging
 import subprocess
 import tenacity
+import unittest
 
 from keystoneauth1 import exceptions as keystone_exceptions
 import octaviaclient.api.v2.octavia
 import osc_lib.exceptions
 
+import zaza.model
+import zaza.openstack.charm_tests.tempest.tests as tempest_tests
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 
+from zaza.openstack.utilities import generic as generic_utils
 from zaza.openstack.utilities import ObjectRetrierWraps
+from zaza.openstack.utilities.exceptions import (
+    LoadBalancerUnexpectedState,
+    LoadBalancerUnrecoverableError,
+)
 
 LBAAS_ADMIN_ROLE = 'load-balancer_admin'
 
@@ -103,6 +111,54 @@ class CharmOperationTest(test_utils.OpenStackBaseTest):
     def setUpClass(cls):
         """Run class setup for running Octavia charm operation tests."""
         super(CharmOperationTest, cls).setUpClass()
+
+    def get_port_ips(self):
+        """Extract IP info from Neutron ports tagged with charm-octavia."""
+        keystone_session = openstack_utils.get_overcloud_keystone_session()
+        neutron_client = openstack_utils.get_neutron_session_client(
+            keystone_session)
+        resp = neutron_client.list_ports(tags='charm-octavia')
+        neutron_ip_list = []
+        for port in resp['ports']:
+            for ip_info in port['fixed_ips']:
+                neutron_ip_list.append(ip_info['ip_address'])
+        return neutron_ip_list
+
+    def test_update_controller_ip_port_list(self):
+        """Test update_controller_ip_port_list.
+
+        Add a unit and then delete a unit, then query the list of ports to
+        check that the port has been deleted.
+        """
+        raise unittest.SkipTest("Skipping because of lp:1951858")
+        app = self.test_config['charm_name']
+        logging.info("test_update_controller_ip_port_list: start test")
+        logging.info("Wait till model is idle ...")
+        zaza.model.block_until_all_units_idle()
+        ips = self.get_port_ips()
+        num = len(ips)
+        logging.info('initial hm port num is {}: {}'.format(num, ips))
+
+        logging.info("test_update_controller_ip_port_list: add one unit")
+        logging.info("Adding one unit ...")
+        zaza.model.add_unit(app)
+        logging.info("Wait until one unit is added ...")
+        zaza.model.block_until_unit_count(app, num+1)
+        zaza.model.wait_for_application_states()
+        ips = self.get_port_ips()
+        logging.info('hm ports are {} after adding one unit'.format(ips))
+        self.assertTrue(len(ips) == num+1)
+
+        logging.info("test_update_controller_ip_port_list: remove one unit")
+        logging.info("Removing one unit ...")
+        _, nons = generic_utils.get_leaders_and_non_leaders(app)
+        zaza.model.destroy_unit(app, nons[0])
+        logging.info("Wait until one unit is deleted ...")
+        zaza.model.block_until_unit_count(app, num)
+        zaza.model.wait_for_application_states()
+        ips = self.get_port_ips()
+        logging.info('hm ports are {} after deleting one unit'.format(ips))
+        self.assertTrue(len(ips) == num)
 
     def test_pause_resume(self):
         """Run pause and resume tests.
@@ -228,28 +284,44 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         super(LBAASv2Test, self).resource_cleanup()
 
     @staticmethod
-    @tenacity.retry(retry=tenacity.retry_if_exception_type(AssertionError),
-                    wait=tenacity.wait_fixed(1), reraise=True,
-                    stop=tenacity.stop_after_delay(900))
+    @tenacity.retry(
+        retry=tenacity.retry_if_exception_type(LoadBalancerUnexpectedState),
+        wait=tenacity.wait_fixed(1), reraise=True,
+        stop=tenacity.stop_after_delay(900))
     def wait_for_lb_resource(octavia_show_func, resource_id,
                              provisioning_status=None, operating_status=None):
         """Wait for loadbalancer resource to reach expected status."""
         provisioning_status = provisioning_status or 'ACTIVE'
         resp = octavia_show_func(resource_id)
-        logging.info(resp['provisioning_status'])
-        assert resp['provisioning_status'] == provisioning_status, (
-            'load balancer resource has not reached '
-            'expected provisioning status: {}'
-            .format(resp))
+        logging.info("Current provisioning status: {}, waiting for {}"
+                     .format(resp['provisioning_status'], provisioning_status))
+
+        msg = ('load balancer resource has not reached '
+               'expected provisioning status: {}'.format(resp))
+
+        # ERROR is a final state, once it's reached there is no reason to keep
+        # retrying and delaying the failure.
+        if resp['provisioning_status'] == 'ERROR':
+            raise LoadBalancerUnrecoverableError(msg)
+        elif resp['provisioning_status'] != provisioning_status:
+            raise LoadBalancerUnexpectedState(msg)
+
         if operating_status:
-            logging.info(resp['operating_status'])
-            assert resp['operating_status'] == operating_status, (
-                'load balancer resource has not reached '
-                'expected operating status: {}'.format(resp))
+            logging.info('Current operating status: {}, waiting for {}'
+                         .format(resp['operating_status'], operating_status))
+            if not resp['operating_status'] == operating_status:
+                raise LoadBalancerUnexpectedState((
+                    'load balancer resource has not reached '
+                    'expected operating status: {}'.format(resp)))
 
         return resp
 
     @staticmethod
+    @tenacity.retry(
+        retry=tenacity.retry_if_exception_type(keystone_exceptions.http.
+                                               NotFound),
+        wait=tenacity.wait_fixed(5), reraise=True,
+        stop=tenacity.stop_after_delay(300))
     def get_lb_providers(octavia_client):
         """Retrieve loadbalancer providers.
 
@@ -407,10 +479,11 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         # Get IP of the prepared payload instances
         payload_ips = []
         for server in (instance_1, instance_2):
-            payload_ips.append(server.networks['private'][0])
+            payload_ips.append(server.networks[openstack_utils.PRIVATE_NET][0])
         self.assertTrue(len(payload_ips) > 0)
 
-        resp = self.neutron_client.list_networks(name='private')
+        resp = self.neutron_client.list_networks(
+            name=openstack_utils.PRIVATE_NET)
         subnet_id = resp['networks'][0]['subnets'][0]
         if openstack_utils.dvr_enabled():
             resp = self.neutron_client.list_networks(
@@ -442,7 +515,9 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
                 raise final_exc
 
             lb_fp = openstack_utils.create_floating_ip(
-                self.neutron_client, 'ext_net', port={'id': lb['vip_port_id']})
+                self.neutron_client,
+                openstack_utils.EXT_NET,
+                port={'id': lb['vip_port_id']})
 
             snippet = 'This is the default welcome page'
             assert snippet in self._get_payload(lb_fp['floating_ip_address'])
@@ -453,3 +528,9 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
 
         # If we get here, it means the tests passed
         self.run_resource_cleanup = True
+
+
+class OctaviaTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
+    """Test octavia k8s scale out and scale back."""
+
+    application_name = "octavia"

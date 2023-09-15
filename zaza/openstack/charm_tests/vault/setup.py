@@ -17,14 +17,12 @@
 import base64
 import functools
 import logging
-import requests
 import tempfile
 
 import zaza.charm_lifecycle.utils as lifecycle_utils
 import zaza.openstack.charm_tests.vault.utils as vault_utils
 import zaza.model
 import zaza.openstack.utilities.cert
-import zaza.openstack.utilities.openstack
 import zaza.openstack.utilities.generic
 import zaza.openstack.utilities.exceptions as zaza_exceptions
 import zaza.utilities.juju as juju_utils
@@ -95,7 +93,7 @@ def mojo_unseal_by_unit():
 def unseal_by_unit(cacert=None):
     """Unseal any units reported as sealed using mojo cacert."""
     cacert = cacert or get_cacert_file()
-    vault_creds = vault_utils.get_credentails()
+    vault_creds = vault_utils.get_credentials()
     for client in vault_utils.get_clients(cacert=cacert):
         if client.hvac_client.is_sealed():
             client.hvac_client.unseal(vault_creds['keys'][0])
@@ -126,7 +124,7 @@ async def async_mojo_unseal_by_unit():
 async def async_unseal_by_unit(cacert=None):
     """Unseal any units reported as sealed using vault cacert."""
     cacert = cacert or get_cacert_file()
-    vault_creds = vault_utils.get_credentails()
+    vault_creds = vault_utils.get_credentials()
     for client in vault_utils.get_clients(cacert=cacert):
         if client.hvac_client.is_sealed():
             client.hvac_client.unseal(vault_creds['keys'][0])
@@ -137,7 +135,8 @@ async def async_unseal_by_unit(cacert=None):
                 unit_name, './hooks/update-status')
 
 
-def auto_initialize(cacert=None, validation_application='keystone', wait=True):
+def auto_initialize(cacert=None, validation_application='keystone', wait=True,
+                    skip_on_absent=False):
     """Auto initialize vault for testing.
 
     Generate a csr and uploading a signed certificate.
@@ -149,9 +148,16 @@ def auto_initialize(cacert=None, validation_application='keystone', wait=True):
     :param validation_application: Name of application to be used as a
                                    client for validation.
     :type validation_application: str
+    :param skip_on_absent: Non-fatal skip initialise if vault absent.
+    :type validation_application: bool
     :returns: None
     :rtype: None
     """
+    if skip_on_absent:
+        status = zaza.model.get_status()
+        if 'vault' not in status.applications.keys():
+            logging.info('Skipping auto_initialize, vault not in model')
+            return
     logging.info('Running auto_initialize')
     basic_setup(cacert=cacert, unseal_and_authorize=True)
 
@@ -199,6 +205,24 @@ def auto_initialize(cacert=None, validation_application='keystone', wait=True):
                 pass
 
 
+auto_initialize_opportunistic = functools.partial(
+    auto_initialize,
+    skip_on_absent=True)
+
+
+auto_initialize_opportunistic_no_validation = functools.partial(
+    auto_initialize,
+    validation_application=None,
+    skip_on_absent=True)
+
+
+auto_initialize_opportunistic_no_validation_no_wait = functools.partial(
+    auto_initialize,
+    validation_application=None,
+    wait=False,
+    skip_on_absent=True)
+
+
 auto_initialize_no_validation = functools.partial(
     auto_initialize,
     validation_application=None)
@@ -222,16 +246,4 @@ def validate_ca(cacertificate, application="keystone", port=5000):
     :returns: None
     :rtype: None
     """
-    zaza.openstack.utilities.openstack.block_until_ca_exists(
-        application,
-        cacertificate.decode().strip())
-    vip = (zaza.model.get_application_config(application)
-           .get("vip").get("value"))
-    if vip:
-        ip = vip
-    else:
-        ip = zaza.model.get_app_ips(application)[0]
-    with tempfile.NamedTemporaryFile(mode='w') as fp:
-        fp.write(cacertificate.decode())
-        fp.flush()
-        requests.get('https://{}:{}'.format(ip, str(port)), verify=fp.name)
+    vault_utils.validate_ca(cacertificate, application, port)

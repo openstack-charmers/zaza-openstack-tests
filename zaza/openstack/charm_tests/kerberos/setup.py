@@ -16,6 +16,10 @@
 
 import logging
 import tempfile
+import tenacity
+from keystoneauth1.exceptions.connection import ConnectFailure
+from keystoneauth1.exceptions.http import Conflict
+
 import zaza.model
 from zaza.openstack.utilities import openstack as openstack_utils
 from zaza.openstack.charm_tests.kerberos import KerberosConfigurationError
@@ -125,6 +129,9 @@ def retrieve_and_attach_keytab():
     zaza.model.block_until_all_units_idle()
 
 
+@tenacity.retry(wait=tenacity.wait_exponential(multiplier=2, max=60),
+                reraise=True, stop=tenacity.stop_after_attempt(5),
+                retry=tenacity.retry_if_exception_type(ConnectFailure))
 def openstack_setup_kerberos():
     """Create a test domain, project, and user for kerberos tests."""
     kerberos_domain = 'k8s'
@@ -137,21 +144,34 @@ def openstack_setup_kerberos():
     keystone_session = openstack_utils.get_overcloud_keystone_session()
     keystone_client = openstack_utils.get_keystone_session_client(
         keystone_session)
+
     logging.info('Creating domain, project and user for Kerberos tests.')
-    domain = keystone_client.domains.create(kerberos_domain,
-                                            description='Kerberos Domain',
-                                            enabled=True)
-    project = keystone_client.projects.create(kerberos_project,
-                                              domain,
-                                              description='Test project',
-                                              enabled=True)
-    demo_user = keystone_client.users.create(kerberos_user,
-                                             domain=domain,
-                                             project=project,
-                                             password=kerberos_password,
-                                             email='demo@demo.com',
-                                             description='Demo User',
-                                             enabled=True)
+    try:
+        domain = keystone_client.domains.create(kerberos_domain,
+                                                description='Kerberos Domain',
+                                                enabled=True)
+    except Conflict:
+        domain = keystone_client.domains.find(name=kerberos_domain)
+
+    try:
+        project = keystone_client.projects.create(kerberos_project,
+                                                  domain,
+                                                  description='Test project',
+                                                  enabled=True)
+    except Conflict:
+        project = keystone_client.projects.find(name=kerberos_project)
+
+    try:
+        demo_user = keystone_client.users.create(kerberos_user,
+                                                 domain=domain,
+                                                 project=project,
+                                                 password=kerberos_password,
+                                                 email='demo@demo.com',
+                                                 description='Demo User',
+                                                 enabled=True)
+    except Conflict:
+        demo_user = keystone_client.users.find(name=kerberos_user)
+
     admin_role = keystone_client.roles.find(name=role)
     keystone_client.roles.grant(
         admin_role,

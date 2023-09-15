@@ -15,6 +15,7 @@
 """Ceph-mon Testing for cinder-ceph."""
 
 import logging
+import os
 
 import zaza.model
 
@@ -26,7 +27,7 @@ from zaza.openstack.utilities import (
 import zaza.openstack.charm_tests.test_utils as test_utils
 
 
-class CinderCephMonTest(test_utils.OpenStackBaseTest):
+class CinderCephMonTest(test_utils.BaseCharmTest):
     """Verify that the ceph mon units are healthy."""
 
     @classmethod
@@ -40,7 +41,8 @@ class CinderCephMonTest(test_utils.OpenStackBaseTest):
         logging.info("Checking exit values are 0 on ceph commands.")
 
         units = zaza.model.get_units("ceph-mon", model_name=self.model_name)
-        current_release = openstack_utils.get_os_release()
+        current_release = openstack_utils.get_os_release(
+            application='ceph-mon')
         bionic_train = openstack_utils.get_os_release('bionic_train')
         if current_release < bionic_train:
             units.extend(zaza.model.get_units("cinder-ceph",
@@ -62,7 +64,8 @@ class CinderCephMonTest(test_utils.OpenStackBaseTest):
         """Check ceph alternatives removed when ceph-mon relation is broken."""
         # Skip this test if release is less than xenial_ocata as in that case
         # cinder HAS a relation with ceph directly and this test would fail
-        current_release = openstack_utils.get_os_release()
+        current_release = openstack_utils.get_os_release(
+            application='ceph-mon')
         xenial_ocata = openstack_utils.get_os_release('xenial_ocata')
         if current_release < xenial_ocata:
             logging.info("Skipping test as release < xenial-ocata")
@@ -123,6 +126,30 @@ class CinderCephMonTest(test_utils.OpenStackBaseTest):
         logging.info("... Done.")
 
 
+class CephPermissionUpgradeTest(test_utils.OpenStackBaseTest):
+    """Verify that the ceph mon units update permissions on upgrade."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running ceph mon tests."""
+        super().setUpClass()
+
+    def test_ceph_permission_upgrade(self):
+        """Check that the charm updates permissions on charm upgrade."""
+        # Revoke 'osd blocklist' command
+        zaza.model.run_on_leader(
+            'ceph-mon',
+            'sudo -u ceph ceph auth caps client.cinder-ceph mon '
+            '"allow r; allow command \"osd blacklist\"" osd "allow rwx"')
+        charm = 'ceph-mon'
+        charm_path = os.getcwd() + '/' + charm + '.charm'
+        logging.debug("Upgrading {} to {}".format(charm, charm_path))
+        zaza.model.upgrade_charm(charm, path=charm_path)
+        auth = zaza.model.run_on_leader(
+            'ceph-mon', 'ceph auth get client.cinder-ceph')['Stdout']
+        self.assertIn('blocklist', auth)
+
+
 def does_relation_exist(unit_name,
                         application_name,
                         remote_application_name,
@@ -163,7 +190,7 @@ def invert_condition(async_condition):
     :rtype: Coroutine[[], bool]
     """
     async def _async_invert_condition_closure():
-        return not(await async_condition())
+        return not (await async_condition())
     return _async_invert_condition_closure
 
 

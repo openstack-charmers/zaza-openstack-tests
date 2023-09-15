@@ -79,7 +79,7 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
         ctxt['gateway_units'] = [
             {
                 'entity_id': u.entity_id,
-                'ip': u.public_address,
+                'ip': zaza.model.get_unit_public_address(u),
                 'hostname': host_names[u.entity_id]}
             for u in zaza.model.get_units('ceph-iscsi')]
         ctxt['gw_ip'] = sorted([g['ip'] for g in ctxt['gateway_units']])[0]
@@ -238,6 +238,10 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
             action_params={
                 'name': self.EC_METADATA_POOL}))
 
+    def refresh_partitions(self, ctxt):
+        """Refresh kernel partition tables in client."""
+        self.run_commands(ctxt['client_entity_id'], ('partprobe', ), ctxt)
+
     def run_client_checks(self, test_ctxt):
         """Check access to mulipath device.
 
@@ -250,10 +254,13 @@ class CephISCSIGatewayTest(test_utils.BaseCharmTest):
         """
         self.create_iscsi_target(test_ctxt)
         self.login_iscsi_target(test_ctxt)
+        self.refresh_partitions(test_ctxt)
         self.check_client_device(test_ctxt, init_client=True)
         self.logout_iscsi_targets(test_ctxt)
         self.login_iscsi_target(test_ctxt)
+        self.refresh_partitions(test_ctxt)
         self.check_client_device(test_ctxt, init_client=False)
+        self.refresh_partitions(test_ctxt)
 
     def test_create_and_mount_volume(self):
         """Test creating a target and mounting it on a client."""

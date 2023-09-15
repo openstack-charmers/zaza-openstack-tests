@@ -14,6 +14,8 @@
 
 """Data for nova tests."""
 
+import os
+
 FLAVORS = {
     'm1.tiny': {
         'flavorid': 1,
@@ -45,5 +47,34 @@ FLAVORS = {
         'ram': 512,
         'disk': 1,
         'vcpus': 1},
+    'vtpm-1.2': {
+        'flavorid': 'auto',
+        'ram': 512,
+        'disk': 5,
+        'vcpus': 1,
+        'extra-specs': {
+            'hw:tpm_version': '1.2',
+            'hw:tpm_model': 'tpm-tis',
+        },
+    },
+    'vtpm-2': {
+        'flavorid': 'auto',
+        'ram': 512,
+        'disk': 5,
+        'vcpus': 1,
+        'extra-specs': {
+            'hw:tpm_version': '2.0',
+            'hw:tpm_model': 'tpm-crb',
+        },
+    },
+    'hugepages': {
+        'flavorid': 'auto',
+        'ram': 1024,
+        'disk': 20,
+        'vcpus': 1,
+        'extra-specs': {
+            'hw:mem_page_size': 'large',
+        },
+    },
 }
-KEYPAIR_NAME = 'zaza'
+KEYPAIR_NAME = os.environ.get('TEST_KEYPAIR_NAME', 'zaza')

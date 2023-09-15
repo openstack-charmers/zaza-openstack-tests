@@ -23,6 +23,7 @@ from manilaclient import client as manilaclient
 
 import zaza.model
 import zaza.openstack.configure.guest as guest
+import zaza.openstack.utilities.generic as generic_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.charm_tests.nova.utils as nova_utils
@@ -85,12 +86,41 @@ class ManilaTests(test_utils.OpenStackBaseTest):
     def _list_shares(self):
         return self.manila_client.shares.list()
 
+    def test_902_nrpe_service_checks(self):
+        """Confirm that the NRPE service check files are created."""
+        units = zaza.model.get_units('manila')
+        services = ['apache2', 'haproxy', 'manila-scheduler', 'manila-data']
+
+        # Remove check_haproxy if hacluster is present in the bundle
+        # See LP Bug#1880601 for details
+        try:
+            if zaza.model.get_units('hacluster'):
+                services.remove("haproxy")
+        except KeyError:
+            pass
+
+        cmds = []
+        for check_name in services:
+            cmds.append(
+                'egrep -oh /usr/local.* /etc/nagios/nrpe.d/'
+                'check_{}.cfg'.format(check_name)
+            )
+
+        for attempt in tenacity.Retrying(
+            wait=tenacity.wait_fixed(20),
+            stop=tenacity.stop_after_attempt(2),
+            reraise=True
+        ):
+            with attempt:
+                ret = generic_utils.check_commands_on_units(cmds, units)
+                self.assertIsNone(ret, msg=ret)
+
 
 class ManilaBaseTest(test_utils.OpenStackBaseTest):
     """Encapsulate a Manila basic functionality test."""
 
     RESOURCE_PREFIX = 'zaza-manilatests'
-    INSTANCE_KEY = 'bionic'
+    INSTANCE_KEY = 'jammy'
     INSTANCE_USERDATA = """#cloud-config
 packages:
 - nfs-common
@@ -361,16 +391,15 @@ packages:
                 fip_1, ssh_user_name, privkey, share_path)
             self._validate_testing_file_from_instance(
                 fip_1, ssh_user_name, privkey)
-            #  Read the previous testing file from instance #1
-            self._mount_share_on_instance(
-                fip_2, ssh_user_name, privkey, share_path)
-            # Reset the test!
+            # Reset the test file
             self._clear_testing_file_on_instance(
                 fip_1, ssh_user_name, privkey
             )
-            # Write a testing file on instance #1
+            # (Re)write a test file on instance #1
             self._write_testing_file_on_instance(
                 fip_1, ssh_user_name, privkey)
             # Validate the testing file from instance #2
+            self._mount_share_on_instance(
+                fip_2, ssh_user_name, privkey, share_path)
             self._validate_testing_file_from_instance(
                 fip_2, ssh_user_name, privkey)

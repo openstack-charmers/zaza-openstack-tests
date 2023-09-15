@@ -17,6 +17,7 @@
 import logging
 
 import barbicanclient.client as barbican_client
+import zaza.openstack.charm_tests.tempest.tests as tempest_tests
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 
@@ -36,7 +37,7 @@ class BarbicanTest(test_utils.OpenStackBaseTest):
             actual_interfaces = [endpoint['interface'] for endpoint in
                                  actual_endpoints[service_type]]
             for expected_interface in ('internal', 'admin', 'public'):
-                assert(expected_interface in actual_interfaces)
+                assert expected_interface in actual_interfaces
 
     def test_400_api_connection(self):
         """Simple api calls to check service is up and responding."""
@@ -57,7 +58,7 @@ class BarbicanTest(test_utils.OpenStackBaseTest):
 
         logging.info('Storing the secret')
         my_secret_ref = my_secret.store()
-        assert(my_secret_ref is not None)
+        assert my_secret_ref is not None
 
         logging.info('Deleting the secret')
         my_secret.delete()
@@ -79,3 +80,9 @@ class BarbicanTest(test_utils.OpenStackBaseTest):
         """
         with self.pause_resume(self._SERVICES):
             logging.info("Testing pause resume")
+
+
+class BarbicanTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
+    """Test barbican k8s scale out and scale back."""
+
+    application_name = "barbican"

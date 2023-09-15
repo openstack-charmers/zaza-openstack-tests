@@ -116,6 +116,21 @@ class TestUpgradeUtils(ut_utils.BaseTestCase):
         self.assertEqual(
             actual,
             expected)
+        # test that, at focal, there are no database services.
+        expected = [
+            ('Database Services', []),
+            ('Stateful Services', []),
+            ('Core Identity', []),
+            ('Control Plane', ['cinder']),
+            ('Data Plane', ['nova-compute']),
+            ('sweep_up', ['ntp'])]
+        actual = openstack_upgrade.get_series_upgrade_groups(
+            target_series='focal')
+        pprint.pprint(expected)
+        pprint.pprint(actual)
+        self.assertEqual(
+            actual,
+            expected)
 
     def test_extract_charm_name_from_url(self):
         self.assertEqual(

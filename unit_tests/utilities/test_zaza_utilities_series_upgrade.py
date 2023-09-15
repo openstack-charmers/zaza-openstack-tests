@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import mock
+import sys
+import unittest
 import unit_tests.utils as ut_utils
 import zaza.openstack.utilities.generic as generic_utils
 import zaza.openstack.utilities.series_upgrade as series_upgrade_utils
@@ -77,7 +80,7 @@ class TestSeriesUpgrade(ut_utils.BaseTestCase):
             _unit, _machine_num, origin=_origin,
             to_series=_to_series, from_series=_from_series,
             workaround_script=_workaround_script, files=_files)
-        self.block_until_all_units_idle.called_with()
+        self.block_until_all_units_idle.assert_called()
         self.prepare_series_upgrade.assert_called_once_with(
             _machine_num, to_series=_to_series)
         self.wrap_do_release_upgrade.assert_called_once_with(
@@ -88,9 +91,19 @@ class TestSeriesUpgrade(ut_utils.BaseTestCase):
         self.set_origin.assert_called_once_with(_application, _origin)
         self.reboot.assert_called_once_with(_unit)
 
+    def _mock_app(self):
+        if sys.version_info < (3, 6, 0):
+            raise unittest.SkipTest("Can't AsyncMock in py35")
+        mock_get_action = mock.AsyncMock()
+        mock_get_action.get_actions.return_value = ["pause", "resume"]
+        mock_app = asyncio.Future()
+        mock_app.set_result(mock_get_action)
+        return mock_app
+
     def test_series_upgrade_application_pause_peers_and_subordinates(self):
-        self.patch_object(series_upgrade_utils.model, "run_action")
+        self.patch_object(series_upgrade_utils.model, "async_run_action")
         self.patch_object(series_upgrade_utils, "series_upgrade")
+        self.patch_object(series_upgrade_utils.model, "async_get_application")
         _application = "app"
         _from_series = "xenial"
         _to_series = "bionic"
@@ -108,6 +121,8 @@ class TestSeriesUpgrade(ut_utils.BaseTestCase):
             mock.call("{}/2".format(_application), "pause", action_params={}),
         ]
         _series_upgrade_calls = []
+        self.async_get_application.return_value = self._mock_app()
+        self.async_run_action.return_value = self._mock_app()
         for machine_num in ("0", "1", "2"):
             _series_upgrade_calls.append(
                 mock.call("{}/{}".format(_application, machine_num),
@@ -125,12 +140,13 @@ class TestSeriesUpgrade(ut_utils.BaseTestCase):
             pause_non_leader_subordinate=True,
             completed_machines=_completed_machines,
             workaround_script=_workaround_script, files=_files),
-        self.run_action.assert_has_calls(_run_action_calls)
+        self.async_run_action.assert_has_calls(_run_action_calls)
         self.series_upgrade.assert_has_calls(_series_upgrade_calls)
 
     def test_series_upgrade_application_pause_subordinates(self):
-        self.patch_object(series_upgrade_utils.model, "run_action")
+        self.patch_object(series_upgrade_utils.model, "async_run_action")
         self.patch_object(series_upgrade_utils, "series_upgrade")
+        self.patch_object(series_upgrade_utils.model, "async_get_application")
         _application = "app"
         _from_series = "xenial"
         _to_series = "bionic"
@@ -146,7 +162,8 @@ class TestSeriesUpgrade(ut_utils.BaseTestCase):
                       "pause", action_params={}),
         ]
         _series_upgrade_calls = []
-
+        self.async_get_application.return_value = self._mock_app()
+        self.async_run_action.return_value = self._mock_app()
         for machine_num in ("0", "1", "2"):
             _series_upgrade_calls.append(
                 mock.call("{}/{}".format(_application, machine_num),
@@ -164,7 +181,7 @@ class TestSeriesUpgrade(ut_utils.BaseTestCase):
             pause_non_leader_subordinate=True,
             completed_machines=_completed_machines,
             workaround_script=_workaround_script, files=_files),
-        self.run_action.assert_has_calls(_run_action_calls)
+        self.async_run_action.assert_has_calls(_run_action_calls)
         self.series_upgrade.assert_has_calls(_series_upgrade_calls)
 
     def test_series_upgrade_application_no_pause(self):

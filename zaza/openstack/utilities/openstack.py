@@ -22,10 +22,12 @@ import datetime
 import enum
 import io
 import itertools
+import json
 import juju_wait
 import logging
 import os
 import paramiko
+import pathlib
 import re
 import shutil
 import six
@@ -38,6 +40,7 @@ import urllib
 
 
 from .os_versions import (
+    CompareOpenStack,
     OPENSTACK_CODENAMES,
     SWIFT_CODENAMES,
     OVN_CODENAMES,
@@ -50,7 +53,9 @@ from openstack import connection
 from aodhclient.v2 import client as aodh_client
 from cinderclient import client as cinderclient
 from heatclient import client as heatclient
+from magnumclient import client as magnumclient
 from glanceclient import Client as GlanceClient
+from glanceclient.exc import CommunicationError
 from designateclient.client import Client as DesignateClient
 
 from keystoneclient.v2_0 import client as keystoneclient_v2
@@ -60,6 +65,7 @@ from keystoneauth1.identity import (
     v3,
     v2,
 )
+from watcherclient import client as watcher_client
 import zaza.openstack.utilities.cert as cert
 import zaza.utilities.deployment_env as deployment_env
 import zaza.utilities.juju as juju_utils
@@ -90,6 +96,8 @@ UBUNTU_IMAGE_URLS = {
                '{release}-server-cloudimg-{arch}.img'),
     'focal': ('http://cloud-images.ubuntu.com/{release}/current/'
               '{release}-server-cloudimg-{arch}.img'),
+    'default': ('http://cloud-images.ubuntu.com/{release}/current/'
+                '{release}-server-cloudimg-{arch}.img'),
 }
 
 CHARM_TYPES = {
@@ -190,6 +198,23 @@ REMOTE_CERT_DIR = "/usr/local/share/ca-certificates"
 KEYSTONE_CACERT = "keystone_juju_ca_cert.crt"
 KEYSTONE_REMOTE_CACERT = (
     "/usr/local/share/ca-certificates/{}".format(KEYSTONE_CACERT))
+
+# Network/router names
+EXT_NET = os.environ.get('TEST_EXT_NET', 'ext_net')
+EXT_NET_SUBNET = os.environ.get('TEST_EXT_NET_SUBNET', 'ext_net_subnet')
+# An optional service subnet for FIPs is necessary.
+FIP_SERVICE_SUBNET_NAME = os.environ.get('TEST_FIP_SERVICE_SUBNET_NAME',
+                                         'fip_service_subnet')
+PRIVATE_NET = os.environ.get('TEST_PRIVATE_NET', 'private')
+PRIVATE_NET_SUBNET = os.environ.get('TEST_PRIVATE_NET_SUBNET',
+                                    'private_subnet')
+PROVIDER_ROUTER = os.environ.get('TEST_PROVIDER_ROUTER', 'provider-router')
+
+# Image names
+CIRROS_IMAGE_NAME = os.environ.get('TEST_CIRROS_IMAGE_NAME', 'cirros')
+BIONIC_IMAGE_NAME = os.environ.get('TEST_BIONIC_IMAGE_NAME', 'bionic')
+FOCAL_IMAGE_NAME = os.environ.get('TEST_FOCAL_IMAGE_NAME', 'focal')
+JAMMY_IMAGE_NAME = os.environ.get('TEST_JAMMY_IMAGE_NAME', 'jammy')
 
 
 async def async_block_until_ca_exists(application_name, ca_cert,
@@ -296,10 +321,26 @@ def get_ks_creds(cloud_creds, scope='PROJECT'):
                 'username': cloud_creds['OS_USERNAME'],
                 'password': cloud_creds['OS_PASSWORD'],
                 'auth_url': cloud_creds['OS_AUTH_URL'],
-                'user_domain_name': cloud_creds['OS_USER_DOMAIN_NAME'],
                 'project_domain_name': cloud_creds['OS_PROJECT_DOMAIN_NAME'],
                 'project_name': cloud_creds['OS_PROJECT_NAME'],
             }
+            # the FederationBaseAuth class doesn't support the
+            # 'user_domain_name' argument, so only setting it in the 'auth'
+            # dict when it's passed in the cloud_creds.
+            if cloud_creds.get('OS_USER_DOMAIN_NAME'):
+                auth['user_domain_name'] = cloud_creds['OS_USER_DOMAIN_NAME']
+
+        if cloud_creds.get('OS_AUTH_TYPE') == 'v3oidcpassword':
+            auth.update({
+                'identity_provider': cloud_creds['OS_IDENTITY_PROVIDER'],
+                'protocol': cloud_creds['OS_PROTOCOL'],
+                'client_id': cloud_creds['OS_CLIENT_ID'],
+                'client_secret': cloud_creds['OS_CLIENT_SECRET'],
+                # optional configuration options:
+                'access_token_endpoint': cloud_creds.get(
+                    'OS_ACCESS_TOKEN_ENDPOINT'),
+                'discovery_endpoint': cloud_creds.get('OS_DISCOVERY_ENDPOINT')
+            })
     return auth
 
 
@@ -326,16 +367,18 @@ def get_designate_session_client(**kwargs):
                            **kwargs)
 
 
-def get_nova_session_client(session, version=2):
+def get_nova_session_client(session, version=None):
     """Return novaclient authenticated by keystone session.
 
     :param session: Keystone session object
     :type session: keystoneauth1.session.Session object
     :param version: Version of client to request.
-    :type version: float
+    :type version: float | str | None
     :returns: Authenticated novaclient
     :rtype: novaclient.Client object
     """
+    if not version:
+        version = 2
     return novaclient_client.Client(version, session=session)
 
 
@@ -407,7 +450,20 @@ def get_heat_session_client(session, version=1):
     return heatclient.Client(session=session, version=version)
 
 
-def get_cinder_session_client(session, version=2):
+def get_magnum_session_client(session, version='1'):
+    """Return magnumclient authenticated by keystone session.
+
+    :param session: Keystone session object
+    :type session: keystoneauth1.session.Session object
+    :param version: Magnum API version
+    :type version: string
+    :returns: Authenticated magnumclient
+    :rtype: magnumclient.Client object
+    """
+    return magnumclient.Client(version, session=session)
+
+
+def get_cinder_session_client(session, version=3):
     """Return cinderclient authenticated by keystone session.
 
     :param session: Keystone session object
@@ -463,6 +519,15 @@ def get_manila_session_client(session, version='2'):
     return manilaclient.Client(session=session, client_version=version)
 
 
+def get_watcher_session_client(session):
+    """Return Watcher client authenticated by keystone session.
+
+    :param session: Keystone session object
+    :returns: Authenticated watcher client
+    """
+    return watcher_client.get_client(session=session, api_version='1')
+
+
 def get_keystone_scope(model_name=None):
     """Return Keystone scope based on OpenStack release of the overcloud.
 
@@ -471,15 +536,7 @@ def get_keystone_scope(model_name=None):
     :returns: String keystone scope
     :rtype: string
     """
-    os_version = get_current_os_versions("keystone",
-                                         model_name=model_name)["keystone"]
-    # Keystone policy.json shipped the charm with liberty requires a domain
-    # scoped token. Bug #1649106
-    if os_version == "liberty":
-        scope = "DOMAIN"
-    else:
-        scope = "PROJECT"
-    return scope
+    return "PROJECT"
 
 
 def get_keystone_session(openrc_creds, scope='PROJECT', verify=None):
@@ -503,7 +560,10 @@ def get_keystone_session(openrc_creds, scope='PROJECT', verify=None):
     if openrc_creds.get('API_VERSION', 2) == 2:
         auth = v2.Password(**keystone_creds)
     else:
-        auth = v3.Password(**keystone_creds)
+        if openrc_creds.get('OS_AUTH_TYPE') == 'v3oidcpassword':
+            auth = v3.OidcPassword(**keystone_creds)
+        else:
+            auth = v3.Password(**keystone_creds)
     return session.Session(auth=auth, verify=verify)
 
 
@@ -552,7 +612,8 @@ def get_keystone_session_client(session, client_api_version=3):
 
 
 def get_keystone_client(openrc_creds, verify=None):
-    """Return authenticated keystoneclient and set auth_ref for service_catalog.
+    """
+    Return authenticated keystoneclient and set auth_ref for service_catalog.
 
     :param openrc_creds: OpenStack RC credentials
     :type openrc_creds: dict
@@ -650,7 +711,10 @@ def dvr_enabled():
     :returns: True when DVR is enabled, False otherwise
     :rtype: bool
     """
-    return get_application_config_option('neutron-api', 'enable-dvr')
+    try:
+        return get_application_config_option('neutron-api', 'enable-dvr')
+    except KeyError:
+        return False
 
 
 def ngw_present():
@@ -986,8 +1050,23 @@ def configure_networking_charms(networking_data, macs, use_juju_wait=True):
         current_data_port = get_application_config_option(
             application_name,
             networking_data.port_config_key)
-        if current_data_port == config[networking_data.port_config_key]:
-            logging.info('Config already set to value')
+
+        # NOTE(lourot): in
+        # https://github.com/openstack-charmers/openstack-bundles we have made
+        # the conscious choice to use 'to-be-set' instead of 'null' for the
+        # following reasons:
+        # * With 'to-be-set' (rather than 'null') it is clearer for the reader
+        #   that some action is required and the value can't just be left as
+        #   is.
+        # * Some of our tooling doesn't work with 'null', see
+        #   https://github.com/openstack-charmers/openstack-bundles/pull/228
+        # This nonetheless supports both by exiting early if the value is
+        # neither 'null' nor 'to-be-set':
+        if current_data_port and current_data_port != 'to-be-set':
+            logging.info("Skip update of external network data port config."
+                         "Config '{}' already set to value: {}".format(
+                             networking_data.port_config_key,
+                             current_data_port))
             return
 
         model.set_application_config(
@@ -997,7 +1076,7 @@ def configure_networking_charms(networking_data, macs, use_juju_wait=True):
     # to deal with all the non ['active', 'idle', 'Unit is ready.']
     # workload/agent states and msgs that our mojo specs are exposed to.
     if use_juju_wait:
-        juju_wait.wait(wait_for_workload=True)
+        juju_wait.wait(wait_for_workload=True, max_wait=2700)
     else:
         zaza.model.wait_for_agent_status()
         # TODO: shouldn't access get_charm_config() here as it relies on
@@ -1056,14 +1135,23 @@ def configure_charmed_openstack_on_maas(network_config, limit_gws=None):
     :type limit_gws: Optional[int]
     """
     networking_data = get_charm_networking_data(limit_gws=limit_gws)
-    macs = [
-        mim.mac
-        for mim in zaza.utilities.maas.get_macs_from_cidr(
+    macs = []
+    machines = set()
+    for mim in zaza.utilities.maas.get_macs_from_cidr(
             zaza.utilities.maas.get_maas_client_from_juju_cloud_data(
                 zaza.model.get_cloud_data()),
             network_config['external_net_cidr'],
-            link_mode=zaza.utilities.maas.LinkMode.LINK_UP)
-    ]
+            link_mode=zaza.utilities.maas.LinkMode.LINK_UP):
+        if mim.machine_id in machines:
+            logging.warning("Machine {} has multiple unconfigured interfaces, "
+                            "ignoring interface {} ({})."
+                            .format(mim.machine_id, mim.ifname, mim.mac))
+            continue
+        logging.info("Machine {} selected {} ({}) for external networking."
+                     .format(mim.machine_id, mim.ifname, mim.mac))
+        machines.add(mim.machine_id)
+        macs.append(mim.mac)
+
     if macs:
         configure_networking_charms(
             networking_data, macs, use_juju_wait=False)
@@ -1087,7 +1175,7 @@ def get_mac_from_port(port, neutronclient):
     return refresh_port['port']['mac_address']
 
 
-def create_project_network(neutron_client, project_id, net_name='private',
+def create_project_network(neutron_client, project_id, net_name=PRIVATE_NET,
                            shared=False, network_type='gre', domain=None):
     """Create the project network.
 
@@ -1127,8 +1215,10 @@ def create_project_network(neutron_client, project_id, net_name='private',
     return network
 
 
-def create_external_network(neutron_client, project_id, net_name='ext_net'):
-    """Create the external network.
+def create_provider_network(neutron_client, project_id, net_name=EXT_NET,
+                            external=True, shared=False, network_type='flat',
+                            vlan_id=None):
+    """Create a provider network.
 
     :param neutron_client: Authenticated neutronclient
     :type neutron_client: neutronclient.Client object
@@ -1136,25 +1226,35 @@ def create_external_network(neutron_client, project_id, net_name='ext_net'):
     :type project_id: string
     :param net_name: Network name
     :type net_name: string
+    :param shared: The network should be external
+    :type shared: boolean
+    :param shared: The network should be shared between projects
+    :type shared: boolean
+    :param net_type: Network type: GRE, VXLAN, local, VLAN
+    :type net_type: string
+    :param net_name: VLAN ID
+    :type net_name: string
     :returns: Network object
     :rtype: dict
     """
     networks = neutron_client.list_networks(name=net_name)
     if len(networks['networks']) == 0:
-        logging.info('Configuring external network')
+        logging.info('Creating %s %s network: %s', network_type,
+                     'external' if external else 'provider', net_name)
         network_msg = {
             'name': net_name,
-            'router:external': True,
+            'router:external': external,
+            'shared': shared,
             'tenant_id': project_id,
             'provider:physical_network': 'physnet1',
-            'provider:network_type': 'flat',
+            'provider:network_type': network_type,
         }
 
-        logging.info('Creating new external network definition: %s',
-                     net_name)
+        if network_type == 'vlan':
+            network_msg['provider:segmentation_id'] = int(vlan_id)
         network = neutron_client.create_network(
             {'network': network_msg})['network']
-        logging.info('New external network created: %s', network['id'])
+        logging.info('Network %s created: %s', net_name, network['id'])
     else:
         logging.warning('Network %s already exists.', net_name)
         network = networks['networks'][0]
@@ -1162,7 +1262,7 @@ def create_external_network(neutron_client, project_id, net_name='ext_net'):
 
 
 def create_project_subnet(neutron_client, project_id, network, cidr, dhcp=True,
-                          subnet_name='private_subnet', domain=None,
+                          subnet_name=PRIVATE_NET_SUBNET, domain=None,
                           subnetpool=None, ip_version=4, prefix_len=24):
     """Create the project subnet.
 
@@ -1214,11 +1314,12 @@ def create_project_subnet(neutron_client, project_id, network, cidr, dhcp=True,
     return subnet
 
 
-def create_external_subnet(neutron_client, project_id, network,
+def create_provider_subnet(neutron_client, project_id, network,
+                           subnet_name=EXT_NET_SUBNET,
                            default_gateway=None, cidr=None,
                            start_floating_ip=None, end_floating_ip=None,
-                           subnet_name='ext_net_subnet'):
-    """Create the external subnet.
+                           dhcp=False, service_types=None):
+    """Create the provider subnet.
 
     :param neutron_client: Authenticated neutronclient
     :type neutron_client: neutronclient.Client object
@@ -1228,14 +1329,18 @@ def create_external_subnet(neutron_client, project_id, network,
     :type network: dict
     :param default_gateway: Deafault gateway IP address
     :type default_gateway: string
+    :param subnet_name: Subnet name
+    :type subnet_name: string
     :param cidr: Network CIDR
     :type cidr: string
     :param start_floating_ip: Start of floating IP range: IP address
     :type start_floating_ip: string or None
     :param end_floating_ip: End of floating IP range: IP address
     :type end_floating_ip: string or None
-    :param subnet_name: Subnet name
-    :type subnet_name: string
+    :param dhcp: Run DHCP on this subnet
+    :type dhcp: boolean
+    :param service_types: Optional subnet service types
+    :type service_types: List[str]
     :returns: Subnet object
     :rtype: dict
     """
@@ -1244,7 +1349,7 @@ def create_external_subnet(neutron_client, project_id, network,
         subnet_msg = {
             'name': subnet_name,
             'network_id': network['id'],
-            'enable_dhcp': False,
+            'enable_dhcp': dhcp,
             'ip_version': 4,
             'tenant_id': project_id
         }
@@ -1259,6 +1364,8 @@ def create_external_subnet(neutron_client, project_id, network,
                 'end': end_floating_ip,
             }
             subnet_msg['allocation_pools'] = [allocation_pool]
+        if service_types:
+            subnet_msg['service_types'] = service_types
 
         logging.info('Creating new subnet')
         subnet = neutron_client.create_subnet({'subnet': subnet_msg})['subnet']
@@ -1289,6 +1396,24 @@ def update_subnet_dns(neutron_client, subnet, dns_servers):
     neutron_client.update_subnet(subnet['id'], msg)
 
 
+def update_subnet_dhcp(neutron_client, subnet, enable_dhcp):
+    """Update subnet DHCP status.
+
+    :param neutron_client: Authenticated neutronclient
+    :type neutron_client: neutronclient.Client object
+    :param subnet: Subnet object
+    :type subnet: dict
+    :param enable_dhcp: Whether DHCP should be enabled or not
+    :type enable_dhcp: bool
+    """
+    msg = {
+        'subnet': {
+            'enable_dhcp': enable_dhcp,
+        }
+    }
+    neutron_client.update_subnet(subnet['id'], msg)
+
+
 def create_provider_router(neutron_client, project_id):
     """Create the provider router.
 
@@ -1299,19 +1424,19 @@ def create_provider_router(neutron_client, project_id):
     :returns: Router object
     :rtype: dict
     """
-    routers = neutron_client.list_routers(name='provider-router')
+    routers = neutron_client.list_routers(name=PROVIDER_ROUTER)
     if len(routers['routers']) == 0:
         logging.info('Creating provider router for external network access')
         router_info = {
             'router': {
-                'name': 'provider-router',
+                'name': PROVIDER_ROUTER,
                 'tenant_id': project_id
             }
         }
         router = neutron_client.create_router(router_info)['router']
         logging.info('New router created: %s', (router['id']))
     else:
-        logging.warning('Router provider-router already exists.')
+        logging.warning('Router %s already exists.', (PROVIDER_ROUTER))
         router = routers['routers'][0]
     return router
 
@@ -1499,7 +1624,7 @@ def add_network_to_bgp_speaker(neutron_client, bgp_speaker, network_name):
         logging.warning('{} network already advertised.'.format(network_name))
 
 
-def create_bgp_peer(neutron_client, peer_application_name='quagga',
+def create_bgp_peer(neutron_client, peer_application_name='osci-frr',
                     remote_as=10000, auth_type='none'):
     """Create BGP peer.
 
@@ -1515,7 +1640,7 @@ def create_bgp_peer(neutron_client, peer_application_name='quagga',
     :rtype: dict
     """
     peer_unit = model.get_units(peer_application_name)[0]
-    peer_ip = peer_unit.public_address
+    peer_ip = model.get_unit_public_address(peer_unit)
     bgp_peers = neutron_client.list_bgp_peers(name=peer_application_name)
     if len(bgp_peers['bgp_peers']) == 0:
         logging.info('Creating BGP Peer')
@@ -1980,6 +2105,9 @@ def get_undercloud_auth():
 def get_keystone_ip(model_name=None):
     """Return the IP address to use when communicating with keystone api.
 
+    If there are multiple VIP addresses specified in the 'vip' option for the
+    keystone unit, then ONLY the first one is returned.
+
     :param model_name: Name of model to query.
     :type model_name: str
     :returns: IP address
@@ -1990,9 +2118,10 @@ def get_keystone_ip(model_name=None):
         'vip',
         model_name=model_name)
     if vip_option:
-        return vip_option
+        # strip the option, splits on whitespace and return the first one.
+        return vip_option.strip().split()[0]
     unit = model.get_units('keystone', model_name=model_name)[0]
-    return unit.public_address
+    return model.get_unit_public_address(unit)
 
 
 def get_keystone_api_version(model_name=None):
@@ -2010,7 +2139,7 @@ def get_keystone_api_version(model_name=None):
         'keystone',
         'preferred-api-version',
         model_name=model_name)
-    if os_version >= 'queens':
+    if CompareOpenStack(os_version) >= 'queens':
         api_version = 3
     elif api_version is None:
         api_version = 2
@@ -2019,6 +2148,60 @@ def get_keystone_api_version(model_name=None):
 
 
 def get_overcloud_auth(address=None, model_name=None):
+    """Get overcloud OpenStack authentication from the environment.
+
+    :param model_name: Name of model to query.
+    :type model_name: str
+    :returns: Dictionary of authentication settings
+    :rtype: dict
+    """
+    if juju_utils.is_k8s_deployment():
+        return _get_overcloud_auth_k8s(address=address, model_name=None)
+    else:
+        return _get_overcloud_auth(address=address, model_name=None)
+
+
+def _get_overcloud_auth_k8s(address=None, model_name=None):
+    """Get overcloud OpenStack authentication from the k8s environment.
+
+    :param model_name: Name of model to query.
+    :type model_name: str
+    :returns: Dictionary of authentication settings
+    :rtype: dict
+    """
+    logging.warning('Assuming http keystone endpoint')
+    transport = 'http'
+    port = 5000
+    if not address:
+        address = zaza.model.get_status()[
+            'applications']['keystone'].public_address
+    address = network_utils.format_addr(address)
+
+    logging.info('Retrieving admin password from keystone')
+    action = zaza.model.run_action_on_leader(
+        'keystone',
+        'get-admin-password',
+        action_params={}
+    )
+    password = action.data['results']['password']
+
+    # V3 or later
+    logging.info('Using keystone API V3 (or later) for overcloud auth')
+    auth_settings = {
+        'OS_AUTH_URL': '%s://%s:%i/v3' % (transport, address, port),
+        'OS_USERNAME': 'admin',
+        'OS_PASSWORD': password,
+        'OS_REGION_NAME': 'RegionOne',
+        'OS_DOMAIN_NAME': 'admin_domain',
+        'OS_USER_DOMAIN_NAME': 'admin_domain',
+        'OS_PROJECT_NAME': 'admin',
+        'OS_PROJECT_DOMAIN_NAME': 'admin_domain',
+        'API_VERSION': 3,
+    }
+    return auth_settings
+
+
+def _get_overcloud_auth(address=None, model_name=None):
     """Get overcloud OpenStack authentication from the environment.
 
     :param model_name: Name of model to query.
@@ -2172,6 +2355,9 @@ def get_urllib_opener():
     return urllib.request.build_opener(handler)
 
 
+@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
+                reraise=True,
+                retry=tenacity.retry_if_exception_type(CommunicationError))
 def get_images_by_name(glance, image_name):
     """Get all glance image objects with the given name.
 
@@ -2186,6 +2372,22 @@ def get_images_by_name(glance, image_name):
     return [i for i in glance.images.list() if image_name == i.name]
 
 
+def get_volumes_by_name(cinder, volume_name):
+    """Get all cinder volume objects with the given name.
+
+    :param cinder: Authenticated cinderclient
+    :type cinder: cinderclient.Client
+    :param image_name: Name of volume
+    :type image_name: str
+    :returns: List of cinder volumes
+    :rtype: List[cinderclient.v3.volume, ...]
+    """
+    return [i for i in cinder.volumes.list() if volume_name == i.name]
+
+
+@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
+                reraise=True,
+                retry=tenacity.retry_if_exception_type(urllib.error.URLError))
 def find_cirros_image(arch):
     """Return the url for the latest cirros image for the given architecture.
 
@@ -2194,8 +2396,9 @@ def find_cirros_image(arch):
     :returns: URL for latest cirros image
     :rtype: str
     """
+    http_connection_timeout = 10  # seconds
     opener = get_urllib_opener()
-    f = opener.open(CIRROS_RELEASE_URL)
+    f = opener.open(CIRROS_RELEASE_URL, timeout=http_connection_timeout)
     version = f.read().strip().decode()
     cirros_img = 'cirros-{}-{}-disk.img'.format(version, arch)
     return '{}/{}/{}'.format(CIRROS_IMAGE_URL, version, cirros_img)
@@ -2203,15 +2406,22 @@ def find_cirros_image(arch):
 
 def find_ubuntu_image(release, arch):
     """Return url for image."""
-    return UBUNTU_IMAGE_URLS[release].format(release=release, arch=arch)
+    loc_str = UBUNTU_IMAGE_URLS.get(release) or UBUNTU_IMAGE_URLS['default']
+    return loc_str.format(release=release, arch=arch)
 
 
+@tenacity.retry(
+    wait=tenacity.wait_fixed(2),
+    stop=tenacity.stop_after_attempt(10),
+    reraise=True,
+    retry=tenacity.retry_if_exception_type(urllib.error.ContentTooShortError),
+)
 def download_image(image_url, target_file):
     """Download the image from the given url to the specified file.
 
     :param image_url: URL to download image from
     :type image_url: str
-    :param target_file: Local file to savee image to
+    :param target_file: Local file to save image to
     :type target_file: str
     """
     opener = get_urllib_opener()
@@ -2222,7 +2432,8 @@ def download_image(image_url, target_file):
 def _resource_reaches_status(resource, resource_id,
                              expected_status='available',
                              msg='resource',
-                             resource_attribute='status'):
+                             resource_attribute='status',
+                             stop_status=None):
     """Wait for an openstack resources status to reach an expected status.
 
        Wait for an openstack resources status to reach an expected status
@@ -2240,11 +2451,26 @@ def _resource_reaches_status(resource, resource_id,
     :type msg: str
     :param resource_attribute: Resource attribute to check against
     :type resource_attribute: str
+    :param stop_status: Stop retrying when this status is reached
+    :type stop_status: str
     :raises: AssertionError
+    :raises: StatusError
     """
-    resource_status = getattr(resource.get(resource_id), resource_attribute)
+    try:
+        res_object = resource.get(resource_id)
+        resource_status = getattr(res_object, resource_attribute)
+    except AttributeError:
+        logging.error('attributes available: %s' % str(dir(res_object)))
+        raise
+
     logging.info("{}: resource {} in {} state, waiting for {}".format(
         msg, resource_id, resource_status, expected_status))
+    if stop_status:
+        if isinstance(stop_status, list) and resource_status in stop_status:
+            raise exceptions.StatusError(resource_status, expected_status)
+        elif isinstance(stop_status, str) and resource_status == stop_status:
+            raise exceptions.StatusError(resource_status, expected_status)
+
     assert resource_status == expected_status
 
 
@@ -2256,6 +2482,7 @@ def resource_reaches_status(resource,
                             wait_exponential_multiplier=1,
                             wait_iteration_max_time=60,
                             stop_after_attempt=8,
+                            stop_status=None,
                             ):
     """Wait for an openstack resources status to reach an expected status.
 
@@ -2280,23 +2507,28 @@ def resource_reaches_status(resource,
     :param wait_iteration_max_time: Wait a max of wait_iteration_max_time
                                     between retries.
     :type wait_iteration_max_time: int
-    :param stop_after_attempt: Stop after stop_after_attempt retires.
+    :param stop_after_attempt: Stop after stop_after_attempt retries
     :type stop_after_attempt: int
     :raises: AssertionError
+    :raises: StatusError
     """
     retryer = tenacity.Retrying(
         wait=tenacity.wait_exponential(
             multiplier=wait_exponential_multiplier,
             max=wait_iteration_max_time),
         reraise=True,
-        stop=tenacity.stop_after_attempt(stop_after_attempt))
+        stop=tenacity.stop_after_attempt(stop_after_attempt),
+        retry=tenacity.retry_if_exception_type(AssertionError),
+    )
     retryer(
         _resource_reaches_status,
         resource,
         resource_id,
         expected_status,
         msg,
-        resource_attribute)
+        resource_attribute,
+        stop_status,
+    )
 
 
 def _resource_removed(resource, resource_id, msg="resource"):
@@ -2311,8 +2543,14 @@ def _resource_removed(resource, resource_id, msg="resource"):
     :raises: AssertionError
     """
     matching = [r for r in resource.list() if r.id == resource_id]
-    logging.debug("{}: resource {} still present".format(msg, resource_id))
-    assert len(matching) == 0
+    for r in matching:
+        # Info level used, because the gate logs at that level, and if anything
+        # gets logged here it means the next assert will fail and this
+        # information will be needed for troubleshooting.
+        logging.info(r.to_dict())
+
+    msg = "{}: resource {} still present".format(msg, resource_id)
+    assert len(matching) == 0, msg
 
 
 def resource_removed(resource,
@@ -2416,7 +2654,7 @@ def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
     :type local_path: str
     :param image_name: The label to give the image in glance
     :type image_name: str
-    :param disk_format: The of the underlying disk image.
+    :param disk_format: The format of the underlying disk image.
     :type disk_format: str
     :param visibility: Who can access image
     :type visibility: str (public, private, shared or community)
@@ -2455,10 +2693,65 @@ def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
     return image
 
 
+def is_ceph_image_backend(model_name=None):
+    """Check if glance is related to ceph, therefore using ceph as backend.
+
+    :returns: True if glance is related to Ceph, otherwise False
+    :rtype: bool
+    """
+    status = juju_utils.get_full_juju_status(model_name=model_name)
+    result = False
+    try:
+        result = 'ceph-mon' in (
+            status['applications']['glance']['relations']['ceph'])
+    except KeyError:
+        pass
+    logging.debug("Detected Ceph related to Glance?: {}".format(result))
+    return result
+
+
+def convert_image_format_to_raw_if_qcow2(local_path):
+    """Convert the image format to raw if the detected format is qcow2.
+
+    :param local_path: The path to the original image file.
+    :type local_path: str
+    :returns: The path to the final image file
+    :rtype: str
+    """
+    try:
+        output = subprocess.check_output([
+            "qemu-img", "info", "--output=json", local_path])
+    except subprocess.CalledProcessError:
+        logging.error("Image conversion: Failed to detect image format "
+                      "of file {}".format(local_path))
+        return local_path
+    result = json.loads(output)
+    if result['format'] == 'qcow2':
+        logging.info("Image conversion: Detected qcow2 vs desired raw format"
+                     " of file {}".format(local_path))
+        converted_path = pathlib.Path(local_path).resolve().with_suffix('.raw')
+        converted_path_str = str(converted_path)
+        if converted_path.exists():
+            logging.info("Image conversion: raw converted file already"
+                         " exists: {}".format(converted_path_str))
+            return converted_path_str
+        logging.info("Image conversion: Converting image {} to raw".format(
+            local_path))
+        try:
+            output = subprocess.check_output([
+                "qemu-img", "convert", local_path, converted_path_str])
+        except subprocess.CalledProcessError:
+            logging.error("Image conversion: Failed to convert image"
+                          " {} to raw".format(local_path))
+            return local_path
+        return converted_path_str
+    return local_path
+
+
 def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[],
                  properties=None, backend=None, disk_format='qcow2',
                  visibility='public', container_format='bare',
-                 force_import=False):
+                 force_import=False, convert_image_to_raw_if_ceph_used=True):
     """Download the image and upload it to glance.
 
     Download an image from image_url and upload it to glance labelling
@@ -2480,6 +2773,10 @@ def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[],
     :param force_import: Force the use of glance image import
         instead of direct upload
     :type force_import: boolean
+    :param convert_image_to_raw_if_ceph_used: force conversion of requested
+        image to raw upon download if Ceph is present in the model and
+        has a relation to Glance
+    :type convert_image_to_raw_if_ceph_used: boolean
     :returns: glance image pointer
     :rtype: glanceclient.common.utils.RequestIdProxy
     """
@@ -2498,6 +2795,12 @@ def create_image(glance, image_url, image_name, image_cache_dir=None, tags=[],
     else:
         logging.info('Cached image found at {} - Skipping download'.format(
             local_path))
+
+    if convert_image_to_raw_if_ceph_used and is_ceph_image_backend():
+        logging.info("Image conversion: Detected ceph backend, forcing"
+                     " use of raw image format")
+        disk_format = 'raw'
+        local_path = convert_image_format_to_raw_if_qcow2(local_path)
 
     image = upload_image_to_glance(
         glance, local_path, image_name, backend=backend,
@@ -2565,6 +2868,27 @@ def attach_volume(nova, volume_id, instance_id):
     return nova.volumes.create_server_volume(server_id=instance_id,
                                              volume_id=volume_id,
                                              device='/dev/vdx')
+
+
+def detach_volume(nova, volume_id, instance_id):
+    """Detach a cinder volume to a nova instance.
+
+    :param nova: Authenticated nova client
+    :type nova: novaclient.v2.client.Client
+    :param volume_id: the id of the volume to attach
+    :type volume_id: str
+    :param instance_id: the id of the instance to attach the volume to
+    :type instance_id: str
+    :returns: nova volume pointer
+    :rtype: novaclient.v2.volumes.Volume
+    """
+    logging.info(
+        'Detaching volume {} from instance {}'.format(
+            volume_id, instance_id
+        )
+    )
+    return nova.volumes.delete_server_volume(server_id=instance_id,
+                                             volume_id=volume_id)
 
 
 def failover_cinder_volume_host(cinder, backend_name='cinder-ceph',
@@ -2675,6 +2999,10 @@ def get_private_key_file(keypair_name):
     :returns: Path to file containing key
     :rtype: str
     """
+    key = os.environ.get("TEST_PRIVKEY")
+    if key:
+        return key
+
     tmp_dir = deployment_env.get_tmpdir()
     return '{}/id_rsa_{}'.format(tmp_dir, keypair_name)
 
@@ -2687,8 +3015,14 @@ def write_private_key(keypair_name, key):
     :param key: PEM Encoded Private Key
     :type key: str
     """
-    with open(get_private_key_file(keypair_name), 'w') as key_file:
-        key_file.write(key)
+    # Create the key file with mode 0o600 to allow the developer to pass it to
+    # the `ssh` command without getting a "bad permissions" error.
+    stored_umask = os.umask(0o177)
+    try:
+        with open(get_private_key_file(keypair_name), 'w') as key_file:
+            key_file.write(key)
+    finally:
+        os.umask(stored_umask)
 
 
 def get_private_key(keypair_name):
@@ -2819,7 +3153,7 @@ def ssh_test(username, ip, vm_name, password=None, privkey=None, retry=True):
         return_string = stdout.readlines()[0].strip()
 
         if return_string == vm_name:
-            logging.info('SSH to %s(%s) succesfull' % (vm_name, ip))
+            logging.info('SSH to %s(%s) successful' % (vm_name, ip))
         else:
             logging.info('SSH to %s(%s) failed (%s != %s)' % (vm_name, ip,
                                                               return_string,
@@ -2881,7 +3215,7 @@ def ssh_command(username,
         try:
             verify(stdin, stdout, stderr)
         except Exception as e:
-            raise(e)
+            raise e
         finally:
             ssh.close()
 
@@ -3071,3 +3405,45 @@ def get_keystone_session_from_relation(client_app,
         creds['OS_PROJECT_DOMAIN_NAME'] = relation['service_domain']
 
     return get_keystone_session(creds, scope=scope, verify=verify)
+
+
+def get_cli_auth_args(keystone_client):
+    """Generate openstack CLI arguments for cloud authentication.
+
+    :returns: string of required cli arguments for authentication
+    :rtype: str
+    """
+    overcloud_auth = get_overcloud_auth()
+    overcloud_auth.update(
+        {
+            "OS_DOMAIN_ID": get_domain_id(
+                keystone_client, domain_name="admin_domain"
+            ),
+            "OS_TENANT_ID": get_project_id(
+                keystone_client,
+                project_name="admin",
+                domain_name="admin_domain",
+            ),
+            "OS_TENANT_NAME": "admin",
+        }
+    )
+
+    _required_keys = [
+        "OS_AUTH_URL",
+        "OS_USERNAME",
+        "OS_PASSWORD",
+        "OS_REGION_NAME",
+        "OS_DOMAIN_ID",
+        "OS_TENANT_ID",
+        "OS_TENANT_NAME",
+    ]
+
+    params = []
+    for os_key in _required_keys:
+        params.append(
+            "--{}={}".format(
+                os_key.lower().replace("_", "-"),
+                overcloud_auth[os_key],
+            )
+        )
+    return " ".join(params)

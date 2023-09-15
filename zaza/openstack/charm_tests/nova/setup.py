@@ -16,6 +16,7 @@
 
 import tenacity
 
+from tenacity import Retrying, stop_after_attempt, wait_exponential
 import zaza.openstack.utilities.openstack as openstack_utils
 from zaza.openstack.utilities import (
     cli as cli_utils,
@@ -37,15 +38,24 @@ def create_flavors(nova_client=None):
         nova_client = openstack_utils.get_nova_session_client(
             keystone_session)
     cli_utils.setup_logging()
-    names = [flavor.name for flavor in nova_client.flavors.list()]
+
+    for attempt in Retrying(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=2, max=10)):
+        with attempt:
+            existing_flavors = nova_client.flavors.list()
+
+    names = [flavor.name for flavor in existing_flavors]
     for flavor in nova_utils.FLAVORS.keys():
         if flavor not in names:
-            nova_client.flavors.create(
+            nova_flavor = nova_client.flavors.create(
                 name=flavor,
                 ram=nova_utils.FLAVORS[flavor]['ram'],
                 vcpus=nova_utils.FLAVORS[flavor]['vcpus'],
                 disk=nova_utils.FLAVORS[flavor]['disk'],
                 flavorid=nova_utils.FLAVORS[flavor]['flavorid'])
+            if 'extra-specs' in nova_utils.FLAVORS[flavor]:
+                nova_flavor.set_keys(nova_utils.FLAVORS[flavor]['extra-specs'])
 
 
 @tenacity.retry(stop=tenacity.stop_after_attempt(3),

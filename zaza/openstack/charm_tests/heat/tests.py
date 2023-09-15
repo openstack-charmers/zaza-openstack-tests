@@ -25,6 +25,7 @@ from heatclient.common import template_utils
 import zaza.model
 import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
+import zaza.openstack.charm_tests.tempest.tests as tempest_tests
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.charm_lifecycle.utils as charm_lifecycle_utils
 
@@ -62,6 +63,8 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
         services = ['heat-api', 'heat-api-cfn', 'heat-engine']
         return services
 
+    # TODO: Deprecate this function
+    # domain-setup action has been added as a setup configuration option
     def test_100_domain_setup(self):
         """Run required action for a working Heat unit."""
         # Action is REQUIRED to run for a functioning heat deployment
@@ -254,3 +257,9 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
 
         with self.pause_resume(self.services):
             logging.info("Testing pause resume")
+
+
+class HeatTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
+    """Test heat k8s scale out and scale back."""
+
+    application_name = "heat"

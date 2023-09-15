@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import os
 import sys
-from setuptools import setup, find_packages
+from setuptools import setup, find_namespace_packages
 from setuptools.command.test import test as TestCommand
 
 version = "0.0.1.dev1"
@@ -28,6 +28,12 @@ install_require = [
     'futurist<2.0.0',
     'async_generator',
     'boto3',
+    'trustme',
+
+    # pyopenssl depends on a newer version of cryptography since 22.1.0
+    # TypeError: deprecated() got an unexpected keyword argument 'name'
+    # https://github.com/pyca/pyopenssl/commit/a145fc3bc6d2e943434beb2f04bbf9b18930296f
+    'pyopenssl<22.1.0',
 
     # Newer versions require a Rust compiler to build, see
     # * https://github.com/openstack-charmers/zaza/issues/421
@@ -37,21 +43,21 @@ install_require = [
     'dnspython',
     'hvac<0.7.0',
     'jinja2',
-    'juju',
-    'juju-wait',
     'lxml',
     'PyYAML',
     'tenacity',
     'oslo.config<6.12.0',
-    'aodhclient<1.4.0',
+    'aodhclient',
     'gnocchiclient>=7.0.5,<8.0.0',
     'pika>=1.1.0,<2.0.0',
     'python-barbicanclient>=4.0.1,<5.0.0',
+    'python-cloudkittyclient',
     'python-designateclient>=1.5,<3.0.0',
     'python-heatclient<2.0.0',
     'python-ironicclient',
-    'python-glanceclient<3.0.0',
+    'python-glanceclient',
     'python-keystoneclient<3.22.0',
+    'python-magnumclient',
     'python-manilaclient<2.0.0',
     'python-novaclient<16.0.0',
     'python-neutronclient<7.0.0',
@@ -59,7 +65,9 @@ install_require = [
     'python-ceilometerclient',
     'python-cinderclient<6.0.0',
     'python-swiftclient<3.9.0',
-    'zaza@git+https://github.com/openstack-charmers/zaza.git#egg=zaza',
+    'python-watcherclient',
+    # 'zaza@git+https://github.com/openstack-charmers/zaza.git#egg=zaza',
+    'zaza',
 ]
 
 tests_require = [
@@ -112,7 +120,9 @@ if sys.argv[-1] == 'tag':
 
 setup(
     license='Apache-2.0: http://www.apache.org/licenses/LICENSE-2.0',
-    packages=find_packages(exclude=["unit_tests"]),
+    # name='zaza-openstack-tests',
+    name='zaza.openstack',
+    packages=find_namespace_packages(include=['zaza.*'], exclude=["unit_tests"]),
     zip_safe=False,
     include_package_data=True,
     cmdclass={'test': Tox},

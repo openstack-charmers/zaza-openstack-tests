@@ -17,7 +17,7 @@
 This module contains a number of functions for upgrading OpenStack.
 """
 import logging
-import zaza.openstack.utilities.juju as juju_utils
+import zaza.utilities.juju as juju_utils
 
 import zaza.model
 from zaza import sync_wrapper
@@ -132,12 +132,23 @@ def action_upgrade_apps(applications, model_name=None):
             status=status,
             model_name=model_name)
 
+        # NOTE(lourot): we're more likely to time out while waiting for the
+        # action's result if we launch an action while the model is still
+        # executing. Thus it's safer to wait for the model to settle between
+        # actions.
+        zaza.model.block_until_all_units_idle(model_name)
         pause_units(hacluster_units, model_name=model_name)
+
+        zaza.model.block_until_all_units_idle(model_name)
         pause_units(target, model_name=model_name)
 
+        zaza.model.block_until_all_units_idle(model_name)
         action_unit_upgrade(target, model_name=model_name)
 
+        zaza.model.block_until_all_units_idle(model_name)
         resume_units(target, model_name=model_name)
+
+        zaza.model.block_until_all_units_idle(model_name)
         resume_units(hacluster_units, model_name=model_name)
 
         done.extend(target)

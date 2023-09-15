@@ -37,6 +37,11 @@ UBUNTU_OPENSTACK_RELEASE = OrderedDict([
     ('focal', 'ussuri'),
     ('groovy', 'victoria'),
     ('hirsute', 'wallaby'),
+    ('impish', 'xena'),
+    ('jammy', 'yoga'),
+    ('kinetic', 'zed'),
+    ('lunar', 'antelope'),
+    ('mantic', 'bobcat'),
 ])
 
 
@@ -60,6 +65,12 @@ OPENSTACK_CODENAMES = OrderedDict([
     ('2019.2', 'train'),
     ('2020.1', 'ussuri'),
     ('2020.2', 'victoria'),
+    ('2021.1', 'wallaby'),
+    ('2021.2', 'xena'),
+    ('2022.1', 'yoga'),
+    ('2022.2', 'zed'),
+    ('2023.1', 'antelope'),
+    ('2023.2', 'bobcat'),
 ])
 
 OPENSTACK_RELEASES_PAIRS = [
@@ -71,7 +82,12 @@ OPENSTACK_RELEASES_PAIRS = [
     'bionic_stein', 'disco_stein', 'bionic_train',
     'eoan_train', 'bionic_ussuri', 'focal_ussuri',
     'focal_victoria', 'groovy_victoria',
-    'focal_wallaby', 'hirsute_wallaby']
+    'focal_wallaby', 'hirsute_wallaby',
+    'focal_xena', 'impish_xena',
+    'focal_yoga', 'jammy_yoga', 'jammy_zed',
+    'kinetic_zed', 'jammy_antelope', 'lunar_antelope',
+    'jammy_bobcat', 'mantic_bobcat',
+]
 
 SWIFT_CODENAMES = OrderedDict([
     ('diablo',
@@ -258,11 +274,14 @@ PACKAGE_CODENAMES = {
         ('11', 'victoria'),
     ]),
     'ceph-common': OrderedDict([
-        ('10', 'mitaka'),  # jewel
-        ('12', 'queens'),  # luminous
-        ('13', 'rocky'),   # mimic
-        ('14', 'train'),   # nautilus
-        ('15', 'ussuri'),  # octopus
+        ('10', 'mitaka'),    # jewel
+        ('12', 'queens'),    # luminous
+        ('13', 'rocky'),     # mimic
+        ('14', 'train'),     # nautilus
+        ('15', 'ussuri'),    # octopus
+        ('16', 'victoria'),  # pacific
+        ('17', 'yoga'),      # quincy
+        ('18', 'bobcat'),    # reef
     ]),
     'placement-common': OrderedDict([
         ('2', 'train'),
@@ -270,3 +289,125 @@ PACKAGE_CODENAMES = {
         ('4', 'victoria'),
     ]),
 }
+
+
+UBUNTU_RELEASES = (
+    'lucid',
+    'maverick',
+    'natty',
+    'oneiric',
+    'precise',
+    'quantal',
+    'raring',
+    'saucy',
+    'trusty',
+    'utopic',
+    'vivid',
+    'wily',
+    'xenial',
+    'yakkety',
+    'zesty',
+    'artful',
+    'bionic',
+    'cosmic',
+    'disco',
+    'eoan',
+    'focal',
+    'groovy',
+    'hirsute',
+    'impish',
+    'jammy',
+    'kinetic',
+    'lunar',
+    'mantic',
+)
+
+
+class BasicStringComparator(object):
+    """Provides a class that will compare strings from an iterator type object.
+
+    Used to provide > and < comparisons on strings that may not necessarily be
+    alphanumerically ordered.  e.g. OpenStack or Ubuntu releases AFTER the
+    z-wrap.
+    """
+
+    _list = None
+
+    def __init__(self, item):
+        """Do init."""
+        if self._list is None:
+            raise Exception("Must define the _list in the class definition!")
+        try:
+            self.index = self._list.index(item)
+        except Exception:
+            raise KeyError("Item '{}' is not in list '{}'"
+                           .format(item, self._list))
+
+    def __eq__(self, other):
+        """Do equals."""
+        assert isinstance(other, str) or isinstance(other, self.__class__)
+        return self.index == self._list.index(other)
+
+    def __ne__(self, other):
+        """Do not equals."""
+        return not self.__eq__(other)
+
+    def __lt__(self, other):
+        """Do less than."""
+        assert isinstance(other, str) or isinstance(other, self.__class__)
+        return self.index < self._list.index(other)
+
+    def __ge__(self, other):
+        """Do greater than or equal."""
+        return not self.__lt__(other)
+
+    def __gt__(self, other):
+        """Do greater than."""
+        assert isinstance(other, str) or isinstance(other, self.__class__)
+        return self.index > self._list.index(other)
+
+    def __le__(self, other):
+        """Do less than or equals."""
+        return not self.__gt__(other)
+
+    def __repr__(self):
+        """Return the representation of CompareOpenStack."""
+        return "%s<%s>" % (self.__class__.__name__, self._list[self.index])
+
+    def __str__(self):
+        """Give back the item at the index.
+
+        This is so it can be used in comparisons like:
+
+        s_mitaka = CompareOpenStack('mitaka')
+        s_newton = CompareOpenstack('newton')
+
+        assert s_newton > s_mitaka
+
+        :returns: <string>
+        """
+        return self._list[self.index]
+
+
+class CompareHostReleases(BasicStringComparator):
+    """Provide comparisons of Ubuntu releases.
+
+    Use in the form of
+
+    if CompareHostReleases(release) > 'trusty':
+        # do something with mitaka
+    """
+
+    _list = UBUNTU_RELEASES
+
+
+class CompareOpenStack(BasicStringComparator):
+    """Provide comparisons of OpenStack releases.
+
+    Use in the form of
+
+    if CompareOpenStack(release) > 'yoga':
+        # do something
+    """
+
+    _list = list(OPENSTACK_CODENAMES.values())

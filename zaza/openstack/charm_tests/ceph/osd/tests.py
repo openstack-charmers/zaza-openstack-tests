@@ -282,3 +282,26 @@ class ServiceTest(unittest.TestCase):
         wait_for_service(unit_name=self.TESTED_UNIT,
                          services=should_stop,
                          target_status='stopped')
+
+    def test_active_after_pristine_block(self):
+        """Test if we can get back to active state after pristine block.
+
+        Set a non-pristine status, then trigger update-status to see if it
+        clears.
+        """
+        logging.info('Setting Non-pristine status')
+        zaza_model.run_on_leader(
+            "ceph-osd",
+            "status-set blocked 'Non-pristine'"
+        )
+        ceph_osd_states = {
+            'ceph-osd': {
+                'workload-status': 'blocked',
+                'workload-status-message-prefix': 'Non-pristine'
+            }
+        }
+        zaza_model.wait_for_application_states(states=ceph_osd_states)
+        logging.info('Running update-status action')
+        zaza_model.run_on_leader('ceph-osd', 'hooks/update-status')
+        logging.info('Wait for idle/ready status')
+        zaza_model.wait_for_application_states()

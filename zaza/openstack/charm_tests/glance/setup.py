@@ -24,8 +24,8 @@ import zaza.utilities.deployment_env as deployment_env
 
 CIRROS_IMAGE_NAME = "cirros"
 CIRROS_ALT_IMAGE_NAME = "cirros_alt"
-LTS_RELEASE = "bionic"
-LTS_IMAGE_NAME = "bionic"
+LTS_RELEASE = "jammy"
+LTS_IMAGE_NAME = "jammy"
 
 
 def basic_setup():
@@ -165,6 +165,27 @@ def add_lts_image(glance_client=None, image_name=None, release=None,
               glance_client=glance_client,
               image_name=image_name,
               properties=properties)
+
+
+def add_uefi_image(glance_client=None, image_name=None, release=None,
+                   properties=None):
+    """Add an Ubuntu Focal LTS image to the current deployment.
+
+    :param glance: Authenticated glanceclient
+    :type glance: glanceclient.Client
+    :param image_name: Label for the image in glance
+    :type image_name: str
+    :param release: Name of Ubuntu release.
+    :type release: str
+    :param properties: Custom image properties
+    :type properties: dict
+    """
+    props = {'hw_firmware_type': 'uefi'}
+    if properties:
+        props.update(properties)
+    add_lts_image(glance_client, image_name=image_name or 'focal',
+                  release=release or 'focal',
+                  properties=props)
 
 
 def configure_external_s3_backend():

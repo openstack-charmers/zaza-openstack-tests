@@ -28,6 +28,7 @@ import zaza.openstack.configure.guest as configure_guest
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.utilities.generic as generic_utils
 import zaza.openstack.charm_tests.glance.setup as glance_setup
+import zaza.utilities.machine_os
 
 
 def skipIfNotHA(service_name):
@@ -47,7 +48,12 @@ def skipIfNotHA(service_name):
 
 
 def skipUntilVersion(service, package, release):
-    """Run decorator to skip this test if application version is too low."""
+    """Run decorator to skip this test if application version is too low.
+
+    :param service: the name of the application to check the package's version
+    :param package: the name of the package to check
+    :param releases: package version to compare with.
+    """
     def _skipUntilVersion_inner_1(f):
         def _skipUntilVersion_inner_2(*args, **kwargs):
             package_version = generic_utils.get_pkg_version(service, package)
@@ -63,6 +69,44 @@ def skipUntilVersion(service, package, release):
                                  package_version, service, release))
         return _skipUntilVersion_inner_2
     return _skipUntilVersion_inner_1
+
+
+def package_version_matches(application, package, versions, op):
+    """Determine if the application is running any matching package versions.
+
+    The version comparison is delegated to `dpkg --compare-versions`, if the
+    command returns 0, means the version matches.
+
+    Usage examples:
+
+    * Return true if hacluster application has crmsh-4.4.0-1ubuntu1 installed
+
+        def test_hacluster():
+            if package_version_matches('keystone-hacluster', 'crmsh',
+                                       ['4.4.0-1ubuntu1'], 'eq')
+                return
+            ...
+
+    :param application: the name of the application to check the package's
+           versions.
+    :param package: the name of the package to check
+    :param versions: list of versions to compare with
+    :param op: operation to do the comparison (e.g. lt le eq ne ge gt, see for
+               more details dpkg(1))
+    :return: Matching package version
+    :rtype: str
+
+    """
+    package_version = generic_utils.get_pkg_version(application, package)
+    for version in versions:
+        p = subprocess.run(['dpkg', '--compare-versions',
+                            package_version, op, version],
+                           stderr=subprocess.STDOUT,
+                           universal_newlines=True)
+        if p.returncode == 0:
+            logging.info("Package version {version} matches")
+            return package_version
+    return None
 
 
 def audit_assertions(action,
@@ -599,6 +643,122 @@ class BaseCharmTest(unittest.TestCase):
         for unit in units:
             model.run_on_unit(unit, "hooks/update-status")
 
+    def assert_unit_cpu_topology(self, unit, nr_1g_hugepages):
+        r"""Assert unit under test CPU topology.
+
+        When using OpenStack as CI substrate:
+
+        By default, when instance NUMA placement is not specified,
+        a topology of N sockets, each with one core and one thread,
+        is used for an instance, where N corresponds to the number of
+        instance vCPUs requested.
+
+        In this context a socket is a physical socket on the motherboard
+        where a CPU is connected.
+
+        The DPDK Environment Abstraction Layer (EAL) allocates memory per
+        CPU socket, so we want the CPU topology inside the instance to
+        mimic something we would be likely to find in the real world and
+        at the same time not make the test too heavy.
+
+        The charm default is to have Open vSwitch allocate 1GB RAM per
+        CPU socket.
+
+        The following command would set the apropriate CPU topology for a
+        4 VCPU, 8 GB RAM flavor:
+
+            openstack flavor set onesocketm1.large \
+                --property hw:cpu_sockets=1 \
+                --property hw:cpu_cores=2 \
+                --property hw:cpu_threads=2
+
+        For validation of operation with multiple sockets, the following
+        command would set the apropriate CPU topology for a
+        8 VCPU, 16GB RAM flavor:
+
+            openstack flavor set twosocketm1.xlarge \
+                --property hw:cpu_sockets=2 \
+                --property hw:cpu_cores=2 \
+                --property hw:cpu_threads=2 \
+                --property hw:numa_nodes=2
+        """
+        # Get number of sockets
+        cmd = 'lscpu -p|grep -v ^#|cut -f3 -d,|sort|uniq|wc -l'
+        sockets = int(zaza.utilities.juju.remote_run(
+            unit.name, cmd, model_name=self.model_name, fatal=True).rstrip())
+
+        # Get total memory
+        cmd = 'cat /proc/meminfo |grep ^MemTotal'
+        _, meminfo_value, _ = zaza.utilities.juju.remote_run(
+            unit.name,
+            cmd,
+            model_name=self.model_name,
+            fatal=True).rstrip().split()
+        mbtotal = int(meminfo_value) * 1024 / 1000 / 1000
+        mbtotalhugepages = nr_1g_hugepages * 1024
+
+        # headroom for operating system and daemons in instance
+        mbsystemheadroom = 2048
+        # memory to be consumed by the nested instance
+        mbinstance = 1024
+
+        # the amount of hugepage memory OVS / DPDK EAL will allocate
+        mbovshugepages = sockets * 1024
+        # the amount of hugepage memory available for nested instance
+        mbfreehugepages = mbtotalhugepages - mbovshugepages
+
+        assert (mbtotal - mbtotalhugepages >= mbsystemheadroom and
+                mbfreehugepages >= mbinstance), (
+            'Unit {} is not suitable for test, please adjust instance '
+            'type CPU topology or provide suitable physical machine. '
+            'CPU Sockets: {} '
+            'Available memory: {} MB '
+            'Details:\n{}'
+            .format(unit.name,
+                    sockets,
+                    mbtotal,
+                    self.assert_unit_cpu_topology.__doc__))
+
+    def enable_hugepages_vfio_on_hvs_in_vms(self, nr_1g_hugepages):
+        """Enable hugepages and unsafe VFIO NOIOMMU on virtual hypervisors."""
+        for unit in model.get_units(
+                zaza.utilities.machine_os.get_hv_application(),
+                model_name=self.model_name):
+            if not zaza.utilities.machine_os.is_vm(unit.name,
+                                                   model_name=self.model_name):
+                logging.info('Unit {} is a physical machine, assuming '
+                             'hugepages and IOMMU configuration already '
+                             'performed through kernel command line.')
+                continue
+            logging.info('Checking CPU topology on {}'.format(unit.name))
+            self.assert_unit_cpu_topology(unit, nr_1g_hugepages)
+            logging.info('Enabling hugepages on {}'.format(unit.name))
+            zaza.utilities.machine_os.enable_hugepages(
+                unit, nr_1g_hugepages, model_name=self.model_name)
+            logging.info('Enabling unsafe VFIO NOIOMMU mode on {}'
+                         .format(unit.name))
+            zaza.utilities.machine_os.enable_vfio_unsafe_noiommu_mode(
+                unit, model_name=self.model_name)
+
+    def disable_hugepages_vfio_on_hvs_in_vms(self):
+        """Disable hugepages and unsafe VFIO NOIOMMU on virtual hypervisors."""
+        for unit in model.get_units(
+                zaza.utilities.machine_os.get_hv_application(),
+                model_name=self.model_name):
+            if not zaza.utilities.machine_os.is_vm(unit.name,
+                                                   model_name=self.model_name):
+                logging.info('Unit {} is a physical machine, assuming '
+                             'hugepages and IOMMU configuration already '
+                             'performed through kernel command line.')
+                continue
+            logging.info('Disabling hugepages on {}'.format(unit.name))
+            zaza.utilities.machine_os.disable_hugepages(
+                unit, model_name=self.model_name)
+            logging.info('Disabling unsafe VFIO NOIOMMU mode on {}'
+                         .format(unit.name))
+            zaza.utilities.machine_os.disable_vfio_unsafe_noiommu_mode(
+                unit, model_name=self.model_name)
+
 
 class OpenStackBaseTest(BaseCharmTest):
     """Generic helpers for testing OpenStack API charms."""
@@ -634,8 +794,10 @@ class OpenStackBaseTest(BaseCharmTest):
             pass
 
     def launch_guest(self, guest_name, userdata=None, use_boot_volume=False,
-                     instance_key=None):
-        """Launch two guests to use in tests.
+                     instance_key=None, flavor_name=None,
+                     attach_to_external_network=False,
+                     keystone_session=None, perform_connectivity_check=True):
+        """Launch one guest to use in tests.
 
         Note that it is up to the caller to have set the RESOURCE_PREFIX class
         variable prior to calling this method.
@@ -651,6 +813,14 @@ class OpenStackBaseTest(BaseCharmTest):
         :type use_boot_volume: boolean
         :param instance_key: Key to collect associated config data with.
         :type instance_key: Optional[str]
+        :param attach_to_external_network: Attach instance directly to external
+                                           network.
+        :type attach_to_external_network: bool
+        :param keystone_session: Keystone session to use.
+        :param perform_connectivity_check: Whether to perform a connectivity
+                                           check.
+        :type perform_connectivity_check: bool
+        :type keystone_session: Optional[keystoneauth1.session.Session]
         :returns: Nova instance objects
         :rtype: Server
         """
@@ -678,9 +848,15 @@ class OpenStackBaseTest(BaseCharmTest):
                     instance_key,
                     vm_name=instance_name,
                     use_boot_volume=use_boot_volume,
-                    userdata=userdata)
+                    userdata=userdata,
+                    flavor_name=flavor_name,
+                    attach_to_external_network=attach_to_external_network,
+                    keystone_session=keystone_session,
+                    perform_connectivity_check=perform_connectivity_check
+                )
 
-    def launch_guests(self, userdata=None):
+    def launch_guests(self, userdata=None, attach_to_external_network=False,
+                      flavor_name=None):
         """Launch two guests to use in tests.
 
         Note that it is up to the caller to have set the RESOURCE_PREFIX class
@@ -688,6 +864,9 @@ class OpenStackBaseTest(BaseCharmTest):
 
         :param userdata: Userdata to attach to instance
         :type userdata: Optional[str]
+        :param attach_to_external_network: Attach instance directly to external
+                                           network.
+        :type attach_to_external_network: bool
         :returns: List of launched Nova instance objects
         :rtype: List[Server]
         """
@@ -696,7 +875,9 @@ class OpenStackBaseTest(BaseCharmTest):
             launched_instances.append(
                 self.launch_guest(
                     guest_name='ins-{}'.format(guest_number),
-                    userdata=userdata))
+                    userdata=userdata,
+                    attach_to_external_network=attach_to_external_network,
+                    flavor_name=flavor_name))
         return launched_instances
 
     def retrieve_guest(self, guest_name):
@@ -1043,6 +1224,21 @@ class BaseDeferredRestartTest(BaseCharmTest):
         # clear status message.
         self.clear_hooks()
 
+    def get_service_timestamps(self, service):
+        """For units of self.application_name get start time of service.
+
+        :param service: Service to check, must be a systemd service
+        :type service: str
+        :returns: A dict timestamps keyed on unit name.
+        :rtype: dict
+        """
+        timestamps = {}
+        for unit in model.get_units(self.application_name):
+            timestamps[unit.entity_id] = model.get_systemd_service_active_time(
+                unit.entity_id,
+                service)
+        return timestamps
+
     def run_package_change_test(self, restart_package, restart_package_svc):
         """Trigger a deferred restart by updating a package.
 
@@ -1055,8 +1251,32 @@ class BaseDeferredRestartTest(BaseCharmTest):
                                         after restart_package has changed.
         :type restart_package_service: str
         """
+        pre_timestamps = self.get_service_timestamps(
+            restart_package_svc)
         self.trigger_deferred_restart_via_package(restart_package)
-
+        post_timestamps = self.get_service_timestamps(
+            restart_package_svc)
+        broken_units = []
+        for unit_name in post_timestamps.keys():
+            if pre_timestamps[unit_name] != post_timestamps[unit_name]:
+                logging.error(
+                    "Service {} on unit {} should have start time of {} but"
+                    " it has {}".format(
+                        restart_package_svc,
+                        unit_name,
+                        pre_timestamps[unit_name],
+                        post_timestamps[unit_name]))
+                broken_units.append(unit_name)
+        if broken_units:
+            msg = (
+                "Units {} restarted service {} when disallowed by "
+                "deferred_restarts").format(
+                    ','.join(broken_units),
+                    restart_package_svc)
+            raise Exception(msg)
+        else:
+            logging.info(
+                "Service was {} not restarted.".format(restart_package_svc))
         self.check_show_deferred_restarts_wlm(restart_package_svc)
         self.check_show_deferred_events_action_restart(
             restart_package_svc,

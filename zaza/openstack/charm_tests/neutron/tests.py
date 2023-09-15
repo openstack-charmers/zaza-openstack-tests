@@ -26,11 +26,15 @@ import tenacity
 
 from neutronclient.common import exceptions as neutronexceptions
 
+import yaml
 import zaza
+import zaza.openstack.charm_tests.neutron.setup as neutron_setup
 import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.configure.guest as guest
 import zaza.openstack.utilities.openstack as openstack_utils
+import zaza.openstack.charm_tests.tempest.tests as tempest_tests
+import zaza.utilities.machine_os
 
 
 class NeutronPluginApiSharedTests(test_utils.OpenStackBaseTest):
@@ -122,16 +126,22 @@ class NeutronGatewayTest(NeutronPluginApiSharedTests):
 
     def test_401_enable_qos(self):
         """Check qos settings set via neutron-api charm."""
-        if (self.current_os_release >=
-                openstack_utils.get_os_release('trusty_mitaka')):
-            logging.info('running qos check')
+        logging.info('running qos check')
 
-            with self.config_change(
-                    {'enable-qos': 'False'},
-                    {'enable-qos': 'True'},
-                    application_name="neutron-api"):
+        qos_enabled = zaza.model.get_application_config(
+            'neutron-api')['enable-qos']['value']
 
-                self._validate_openvswitch_agent_qos()
+        if qos_enabled is True:
+            logging.info('qos already enabled, not running enable-qos '
+                         'test')
+            return
+
+        with self.config_change(
+                {'enable-qos': False},
+                {'enable-qos': True},
+                application_name="neutron-api"):
+
+            self._validate_openvswitch_agent_qos()
 
     @tenacity.retry(wait=tenacity.wait_exponential(min=5, max=60),
                     reraise=True, stop=tenacity.stop_after_attempt(8))
@@ -248,6 +258,135 @@ class NeutronGatewayTest(NeutronPluginApiSharedTests):
         return services
 
 
+class NeutronGatewayShowActionsTest(test_utils.OpenStackBaseTest):
+    """Test "show" actions of Neutron Gateway Charm.
+
+    actions:
+      * show-routers
+      * show-dhcp-networks
+      * show-loadbalancers
+    """
+
+    SKIP_LBAAS_TESTS = True
+
+    @classmethod
+    def setUpClass(cls, application_name='neutron-gateway', model_alias=None):
+        """Run class setup for running Neutron Gateway tests."""
+        super(NeutronGatewayShowActionsTest, cls).setUpClass(
+            application_name, model_alias)
+        # set up clients
+        cls.neutron_client = (
+            openstack_utils.get_neutron_session_client(cls.keystone_session))
+
+        # Loadbalancer tests not supported on Train and above and on
+        # releases Mitaka and below
+        current = openstack_utils.get_os_release()
+        bionic_train = openstack_utils.get_os_release('bionic_train')
+        xenial_mitaka = openstack_utils.get_os_release('xenial_mitaka')
+        cls.SKIP_LBAAS_TESTS = not (xenial_mitaka > current < bionic_train)
+
+    def _assert_result_match(self, action_result, resource_list,
+                             resource_name):
+        """Assert that action_result contains same data as resource_list."""
+        # make sure that action completed successfully
+        if action_result.status != 'completed':
+            self.fail('Juju Action failed: {}'.format(action_result.message))
+
+        # extract data from juju action
+        action_data = action_result.data.get('results', {}).get(resource_name)
+        resources_from_action = yaml.safe_load(action_data)
+
+        # pull resource IDs from expected resource list and juju action data
+        expected_resource_ids = {resource['id'] for resource in resource_list}
+        result_resource_ids = resources_from_action.keys()
+
+        # assert that juju action returned expected resources
+        self.assertEqual(result_resource_ids, expected_resource_ids)
+
+    def test_show_routers(self):
+        """Test that show-routers action reports correct neutron routers."""
+        # fetch neutron routers using neutron client
+        ngw_unit = zaza.model.get_units(self.application_name,
+                                        model_name=self.model_name)[0]
+        routers_from_client = self.neutron_client.list_routers().get(
+            'routers', [])
+
+        if not routers_from_client:
+            self.fail('At least one router must be configured for this test '
+                      'to pass.')
+
+        # fetch neutron routers using juju-action
+        result = zaza.model.run_action(ngw_unit.entity_id,
+                                       'show-routers',
+                                       model_name=self.model_name)
+
+        # assert that data from neutron client match data from juju action
+        self._assert_result_match(result, routers_from_client, 'router-list')
+
+    def test_show_dhcp_networks(self):
+        """Test that show-dhcp-networks reports correct DHCP networks."""
+        # fetch DHCP networks using neutron client
+        ngw_unit = zaza.model.get_units(self.application_name,
+                                        model_name=self.model_name)[0]
+        networks_from_client = self.neutron_client.list_networks().get(
+            'networks', [])
+
+        if not networks_from_client:
+            self.fail('At least one network must be configured for this test '
+                      'to pass.')
+
+        # fetch DHCP networks using juju-action
+        result = zaza.model.run_action(ngw_unit.entity_id,
+                                       'show-dhcp-networks',
+                                       model_name=self.model_name)
+
+        # assert that data from neutron client match data from juju action
+        self._assert_result_match(result, networks_from_client,
+                                  'dhcp-networks')
+
+    def test_show_load_balancers(self):
+        """Test that show-loadbalancers reports correct loadbalancers."""
+        if self.SKIP_LBAAS_TESTS:
+            self.skipTest('LBaasV2 is not supported in this version.')
+
+        loadbalancer_id = None
+
+        try:
+            # create LBaasV2 for the purpose of this test
+            lbaas_name = 'test_lbaas'
+            subnet_list = self.neutron_client.list_subnets(
+                name='private_subnet').get('subnets', [])
+
+            if not subnet_list:
+                raise RuntimeError('Expected subnet "private_subnet" is not '
+                                   'configured.')
+
+            subnet = subnet_list[0]
+            loadbalancer_data = {'loadbalancer': {'name': lbaas_name,
+                                                  'vip_subnet_id': subnet['id']
+                                                  }
+                                 }
+            loadbalancer = self.neutron_client.create_loadbalancer(
+                body=loadbalancer_data)
+            loadbalancer_id = loadbalancer['loadbalancer']['id']
+
+            # test that client and action report same data
+            ngw_unit = zaza.model.get_units(self.application_name,
+                                            model_name=self.model_name)[0]
+            lbaas_from_client = self.neutron_client.list_loadbalancers().get(
+                'loadbalancers', [])
+
+            result = zaza.model.run_action(ngw_unit.entity_id,
+                                           'show-load-balancers',
+                                           model_name=self.model_name)
+
+            self._assert_result_match(result, lbaas_from_client,
+                                      'load-balancers')
+        finally:
+            if loadbalancer_id:
+                self.neutron_client.delete_loadbalancer(loadbalancer_id)
+
+
 class NeutronCreateNetworkTest(test_utils.OpenStackBaseTest):
     """Test creating a Neutron network through the API.
 
@@ -362,14 +501,11 @@ class NeutronApiTest(NeutronCreateNetworkTest):
         Pause service and check services are stopped then resume and check
         they are started
         """
-        bionic_stein = openstack_utils.get_os_release('bionic_stein')
-        if openstack_utils.get_os_release() >= bionic_stein:
-            pgrep_full = True
-        else:
-            pgrep_full = False
         with self.pause_resume(
-                ["neutron-server", "apache2", "haproxy"],
-                pgrep_full=pgrep_full):
+                ["/usr/bin/neutron-server",
+                 "/usr/sbin/apache2",
+                 "/usr/sbin/haproxy"],
+                pgrep_full=True):
             logging.info("Testing pause resume")
 
 
@@ -672,6 +808,11 @@ class NeutronOvsVsctlTest(NeutronPluginApiSharedTests):
                 self.assertEqual(actual_external_id, expected_external_id)
 
 
+def router_address_from_subnet(subnet):
+    """Retrieve router address from subnet."""
+    return subnet['gateway_ip']
+
+
 class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
     """Base for checking openstack instances have valid networking."""
 
@@ -684,6 +825,21 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
             application_name='neutron-api')
         cls.neutron_client = (
             openstack_utils.get_neutron_session_client(cls.keystone_session))
+
+        cls.project_subnet = cls.neutron_client.find_resource(
+            'subnet',
+            neutron_setup.OVERCLOUD_NETWORK_CONFIG['project_subnet_name'])
+        cls.external_subnet = cls.neutron_client.find_resource(
+            'subnet',
+            neutron_setup.OVERCLOUD_NETWORK_CONFIG['external_subnet_name'])
+
+        # Override this if you want your test to attach instances directly to
+        # the external provider network
+        cls.attach_to_external_network = False
+
+        # Override this if you want your test to launch instances with a
+        # specific flavor
+        cls.instance_flavor = None
 
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
                     reraise=True, stop=tenacity.stop_after_attempt(8))
@@ -707,8 +863,10 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
         :param mtu: Check that we can send non-fragmented packets of given size
         :type mtu: Optional[int]
         """
-        floating_1 = floating_ips_from_instance(instance_1)[0]
-        floating_2 = floating_ips_from_instance(instance_2)[0]
+        if not self.attach_to_external_network:
+            floating_1 = floating_ips_from_instance(instance_1)[0]
+            floating_2 = floating_ips_from_instance(instance_2)[0]
+        address_1 = fixed_ips_from_instance(instance_1)[0]
         address_2 = fixed_ips_from_instance(instance_2)[0]
 
         username = guest.boot_tests['bionic']['username']
@@ -726,26 +884,27 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
                 'ping -M do -s {} -c 1'.format(packetsize))
 
         for cmd in cmds:
-            openstack_utils.ssh_command(
-                username, floating_1, 'instance-1',
-                '{} {}'.format(cmd, address_2),
-                password=password, privkey=privkey, verify=verify)
+            if self.attach_to_external_network:
+                openstack_utils.ssh_command(
+                    username, address_1, 'instance-1',
+                    '{} {}'.format(cmd, address_2),
+                    password=password, privkey=privkey, verify=verify)
+            else:
+                openstack_utils.ssh_command(
+                    username, floating_1, 'instance-1',
+                    '{} {}'.format(cmd, address_2),
+                    password=password, privkey=privkey, verify=verify)
 
-            openstack_utils.ssh_command(
-                username, floating_1, 'instance-1',
-                '{} {}'.format(cmd, floating_2),
-                password=password, privkey=privkey, verify=verify)
+                openstack_utils.ssh_command(
+                    username, floating_1, 'instance-1',
+                    '{} {}'.format(cmd, floating_2),
+                    password=password, privkey=privkey, verify=verify)
 
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
                     reraise=True, stop=tenacity.stop_after_attempt(8))
     def validate_instance_can_reach_router(self, instance, verify, mtu=None):
         """
         Validate that an instance can reach it's primary gateway.
-
-        We make the assumption that the router's IP is 192.168.0.1
-        as that's the network that is setup in
-        neutron.setup.basic_overcloud_network which is used in all
-        Zaza Neutron validations.
 
         :param instance: The instance to check networking from
         :type instance: nova_client.Server
@@ -756,7 +915,12 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
         :param mtu: Check that we can send non-fragmented packets of given size
         :type mtu: Optional[int]
         """
-        address = floating_ips_from_instance(instance)[0]
+        if self.attach_to_external_network:
+            router = router_address_from_subnet(self.external_subnet)
+            address = fixed_ips_from_instance(instance)[0]
+        else:
+            router = router_address_from_subnet(self.project_subnet)
+            address = floating_ips_from_instance(instance)[0]
 
         username = guest.boot_tests['bionic']['username']
         password = guest.boot_tests['bionic'].get('password')
@@ -774,7 +938,7 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
 
         for cmd in cmds:
             openstack_utils.ssh_command(
-                username, address, 'instance', '{} 192.168.0.1'.format(cmd),
+                username, address, 'instance', '{} {}'.format(cmd, router),
                 password=password, privkey=privkey, verify=verify)
 
     @tenacity.retry(wait=tenacity.wait_exponential(min=5, max=60),
@@ -953,11 +1117,75 @@ class NeutronNetworkingTest(NeutronNetworkingBase):
         """
         instance_1, instance_2 = self.retrieve_guests()
         if not all([instance_1, instance_2]):
-            self.launch_guests()
+            self.launch_guests(
+                attach_to_external_network=self.attach_to_external_network,
+                flavor_name=self.instance_flavor)
             instance_1, instance_2 = self.retrieve_guests()
         self.check_connectivity(instance_1, instance_2)
         self.run_resource_cleanup = self.get_my_tests_options(
             'run_resource_cleanup', True)
+
+
+class DPDKNeutronNetworkingTest(NeutronNetworkingTest):
+    """Ensure that openstack instances have valid networking with DPDK."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running Neutron API Networking tests."""
+        super(DPDKNeutronNetworkingTest, cls).setUpClass()
+
+        # At this point in time the charms do not support configuring overlay
+        # networks with DPDK.  To perform end to end validation we need to
+        # attach instances directly to the provider network and subsequently
+        # DHCP needs to be enabled on that network.
+        #
+        # Note that for instances wired with DPDK the DHCP request/response is
+        # handled as private communication between the ovn-controller and the
+        # instance, and as such there is no risk of rogue DHCP replies escaping
+        # to the surrounding network.
+        cls.attach_to_external_network = True
+        cls.instance_flavor = 'hugepages'
+        cls.external_subnet = cls.neutron_client.find_resource(
+            'subnet',
+            neutron_setup.OVERCLOUD_NETWORK_CONFIG['external_subnet_name'])
+        if ('dhcp_enabled' not in cls.external_subnet or
+                not cls.external_subnet['dhcp_enabled']):
+            logging.info('Enabling DHCP on subnet {}'
+                         .format(cls.external_subnet['name']))
+            openstack_utils.update_subnet_dhcp(
+                cls.neutron_client, cls.external_subnet, True)
+
+    def test_instances_have_networking(self):
+        """Enable DPDK then Validate North/South and East/West networking."""
+        self.enable_hugepages_vfio_on_hvs_in_vms(4)
+        with self.config_change(
+                {
+                    'enable-dpdk': False,
+                    'dpdk-driver': '',
+                },
+                {
+                    'enable-dpdk': True,
+                    'dpdk-driver': 'vfio-pci',
+                },
+                application_name='ovn-chassis'):
+            super().test_instances_have_networking()
+        self.run_resource_cleanup = self.get_my_tests_options(
+            'run_resource_cleanup', True)
+
+    def resource_cleanup(self):
+        """Extend to also revert VFIO NOIOMMU mode on units under test."""
+        super().resource_cleanup()
+        if not self.run_resource_cleanup:
+            return
+
+        if ('dhcp_enabled' not in self.external_subnet or
+                not self.external_subnet['dhcp_enabled']):
+            logging.info('Disabling DHCP on subnet {}'
+                         .format(self.external_subnet['name']))
+            openstack_utils.update_subnet_dhcp(
+                self.neutron_client, self.external_subnet, False)
+
+        self.disable_hugepages_vfio_on_hvs_in_vms()
 
 
 class NeutronNetworkingVRRPTests(NeutronNetworkingBase):
@@ -972,7 +1200,7 @@ class NeutronNetworkingVRRPTests(NeutronNetworkingBase):
         self.check_connectivity(instance_1, instance_2)
 
         routers = self.neutron_client.list_routers(
-            name='provider-router')['routers']
+            name=openstack_utils.PROVIDER_ROUTER)['routers']
         assert len(routers) == 1, "Unexpected router count {}".format(
             len(routers))
         provider_router = routers[0]
@@ -1049,3 +1277,9 @@ class NeutronGatewayDeferredRestartTest(test_utils.BaseDeferredRestartTest):
     def check_clear_hooks(self):
         """Gateway does not defer hooks so noop."""
         return
+
+
+class NeutronTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
+    """Test neutron k8s scale out and scale back."""
+
+    application_name = "neutron"

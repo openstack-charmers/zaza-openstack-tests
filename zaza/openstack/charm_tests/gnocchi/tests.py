@@ -23,6 +23,7 @@ import pprint
 from gnocchiclient.v1 import client as gnocchi_client
 
 import zaza.model as model
+import zaza.openstack.charm_tests.tempest.tests as tempest_tests
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities as utilities
 import zaza.openstack.utilities.openstack as openstack_utils
@@ -53,7 +54,7 @@ class GnocchiTest(test_utils.OpenStackBaseTest):
         )
 
         logging.info('Checking api functionality...')
-        assert(gnocchi.status.get() != [])
+        assert gnocchi.status.get() != []
 
     def test_910_pause_resume(self):
         """Run pause and resume tests.
@@ -142,3 +143,9 @@ class GnocchiExternalCATest(test_utils.OpenStackBaseTest):
             logging.info("Validating that {} is created.".format(file))
             model.block_until_file_has_contents('gnocchi', file, 'CERTIFICATE')
             logging.info("Found {} successfully.".format(file))
+
+
+class GnocchiTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
+    """Test gnocchi k8s scale out and scale back."""
+
+    application_name = "gnocchi"

@@ -23,7 +23,7 @@ import telnetlib
 import tempfile
 import yaml
 
-from zaza import model
+from zaza import model, sync_wrapper
 from zaza.openstack.utilities import exceptions as zaza_exceptions
 from zaza.openstack.utilities.os_versions import UBUNTU_OPENSTACK_RELEASE
 from zaza.utilities import juju as juju_utils
@@ -234,24 +234,6 @@ def get_yaml_config(config_file):
     return yaml.safe_load(open(config_file, 'r').read())
 
 
-def set_origin(application, origin='openstack-origin', pocket='distro'):
-    """Set the configuration option for origin source.
-
-    :param application: Name of application to upgrade series
-    :type application: str
-    :param origin: The configuration setting variable name for changing origin
-                   source. (openstack-origin or source)
-    :type origin: str
-    :param pocket: Origin source cloud pocket.
-                   i.e. 'distro' or 'cloud:xenial-newton'
-    :type pocket: str
-    :returns: None
-    :rtype: None
-    """
-    logging.info("Set origin on {} to {}".format(application, origin))
-    model.set_application_config(application, {origin: pocket})
-
-
 async def async_set_origin(application, origin='openstack-origin',
                            pocket='distro'):
     """Set the configuration option for origin source.
@@ -259,7 +241,8 @@ async def async_set_origin(application, origin='openstack-origin',
     :param application: Name of application to upgrade series
     :type application: str
     :param origin: The configuration setting variable name for changing origin
-                   source. (openstack-origin or source)
+                   source. (openstack-origin or source). Use "auto" to
+                   automatically detect origin variable name.
     :type origin: str
     :param pocket: Origin source cloud pocket.
                    i.e. 'distro' or 'cloud:xenial-newton'
@@ -267,8 +250,20 @@ async def async_set_origin(application, origin='openstack-origin',
     :returns: None
     :rtype: None
     """
-    logging.info("Set origin on {} to {}".format(application, origin))
+    if origin == "auto":
+        config = await model.async_get_application_config(application)
+        for origin in ("openstack-origin", "source"):
+            if config.get(origin):
+                break
+        else:
+            logging.warn("Failed to set origin for {} to {}, no origin config "
+                         "found".format(application, origin))
+            return
+
+    logging.info("Set origin on {} to {}".format(application, pocket))
     await model.async_set_application_config(application, {origin: pocket})
+
+set_origin = sync_wrapper(async_set_origin)
 
 
 def run_via_ssh(unit_name, cmd):
@@ -622,7 +617,7 @@ def port_knock_units(units, port=22, expect_success=True):
     :returns: None if successful, Failure message otherwise
     """
     for u in units:
-        host = u.public_address
+        host = model.get_unit_public_address(u)
         connected = is_port_open(port, host)
         if not connected and expect_success:
             return 'Socket connect failed.'
@@ -706,3 +701,58 @@ def attach_file_resource(application_name, resource_name,
         fp.flush()
         model.attach_resource(
             application_name, resource_name, fp.name)
+
+
+def get_leaders_and_non_leaders(application_name):
+    """Get leader node and non-leader nodes.
+
+    :returns: leader, list of non-leader
+    :rtype: str, list of str
+    """
+    status = model.get_status().applications[application_name]
+    leader = None
+    non_leaders = []
+    for unit in status["units"]:
+        if status["units"][unit].get("leader"):
+            leader = unit
+        else:
+            non_leaders.append(unit)
+    return leader, non_leaders
+
+
+def add_loop_device(unit, name='loop.img', size=10):
+    """Add a loopback device to a Juju unit.
+
+    :param unit: The unit name on which to create the device.
+    :type unit: str
+
+    :param name: The name of the file used for the loop device.
+    :type unit: str
+
+    :param size: The size in GB of the device.
+    :type size: int
+
+    :returns: The device name.
+    """
+    loop_name = '/home/ubuntu/{}'.format(name)
+    truncate = 'truncate --size {}GB {}'.format(size, loop_name)
+    losetup = 'losetup --find {}'.format(loop_name)
+    lofind = 'losetup -a | grep {} | cut -f1 -d ":"'.format(loop_name)
+    cmd = "sudo sh -c '{} && {} && {}'".format(truncate, losetup, lofind)
+    return model.run_on_unit(unit, cmd)
+
+
+def remove_loop_device(unit, device, name='loop.img'):
+    """Remove a loopback device from a Juju unit.
+
+    :param unit: The unit name from which to remove the device.
+    :type unit: str
+
+    :param device: The loop device path to be removed.
+    :type unit: str
+
+    :param name: The name of the file used for the loop device.
+    :type name: str
+    """
+    cmd = "sudo sh -c 'losetup -d {} && rm {}'".format(device, name)
+    return model.run_on_unit(unit, cmd)

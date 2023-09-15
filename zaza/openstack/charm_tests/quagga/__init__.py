@@ -12,4 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Collection of code for testing quagga charm."""
+"""Collection of code for testing osci-frr charm."""

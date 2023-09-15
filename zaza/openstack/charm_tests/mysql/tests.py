@@ -14,12 +14,14 @@
 
 """MySQL/Percona Cluster Testing."""
 
+import configparser
 import json
 import logging
 import os
 import re
 import tempfile
-import time
+import tenacity
+import yaml
 
 import zaza.charm_lifecycle.utils as lifecycle_utils
 import zaza.model
@@ -52,27 +54,7 @@ class MySQLBaseTest(test_utils.OpenStackBaseTest):
         """
         return zaza.model.run_on_leader(
             self.application,
-            "leader-get root-password")["Stdout"].strip()
-
-    def get_leaders_and_non_leaders(self):
-        """Get leader node and non-leader nodes of percona.
-
-        Update and set on the object the leader node and list of non-leader
-        nodes.
-
-        :returns: None
-        :rtype: None
-        """
-        status = zaza.model.get_status().applications[self.application]
-        # Reset
-        self.leader = None
-        self.non_leaders = []
-        for unit in status["units"]:
-            if status["units"][unit].get("leader"):
-                self.leader = unit
-            else:
-                self.non_leaders.append(unit)
-        return self.leader, self.non_leaders
+            "leader-get mysql.passwd")["Stdout"].strip()
 
     def get_cluster_status(self):
         """Get cluster status.
@@ -110,7 +92,7 @@ class MySQLBaseTest(test_utils.OpenStackBaseTest):
             _primary_ip = _primary_ip.split(':')[0]
         units = zaza.model.get_units(self.application_name)
         for unit in units:
-            if _primary_ip in unit.public_address:
+            if _primary_ip in zaza.model.get_unit_public_address(unit):
                 return unit
 
     def get_blocked_mysql_routers(self):
@@ -223,7 +205,7 @@ class MySQLCommonTests(MySQLBaseTest):
         logging.info("Wait till model is idle ...")
         zaza.model.block_until_all_units_idle()
 
-        # If there are any blocekd mysql routers restart them.
+        # If there are any blocked mysql routers restart them.
         self.restart_blocked_mysql_routers()
         assert not self.get_blocked_mysql_routers(), (
             "Should no longer be blocked mysql-router units")
@@ -445,7 +427,8 @@ class PerconaClusterColdStartTest(PerconaClusterBaseTest):
         zaza.model.wait_for_application_states(states=states)
 
         # Update which node is the leader and which are not
-        _leader, _non_leaders = self.get_leaders_and_non_leaders()
+        _leader, _non_leaders = generic_utils.get_leaders_and_non_leaders(
+            self.application_name)
         # We want to test the worst possible scenario which is the
         # non-leader with the highest sequence number. We will use the leader
         # for the notify-bootstrapped after. They just need to be different
@@ -477,6 +460,23 @@ class PerconaClusterColdStartTest(PerconaClusterBaseTest):
             states=test_config.get("target_deploy_status", {}))
 
 
+@tenacity.retry(
+    retry=tenacity.retry_if_result(lambda is_new: is_new is False),
+    wait=tenacity.wait_fixed(5),  # interval between retries
+    stop=tenacity.stop_after_attempt(10))  # retry times
+def retry_is_new_crm_master(test, old_crm_master):
+    """Check new crm master with retries.
+
+    Return True if a new crm master detected, retry 10 times if False.
+    """
+    new_crm_master = test.get_crm_master()
+    if new_crm_master and new_crm_master != old_crm_master:
+        logging.info(
+            "New crm_master unit detected on {}".format(new_crm_master))
+        return True
+    return False
+
+
 class PerconaClusterScaleTests(PerconaClusterBaseTest):
     """Percona Cluster scale tests."""
 
@@ -496,22 +496,9 @@ class PerconaClusterScaleTests(PerconaClusterBaseTest):
         zaza.model.run_on_unit(old_crm_master, cmd)
 
         logging.info("looking for the new crm_master")
-        i = 0
-        while i < 10:
-            i += 1
-            # XXX time.sleep roundup
-            # https://github.com/openstack-charmers/zaza-openstack-tests/issues/46
-            time.sleep(5)  # give some time to pacemaker to react
-            new_crm_master = self.get_crm_master()
-
-            if (new_crm_master and new_crm_master != old_crm_master):
-                logging.info(
-                    "New crm_master unit detected"
-                    " on {}".format(new_crm_master)
-                )
-                break
-        else:
-            assert False, "The crm_master didn't change"
+        self.assertTrue(
+            retry_is_new_crm_master(self, old_crm_master),
+            msg="The crm_master didn't change")
 
         # Check connectivity on the VIP
         # \ is required due to pep8 and parenthesis would make the assertion
@@ -562,6 +549,133 @@ class MySQLInnoDBClusterTests(MySQLCommonTests):
             "Set cluster option {}={} action failed: {}"
             .format(_key, _value, action.data))
         logging.info("Passed set cluster option action test.")
+
+    def test_911_restart_after_group_replication_cache_set(self):
+        """Restart after group_replication_message_cache_size is set.
+
+        Check the cluster is up and running after the
+        group_replication_message_cache_size config option is set.
+        """
+        option = 'group-replication-message-cache-size'
+        default = ''
+        alternate = '512M'
+        self.restart_on_changed(
+            self.conf_file,
+            {option: default},
+            {option: alternate},
+            {},
+            {},
+            self.services
+        )
+
+
+class MySQLInnoDBClusterRotatePasswordTests(MySQLCommonTests):
+    """Mysql-innodb-cluster charm tests.
+
+    Note: The restart on changed and pause/resume tests also validate the
+    changing of the R/W primary. On each mysqld shutodown a new R/W primary is
+    elected automatically by MySQL.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running mysql-innodb-cluster tests."""
+        super().setUpClass()
+        cls.application = "mysql-innodb-cluster"
+
+    def test_rotate_keystone_service_user_password(self):
+        """Verify action used to rotate a service user (keystone) password."""
+        KEYSTONE_APP = 'keystone'
+        KEYSTONE_PASSWD_KEY = "mysql-keystone.passwd"
+        KEYSTONE_CONF_FILE = '/etc/keystone/keystone.conf'
+
+        def _get_password_from_keystone_leader():
+            conf = zaza.model.file_contents(
+                'keystone/leader', KEYSTONE_CONF_FILE)
+            config = configparser.ConfigParser()
+            config.read_string(conf)
+            connection_info = config['database']['connection']
+            match = re.match(r"^mysql.*keystone:(.+)@", connection_info)
+            if match:
+                return match[1]
+            self.fail("Couldn't find mysql password in {}"
+                      .format(connection_info))
+
+        # only do the test if keystone is in the model
+        applications = zaza.model.sync_deployed(self.model_name)
+        if KEYSTONE_APP not in applications:
+            self.skipTest(
+                '{} is not deployed, so not doing password rotation'
+                .format(KEYSTONE_APP))
+
+        # get the users via the 'list-service-usernames' action.
+        logging.info(
+            "Getting usernames from mysql that can have password rotated.")
+        action = zaza.model.run_action_on_leader(
+            self.application,
+            'list-service-usernames',
+            action_params={}
+        )
+        usernames = yaml.safe_load(action.data['results']['usernames'])
+        logging.info("... usernames: %s", usernames)
+        self.assertIn('keystone', usernames)
+
+        # grab the password for keystone from the leader / to verify the change
+        old_keystone_passwd_on_mysql = juju_utils.leader_get(
+            self.application_name, KEYSTONE_PASSWD_KEY).strip()
+        old_keystone_passwd_conf = _get_password_from_keystone_leader()
+
+        # verify that keystone is working.
+        admin_keystone_session = (
+            openstack_utils.get_overcloud_keystone_session())
+        keystone_client = openstack_utils.get_keystone_session_client(
+            admin_keystone_session)
+        keystone_client.users.list()
+
+        # now rotate the password for keystone
+        # run the action to rotate the password.
+        logging.info("Rotating password for keystone in mysql.")
+        zaza.model.run_action_on_leader(
+            self.application_name,
+            'rotate-service-user-password',
+            action_params={'service-user': 'keystone'},
+        )
+
+        # let everything settle.
+        logging.info("Waiting for model to settle.")
+        zaza.model.wait_for_agent_status()
+        zaza.model.block_until_all_units_idle()
+
+        # verify that the password has changed.
+        # Due to the async-ness of the whole model and when the various hooks
+        # will fire between mysql-innodb-cluster, the mysql-router and
+        # keystone, so we retry a reasonable time to wait for everything to
+        # propagate through.
+        for attempt in tenacity.Retrying(
+            reraise=True,
+            wait=tenacity.wait_fixed(30),
+            stop=tenacity.stop_after_attempt(20),  # wait for max 10m
+        ):
+            with attempt:
+                new_keystone_passwd_on_mysql = juju_utils.leader_get(
+                    self.application_name, KEYSTONE_PASSWD_KEY).strip()
+                new_keystone_passwd_conf = _get_password_from_keystone_leader()
+                self.assertNotEqual(old_keystone_passwd_on_mysql,
+                                    new_keystone_passwd_on_mysql)
+                self.assertNotEqual(old_keystone_passwd_conf,
+                                    new_keystone_passwd_conf)
+                self.assertEqual(new_keystone_passwd_on_mysql,
+                                 new_keystone_passwd_conf)
+
+        # really wait for keystone to finish it's thing
+        zaza.model.block_until_all_units_idle()
+
+        # finally, verify that keystone is still working.
+        admin_keystone_session = (
+            openstack_utils.get_overcloud_keystone_session())
+        keystone_client = openstack_utils.get_keystone_session_client(
+            admin_keystone_session)
+        keystone_client.users.list()
 
 
 class MySQLInnoDBClusterColdStartTest(MySQLBaseTest):
@@ -814,8 +928,10 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
         The cluster will be in waiting state.
         """
         logging.info("Scale in test: remove leader")
-        leader, nons = self.get_leaders_and_non_leaders()
+        leader, nons = generic_utils.get_leaders_and_non_leaders(
+            self.application_name)
         leader_unit = zaza.model.get_unit_from_name(leader)
+        leader_unit_ip = zaza.model.get_unit_public_address(leader_unit)
 
         # Wait until we are idle in the hopes clients are not running
         # update-status hooks
@@ -835,12 +951,12 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
 
         logging.info(
             "Removing old unit from cluster: {} "
-            .format(leader_unit.public_address))
+            .format(leader_unit_ip))
         action = zaza.model.run_action(
             nons[0],
             "remove-instance",
             action_params={
-                "address": leader_unit.public_address,
+                "address": leader_unit_ip,
                 "force": True})
         assert action.data.get("results") is not None, (
             "Remove instance action failed: No results: {}"
@@ -888,8 +1004,11 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
         We start with a four node full cluster, remove one, down to a three
         node full cluster.
         """
-        leader, nons = self.get_leaders_and_non_leaders()
+        leader, nons = generic_utils.get_leaders_and_non_leaders(
+            self.application_name)
         non_leader_unit = zaza.model.get_unit_from_name(nons[0])
+        non_leader_unit_ip = zaza.model.get_unit_public_address(
+            non_leader_unit)
 
         # Wait until we are idle in the hopes clients are not running
         # update-status hooks
@@ -910,12 +1029,12 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
 
         logging.info(
             "Removing old unit from cluster: {} "
-            .format(non_leader_unit.public_address))
+            .format(non_leader_unit_ip))
         action = zaza.model.run_action(
             leader,
             "remove-instance",
             action_params={
-                "address": non_leader_unit.public_address,
+                "address": non_leader_unit_ip,
                 "force": True})
         assert action.data.get("results") is not None, (
             "Remove instance action failed: No results: {}"
@@ -938,7 +1057,7 @@ class MySQLInnoDBClusterPartitionTest(MySQLBaseTest):
         no_of_units = len(mysql_units)
         for index, unit in enumerate(mysql_units):
             next_unit = mysql_units[(index+1) % no_of_units]
-            ip_address = next_unit.public_address
+            ip_address = zaza.model.get_unit_public_address(next_unit)
             cmd = "sudo iptables -A INPUT -s {} -j DROP".format(ip_address)
             zaza.model.async_run_on_unit(unit, cmd)
 
@@ -962,7 +1081,7 @@ class MySQLInnoDBClusterPartitionTest(MySQLBaseTest):
             leader_unit.entity_id,
             "force-quorum-using-partition-of",
             action_params={
-                "address": leader_unit.public_address,
+                "address": zaza.model.get_unit_public_address(leader_unit),
                 'i-really-mean-it': True
             })
 

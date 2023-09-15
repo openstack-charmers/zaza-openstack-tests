@@ -17,11 +17,13 @@
 """Encapsulate glance testing."""
 
 import logging
+import math
 
 import boto3
 import zaza.model as model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
+import zaza.openstack.charm_tests.tempest.tests as tempest_tests
 
 
 class GlanceTest(test_utils.OpenStackBaseTest):
@@ -90,7 +92,8 @@ class GlanceTest(test_utils.OpenStackBaseTest):
                 self.glance_client,
                 image_url,
                 'cirros-test-import',
-                force_import=True)
+                force_import=True,
+                convert_image_to_raw_if_ceph_used=False)
 
             disk_format = self.glance_client.images.get(image.id).disk_format
             self.assertEqual('raw', disk_format)
@@ -222,3 +225,58 @@ class GlanceExternalS3Test(test_utils.OpenStackBaseTest):
         )
         self.assertEqual(image["size"], response["ContentLength"])
         openstack_utils.delete_image(self.glance_client, image["id"])
+
+
+class GlanceCinderBackendTest(test_utils.OpenStackBaseTest):
+    """Encapsulate glance tests using cinder backend."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running glance tests with cinder backend."""
+        super(GlanceCinderBackendTest, cls).setUpClass()
+        cls.glance_client = openstack_utils.get_glance_session_client(
+            cls.keystone_session)
+        cls.cinder_client = openstack_utils.get_cinder_session_client(
+            cls.keystone_session)
+
+    def test_100_create_delete_image(self):
+        """Create an image and do a simple validation of it.
+
+        Validate the size of the image in both Glance API and Cinder API.
+        """
+        current_release = openstack_utils.get_os_release()
+        focal_xena = openstack_utils.get_os_release('focal_xena')
+        if current_release < focal_xena:
+            self.skipTest('skipping test since cinder backend not supported '
+                          'till xena')
+
+        image_name = "zaza-cinder-test-image"
+        openstack_utils.create_image(
+            glance=self.glance_client,
+            image_url=openstack_utils.find_cirros_image(arch="x86_64"),
+            image_name=image_name,
+            backend="cinder",
+        )
+        images = openstack_utils.get_images_by_name(
+            self.glance_client, image_name)
+        self.assertEqual(len(images), 1)
+        image = images[0]
+
+        volume_name = 'image-'+image["id"]
+        volumes = openstack_utils.get_volumes_by_name(
+            self.cinder_client, volume_name)
+        self.assertEqual(len(volumes), 1)
+        volume = volumes[0]
+
+        logging.info(
+            "Checking glance image size {} matches volume size {} "
+            "GB".format(image["size"], volume.size))
+        image_size_in_gb = int(math.ceil(float(image["size"]) / 1024 ** 3))
+        self.assertEqual(image_size_in_gb, volume.size)
+        openstack_utils.delete_image(self.glance_client, image["id"])
+
+
+class GlanceTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
+    """Test glance k8s scale out and scale back."""
+
+    application_name = "glance"

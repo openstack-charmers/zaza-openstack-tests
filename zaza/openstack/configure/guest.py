@@ -33,22 +33,71 @@ from tenacity import (
 
 boot_tests = {
     'cirros': {
-        'image_name': 'cirros',
+        'image_name': openstack_utils.CIRROS_IMAGE_NAME,
         'flavor_name': 'm1.tiny',
         'username': 'cirros',
         'bootstring': 'gocubsgo',
         'password': 'gocubsgo'},
     'bionic': {
-        'image_name': 'bionic',
+        'image_name': openstack_utils.BIONIC_IMAGE_NAME,
         'flavor_name': 'm1.small',
         'username': 'ubuntu',
-        'bootstring': 'finished at'}}
+        'bootstring': 'finished at'},
+    'focal': {
+        'image_name': openstack_utils.FOCAL_IMAGE_NAME,
+        'flavor_name': 'm1.small',
+        'username': 'ubuntu',
+        'bootstring': 'finished at'},
+    'jammy': {
+        'image_name': openstack_utils.JAMMY_IMAGE_NAME,
+        'flavor_name': 'm1.small',
+        'username': 'ubuntu',
+        'bootstring': 'finished at'}
+}
+
+
+def launch_instance_retryer(instance_key, **kwargs):
+    """Launch an instance and retry on failure.
+
+    See launch_instance for kwargs
+
+    :param instance_key: Key to collect associated config data with.
+    :type instance_key: str
+    """
+    vm_name = kwargs.get('vm_name', time.strftime("%Y%m%d%H%M%S"))
+    kwargs['vm_name'] = vm_name
+
+    def remove_vm_on_failure(retry_state):
+        logging.info(
+            'Detected failure launching or connecting to VM {}'.format(
+                vm_name))
+        keystone_session = openstack_utils.get_overcloud_keystone_session()
+        nova_client = openstack_utils.get_nova_session_client(keystone_session)
+        vm = nova_client.servers.find(name=vm_name)
+        openstack_utils.delete_resource(
+            nova_client.servers,
+            vm.id,
+            msg="Waiting for the Nova VM {} to be deleted".format(vm.name))
+
+    retryer = Retrying(
+        stop=stop_after_attempt(3),
+        after=remove_vm_on_failure,
+    )
+    instance = retryer(
+        launch_instance,
+        instance_key,
+        **kwargs
+    )
+    return instance
 
 
 def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
                     private_network_name=None, image_name=None,
                     flavor_name=None, external_network_name=None, meta=None,
-                    userdata=None):
+                    userdata=None, attach_to_external_network=False,
+                    keystone_session=None, perform_connectivity_check=True,
+                    host=None, nova_api_version=None
+                    ):
     """Launch an instance.
 
     :param instance_key: Key to collect associated config data with.
@@ -71,11 +120,27 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
     :type meta: dict
     :param userdata: Configuration to use upon launch, used by cloud-init.
     :type userdata: str
+    :param attach_to_external_network: Attach instance directly to external
+                                       network.
+    :type attach_to_external_network: bool
+    :param keystone_session: Keystone session to use.
+    :type keystone_session: Optional[keystoneauth1.session.Session]
+    :param perform_connectivity_check: Whether to perform a connectivity check.
+    :type perform_connectivity_check: bool
+    :param host: Requested host to create servers
+    :type host: str
+    :param nova_api_version: Nova API version to use
+    :type nova_api_version: str | None
     :returns: the created instance
     :rtype: novaclient.Server
     """
-    keystone_session = openstack_utils.get_overcloud_keystone_session()
-    nova_client = openstack_utils.get_nova_session_client(keystone_session)
+    if not keystone_session:
+        keystone_session = openstack_utils.get_overcloud_keystone_session()
+
+    nova_client = openstack_utils.get_nova_session_client(
+        keystone_session,
+        version=nova_api_version,
+    )
     neutron_client = openstack_utils.get_neutron_session_client(
         keystone_session)
 
@@ -88,12 +153,18 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
     flavor_name = flavor_name or boot_tests[instance_key]['flavor_name']
     flavor = nova_client.flavors.find(name=flavor_name)
 
-    private_network_name = private_network_name or "private"
-    net = neutron_client.find_resource("network", private_network_name)
-    nics = [{'net-id': net.get('id')}]
+    private_network_name = private_network_name or openstack_utils.PRIVATE_NET
 
     meta = meta or {}
-    external_network_name = external_network_name or "ext_net"
+    external_network_name = external_network_name or openstack_utils.EXT_NET
+
+    if attach_to_external_network:
+        instance_network_name = external_network_name
+    else:
+        instance_network_name = private_network_name
+
+    net = neutron_client.find_resource("network", instance_network_name)
+    nics = [{'net-id': net.get('id')}]
 
     if use_boot_volume:
         bdmv2 = [{
@@ -117,7 +188,9 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
         key_name=nova_utils.KEYPAIR_NAME,
         meta=meta,
         nics=nics,
-        userdata=userdata)
+        userdata=userdata,
+        host=host,
+    )
 
     # Test Instance is ready.
     logging.info('Checking instance is active')
@@ -125,7 +198,13 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
         nova_client.servers,
         instance.id,
         expected_status='ACTIVE',
-        stop_after_attempt=16)
+        # NOTE(lourot): in some models this may sometimes take more than 15
+        # minutes. See lp:1945991
+        wait_iteration_max_time=120,
+        stop_after_attempt=16,
+        stop_status='ERROR',
+        msg='instance',
+    )
 
     logging.info('Checking cloud init is complete')
     openstack_utils.cloud_init_complete(
@@ -135,34 +214,43 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
     port = openstack_utils.get_ports_from_device_id(
         neutron_client,
         instance.id)[0]
-    logging.info('Assigning floating ip.')
-    ip = openstack_utils.create_floating_ip(
-        neutron_client,
-        external_network_name,
-        port=port)['floating_ip_address']
-    logging.info('Assigned floating IP {} to {}'.format(ip, vm_name))
-    try:
-        for attempt in Retrying(
-                stop=stop_after_attempt(8),
-                wait=wait_exponential(multiplier=1, min=2, max=60)):
-            with attempt:
-                try:
-                    openstack_utils.ping_response(ip)
-                except subprocess.CalledProcessError as e:
-                    logging.error('Pinging {} failed with {}'
-                                  .format(ip, e.returncode))
-                    logging.error('stdout: {}'.format(e.stdout))
-                    logging.error('stderr: {}'.format(e.stderr))
-                    raise
-    except RetryError:
-        raise openstack_exceptions.NovaGuestNoPingResponse()
+    if attach_to_external_network:
+        logging.info('attach_to_external_network={}, not assigning floating IP'
+                     .format(attach_to_external_network))
+        ip = port['fixed_ips'][0]['ip_address']
+        logging.info('Using fixed IP {} on network {} for {}'
+                     .format(ip, instance_network_name, vm_name))
+    else:
+        logging.info('Assigning floating ip.')
+        ip = openstack_utils.create_floating_ip(
+            neutron_client,
+            external_network_name,
+            port=port)['floating_ip_address']
+        logging.info('Assigned floating IP {} to {}'.format(ip, vm_name))
 
-    # Check ssh'ing to instance.
-    logging.info('Testing ssh access.')
-    openstack_utils.ssh_test(
-        username=boot_tests[instance_key]['username'],
-        ip=ip,
-        vm_name=vm_name,
-        password=boot_tests[instance_key].get('password'),
-        privkey=openstack_utils.get_private_key(nova_utils.KEYPAIR_NAME))
+    if perform_connectivity_check:
+        try:
+            for attempt in Retrying(
+                    stop=stop_after_attempt(8),
+                    wait=wait_exponential(multiplier=1, min=2, max=60)):
+                with attempt:
+                    try:
+                        openstack_utils.ping_response(ip)
+                    except subprocess.CalledProcessError as e:
+                        logging.error('Pinging {} failed with {}'
+                                      .format(ip, e.returncode))
+                        logging.error('stdout: {}'.format(e.stdout))
+                        logging.error('stderr: {}'.format(e.stderr))
+                        raise
+        except RetryError:
+            raise openstack_exceptions.NovaGuestNoPingResponse()
+
+        # Check ssh'ing to instance.
+        logging.info('Testing ssh access.')
+        openstack_utils.ssh_test(
+            username=boot_tests[instance_key]['username'],
+            ip=ip,
+            vm_name=vm_name,
+            password=boot_tests[instance_key].get('password'),
+            privkey=openstack_utils.get_private_key(nova_utils.KEYPAIR_NAME))
     return instance

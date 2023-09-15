@@ -125,3 +125,23 @@ class GlanceSimpleStreamsSyncTest(test_utils.OpenStackBaseTest):
         _check_local_product_streams(expected_images)
 
         logging.debug("Local product stream successful")
+
+
+class GlanceSimpleStreamsSyncWithPropertiesTest(GlanceSimpleStreamsSyncTest):
+    """Glance Simple Streams Sync Test with Image property.
+
+    `setup.py:set_latest_property_config()` is required by this test and it is
+    called during charm-glance-simplestreams-sync/tests/tests.yaml:configure
+    phase.
+    """
+
+    # TODO(guimalufb) test if the latest property gets removed from old images
+    def test_200_check_image_latest_property(self):
+        """Verify that images had metadata property set."""
+        logging.debug("Checking images with latest=true property...")
+
+        filter_properties = {'filters': {'latest': 'true'}}
+        images = self.glance_client.images.list(**filter_properties)
+        self.assertTrue(len(list(images)) > 0,
+                        "'latest=true' property not found in glance images"
+                        " list")

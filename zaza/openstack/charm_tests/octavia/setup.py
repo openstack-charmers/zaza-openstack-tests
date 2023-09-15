@@ -15,6 +15,7 @@
 """Code for configuring octavia."""
 
 import os
+import re
 import base64
 import logging
 
@@ -30,9 +31,10 @@ import zaza.openstack.charm_tests.nova.utils as nova_utils
 
 
 def ensure_lts_images():
-    """Ensure that bionic and focal images are available for the tests."""
+    """Ensure LTS images are available for the tests."""
     glance_setup.add_lts_image(image_name='bionic', release='bionic')
     glance_setup.add_lts_image(image_name='focal', release='focal')
+    glance_setup.add_lts_image(image_name='jammy', release='jammy')
 
 
 def add_amphora_image(image_url=None):
@@ -141,6 +143,25 @@ def configure_octavia():
         'octavia',
         'configure-resources',
         action_params={})
+
+
+def disable_ohm_port_security():
+    """Disable port security on the health manager ports on octavia units."""
+    keystone_session = openstack.get_overcloud_keystone_session()
+    neutron_client = openstack.get_neutron_session_client(
+        keystone_session)
+    ports = [
+        p
+        for p in neutron_client.list_ports()['ports']
+        if re.match('octavia-health-manager-.*-listen-port', p['name'])]
+    for port in ports:
+        neutron_client.update_port(
+            port['id'],
+            {
+                'port':
+                    {
+                        'port_security_enabled': False,
+                        'security_groups': []}})
 
 
 def centralized_fip_network():

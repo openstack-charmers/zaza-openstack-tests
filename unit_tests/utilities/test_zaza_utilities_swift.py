@@ -91,12 +91,20 @@ class TestSwiftUtils(ut_utils.BaseTestCase):
         self.patch_object(juju_utils, 'get_full_juju_status')
         self.patch_object(zaza.model, 'get_application_config')
         self.patch_object(zaza.model, 'get_units')
+        self.patch_object(zaza.model, 'get_unit_public_address')
+
+        def _get_unit_public_address(u, model_name=None):
+            return u.public_address
+
+        self.get_unit_public_address.side_effect = _get_unit_public_address
+
         juju_status = mock.MagicMock()
         juju_status.applications = {}
         self.get_full_juju_status.return_value = juju_status
 
         for app_name, units in app_units.items():
-            expected_topology[units[0].public_address]['unit'] = units[0]
+            ip = units[0].public_address
+            expected_topology[ip]['unit'] = units[0]
 
         app_config = {}
         for app_name in app_units.keys():

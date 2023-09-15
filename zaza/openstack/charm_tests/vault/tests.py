@@ -17,23 +17,36 @@
 """Collection of tests for vault."""
 
 import contextlib
-import hvac
 import json
 import logging
-import time
+import subprocess
 import unittest
 import uuid
-import tempfile
-import tenacity
 
-import requests
+import tenacity
+from hvac.exceptions import InternalServerError
+
 import zaza.charm_lifecycle.utils as lifecycle_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.charm_tests.vault.utils as vault_utils
 import zaza.openstack.utilities.cert
 import zaza.openstack.utilities.openstack
 import zaza.model
-import zaza.utilities.juju as juju_utils
+
+
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(InternalServerError),
+    retry_error_callback=lambda retry_state: False,
+    wait=tenacity.wait_fixed(2),  # interval between retries
+    stop=tenacity.stop_after_attempt(10))  # retry 10 times
+def retry_hvac_client_authenticated(client):
+    """Check hvac client is authenticated with retry.
+
+    If is_authenticated() raise exception for all retries,
+    return False(which is done by `retry_error_callback`).
+    Otherwise, return whatever the returned value.
+    """
+    return client.hvac_client.is_authenticated()
 
 
 class BaseVaultTest(test_utils.OpenStackBaseTest):
@@ -49,9 +62,19 @@ class BaseVaultTest(test_utils.OpenStackBaseTest):
         cls.vip_client = vault_utils.get_vip_client()
         if cls.vip_client:
             cls.clients.append(cls.vip_client)
-        cls.vault_creds = vault_utils.get_credentails()
+        cls.vault_creds = vault_utils.get_credentials()
+
+        # This little dance is to ensure a correct init and unseal sequence,
+        # for the case of vault with the raft backend.
+        # It will also work fine in other cases.
+        # The wait functions will raise AssertionErrors on timeouts.
+        init_client = vault_utils.wait_and_get_initialized_client(cls.clients)
+        vault_utils.unseal_all([init_client], cls.vault_creds['keys'][0])
+        vault_utils.wait_until_all_initialised(cls.clients)
         vault_utils.unseal_all(cls.clients, cls.vault_creds['keys'][0])
+
         vault_utils.auth_all(cls.clients, cls.vault_creds['root_token'])
+        vault_utils.wait_for_ha_settled(cls.clients)
         vault_utils.ensure_secret_backend(cls.clients[0])
 
     def tearDown(self):
@@ -165,41 +188,15 @@ class VaultTest(BaseVaultTest):
         except KeyError:
             # Already removed
             pass
-        zaza.openstack.utilities.openstack.block_until_ca_exists(
-            'keystone',
-            cacert.decode().strip())
         zaza.model.wait_for_application_states(
             states=test_config.get('target_deploy_status', {}))
-        ip = zaza.model.get_app_ips(
-            'keystone')[0]
 
-        with tempfile.NamedTemporaryFile(mode='w') as fp:
-            fp.write(cacert.decode())
-            fp.flush()
-            # Avoid race condition and retry
-            for attempt in tenacity.Retrying(
-                stop=tenacity.stop_after_attempt(3),
-                wait=tenacity.wait_exponential(
-                    multiplier=2, min=2, max=10)):
-                with attempt:
-                    logging.info(
-                        "Attempting to connect to https://{}:5000".format(ip))
-                    requests.get('https://{}:5000'.format(ip), verify=fp.name)
+        vault_utils.validate_ca(cacert)
 
     def test_all_clients_authenticated(self):
         """Check all vault clients are authenticated."""
         for client in self.clients:
-            for i in range(1, 10):
-                try:
-                    self.assertTrue(client.hvac_client.is_authenticated())
-                except hvac.exceptions.InternalServerError:
-                    # XXX time.sleep roundup
-                    # https://github.com/openstack-charmers/zaza-openstack-tests/issues/46
-                    time.sleep(2)
-                else:
-                    break
-            else:
-                self.assertTrue(client.hvac_client.is_authenticated())
+            self.assertTrue(retry_hvac_client_authenticated(client))
 
     def check_read(self, key, value):
         """Check reading the key from all vault units."""
@@ -309,12 +306,16 @@ class VaultTest(BaseVaultTest):
         logging.info("Waiting for model to be idle ...")
         zaza.model.block_until_all_units_idle(model_name=self.model_name)
 
-        logging.info("Testing action reload on {}".format(lead_client))
-        zaza.model.run_action(
-            juju_utils.get_unit_name_from_ip_address(
-                lead_client.addr, 'vault'),
-            'reload',
-            model_name=self.model_name)
+        # Reload all vault units to ensure the new value is loaded.
+        # Note that charm-vault since 4fccd710 will auto-reload
+        # vault on config change, so this will be unecessary.
+        for unit in zaza.model.get_units(
+            application_name="vault",
+            model_name=self.model_name
+        ):
+            zaza.model.run_action(
+                unit.name, 'reload',
+                model_name=self.model_name)
 
         logging.info("Getting new value ...")
         new_value = vault_utils.get_running_config(lead_client)[
@@ -348,6 +349,79 @@ class VaultTest(BaseVaultTest):
 
         lead_client = vault_utils.extract_lead_unit_client(self.clients)
         self.assertTrue(lead_client.hvac_client.seal_status['sealed'])
+
+
+class VaultCacheTest(BaseVaultTest):
+    """Encapsulate vault tests."""
+
+    @test_utils.skipIfNotHA('vault')
+    def test_vault_caching_unified_view(self):
+        """Verify that the vault applicate presents consisent certificates.
+
+        On all of the relations to the clients.
+        """
+        try:
+            application = zaza.model.get_application('keystone')
+        except KeyError:
+            self.skipTest("Application 'keystone' not available so skipping.")
+        # data keys that are 'strs'
+        key_str_values = ['ca', 'chain', 'client.cert', 'client.key']
+        for unit in application.units:
+            command = ['juju', 'show-unit', '--format=json', unit.entity_id]
+            output = subprocess.check_output(command).decode()
+            unit_info = json.loads(output)
+            # verify that unit_info{unit.entity_id}{'relation-info'}[n],
+            # where List item [n] is a {} where,
+            # [n]{'endpoint'} == 'certificates' AND
+            # [n]{'related_units'}{*}{'data'}{...} all match.
+            #
+            # first collect the list items that are 'certificates' endpoint.
+            relation_info_list = [
+                item
+                for item in unit_info[unit.entity_id]['relation-info']
+                if item['endpoint'] == 'certificates']
+            # collect the data for each of the units.
+            unit_data_list = [
+                {key: value['data']
+                 for key, value in item['related-units'].items()}
+                for item in relation_info_list]
+            # for each str key, verify that it's the same string on all lists.
+            for str_key in key_str_values:
+                values = set((v[str_key]
+                              for unit_data in unit_data_list
+                              for v in unit_data.values()))
+                self.assertEqual(len(values), 1,
+                                 "Not all {} items in data match: {}"
+                                 .format(str_key, "\n".join(values)))
+            # now validate that 'processed_requests' are the same.
+            # they are json encoded, so need pulling out of the json; first get
+            # the keys that look like "keystone_0.processed_requests".
+            data_keys = set((k
+                             for u in unit_data_list
+                             for v in u.values()
+                             for k in v.keys()))
+            processed_request_keys = [
+                k for k in data_keys if k.endswith(".processed_requests")]
+            # now for each processed_request keys, fetch the associated databag
+            # and json.loads it to get the values; they should match across the
+            # relations. Using json.loads just in case the ordering of the
+            # json.dumps is not determined.
+            for processed_request_key in processed_request_keys:
+                data_bags = [
+                    (unit, json.loads(v[processed_request_key]))
+                    for u in unit_data_list
+                    for unit, v in u.items()]
+                # data_bags: [(unit, processed_requests dict)]
+                self.assertGreater(
+                    len(data_bags), 1,
+                    "Key {} is only in one bag".format(processed_request_key))
+                first_bag = data_bags[0]
+                for data_bag in data_bags[1:]:
+                    self.assertEqual(
+                        first_bag[1], data_bag[1],
+                        "key {}: bag for: {} doesn't match bag for: {}"
+                        .format(
+                            processed_request_key, first_bag[0], data_bag[0]))
 
 
 if __name__ == '__main__':
