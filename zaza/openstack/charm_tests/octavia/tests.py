@@ -24,6 +24,7 @@ import octaviaclient.api.v2.octavia
 import osc_lib.exceptions
 
 import zaza.model
+import zaza.openstack.charm_tests.tempest.tests as tempest_tests
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 
@@ -527,3 +528,9 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
 
         # If we get here, it means the tests passed
         self.run_resource_cleanup = True
+
+
+class OctaviaTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
+    """Test octavia k8s scale out and scale back."""
+
+    application_name = "octavia"

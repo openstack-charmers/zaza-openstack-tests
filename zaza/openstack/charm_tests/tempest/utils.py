@@ -26,6 +26,7 @@ from neutronclient.common import exceptions as neutronexceptions
 
 import zaza.model as model
 import zaza.utilities.deployment_env as deployment_env
+import zaza.utilities.juju as zaza_juju_utils
 import zaza.openstack.utilities.juju as juju_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.glance.setup as glance_setup
@@ -179,7 +180,10 @@ def _get_tempest_context(workspace_path, missing_fatal=True):
         ctxt['enabled_services'],
         missing_fatal=missing_fatal)
     _add_auth_config(ctxt)
-    if 'octavia' in ctxt['enabled_services']:
+    if (
+        'octavia' in ctxt['enabled_services'] and
+        not zaza_juju_utils.is_k8s_deployment()
+    ):
         _add_octavia_config(ctxt)
     return ctxt
 
