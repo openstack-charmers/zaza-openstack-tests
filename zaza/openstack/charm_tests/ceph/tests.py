@@ -971,25 +971,29 @@ class BlueStoreCompressionCharmOperation(test_utils.BaseCharmTest):
         with self.config_change(
                 {'bluestore-compression-mode': 'none'},
                 {'bluestore-compression-mode': 'force'}):
-            # Retrieve pool details from Ceph after changing configuration
-            ceph_pools_detail = zaza_ceph.get_ceph_pool_details(
-                model_name=self.model_name)
-            logging.debug('CONFIG_CHANGE: {}'.format(ceph_pools_detail))
             logging.info('Checking Ceph pool compression_mode after to change')
-            self._assert_pools_properties(
-                app_pools, ceph_pools_detail,
-                {'options': {'compression_mode': 'force'}})
+            self._check_pool_compression_mode(app_pools, 'force')
+
+        logging.info('Checking Ceph pool compression_mode after '
+                     'restoring config to previous value')
+        self._check_pool_compression_mode(app_pools, 'none')
+
+    @tenacity.retry(
+        wait=tenacity.wait_exponential(multiplier=1, min=2, max=10),
+        stop=tenacity.stop_after_attempt(10),
+        reraise=True,
+        retry=tenacity.retry_if_exception_type(AssertionError)
+    )
+    def _check_pool_compression_mode(self, app_pools, mode):
         ceph_pools_detail = zaza_ceph.get_ceph_pool_details(
             model_name=self.model_name)
-        logging.debug('AFTER: {}'.format(ceph_pools_detail))
+        logging.debug('ceph_pools_details: %s', ceph_pools_detail)
         logging.debug(juju_utils.get_relation_from_unit(
             'ceph-mon', self.application_name, None,
             model_name=self.model_name))
-        logging.info('Checking Ceph pool compression_mode after restoring '
-                     'config to previous value')
         self._assert_pools_properties(
             app_pools, ceph_pools_detail,
-            {'options': {'compression_mode': 'none'}})
+            {'options': {'compression_mode': mode}})
 
     def test_invalid_compression_configuration(self):
         """Set invalid configuration and validate charm response."""
