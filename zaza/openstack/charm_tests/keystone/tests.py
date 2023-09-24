@@ -488,6 +488,10 @@ class LdapTests(BaseKeystoneTest):
         """Run class setup for running Keystone ldap-tests."""
         super(LdapTests, cls).setUpClass()
 
+    def get_ldap_ips(self):
+        """Return the ip addresses for the ldap servers."""
+        return zaza.model.get_app_ips("ldap-server")
+
     def _get_ldap_config(self):
         """Generate ldap config for current model.
 
@@ -495,7 +499,7 @@ class LdapTests(BaseKeystoneTest):
             for the keystone-ldap application.
         :rtype: Tuple[bool, Dict[str,str]]
         """
-        ldap_ips = zaza.model.get_app_ips("ldap-server")
+        ldap_ips = self.get_ldap_ips()
         self.assertTrue(ldap_ips, "Should be at least one ldap server")
         return {
             'ldap-server': "ldap://{}".format(ldap_ips[0]),
@@ -703,7 +707,7 @@ class LdapExplicitCharmConfigTests(LdapTests):
             for the keystone-ldap application.
         :rtype: Tuple[bool, Dict[str,str]]
         """
-        ldap_ips = zaza.model.get_app_ips("ldap-server")
+        ldap_ips = self.get_ldap_ips()
         self.assertTrue(ldap_ips, "Should be at least one ldap server")
         return {
             'ldap-server': "ldap://{}".format(ldap_ips[0]),
@@ -730,6 +734,15 @@ class LdapExplicitCharmConfigTests(LdapTests):
                                  ' group_tree_dn: "group_tree_dn_foobar"}',
         }
 
+    def get_domain_config(self):
+        """Return rendered domain config."""
+        units = zaza.model.get_units("keystone-ldap",
+                                     model_name=self.model_name)
+        result = zaza.model.run_on_unit(
+            units[0].name,
+            "cat /etc/keystone/domains/keystone.userdomain.conf")
+        return result['stdout']
+
     def test_200_config_flags_precedence(self):
         """Validates precedence when the same config options are used."""
         application_name = 'keystone-ldap'
@@ -755,28 +768,24 @@ class LdapExplicitCharmConfigTests(LdapTests):
                 zaza.model.wait_for_application_states(
                     states=test_config.get("target_deploy_status", {})
                 )
-                units = zaza.model.get_units("keystone-ldap",
-                                             model_name=self.model_name)
-                result = zaza.model.run_on_unit(
-                    units[0].name,
-                    "cat /etc/keystone/domains/keystone.userdomain.conf")
+                contents = self.get_domain_config()
                 # not present in charm config, but present in config flags
-                self.assertIn("use_pool = True", result['stdout'],
+                self.assertIn("use_pool = True", contents,
                               "use_pool value is expected to be present and "
                               "set to True in the config file")
                 # ldap-config-flags overriding empty charm config value
                 self.assertIn("group_objectclass = posixGroup",
-                              result['stdout'],
+                              contents,
                               "group_objectclass is expected to be present and"
                               " set to posixGroup in the config file")
                 # overridden by charm config, not written to file
                 self.assertNotIn(
                     "group_tree_dn_foobar",
-                    result['stdout'],
+                    contents,
                     "user_tree_dn ldap-config-flags value needs to be "
                     "overridden by ldap-user-tree-dn in config file")
                 # complementing the above, value used is from charm setting
-                self.assertIn("group_tree_dn = ou=groups", result['stdout'],
+                self.assertIn("group_tree_dn = ou=groups", contents,
                               "user_tree_dn value is expected to be present "
                               "and set to dc=test,dc=com in the config file")
 
