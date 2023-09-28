@@ -276,7 +276,5 @@ class GlanceCinderBackendTest(test_utils.OpenStackBaseTest):
         openstack_utils.delete_image(self.glance_client, image["id"])
 
 
-class GlanceTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
-    """Test glance k8s scale out and scale back."""
-
-    application_name = "glance"
+class GlanceTempestTestK8S(tempest_tests.TempestTestWithKeystoneV3):
+    """Test glance k8s."""
