@@ -811,7 +811,8 @@ def add_interface_to_netplan(server_name, mac_address):
         application_names = ('neutron-openvswitch',)
     elif ovn_present():
         # OVN chassis is a subordinate to nova-compute
-        application_names = ('nova-compute', 'ovn-dedicated-chassis')
+        application_names = (get_app_names_for_charm('nova-compute')[0],
+                             'ovn-dedicated-chassis')
     else:
         application_names = ('neutron-gateway',)
 
@@ -2691,6 +2692,28 @@ def upload_image_to_glance(glance, local_path, image_name, disk_format='qcow2',
         msg='Image status wait')
 
     return image
+
+
+def get_app_names_for_charm(charm_name, model_name=None):
+    """Get all application names for a given charm in the model.
+
+    :returns: List of application names
+    :rtype: List[str]
+    """
+    status = juju_utils.get_full_juju_status(model_name=model_name)
+    result = []
+    try:
+        for app_name, app_data in status['applications'].items():
+            try:
+                if charm_name == app_data['charm-name']:
+                    result.append(app_name)
+            except KeyError:
+                # Older juju versions may not have the field "charm-name"
+                if charm_name in app_data['charm']:
+                    result.append(app_name)
+    except KeyError:
+        pass
+    return result
 
 
 def is_ceph_image_backend(model_name=None):

@@ -25,6 +25,7 @@ import zaza.model
 import zaza.openstack.utilities.cert
 import zaza.openstack.utilities.generic
 import zaza.openstack.utilities.exceptions as zaza_exceptions
+from zaza.openstack.utilities.openstack import get_app_names_for_charm
 import zaza.utilities.juju as juju_utils
 
 
@@ -187,12 +188,13 @@ def auto_initialize(cacert=None, validation_application='keystone', wait=True,
         validate_ca(cacertificate, application=validation_application)
         # Once validation has completed restart nova-compute to work around
         # bug #1826382
+        nova_compute_app_name = get_app_names_for_charm('nova-compute')[0]
         cmd_map = {
             'nova-cloud-controller': ('systemctl restart '
                                       'nova-scheduler nova-conductor'),
-            'nova-compute': 'systemctl restart nova-compute',
+            nova_compute_app_name: 'systemctl restart nova-compute',
         }
-        for app in ('nova-compute', 'nova-cloud-controller',):
+        for app in (nova_compute_app_name, 'nova-cloud-controller',):
             try:
                 for unit in zaza.model.get_units(app):
                     result = zaza.model.run_on_unit(

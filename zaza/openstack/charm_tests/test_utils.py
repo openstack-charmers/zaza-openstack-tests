@@ -472,7 +472,7 @@ class BaseCharmTest(unittest.TestCase):
                            a service.
         :type  pgrep_full: bool
         """
-        # lead_unit is only useed to grab a timestamp, the assumption being
+        # lead_unit is only used to grab a timestamp, the assumption being
         # that all the units times are in sync.
 
         mtime = model.get_unit_time(

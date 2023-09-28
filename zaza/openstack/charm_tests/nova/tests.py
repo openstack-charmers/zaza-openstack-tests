@@ -19,6 +19,7 @@
 import json
 import logging
 import os
+import re
 import tempfile
 import tenacity
 import unittest
@@ -127,7 +128,9 @@ class VTPMGuestCreateTest(test_utils.OpenStackBaseTest):
                                     password=password, privkey=privkey,
                                     verify=check_tpm)
 
-    @test_utils.skipUntilVersion('nova-compute', 'nova-common', '3:23.0.0')
+    @test_utils.skipUntilVersion(
+        openstack_utils.get_app_names_for_charm('nova-compute')[0],
+        'nova-common', '3:23.0.0')
     def test_launch_vtpm_1_2_instance(self):
         """Launch an instance using TPM 1.2."""
         self.RESOURCE_PREFIX = 'zaza-nova'
@@ -138,7 +141,9 @@ class VTPMGuestCreateTest(test_utils.OpenStackBaseTest):
         # Note: TPM 1.2 presents tpm0 as a device
         self._check_tpm_device(instance, '/dev/tpm0')
 
-    @test_utils.skipUntilVersion('nova-compute', 'nova-common', '3:23.0.0')
+    @test_utils.skipUntilVersion(
+        openstack_utils.get_app_names_for_charm('nova-compute')[0],
+        'nova-common', '3:23.0.0')
     def test_launch_vtpm_2_instance(self):
         """Launch an instance using TPM 2.0."""
         self.RESOURCE_PREFIX = 'zaza-nova'
@@ -265,8 +270,9 @@ class CloudActions(test_utils.OpenStackBaseTest):
 
     def test_940_enable_disable_actions(self):
         """Test disable/enable actions on nova-compute units."""
-        nova_units = zaza.model.get_units('nova-compute',
-                                          model_name=self.model_name)
+        nova_units = zaza.model.get_units(
+            self.application_name,
+            model_name=self.model_name)
 
         # Check that nova-compute services are enabled before testing
         for service in self.nova_client.services.list(binary='nova-compute'):
@@ -307,8 +313,9 @@ class CloudActions(test_utils.OpenStackBaseTest):
             instances = result.data.get('results', {}).get('instance-count')
             self.assertEqual(instances, str(expect_count))
 
-        nova_unit = zaza.model.get_units('nova-compute',
-                                         model_name=self.model_name)[0]
+        nova_unit = zaza.model.get_units(
+            self.application_name,
+            model_name=self.model_name)[0]
 
         check_instance_count(0, nova_unit.entity_id)
 
@@ -345,8 +352,9 @@ class CloudActions(test_utils.OpenStackBaseTest):
                 sleep_timeout = 10
             return False
 
-        all_units = zaza.model.get_units('nova-compute',
-                                         model_name=self.model_name)
+        all_units = zaza.model.get_units(
+            self.application_name,
+            model_name=self.model_name)
 
         unit_to_remove = all_units[0]
 
@@ -372,7 +380,7 @@ class CloudActions(test_utils.OpenStackBaseTest):
 
         # Wait for nova-compute service to be removed from the
         # nova-cloud-controller
-        if not wait_for_nova_compute_count(0):
+        if not wait_for_nova_compute_count(service_count-1):
             self.fail("nova-compute service was not unregistered from the "
                       "nova-cloud-controller as expected.")
 
@@ -382,7 +390,7 @@ class CloudActions(test_utils.OpenStackBaseTest):
                                        'register-to-cloud',
                                        raise_on_failure=True)
 
-        if not wait_for_nova_compute_count(1):
+        if not wait_for_nova_compute_count(service_count):
             self.fail("nova-compute service was not re-registered to the "
                       "nova-cloud-controller as expected.")
 
@@ -398,12 +406,14 @@ class NovaCompute(NovaCommonTests):
         """
         # We are not touching the behavior of anything older than QUEENS
         if self.current_release >= self.XENIAL_QUEENS:
-            self._test_pci_alias_config("nova-compute", ['nova-compute'])
+            self._test_pci_alias_config(
+                self.application_name, ['nova-compute'])
 
     def test_500_hugepagereport_action(self):
         """Test hugepagereport action."""
-        for unit in zaza.model.get_units('nova-compute',
-                                         model_name=self.model_name):
+        for unit in zaza.model.get_units(
+                self.application_name,
+                model_name=self.model_name):
             logging.info('Running `hugepagereport` action'
                          ' on  unit {}'.format(unit.entity_id))
             action = zaza.model.run_action(
@@ -446,12 +456,13 @@ class NovaCompute(NovaCommonTests):
             logging.info(
                 'Waiting for services ({}) to be restarted'.format(services))
             zaza.model.block_until_services_restarted(
-                'nova-compute',
+                self.application_name,
                 mtime,
                 services,
                 model_name=self.model_name)
-            for unit in zaza.model.get_units('nova-compute',
-                                             model_name=self.model_name):
+            for unit in zaza.model.get_units(
+                    self.application_name,
+                    model_name=self.model_name):
                 logging.info('Checking number of profiles in complain '
                              'mode in {}'.format(unit.entity_id))
                 run = zaza.model.run_on_unit(
@@ -470,10 +481,50 @@ class NovaCompute(NovaCommonTests):
         with self.pause_resume(['nova-compute']):
             logging.info("Testing pause resume")
 
+    def test_904_test_ceph_keys(self):
+        """Run pause and resume tests.
+
+        Pause service and check services are stopped then resume and check
+        they are started
+        """
+        # Expected default and alternate values
+        if zaza.model.get_application_config(
+                self.application_name)['libvirt-image-backend'].get(
+                    'value') != 'rbd':
+            return
+
+        regex = re.compile(r"^\[client.(.+)\]\n\tkey = (.+)$")
+        key_dict = {}
+
+        def check_keyring(app_name_dict_list):
+            for app_name_dict in app_name_dict_list:
+                for app_name, key_list in app_name_dict.items():
+                    for unit in zaza.model.get_units(
+                            app_name, model_name=self.model_name):
+                        for key_app_name in key_list:
+                            keyring_file = (
+                                '/etc/ceph/ceph.client.{}.keyring'.format(
+                                    key_app_name))
+                            data = str(generic_utils.get_file_contents(
+                                unit, keyring_file))
+
+                            result = regex.findall(data)
+                            self.assertEqual(2, len(result))
+                            self.assertEqual(result[0], key_app_name)
+                            for k, v in key_dict.items():
+                                if k == result[0]:
+                                    self.assertEqual(v, result[1])
+                                else:
+                                    self.assertNotEqual(v, result[1])
+                            key_dict[result[0]] = result[1]
+
+        check_keyring([{self.application_name: [self.application_name]}])
+
     def test_930_check_virsh_default_network(self):
         """Test default virt network is not present."""
-        for unit in zaza.model.get_units('nova-compute',
-                                         model_name=self.model_name):
+        for unit in zaza.model.get_units(
+                self.application_name,
+                model_name=self.model_name):
             logging.info('Checking default network is absent on '
                          'unit {}'.format(unit.entity_id))
             run = zaza.model.run_on_unit(
@@ -492,8 +543,9 @@ class NovaComputeActionTest(test_utils.OpenStackBaseTest):
 
     def test_virsh_audit_action(self):
         """Test virsh-audit action."""
-        for unit in zaza.model.get_units('nova-compute',
-                                         model_name=self.model_name):
+        for unit in zaza.model.get_units(
+                self.application_name,
+                model_name=self.model_name):
             logging.info('Running `virsh-audit` action'
                          ' on  unit {}'.format(unit.entity_id))
             action = zaza.model.run_action(
@@ -520,8 +572,9 @@ class NovaComputeNvidiaVgpuTest(test_utils.OpenStackBaseTest):
         vgpu-device-mappings has been set to something not empty like
         "{'nvidia-108': ['0000:c1:00.0']}".
         """
-        for unit in zaza.model.get_units('nova-compute',
-                                         model_name=self.model_name):
+        for unit in zaza.model.get_units(
+                self.application_name,
+                model_name=self.model_name):
             nova_conf_file = '/etc/nova/nova.conf'
             nova_conf = str(generic_utils.get_file_contents(unit,
                                                             nova_conf_file))
@@ -775,12 +828,14 @@ class NovaCloudControllerActionTest(test_utils.OpenStackBaseTest):
     def test_sync_compute_az_action(self):
         """Test sync-compute-availability-zones action."""
         juju_units_az_map = {}
-        compute_config = zaza.model.get_application_config('nova-compute')
+        compute_config = zaza.model.get_application_config(
+            self.application_name)
         default_az = compute_config['default-availability-zone']['value']
         use_juju_az = compute_config['customize-failure-domain']['value']
 
-        for unit in zaza.model.get_units('nova-compute',
-                                         model_name=self.model_name):
+        for unit in zaza.model.get_units(
+                self.application_name,
+                model_name=self.model_name):
             zone = default_az
             if use_juju_az:
                 result = zaza.model.run_on_unit(unit.name,
@@ -943,12 +998,12 @@ class NovaCloudController(NovaCommonTests):
         # Make config change, wait for the services restart on
         # nova-cloud-controller
         with self.config_change(set_default, set_alternate):
-            # The config change should propagate to nova-cmopute units
+            # The config change should propagate to nova-compute units
             # Wait for them to get settled after relation data has changed
             logging.info(
                 'Waiting for services ({}) to be restarted'.format(services))
             zaza.model.block_until_services_restarted(
-                'nova-compute',
+                self.application_name,
                 mtime,
                 services,
                 model_name=self.model_name)
@@ -957,8 +1012,9 @@ class NovaCloudController(NovaCommonTests):
             # it's changed
             nova_cfg = ConfigParser()
 
-            for unit in zaza.model.get_units('nova-compute',
-                                             model_name=self.model_name):
+            for unit in zaza.model.get_units(
+                    self.application_name,
+                    model_name=self.model_name):
                 logging.info('Checking value of {} in {}'.format(
                     nova_config_key, unit.entity_id))
                 result = zaza.model.run_on_unit(
@@ -1156,8 +1212,9 @@ class SecurityTests(test_utils.OpenStackBaseTest):
         else:
             expected_failures.extend(tls_checks)
 
-        for unit in zaza.model.get_units(self.application_name,
-                                         model_name=self.model_name):
+        for unit in zaza.model.get_units(
+                self.application_name,
+                model_name=self.model_name):
             logging.info('Running `security-checklist` action'
                          ' on  unit {}'.format(unit.entity_id))
             test_utils.audit_assertions(

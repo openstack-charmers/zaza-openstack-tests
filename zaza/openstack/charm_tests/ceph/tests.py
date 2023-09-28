@@ -1285,7 +1285,8 @@ class CheckPoolTypes(unittest.TestCase):
         """Check type of pools created for clients."""
         app_pools = [
             ('glance', 'glance'),
-            ('nova-compute', 'nova'),
+            (zaza_openstack.get_app_names_for_charm('nova-compute')[0],
+             'nova'),
             ('cinder-ceph', 'cinder-ceph')]
         runtime_pool_details = zaza_ceph.get_ceph_pool_details()
         for app, pool_name in app_pools:
