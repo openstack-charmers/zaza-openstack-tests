@@ -69,6 +69,16 @@ class TempestTestBase():
                 tempest_options.extend(
                     ['--exclude-regex',
                      ' '.join([reg for reg in config.get('exclude-regex')])])
+            # Tempest will by default run with a concurrency matching the
+            # number of cores on the test runner.
+            #
+            # When running on a workstation, it is likely that the default
+            # concurrency will be too high for the scale of deployed workload.
+            #
+            # Make concurrency configurable with a sane default.
+            tempest_options.extend(
+                ['--concurrency',
+                 str(config.get('concurrency', min(os.cpu_count(), 4)))])
             with tempfile.TemporaryDirectory() as tmpdirname:
                 if config.get('include-list'):
                     include_file = os.path.join(tmpdirname, 'include.cfg')
