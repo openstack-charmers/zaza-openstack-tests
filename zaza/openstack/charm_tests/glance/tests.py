@@ -91,7 +91,8 @@ class GlanceTest(test_utils.OpenStackBaseTest):
                 self.glance_client,
                 image_url,
                 'cirros-test-import',
-                force_import=True)
+                force_import=True,
+                convert_image_to_raw_if_ceph_used=False)
 
             disk_format = self.glance_client.images.get(image.id).disk_format
             self.assertEqual('raw', disk_format)
@@ -242,6 +243,12 @@ class GlanceCinderBackendTest(test_utils.OpenStackBaseTest):
 
         Validate the size of the image in both Glance API and Cinder API.
         """
+        current_release = openstack_utils.get_os_release()
+        focal_xena = openstack_utils.get_os_release('focal_xena')
+        if current_release < focal_xena:
+            self.skipTest('skipping test since cinder backend not supported '
+                          'till xena')
+
         image_name = "zaza-cinder-test-image"
         openstack_utils.create_image(
             glance=self.glance_client,

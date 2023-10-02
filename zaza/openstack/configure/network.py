@@ -87,6 +87,7 @@ from zaza.openstack.utilities import (
     generic as generic_utils,
     openstack as openstack_utils,
 )
+import zaza.openstack.utilities.exceptions
 
 import zaza.utilities.juju as juju_utils
 
@@ -139,7 +140,8 @@ def setup_sdn(network_config, keystone_session=None):
         network_config["default_gateway"],
         network_config["external_net_cidr"],
         network_config["start_floating_ip"],
-        network_config["end_floating_ip"])
+        network_config["end_floating_ip"],
+        dhcp=True)
     provider_router = (
         openstack_utils.create_provider_router(neutron_client, project_id))
     openstack_utils.plug_extnet_into_router(
@@ -164,14 +166,16 @@ def setup_sdn(network_config, keystone_session=None):
         neutron_client,
         project_id,
         shared=False,
-        network_type=network_config["network_type"])
+        network_type=network_config["network_type"],
+        net_name=network_config["project_net_name"])
     project_subnet = openstack_utils.create_project_subnet(
         neutron_client,
         project_id,
         project_network,
         network_config.get("private_net_cidr"),
         subnetpool=subnetpool,
-        ip_version=ip_version)
+        ip_version=ip_version,
+        subnet_name=network_config["project_subnet_name"])
     openstack_utils.update_subnet_dns(
         neutron_client,
         project_subnet,
@@ -274,14 +278,19 @@ def setup_gateway_ext_port(network_config, keystone_session=None,
     else:
         net_id = None
 
-    # If we're using netplan, we need to add the new interface to the guest
-    current_release = openstack_utils.get_os_release()
-    bionic_queens = openstack_utils.get_os_release('bionic_queens')
-    if current_release >= bionic_queens:
-        logging.warn("Adding second interface for dataport to guest netplan "
-                     "for bionic-queens and later")
-        add_dataport_to_netplan = True
-    else:
+    try:
+        # If we're using netplan, we need to add the new interface to the guest
+        current_release = openstack_utils.get_os_release()
+        bionic_queens = openstack_utils.get_os_release('bionic_queens')
+        if current_release >= bionic_queens:
+            logging.warn("Adding second interface for dataport to guest "
+                         "netplan for bionic-queens and later")
+            add_dataport_to_netplan = True
+        else:
+            add_dataport_to_netplan = False
+    except zaza.openstack.utilities.exceptions.ApplicationNotFound:
+        # The setup_gateway_ext_port helper may be used with non-OpenStack
+        # workloads.
         add_dataport_to_netplan = False
 
     logging.info("Configuring network for OpenStack undercloud/provider")

@@ -28,10 +28,12 @@ from neutronclient.common import exceptions as neutronexceptions
 
 import yaml
 import zaza
+import zaza.openstack.charm_tests.neutron.setup as neutron_setup
 import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.configure.guest as guest
 import zaza.openstack.utilities.openstack as openstack_utils
+import zaza.utilities.machine_os
 
 
 class NeutronPluginApiSharedTests(test_utils.OpenStackBaseTest):
@@ -805,6 +807,11 @@ class NeutronOvsVsctlTest(NeutronPluginApiSharedTests):
                 self.assertEqual(actual_external_id, expected_external_id)
 
 
+def router_address_from_subnet(subnet):
+    """Retrieve router address from subnet."""
+    return subnet['gateway_ip']
+
+
 class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
     """Base for checking openstack instances have valid networking."""
 
@@ -817,6 +824,21 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
             application_name='neutron-api')
         cls.neutron_client = (
             openstack_utils.get_neutron_session_client(cls.keystone_session))
+
+        cls.project_subnet = cls.neutron_client.find_resource(
+            'subnet',
+            neutron_setup.OVERCLOUD_NETWORK_CONFIG['project_subnet_name'])
+        cls.external_subnet = cls.neutron_client.find_resource(
+            'subnet',
+            neutron_setup.OVERCLOUD_NETWORK_CONFIG['external_subnet_name'])
+
+        # Override this if you want your test to attach instances directly to
+        # the external provider network
+        cls.attach_to_external_network = False
+
+        # Override this if you want your test to launch instances with a
+        # specific flavor
+        cls.instance_flavor = None
 
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
                     reraise=True, stop=tenacity.stop_after_attempt(8))
@@ -840,8 +862,10 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
         :param mtu: Check that we can send non-fragmented packets of given size
         :type mtu: Optional[int]
         """
-        floating_1 = floating_ips_from_instance(instance_1)[0]
-        floating_2 = floating_ips_from_instance(instance_2)[0]
+        if not self.attach_to_external_network:
+            floating_1 = floating_ips_from_instance(instance_1)[0]
+            floating_2 = floating_ips_from_instance(instance_2)[0]
+        address_1 = fixed_ips_from_instance(instance_1)[0]
         address_2 = fixed_ips_from_instance(instance_2)[0]
 
         username = guest.boot_tests['bionic']['username']
@@ -859,26 +883,27 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
                 'ping -M do -s {} -c 1'.format(packetsize))
 
         for cmd in cmds:
-            openstack_utils.ssh_command(
-                username, floating_1, 'instance-1',
-                '{} {}'.format(cmd, address_2),
-                password=password, privkey=privkey, verify=verify)
+            if self.attach_to_external_network:
+                openstack_utils.ssh_command(
+                    username, address_1, 'instance-1',
+                    '{} {}'.format(cmd, address_2),
+                    password=password, privkey=privkey, verify=verify)
+            else:
+                openstack_utils.ssh_command(
+                    username, floating_1, 'instance-1',
+                    '{} {}'.format(cmd, address_2),
+                    password=password, privkey=privkey, verify=verify)
 
-            openstack_utils.ssh_command(
-                username, floating_1, 'instance-1',
-                '{} {}'.format(cmd, floating_2),
-                password=password, privkey=privkey, verify=verify)
+                openstack_utils.ssh_command(
+                    username, floating_1, 'instance-1',
+                    '{} {}'.format(cmd, floating_2),
+                    password=password, privkey=privkey, verify=verify)
 
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
                     reraise=True, stop=tenacity.stop_after_attempt(8))
     def validate_instance_can_reach_router(self, instance, verify, mtu=None):
         """
         Validate that an instance can reach it's primary gateway.
-
-        We make the assumption that the router's IP is 192.168.0.1
-        as that's the network that is setup in
-        neutron.setup.basic_overcloud_network which is used in all
-        Zaza Neutron validations.
 
         :param instance: The instance to check networking from
         :type instance: nova_client.Server
@@ -889,7 +914,12 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
         :param mtu: Check that we can send non-fragmented packets of given size
         :type mtu: Optional[int]
         """
-        address = floating_ips_from_instance(instance)[0]
+        if self.attach_to_external_network:
+            router = router_address_from_subnet(self.external_subnet)
+            address = fixed_ips_from_instance(instance)[0]
+        else:
+            router = router_address_from_subnet(self.project_subnet)
+            address = floating_ips_from_instance(instance)[0]
 
         username = guest.boot_tests['bionic']['username']
         password = guest.boot_tests['bionic'].get('password')
@@ -907,7 +937,7 @@ class NeutronNetworkingBase(test_utils.OpenStackBaseTest):
 
         for cmd in cmds:
             openstack_utils.ssh_command(
-                username, address, 'instance', '{} 192.168.0.1'.format(cmd),
+                username, address, 'instance', '{} {}'.format(cmd, router),
                 password=password, privkey=privkey, verify=verify)
 
     @tenacity.retry(wait=tenacity.wait_exponential(min=5, max=60),
@@ -1086,11 +1116,75 @@ class NeutronNetworkingTest(NeutronNetworkingBase):
         """
         instance_1, instance_2 = self.retrieve_guests()
         if not all([instance_1, instance_2]):
-            self.launch_guests()
+            self.launch_guests(
+                attach_to_external_network=self.attach_to_external_network,
+                flavor_name=self.instance_flavor)
             instance_1, instance_2 = self.retrieve_guests()
         self.check_connectivity(instance_1, instance_2)
         self.run_resource_cleanup = self.get_my_tests_options(
             'run_resource_cleanup', True)
+
+
+class DPDKNeutronNetworkingTest(NeutronNetworkingTest):
+    """Ensure that openstack instances have valid networking with DPDK."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running Neutron API Networking tests."""
+        super(DPDKNeutronNetworkingTest, cls).setUpClass()
+
+        # At this point in time the charms do not support configuring overlay
+        # networks with DPDK.  To perform end to end validation we need to
+        # attach instances directly to the provider network and subsequently
+        # DHCP needs to be enabled on that network.
+        #
+        # Note that for instances wired with DPDK the DHCP request/response is
+        # handled as private communication between the ovn-controller and the
+        # instance, and as such there is no risk of rogue DHCP replies escaping
+        # to the surrounding network.
+        cls.attach_to_external_network = True
+        cls.instance_flavor = 'hugepages'
+        cls.external_subnet = cls.neutron_client.find_resource(
+            'subnet',
+            neutron_setup.OVERCLOUD_NETWORK_CONFIG['external_subnet_name'])
+        if ('dhcp_enabled' not in cls.external_subnet or
+                not cls.external_subnet['dhcp_enabled']):
+            logging.info('Enabling DHCP on subnet {}'
+                         .format(cls.external_subnet['name']))
+            openstack_utils.update_subnet_dhcp(
+                cls.neutron_client, cls.external_subnet, True)
+
+    def test_instances_have_networking(self):
+        """Enable DPDK then Validate North/South and East/West networking."""
+        self.enable_hugepages_vfio_on_hvs_in_vms(4)
+        with self.config_change(
+                {
+                    'enable-dpdk': False,
+                    'dpdk-driver': '',
+                },
+                {
+                    'enable-dpdk': True,
+                    'dpdk-driver': 'vfio-pci',
+                },
+                application_name='ovn-chassis'):
+            super().test_instances_have_networking()
+        self.run_resource_cleanup = self.get_my_tests_options(
+            'run_resource_cleanup', True)
+
+    def resource_cleanup(self):
+        """Extend to also revert VFIO NOIOMMU mode on units under test."""
+        super().resource_cleanup()
+        if not self.run_resource_cleanup:
+            return
+
+        if ('dhcp_enabled' not in self.external_subnet or
+                not self.external_subnet['dhcp_enabled']):
+            logging.info('Disabling DHCP on subnet {}'
+                         .format(self.external_subnet['name']))
+            openstack_utils.update_subnet_dhcp(
+                self.neutron_client, self.external_subnet, False)
+
+        self.disable_hugepages_vfio_on_hvs_in_vms()
 
 
 class NeutronNetworkingVRRPTests(NeutronNetworkingBase):
