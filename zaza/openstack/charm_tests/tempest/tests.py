@@ -21,6 +21,7 @@ import subprocess
 import zaza
 import zaza.charm_lifecycle.utils
 import zaza.charm_lifecycle.test
+import zaza.openstack.charm_tests.keystone.setup
 import zaza.openstack.charm_tests.tempest.utils as tempest_utils
 import zaza.charm_lifecycle.utils as lifecycle_utils
 import tempfile
