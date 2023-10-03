@@ -367,6 +367,9 @@ class CloudActions(test_utils.OpenStackBaseTest):
         if service_count < 1:
             self.fail("Unit '{}' has no nova-compute services registered in"
                       " nova-cloud-controller".format(unit_to_remove.name))
+
+        # This elif would be removed in a future code when we have support
+        # for more than 1 nova-compute node in the CI
         elif service_count > 1:
             self.fail("Unexpected number of nova-compute services registered"
                       " in nova-cloud controller. Expecting: 1, found: "
@@ -380,7 +383,7 @@ class CloudActions(test_utils.OpenStackBaseTest):
 
         # Wait for nova-compute service to be removed from the
         # nova-cloud-controller
-        if not wait_for_nova_compute_count(service_count-1):
+        if not wait_for_nova_compute_count(service_count - 1):
             self.fail("nova-compute service was not unregistered from the "
                       "nova-cloud-controller as expected.")
 
@@ -482,43 +485,67 @@ class NovaCompute(NovaCommonTests):
             logging.info("Testing pause resume")
 
     def test_904_test_ceph_keys(self):
-        """Run pause and resume tests.
-
-        Pause service and check services are stopped then resume and check
-        they are started
-        """
-        # Expected default and alternate values
+        """Test if the ceph keys in /etc/ceph are correct."""
+        # only run if configured as rbd with ceph image backend
         if zaza.model.get_application_config(
                 self.application_name)['libvirt-image-backend'].get(
                     'value') != 'rbd':
             return
 
+        # Regex for
+        # [client.nova-compute]
+        #    key = AQBm5xJl8CSnFxAACB9GVr2llNO0G8zWZuZnjQ ==
         regex = re.compile(r"^\[client.(.+)\]\n\tkey = (.+)$")
         key_dict = {}
 
-        def check_keyring(app_name_dict_list):
-            for app_name_dict in app_name_dict_list:
-                for app_name, key_list in app_name_dict.items():
-                    for unit in zaza.model.get_units(
-                            app_name, model_name=self.model_name):
-                        for key_app_name in key_list:
-                            keyring_file = (
-                                '/etc/ceph/ceph.client.{}.keyring'.format(
-                                    key_app_name))
-                            data = str(generic_utils.get_file_contents(
-                                unit, keyring_file))
+        # The new and correct behavior is to have "nova-compute" named keyring
+        # and one other named after the charm app, IF the charm app name is
+        # different than "nova-compute". Example:
+        # for a charm app named "nova-compute-kvm",
+        # it should have both nova-compute-kvm and nova-compute keyrings.
+        # for a charm app named "nova-compute",
+        # it should have only nova-compute keyring.
 
-                            result = regex.findall(data)
-                            self.assertEqual(2, len(result))
-                            self.assertEqual(result[0], key_app_name)
-                            for k, v in key_dict.items():
-                                if k == result[0]:
-                                    self.assertEqual(v, result[1])
-                                else:
-                                    self.assertNotEqual(v, result[1])
-                            key_dict[result[0]] = result[1]
+        # Previous behaviors:
+        # The old behavior is to have only 1 keyring named after the charm app.
+        # the intermediary behavior with the partial fix is to always have only
+        # the "nova-compute" keyring.
 
-        check_keyring([{self.application_name: [self.application_name]}])
+        nova_compute_apps = openstack_utils.get_app_names_for_charm(
+            'nova-compute')
+
+        def check_keyring(app_name):
+            """Check matching keyring name and different from existing ones."""
+            keyring_file = (
+                '/etc/ceph/ceph.client.{}.keyring'.format(app_name))
+            data = str(generic_utils.get_file_contents(
+                unit, keyring_file))
+
+            result = regex.findall(data)
+
+            # Assert keyring file name matches intended name
+            self.assertEqual(2, len(result))
+            self.assertEqual(result[0], app_name)
+
+            # Confirm the keys are different from each already checked
+            # nova-compute charm app
+            for k, v in key_dict.items():
+                if k == result[0]:
+                    self.assertEqual(v, result[1])
+                else:
+                    self.assertNotEqual(v, result[1])
+            key_dict[result[0]] = result[1]
+
+        # We typically only have 1 nova-compute charm app in the CI,
+        # so this code is future-proofing
+        for app_name in nova_compute_apps:
+            for unit in zaza.model.get_units(
+                    app_name, model_name=self.model_name):
+
+                check_keyring('nova-compute')
+                # extra future code for the new fixed version
+                # if app_name != 'nova-compute':
+                #     check_keyring(app_name)
 
     def test_930_check_virsh_default_network(self):
         """Test default virt network is not present."""

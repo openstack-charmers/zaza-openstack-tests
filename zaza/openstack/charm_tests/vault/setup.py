@@ -188,13 +188,18 @@ def auto_initialize(cacert=None, validation_application='keystone', wait=True,
         validate_ca(cacertificate, application=validation_application)
         # Once validation has completed restart nova-compute to work around
         # bug #1826382
-        nova_compute_app_name = get_app_names_for_charm('nova-compute')[0]
+        nova_compute_app_names = get_app_names_for_charm('nova-compute')
+        charm_apps_to_restart_svcs = (nova_compute_app_names +
+                                      ['nova-cloud-controller'])
+
         cmd_map = {
             'nova-cloud-controller': ('systemctl restart '
                                       'nova-scheduler nova-conductor'),
-            nova_compute_app_name: 'systemctl restart nova-compute',
         }
-        for app in (nova_compute_app_name, 'nova-cloud-controller',):
+        for nova_compute_app_name in nova_compute_app_names:
+            cmd_map[nova_compute_app_name] = 'systemctl restart nova-compute'
+
+        for app in charm_apps_to_restart_svcs:
             try:
                 for unit in zaza.model.get_units(app):
                     result = zaza.model.run_on_unit(

@@ -2702,17 +2702,9 @@ def get_app_names_for_charm(charm_name, model_name=None):
     """
     status = juju_utils.get_full_juju_status(model_name=model_name)
     result = []
-    try:
-        for app_name, app_data in status['applications'].items():
-            try:
-                if charm_name == app_data['charm-name']:
-                    result.append(app_name)
-            except KeyError:
-                # Older juju versions may not have the field "charm-name"
-                if charm_name in app_data['charm']:
-                    result.append(app_name)
-    except KeyError:
-        pass
+    for app_name, app_data in status['applications'].items():
+        if charm_name == app_data['charm-name']:
+            result.append(app_name)
     return result
 
 
