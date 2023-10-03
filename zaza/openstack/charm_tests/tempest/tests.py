@@ -17,7 +17,6 @@
 import logging
 import os
 import subprocess
-import tenacity
 
 import zaza
 import zaza.charm_lifecycle.utils
@@ -25,6 +24,7 @@ import zaza.charm_lifecycle.test
 import zaza.openstack.charm_tests.tempest.utils as tempest_utils
 import zaza.charm_lifecycle.utils as lifecycle_utils
 import tempfile
+import tenacity
 
 
 class TempestTestBase():
@@ -193,7 +193,11 @@ class TempestTestScaleK8SBase(TempestTestBase):
         :returns: Status of tempest run
         :rtype: bool
         """
-        tempest_utils.render_tempest_config_keystone_v3(minimal=True)
+        render_tempest_config_keystone_v3 = tenacity.retry(
+            wait=tenacity.wait_fixed(10), stop=tenacity.stop_after_attempt(3)
+        )(tempest_utils.render_tempest_config_keystone_v3)
+        zaza.openstack.charm_tests.keystone.setup.wait_for_all_endpoints()
+        render_tempest_config_keystone_v3(minimal=True)
         if not super().run():
             return False
 
@@ -203,7 +207,8 @@ class TempestTestScaleK8SBase(TempestTestBase):
         zaza.model.block_until_all_units_idle()
         logging.info("Wait for status ready ...")
         zaza.model.wait_for_application_states(states=self.expected_statuses)
-        tempest_utils.render_tempest_config_keystone_v3(minimal=True)
+        zaza.openstack.charm_tests.keystone.setup.wait_for_all_endpoints()
+        render_tempest_config_keystone_v3(minimal=True)
         if not super().run():
             return False
 
@@ -216,7 +221,8 @@ class TempestTestScaleK8SBase(TempestTestBase):
         zaza.model.block_until_all_units_idle()
         logging.info("Wait for status ready ...")
         zaza.model.wait_for_application_states(states=self.expected_statuses)
-        tempest_utils.render_tempest_config_keystone_v3(minimal=True)
+        zaza.openstack.charm_tests.keystone.setup.wait_for_all_endpoints()
+        render_tempest_config_keystone_v3(minimal=True)
         return super().run()
 
 
