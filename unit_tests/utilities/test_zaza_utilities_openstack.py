@@ -543,6 +543,26 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 expected_status='active',
                 msg='Image status wait')
 
+    def test_get_app_names_for_charm(self):
+        self.patch_object(openstack_utils.juju_utils, "get_full_juju_status",
+                          return_value={
+                              "applications": {
+                                  "nova-compute-kvm": {
+                                      "charm-name": 'nova-compute',
+                                  },
+                                  "nova-compute-sriov": {
+                                      "charm-name": 'nova-compute'
+                                  },
+                                  "cinder": {
+                                      "charm-name": 'cinder-volume',
+                                  },
+                              },
+                          })
+        self.assertEqual(
+            ['nova-compute-kvm', 'nova-compute-sriov'],
+            openstack_utils.get_app_names_for_charm('nova-compute'))
+        self.get_full_juju_status.assert_called_once_with(model_name=None)
+
     def test_is_ceph_image_backend_True(self):
         self.patch_object(openstack_utils.juju_utils, "get_full_juju_status",
                           return_value={
