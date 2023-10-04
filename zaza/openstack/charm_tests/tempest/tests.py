@@ -186,7 +186,7 @@ class TempestTestScaleK8SBase(TempestTestBase):
         assert len(dead_units) == dead_count
 
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
-                    reraise=True, stop=tenacity.stop_after_attempt(8))
+                    reraise=True, stop=tenacity.stop_after_attempt(20))
     def wait_for_traefik(self, application_name):
         """Wait for traefk to finish processing lb changes."""
         logging.warning(
