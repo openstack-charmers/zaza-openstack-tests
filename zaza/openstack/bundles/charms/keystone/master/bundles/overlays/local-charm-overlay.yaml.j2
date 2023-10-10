@@ -1,0 +1,12 @@
+# Add True HA
+applications:
+  keystone:
+    options:
+      vip: '{{ OS_VIP00 }}'
+  hacluster:
+    charm: ch:hacluster
+    num_units: 0
+    channel: latest/edge
+relations:
+- - keystone
+  - hacluster
