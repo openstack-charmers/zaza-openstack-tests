@@ -125,9 +125,22 @@ class SwiftProxyTests(test_utils.OpenStackBaseTest):
                            'search-value': self.TEST_SEARCH_TARGET,
                            'weight': self.TEST_WEIGHT_INITIAL})
         self.assertEqual(action.status, "completed")
-        self.assertTrue(
-            swift_utils.is_ring_synced('swift-proxy', 'object',
-                                       self.TEST_EXPECTED_RING_HOSTS))
+        # let everything settle, because after the set-weight action the
+        # swift-storage units need to get run swift-storage-relation-changed to
+        # get the new ring
+        logging.info("Waiting for model to settle.")
+        zaza.model.wait_for_agent_status()
+        zaza.model.block_until_all_units_idle()
+
+        for attempt in tenacity.Retrying(
+                wait=tenacity.wait_fixed(2),
+                retry=tenacity.retry_if_exception_type(AssertionError),
+                reraise=True,
+                stop=tenacity.stop_after_attempt(10)):
+            with attempt:
+                self.assertTrue(
+                    swift_utils.is_ring_synced('swift-proxy', 'object',
+                                               self.TEST_EXPECTED_RING_HOSTS))
 
     def test_905_remove_device_action_and_validate_rebalance(self):
         """Remove device from object ring."""

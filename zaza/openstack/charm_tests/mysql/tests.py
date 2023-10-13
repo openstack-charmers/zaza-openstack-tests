@@ -54,7 +54,7 @@ class MySQLBaseTest(test_utils.OpenStackBaseTest):
         """
         return zaza.model.run_on_leader(
             self.application,
-            "leader-get root-password")["Stdout"].strip()
+            "leader-get mysql.passwd")["Stdout"].strip()
 
     def get_cluster_status(self):
         """Get cluster status.

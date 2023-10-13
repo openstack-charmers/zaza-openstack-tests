@@ -208,4 +208,9 @@ def wait_for_all_endpoints(interface='public'):
                                                  interface=interface):
             wait_for_url(
                 ep.url,
-                [requests.codes.ok, requests.codes.multiple_choices])
+                # Heat cloudformation and orchestration return 400 and 401
+                [
+                    requests.codes.ok,
+                    requests.codes.multiple_choices,
+                    requests.codes.bad_request,
+                    requests.codes.unauthorized])

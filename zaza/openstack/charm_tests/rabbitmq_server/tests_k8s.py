@@ -130,6 +130,11 @@ class RabbitMQK8STest(test_utils.BaseCharmTest):
 
     def test_quorum_queue_management(self):
         """Test charm management for quorum queues."""
+        configs = zaza.model.get_application_config("rabbitmq")
+        if not hasattr(configs, "minimum-replicas"):
+            self.skipTest(
+                "Charm does not support quorum queues."
+            )
         if len(zaza.model.get_units("rabbitmq")) != 1:
             self.skipTest(
                 "Unexpected number of units. There most be only one unit for "

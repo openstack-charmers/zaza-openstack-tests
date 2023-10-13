@@ -17,14 +17,16 @@
 import logging
 import os
 import subprocess
-import tenacity
+import yaml
 
 import zaza
 import zaza.charm_lifecycle.utils
 import zaza.charm_lifecycle.test
+import zaza.openstack.charm_tests.keystone.setup
 import zaza.openstack.charm_tests.tempest.utils as tempest_utils
 import zaza.charm_lifecycle.utils as lifecycle_utils
 import tempfile
+import tenacity
 
 
 class TempestTestBase():
@@ -69,6 +71,16 @@ class TempestTestBase():
                 tempest_options.extend(
                     ['--exclude-regex',
                      ' '.join([reg for reg in config.get('exclude-regex')])])
+            # Tempest will by default run with a concurrency matching the
+            # number of cores on the test runner.
+            #
+            # When running on a workstation, it is likely that the default
+            # concurrency will be too high for the scale of deployed workload.
+            #
+            # Make concurrency configurable with a sane default.
+            tempest_options.extend(
+                ['--concurrency',
+                 str(config.get('concurrency', min(os.cpu_count(), 4)))])
             with tempfile.TemporaryDirectory() as tmpdirname:
                 if config.get('include-list'):
                     include_file = os.path.join(tmpdirname, 'include.cfg')
@@ -173,6 +185,39 @@ class TempestTestScaleK8SBase(TempestTestBase):
                       if ustatus.agent_status.life == 'dying']
         assert len(dead_units) == dead_count
 
+    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
+                    reraise=True, stop=tenacity.stop_after_attempt(20))
+    def wait_for_traefik(self, application_name):
+        """Wait for traefk to finish processing lb changes."""
+        logging.warning(
+            "Waiting for traefik to process changes. This is a temporary "
+            "workaround and should be removed when there is a way to "
+            "determine when traefik has processed all requests")
+        units_count = len(zaza.model.get_units(application_name))
+        container_cmd = (
+            "cat /opt/traefik/juju/juju_ingress_ingress_*_{}.yaml").format(
+                application_name)
+        container_name = "traefik"
+        for unit in zaza.model.get_units("traefik"):
+            config = subprocess.check_output([
+                "juju",
+                "ssh",
+                "-m", zaza.model.get_juju_model(),
+                "--container",
+                container_name,
+                unit.entity_id,
+                container_cmd]).decode()
+            service_config = yaml.safe_load(config)
+            loadBalancers = [
+                lb['loadBalancer']
+                for lb in service_config['http']['services'].values()]
+            assert len(loadBalancers) == 1
+            unit_count_in_lb = len(loadBalancers[0]['servers'])
+            logging.info("Traefik LB server count: {} unit count: {}".format(
+                unit_count_in_lb,
+                units_count))
+            assert unit_count_in_lb == units_count
+
     def run(self):
         """Run tempest tests as specified in tests/tests.yaml.
 
@@ -183,7 +228,12 @@ class TempestTestScaleK8SBase(TempestTestBase):
         :returns: Status of tempest run
         :rtype: bool
         """
-        tempest_utils.render_tempest_config_keystone_v3(minimal=True)
+        render_tempest_config_keystone_v3 = tenacity.retry(
+            wait=tenacity.wait_fixed(10), stop=tenacity.stop_after_attempt(3)
+        )(tempest_utils.render_tempest_config_keystone_v3)
+        self.wait_for_traefik(self.application_name)
+        zaza.openstack.charm_tests.keystone.setup.wait_for_all_endpoints()
+        render_tempest_config_keystone_v3(minimal=True)
         if not super().run():
             return False
 
@@ -193,7 +243,9 @@ class TempestTestScaleK8SBase(TempestTestBase):
         zaza.model.block_until_all_units_idle()
         logging.info("Wait for status ready ...")
         zaza.model.wait_for_application_states(states=self.expected_statuses)
-        tempest_utils.render_tempest_config_keystone_v3(minimal=True)
+        self.wait_for_traefik(self.application_name)
+        zaza.openstack.charm_tests.keystone.setup.wait_for_all_endpoints()
+        render_tempest_config_keystone_v3(minimal=True)
         if not super().run():
             return False
 
@@ -206,7 +258,9 @@ class TempestTestScaleK8SBase(TempestTestBase):
         zaza.model.block_until_all_units_idle()
         logging.info("Wait for status ready ...")
         zaza.model.wait_for_application_states(states=self.expected_statuses)
-        tempest_utils.render_tempest_config_keystone_v3(minimal=True)
+        self.wait_for_traefik(self.application_name)
+        zaza.openstack.charm_tests.keystone.setup.wait_for_all_endpoints()
+        render_tempest_config_keystone_v3(minimal=True)
         return super().run()
 
 

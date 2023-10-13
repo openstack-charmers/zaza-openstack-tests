@@ -26,6 +26,7 @@ from neutronclient.common import exceptions as neutronexceptions
 
 import zaza.model as model
 import zaza.utilities.deployment_env as deployment_env
+import zaza.utilities.juju as zaza_juju_utils
 import zaza.openstack.utilities.juju as juju_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.glance.setup as glance_setup
@@ -43,7 +44,7 @@ TEMPEST_FLAVOR_NAME = 'm1.tempest'
 TEMPEST_ALT_FLAVOR_NAME = 'm2.tempest'
 TEMPEST_SVC_LIST = ['ceilometer', 'cinder', 'glance', 'heat', 'horizon',
                     'ironic', 'manila', 'neutron', 'nova', 'octavia',
-                    'sahara', 'swift', 'trove', 'zaqar']
+                    'sahara', 'swift', 'trove', 'watcher', 'zaqar']
 
 
 def render_tempest_config_keystone_v2():
@@ -179,7 +180,10 @@ def _get_tempest_context(workspace_path, missing_fatal=True):
         ctxt['enabled_services'],
         missing_fatal=missing_fatal)
     _add_auth_config(ctxt)
-    if 'octavia' in ctxt['enabled_services']:
+    if (
+        'octavia' in ctxt['enabled_services'] and
+        not zaza_juju_utils.is_k8s_deployment()
+    ):
         _add_octavia_config(ctxt)
     return ctxt
 

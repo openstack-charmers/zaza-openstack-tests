@@ -126,7 +126,7 @@ class CeilometerTest(test_utils.OpenStackBaseTest):
         current_value = openstack_utils.get_application_config_option(
             self.application_name, config_name
         )
-        assert type(current_value) is bool
+        self.assertIsInstance(current_value, bool)
         new_value = not current_value
 
         # Convert bool to str

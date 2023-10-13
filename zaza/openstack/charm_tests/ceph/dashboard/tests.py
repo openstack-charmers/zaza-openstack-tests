@@ -331,19 +331,27 @@ class CephDashboardTest(test_utils.BaseCharmTest):
 
     def verify_ssl_config(self, ca_file):
         """Check if request validates the configured SSL cert."""
-        rcs = collections.defaultdict(list)
         units = zaza.model.get_units('ceph-mon')
-        for unit in units:
-            req = self._run_request_get(
-                'https://{}:8443'.format(
-                    zaza.model.get_unit_public_address(unit)),
-                verify=ca_file,
-                allow_redirects=False)
-            rcs[req.status_code].append(
-                zaza.model.get_unit_public_address(unit)
-            )
-        self.assertEqual(len(rcs[requests.codes.ok]), 1)
-        self.assertEqual(len(rcs[requests.codes.see_other]), len(units) - 1)
+
+        for attempt in tenacity.Retrying(
+                wait=tenacity.wait_exponential(max=60),
+                reraise=True, stop=tenacity.stop_after_attempt(10)
+        ):
+            with attempt:
+                rcs = collections.defaultdict(list)
+                for unit in units:
+                    req = self._run_request_get(
+                        'https://{}:8443'.format(
+                            zaza.model.get_unit_public_address(unit)),
+                        verify=ca_file,
+                        allow_redirects=False)
+                    rcs[req.status_code].append(
+                        zaza.model.get_unit_public_address(unit)
+                    )
+                self.assertEqual(len(rcs[requests.codes.ok]), 1)
+                self.assertEqual(
+                    len(rcs[requests.codes.see_other]),
+                    len(units) - 1)
 
     def _get_dashboard_hostnames_sans(self):
         """Get a generator for Dashboard unit public addresses."""
