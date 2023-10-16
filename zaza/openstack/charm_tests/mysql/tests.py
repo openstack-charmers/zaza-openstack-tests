@@ -1123,7 +1123,7 @@ class MySQLRouterTests(test_utils.OpenStackBaseTest):
         cls.services = ["mysqlrouter"]
         # Config file affected by juju set config change
         cls.conf_file = (
-            "/var/lib/mysql/{}/mysqlrouter.conf"
+            "/var/lib/mysql/{}-mysql-router/mysqlrouter.conf"
             .format(application_name))
 
     def test_910_restart_on_config_change(self):
@@ -1146,11 +1146,19 @@ class MySQLRouterTests(test_utils.OpenStackBaseTest):
             self.services)
         logging.info("Passed restart on changed test.")
 
-    def test_action_bootstrap_mysqlrouter(self):
+    def test_920_bootstrap_mysqlrouter_action(self):
         """Checking bootstrap-mysqlrouter action.
 
         Run the bootstrap-mysqlrouter action
         """
+        # application_name on test is keystone-mysql-router
+        # using self.conf_file introduces error.
+        # instead of changing current self.conf_file,
+        # define one (it could introduce another issue)
+        config_file = (
+            "/var/lib/mysql/{}/mysqlrouter.conf"
+            .format(self.application_name))
+
         logging.info("Starting bootstrap-mysqlrouter test")
 
         # put empty string to conf_file and make it wrong
@@ -1159,7 +1167,7 @@ class MySQLRouterTests(test_utils.OpenStackBaseTest):
                                  "echo '[DEFAULT]\n \
                                         [metadata_cache:[\\w$]+$] \
                                         ' > {}".format(
-                                     self.conf_file))
+                                     config_file))
 
         # verify it is in error state
         for attempt in tenacity.Retrying(
@@ -1206,7 +1214,7 @@ class MySQLRouterTests(test_utils.OpenStackBaseTest):
         logging.info("Getting configuration file")
         recovered = zaza.model.run_on_leader(self.application,
                                              "cat {}".format(
-                                                 self.conf_file))['Stdout']
+                                                 config_file))['Stdout']
 
         # Checking bootstrap action result
         assert "Success" in action.data["results"]["outcome"], (
