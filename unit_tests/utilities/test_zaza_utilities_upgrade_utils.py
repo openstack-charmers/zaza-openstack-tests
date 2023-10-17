@@ -102,6 +102,21 @@ class TestUpgradeUtils(ut_utils.BaseTestCase):
             actual,
             expected)
 
+    def test_get_charm_upgrade_groups(self):
+        expected = [
+            ('Database Services', []),
+            ('Stateful Services', []),
+            ('Core Identity', []),
+            ('Control Plane', ['cinder']),
+            ('Data Plane', ['nova-compute']),
+            ('sweep_up', ['neutron-openvswitch', 'ntp'])]
+        actual = openstack_upgrade.get_charm_upgrade_groups()
+        pprint.pprint(expected)
+        pprint.pprint(actual)
+        self.assertEqual(
+            actual,
+            expected)
+
     def test_get_series_upgrade_groups(self):
         expected = [
             ('Database Services', ['mydb']),

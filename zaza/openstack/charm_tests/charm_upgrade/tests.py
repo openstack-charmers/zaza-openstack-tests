@@ -22,9 +22,9 @@ import unittest
 import zaza.model
 from zaza.openstack.utilities import (
     cli as cli_utils,
+    os_versions as os_versions,
     upgrade_utils as upgrade_utils,
 )
-from zaza.openstack.charm_tests.nova.tests import LTSGuestCreateTest
 
 
 class FullCloudCharmUpgradeTest(unittest.TestCase):
@@ -34,25 +34,9 @@ class FullCloudCharmUpgradeTest(unittest.TestCase):
     def setUpClass(cls):
         """Run setup for Charm Upgrades."""
         cli_utils.setup_logging()
-        cls.lts = LTSGuestCreateTest()
-        cls.lts.setUpClass()
-        cls.target_charm_namespace = '~openstack-charmers-next'
-
-    def get_upgrade_url(self, charm_url):
-        """Return the charm_url to upgrade to.
-
-        :param charm_url: Current charm url.
-        :type charm_url: str
-        """
-        charm_name = upgrade_utils.extract_charm_name_from_url(
-            charm_url)
-        next_charm_url = zaza.model.get_latest_charm_url(
-            "cs:{}/{}".format(self.target_charm_namespace, charm_name))
-        return next_charm_url
 
     def test_200_run_charm_upgrade(self):
         """Run charm upgrade."""
-        self.lts.test_launch_small_instance()
         applications = zaza.model.get_status().applications
         groups = upgrade_utils.get_charm_upgrade_groups(
             extra_filters=[upgrade_utils._filter_etcd,
@@ -63,20 +47,22 @@ class FullCloudCharmUpgradeTest(unittest.TestCase):
             for application, app_details in applications.items():
                 if application not in group:
                     continue
-                target_url = self.get_upgrade_url(app_details['charm'])
-                if target_url == app_details['charm']:
-                    logging.warn(
-                        "Skipping upgrade of {}, already using {}".format(
-                            application,
-                            target_url))
+                charm_channel = applications[application].charm_channel
+                charm_track, charm_risk = charm_channel.split('/')
+                os_version, os_codename = (
+                    upgrade_utils.determine_next_openstack_release(
+                        charm_track))
+                if os_versions.CompareOpenStack(os_codename) >= 'zed':
+                    new_charm_track = os_version
                 else:
-                    logging.info("Upgrading {} to {}".format(
-                        application,
-                        target_url))
-                    zaza.model.upgrade_charm(
-                        application,
-                        switch=target_url)
-                logging.info("Waiting for charm url to update")
-                zaza.model.block_until_charm_url(application, target_url)
-            zaza.model.block_until_all_units_idle()
-        self.lts.test_launch_small_instance()
+                    new_charm_track = os_codename
+                new_charm_channel = f"{new_charm_track}/{charm_risk}"
+                self.assertNotEqual(charm_channel, new_charm_channel)
+                logging.info("Upgrading {} to {}".format(
+                    application, new_charm_channel))
+                zaza.model.upgrade_charm(
+                    application, channel=new_charm_channel)
+                logging.info("Waiting for charm channel to update")
+                zaza.model.block_until_charm_channel(
+                    application, new_charm_channel)
+            zaza.model.block_until_all_units_idle(timeout=10800)
