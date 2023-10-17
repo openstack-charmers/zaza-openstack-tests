@@ -424,5 +424,39 @@ class VaultCacheTest(BaseVaultTest):
                             processed_request_key, first_bag[0], data_bag[0]))
 
 
+class VaultIntermediateCATest(BaseVaultTest):
+    """Encapsulate vault tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run setup for Vault tests."""
+        super(VaultIntermediateCATest, cls).setUpClass()
+
+    def test_generate_intermediate_ca(self):
+        """Test generating an intermediate CA certificate."""
+        action = vault_utils.run_charm_authorize(self.vault_creds['root_token'])
+        action = zaza.model.run_action_on_leader(
+            'vault', 'generate-root-ca', action_params={})
+
+        action = zaza.model.run_action_on_leader(
+            'vault',
+            'generate-certificate',
+            action_params={
+                'common-name': 'test',
+                'cert-type': 'intermediate',
+                'sans': 'test,1.1.1.1',
+            }
+        )
+
+        # NOTE(neoaggelos): action.data['results']['output'] format is a python dict
+        # formatted as a string, so we cannot parse JSON. Instead, ensure that expected
+        # keys are present.
+        #
+        # Example: "{'private_key': '...', 'ca_chain': '...', 'certificate': '...'}"
+        assert "certificate" in action.data['results']['output']
+        assert "ca_chain" in action.data['results']['output']
+        assert "private_key" in action.data['results']['output']
+
+
 if __name__ == '__main__':
     unittest.main()
