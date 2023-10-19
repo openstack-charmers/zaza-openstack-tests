@@ -81,6 +81,9 @@ class TempestTestBase():
             tempest_options.extend(
                 ['--concurrency',
                  str(config.get('concurrency', min(os.cpu_count(), 4)))])
+            serial = config.get('serial')
+            if serial and serial is True:
+                tempest_options.extend(['--serial'])
             with tempfile.TemporaryDirectory() as tmpdirname:
                 if config.get('include-list'):
                     include_file = os.path.join(tmpdirname, 'include.cfg')
