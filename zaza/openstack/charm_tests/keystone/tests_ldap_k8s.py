@@ -17,6 +17,7 @@ import json
 import tenacity
 import contextlib
 from keystoneauth1.exceptions.http import NotFound as http_NotFound
+import logging
 import zaza.openstack.charm_tests.keystone.tests as ks_tests
 import zaza.openstack.charm_tests.tempest.tests as tempest_tests
 import zaza.charm_lifecycle.utils as lifecycle_utils
@@ -106,13 +107,21 @@ class LdapExplicitCharmConfigTestsK8S(ks_tests.LdapExplicitCharmConfigTests):
                     reraise=True, stop=tenacity.stop_after_attempt(5),
                     retry=tenacity.retry_if_exception_type(http_NotFound))
     def _find_keystone_v3_group(self, group, domain):
-        super()._find_keystone_v3_group(group, domain)
+        logging.info('Looking for group: {}'.format(group))
+        try:
+            return super()._find_keystone_v3_group(group, domain)
+        except AttributeError:
+            raise http_NotFound
 
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=2, max=60),
                     reraise=True, stop=tenacity.stop_after_attempt(5),
                     retry=tenacity.retry_if_exception_type(http_NotFound))
-    def _find_keystone_v3_user(username, domain, group=None):
-        super()._find_keystone_v3_user(username, domain, group=group)
+    def _find_keystone_v3_user(self, username, domain, group=None):
+        logging.info('Looking for user: {}'.format(username))
+        try:
+            return super()._find_keystone_v3_user(username, domain, group=group)
+        except AttributeError:
+            raise http_NotFound
 
 
 class KeystoneTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
