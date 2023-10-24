@@ -16,7 +16,7 @@
 import json
 import tenacity
 import contextlib
-import keystoneauth1.exceptions.http.NotFound as http_NotFound
+from keystoneauth1.exceptions.http import NotFound as http_NotFound
 import zaza.openstack.charm_tests.keystone.tests as ks_tests
 import zaza.openstack.charm_tests.tempest.tests as tempest_tests
 import zaza.charm_lifecycle.utils as lifecycle_utils
