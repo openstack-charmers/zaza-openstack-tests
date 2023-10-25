@@ -16,6 +16,7 @@
 import json
 import tenacity
 import contextlib
+from keystoneauth1.exceptions.connection import ConnectFailure
 from keystoneauth1.exceptions.http import NotFound as http_NotFound
 import logging
 from requests.exceptions import ConnectionError
@@ -118,7 +119,8 @@ class LdapExplicitCharmConfigTestsK8S(ks_tests.LdapExplicitCharmConfigTests):
         logging.info('Looking for group: {}'.format(group))
         try:
             return super()._find_keystone_v3_group(group, domain)
-        except (AttributeError, http_NotFound, ConnectionError):
+        except (AttributeError, http_NotFound, ConnectionError,
+                ConnectFailure):
             raise KeystoneLookupError
 
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=2, max=60),
@@ -132,7 +134,8 @@ class LdapExplicitCharmConfigTestsK8S(ks_tests.LdapExplicitCharmConfigTests):
                 username,
                 domain,
                 group=group)
-        except (AttributeError, http_NotFound, ConnectionError):
+        except (AttributeError, http_NotFound, ConnectionError,
+                ConnectFailure):
             raise KeystoneLookupError
 
 
