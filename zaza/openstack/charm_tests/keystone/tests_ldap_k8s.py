@@ -25,8 +25,12 @@ import zaza.charm_lifecycle.utils as lifecycle_utils
 import zaza.model
 import subprocess
 
+
 class KeystoneLookupError(Exception):
+    """An error looking up data in keystone."""
+
     pass
+
 
 class LdapExplicitCharmConfigTestsK8S(ks_tests.LdapExplicitCharmConfigTests):
     """Keystone LDAP tests for K8s deployment."""
@@ -108,22 +112,27 @@ class LdapExplicitCharmConfigTestsK8S(ks_tests.LdapExplicitCharmConfigTests):
 
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=2, max=60),
                     reraise=True, stop=tenacity.stop_after_attempt(5),
-                    retry=tenacity.retry_if_exception_type(KeystoneLookupError))
+                    retry=tenacity.retry_if_exception_type(
+                        KeystoneLookupError))
     def _find_keystone_v3_group(self, group, domain):
         logging.info('Looking for group: {}'.format(group))
         try:
             return super()._find_keystone_v3_group(group, domain)
-        except (AttributeError, http_NotFound, ConnectionError) as error:
+        except (AttributeError, http_NotFound, ConnectionError):
             raise KeystoneLookupError
 
     @tenacity.retry(wait=tenacity.wait_exponential(multiplier=2, max=60),
                     reraise=True, stop=tenacity.stop_after_attempt(5),
-                    retry=tenacity.retry_if_exception_type(KeystoneLookupError))
+                    retry=tenacity.retry_if_exception_type(
+                        KeystoneLookupError))
     def _find_keystone_v3_user(self, username, domain, group=None):
         logging.info('Looking for user: {}'.format(username))
         try:
-            return super()._find_keystone_v3_user(username, domain, group=group)
-        except (AttributeError, http_NotFound, ConnectionError) as error:
+            return super()._find_keystone_v3_user(
+                username,
+                domain,
+                group=group)
+        except (AttributeError, http_NotFound, ConnectionError):
             raise KeystoneLookupError
 
 
