@@ -14,7 +14,6 @@
 
 import copy
 import mock
-import pprint
 
 import unit_tests.utils as ut_utils
 import zaza.openstack.utilities.upgrade_utils as openstack_upgrade
@@ -96,8 +95,6 @@ class TestUpgradeUtils(ut_utils.BaseTestCase):
             ('Data Plane', ['nova-compute']),
             ('sweep_up', [])]
         actual = openstack_upgrade.get_upgrade_groups()
-        pprint.pprint(expected)
-        pprint.pprint(actual)
         self.assertEqual(
             actual,
             expected)
@@ -111,8 +108,6 @@ class TestUpgradeUtils(ut_utils.BaseTestCase):
             ('Data Plane', ['nova-compute']),
             ('sweep_up', ['neutron-openvswitch', 'ntp'])]
         actual = openstack_upgrade.get_charm_upgrade_groups()
-        pprint.pprint(expected)
-        pprint.pprint(actual)
         self.assertEqual(
             actual,
             expected)
@@ -126,8 +121,6 @@ class TestUpgradeUtils(ut_utils.BaseTestCase):
             ('Data Plane', ['nova-compute']),
             ('sweep_up', ['ntp'])]
         actual = openstack_upgrade.get_series_upgrade_groups()
-        pprint.pprint(expected)
-        pprint.pprint(actual)
         self.assertEqual(
             actual,
             expected)
@@ -141,8 +134,6 @@ class TestUpgradeUtils(ut_utils.BaseTestCase):
             ('sweep_up', ['ntp'])]
         actual = openstack_upgrade.get_series_upgrade_groups(
             target_series='focal')
-        pprint.pprint(expected)
-        pprint.pprint(actual)
         self.assertEqual(
             actual,
             expected)

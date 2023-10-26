@@ -22,8 +22,8 @@ import unittest
 import zaza.model
 from zaza.openstack.utilities import (
     cli as cli_utils,
-    os_versions as os_versions,
-    upgrade_utils as upgrade_utils,
+    os_versions,
+    upgrade_utils,
 )
 
 
