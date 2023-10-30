@@ -15,19 +15,16 @@
 """Code for running status tests."""
 
 import logging
-import subprocess
-import unittest
 
 import zaza
 import zaza.openstack.charm_tests.test_utils as test_utils
+
 
 class ProposedPackageReport(test_utils.OpenStackBaseTest):
     """Proposed packages report status test class."""
 
     def test_100_report_proposed_packages(self):
         """Report proposed packages installed on each unit."""
-
-        machines = []
         cmd = 'apt list --installed'
         for application in zaza.model.get_status().applications:
             for unit in zaza.model.get_units(application):
