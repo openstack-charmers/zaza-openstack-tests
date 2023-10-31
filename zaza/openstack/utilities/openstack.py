@@ -85,6 +85,7 @@ from zaza import model
 from zaza.openstack.utilities import (
     exceptions,
     generic as generic_utils,
+    ObjectRetrierWraps,
 )
 import zaza.utilities.networking as network_utils
 
@@ -379,7 +380,8 @@ def get_nova_session_client(session, version=None):
     """
     if not version:
         version = 2
-    return novaclient_client.Client(version, session=session)
+    return ObjectRetrierWraps(
+        novaclient_client.Client(version, session=session))
 
 
 def get_neutron_session_client(session):
