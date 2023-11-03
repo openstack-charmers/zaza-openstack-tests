@@ -198,7 +198,7 @@ class TempestTestScaleK8SBase(TempestTestBase):
             "determine when traefik has processed all requests")
         units_count = len(zaza.model.get_units(application_name))
         container_cmd = (
-            "cat /opt/traefik/juju/juju_ingress_ingress_*_{}.yaml").format(
+            "cat /opt/traefik/juju/juju_ingress_*_*_{}.yaml").format(
                 application_name)
         container_name = "traefik"
         for unit in zaza.model.get_units("traefik"):
