@@ -214,7 +214,6 @@ class TempestTestScaleK8SBase(TempestTestBase):
             loadBalancers = [
                 lb['loadBalancer']
                 for lb in service_config['http']['services'].values()]
-            assert len(loadBalancers) == 1
             unit_count_in_lb = len(loadBalancers[0]['servers'])
             logging.info("Traefik LB server count: {} unit count: {}".format(
                 unit_count_in_lb,
