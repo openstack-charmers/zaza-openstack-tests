@@ -87,19 +87,16 @@ project_domain_name = demoDomain
 admin_username = {{ admin_username }}
 admin_password = {{ admin_password }}
 admin_project_name = {{ admin_project_name }}
-admin_user_domain_name = admin_domain
-admin_project_domain_name = admin_domain
+admin_domain_name = {{ admin_domain_name }}
 auth_url = {{ proto }}://{{ keystone }}:5000//v3
 auth_version = 3
 disable_ssl_certificate_validation = true
-ca_file=/home/ubuntu/.cache/openstack-root-ca.crt
 region = RegionOne
 instance_type = m1.small
 minimal_instance_type = m1.small
 image_ref = {{ image_id }}
 minimal_image_ref = {{ image_id }}
-skip_functional_test_list = LoadBalancerv2Test,NotificationTest,UpdateStackTest.test_stack_update_with_replacing_userdata,CancelUpdateTest.test_cancel_update_server_with_port
-skip_scenario_test_list = SoftwareConfigIntegrationTest,AutoscalingLoadBalancerTest,AutoscalingLoadBalancerv2Test,AodhAlarmTest,CfnInitIntegrationTest,BasicResourcesTest
+vm_to_heat_api_insecure = True
 {% endif %}
 
 [oslo_concurrency]
