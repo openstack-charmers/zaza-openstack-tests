@@ -136,6 +136,11 @@ enable_security_groups = true
 test_with_ipv6 = false
 test_server_path = {{ workspace_path }}/test_server.bin
 provider = amphora
+octavia_svc_username = octavia
+member_role = load-balancer_member
+admin_role = Admin
+RBAC_test_type = none
+log_user_roles = False
 {% endif %}
 
 {%- if 'magnum' in enabled_services %}
