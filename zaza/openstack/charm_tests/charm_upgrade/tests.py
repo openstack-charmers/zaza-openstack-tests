@@ -52,7 +52,7 @@ class FullCloudCharmUpgradeTest(unittest.TestCase):
                 os_version, os_codename = (
                     upgrade_utils.determine_next_openstack_release(
                         charm_track))
-                if os_versions.CompareOpenStack(os_codename) >= 'zed':
+                if os_versions.CompareOpenStack(os_codename) > 'zed':
                     new_charm_track = os_version
                 else:
                     new_charm_track = os_codename
