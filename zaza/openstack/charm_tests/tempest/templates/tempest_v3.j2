@@ -111,6 +111,7 @@ img_disk_format = qcow2
 [validation]
 run_validation = true
 image_ssh_user = cirros
+ssh_timeout = 600
 
 [service_available]
 {% for svc in enabled_services -%}
