@@ -192,6 +192,26 @@ def wait_for_url(url, ok_codes=None):
             assert r.status_code in ok_codes
 
 
+def wait_for_client():
+    """Wait for client to be returned successfully.
+
+    If keystone is still in a transient state then it may take a few retries
+    before a client is returned
+    """
+    for attempt in tenacity.Retrying(
+            stop=tenacity.stop_after_attempt(10),
+            wait=tenacity.wait_exponential(
+                multiplier=1, min=2, max=60)):
+        with attempt:
+            overcloud_auth = openstack_utils.get_overcloud_auth()
+            wait_for_url(overcloud_auth['OS_AUTH_URL'])
+            session = openstack_utils.get_overcloud_keystone_session()
+            keystone_client = openstack_utils.get_keystone_session_client(
+                session)
+
+    return keystone_client
+
+
 def wait_for_all_endpoints(interface='public'):
     """Check all endpoints are returning an acceptable return code.
 
@@ -199,10 +219,7 @@ def wait_for_all_endpoints(interface='public'):
     :type interface: str
     :raises: AssertionError
     """
-    overcloud_auth = openstack_utils.get_overcloud_auth()
-    wait_for_url(overcloud_auth['OS_AUTH_URL'])
-    session = openstack_utils.get_overcloud_keystone_session()
-    keystone_client = openstack_utils.get_keystone_session_client(session)
+    keystone_client = wait_for_client()
     for service in keystone_client.services.list():
         for ep in keystone_client.endpoints.list(service=service,
                                                  interface=interface):
