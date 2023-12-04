@@ -29,6 +29,7 @@ import os
 import paramiko
 import pathlib
 import re
+import requests
 import shutil
 import six
 import subprocess
@@ -3449,3 +3450,43 @@ def get_cli_auth_args(keystone_client):
             )
         )
     return " ".join(params)
+
+
+def wait_for_url(url, ok_codes=None):
+    """Wait for url to return acceptable return code.
+
+    :param url: url to test
+    :type url: str
+    :param ok_codes: HTTP codes that are acceptable
+    :type ok_codes: Optional[List[int]]
+    :raises: AssertionError
+    """
+    if not ok_codes:
+        ok_codes = [requests.codes.ok]
+    for attempt in tenacity.Retrying(
+            stop=tenacity.stop_after_attempt(10),
+            wait=tenacity.wait_exponential(
+                multiplier=1, min=2, max=60)):
+        with attempt:
+            r = requests.get(url)
+            logging.info("{} returned {}".format(url, r.status_code))
+            assert r.status_code in ok_codes
+
+
+def get_keystone_overcloud_session_client():
+    """Return keystone client for overcloud.
+
+    If keystone is still in a transient state then it may take a few retries
+    before a client is returned
+    """
+    for attempt in tenacity.Retrying(
+            stop=tenacity.stop_after_attempt(10),
+            wait=tenacity.wait_exponential(
+                multiplier=1, min=2, max=60)):
+        with attempt:
+            overcloud_auth = get_overcloud_auth()
+            wait_for_url(overcloud_auth['OS_AUTH_URL'])
+            session = get_overcloud_keystone_session()
+            keystone_client = get_keystone_session_client(session)
+
+    return keystone_client
