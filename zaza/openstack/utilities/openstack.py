@@ -237,8 +237,15 @@ async def async_block_until_ca_exists(application_name, ca_cert,
         for ca_file in ca_files:
             for unit in units:
                 try:
-                    output = await unit.run('cat {}'.format(ca_file))
-                    contents = output.data.get('results').get('Stdout', '')
+                    action = await unit.run('cat {}'.format(ca_file))
+                    action = await action.wait()
+                    # NOTE(fnordahl): yes, this is a call to a private
+                    # function, and to be pragmatic we are already
+                    # mocking about under the hood in this function, so let's
+                    # just make it work.
+                    results = zaza.model._normalise_action_results(
+                        getattr(action, 'results', action.data.get('results')))
+                    contents = results.get('stdout', '')
                     if ca_cert not in contents:
                         break
                 # libjuju throws a generic error for connection failure. So we
