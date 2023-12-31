@@ -474,18 +474,23 @@ def run_charm_authorize(token):
         action_params={'token': token})
 
 
-def run_get_csr():
+def run_get_csr(force=None):
     """Retrieve CSR from vault.
 
     Run vault charm action to retrieve CSR from vault.
 
+    :param force: Force regeneration of intermediate ca.
+    :type force: Optional[bool]
     :returns: Action object
     :rtype: juju.action.Action
     """
+    action_params={}
+    if force is not None:
+        action_params.update({'force': force})
     return zaza.model.run_action_on_leader(
         'vault',
         'get-csr',
-        action_params={})
+        action_params=action_params)
 
 
 def run_upload_signed_csr(pem, root_ca, allowed_domains):
