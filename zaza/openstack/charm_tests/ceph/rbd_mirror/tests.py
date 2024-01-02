@@ -156,14 +156,15 @@ def create_cinder_volume(cinder, name='zaza', image_id=None, type_id=None):
 
 
 def setup_rbd_mirror():
-    """Setup an RBD pool in case Cinder isn't present."""
+    """Set up an RBD pool in case Cinder isn't present."""
     zaza.model.run_action_on_leader(
         'ceph-mon',
         'create-pool',
         action_params={
             'name': 'zaza-boot',
             'app-name': 'rbd',
-    })
+        }
+    )
     zaza.model.run_action_on_leader(
         'ceph-rbd-mirror',
         'refresh-pools',
@@ -191,6 +192,7 @@ class CephRBDMirrorBase(test_utils.BaseCharmTest):
             cls.with_cinder = False
 
     def check_cinder_present(self, caller):
+        """Skip a test if Cinder isn't present."""
         if not self.with_cinder:
             raise unittest.SkipTest('Skipping %s due to lack of Cinder'
                                     % caller)
@@ -244,7 +246,8 @@ class CephRBDMirrorBase(test_utils.BaseCharmTest):
         """
         site_a_pools, site_b_pools = self.get_pools()
         if (self.with_cinder and
-            get_cinder_rbd_mirroring_mode(self.cinder_ceph_app_name) == 'image'):
+                get_cinder_rbd_mirroring_mode(self.cinder_ceph_app_name) ==
+                'image'):
             site_a_pools.remove(self.cinder_ceph_app_name)
             site_b_pools.remove(self.cinder_ceph_app_name)
 
@@ -798,8 +801,8 @@ class CephRBDMirrorDisasterFailoverTest(CephRBDMirrorBase):
             })
         self.assertEqual(int(result.results['Code']), 0)
 
-        # The action may not show up as 'failed' if there are no pools that needed
-        # to be promoted.
+        # The action may not show up as 'failed' if there are no pools that
+        # needed to be promoted.
         # self.assertEqual(result.status, 'failed')
 
         # Retry to promote site-b using the 'force' Juju action parameter.
