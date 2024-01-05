@@ -184,16 +184,18 @@ class CephRBDMirrorBase(test_utils.BaseCharmTest):
         # get ready for multi-model Zaza
         cls.site_a_model = cls.site_b_model = zaza.model.get_juju_model()
         cls.site_b_app_suffix = '-b'
-        # Test if we have the cinder-ceph application.
+
+    def test_if_cinder_present(self):
+        """Test if the cinder-ceph application is present."""
         try:
-            zaza.model.get_application(cls.cinder_ceph_app_name)
-            cls.with_cinder = True
+            zaza.model.get_application(self.cinder_ceph_app_name)
+            return True
         except KeyError:
-            cls.with_cinder = False
+            return False
 
     def skip_test_if_cinder_not_present(self, caller):
         """Skip a test if Cinder isn't present."""
-        if not self.with_cinder:
+        if not self.test_if_cinder_present():
             raise unittest.SkipTest('Skipping %s due to lack of Cinder'
                                     % caller)
 
@@ -245,7 +247,7 @@ class CephRBDMirrorBase(test_utils.BaseCharmTest):
         :rtype: Tuple[List[str], List[str]]
         """
         site_a_pools, site_b_pools = self.get_pools()
-        if (self.with_cinder and
+        if (self.test_if_cinder_present() and
                 get_cinder_rbd_mirroring_mode(self.cinder_ceph_app_name) ==
                 'image'):
             site_a_pools.remove(self.cinder_ceph_app_name)
