@@ -1221,6 +1221,10 @@ class CephProxyTest(unittest.TestCase):
 
     def test_cinder_ceph_restrict_pool_setup(self):
         """Make sure cinder-ceph restrict pool was created successfully."""
+        try:
+            zaza_model.get_application('cinder-ceph')
+        except KeyError:
+            raise unittest.SkipTest("Skipping OpenStack dependent test")
         logging.info('Wait for idle/ready status...')
         zaza_model.wait_for_application_states(
             states=self.target_deploy_status)
