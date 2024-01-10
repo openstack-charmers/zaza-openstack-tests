@@ -27,6 +27,7 @@ import zaza.openstack.charm_tests.neutron.tests as neutron_tests
 import zaza.openstack.configure.guest as guest
 import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.charm_tests.tempest.tests as tempest_tests
+from zaza.openstack.utilities import ObjectRetrierWraps
 
 from tenacity import (
     Retrying,
@@ -48,10 +49,14 @@ class CinderTests(test_utils.OpenStackBaseTest):
         cls.lead_unit = zaza.model.get_lead_unit_name(
             "cinder", model_name=cls.model_name)
         # version 3.42 is required for in-use (online) resizing lvm volumes
-        cls.cinder_client = openstack_utils.get_cinder_session_client(
-            cls.keystone_session, version=3.42)
-        cls.nova_client = openstack_utils.get_nova_session_client(
-            cls.keystone_session)
+        # Add retries to cinder and nova to allow for async restart issues and
+        # services becoming ready between configuration and individual tests.
+        cls.cinder_client = ObjectRetrierWraps(
+            openstack_utils.get_cinder_session_client(
+                cls.keystone_session, version=3.42))
+        cls.nova_client = ObjectRetrierWraps(
+            openstack_utils.get_nova_session_client(
+                cls.keystone_session))
 
     @classmethod
     def tearDown(cls):
