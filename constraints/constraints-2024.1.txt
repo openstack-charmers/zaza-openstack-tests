@@ -7,3 +7,7 @@
 # * zaza-openstack-tests
 #
 juju>=3.1.0,<3.2.0
+
+# netaddr>=1.0.0 has incompatible changes, see
+# https://netaddr.readthedocs.io/en/latest/changes.html#release-1-0-0
+netaddr<1.0.0
