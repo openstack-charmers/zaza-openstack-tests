@@ -19,6 +19,7 @@
 import json
 import logging
 import os
+import re
 import tempfile
 import unittest
 import urllib
@@ -467,6 +468,63 @@ class NovaCompute(NovaCommonTests):
         """
         with self.pause_resume(['nova-compute']):
             logging.info("Testing pause resume")
+
+    def test_904_test_ceph_keys(self):
+        """Test if the ceph keys in /etc/ceph are correct."""
+        # only run if configured as rbd with ceph image backend
+        if zaza.model.get_application_config(
+                self.application_name)['libvirt-image-backend'].get(
+                    'value') != 'rbd':
+            return
+
+        # Regex for
+        # [client.nova-compute]
+        #    key = AQBm5xJl8CSnFxAACB9GVr2llNO0G8zWZuZnjQ ==
+        regex = re.compile(r"^\[client.(.+)\]\n\tkey = (.+)$")
+        key_dict = {}
+
+        # The new and correct behavior is to have
+        # "nova-compute-ceph-auth-<secret_uuid_first_block>" named keyring
+        # and one other named after the charm app. Example:
+        # for a charm app named "nova-compute-kvm",
+        # it should have both nova-compute-kvm and
+        # nova-compute-ceph-auth-<secret_uuid_first_block> keyrings.
+        # For a charm app named "nova-compute",
+        # it should have both nova-compute and
+        # nova-compute-ceph-auth-<secret_uuid_first_block> keyrings.
+
+        # Previous behaviors:
+        # The old behavior is to have only 1 keyring named after the charm app.
+
+        def check_keyring(key_name):
+            """Check matching keyring name and different from existing ones."""
+            keyring_file = (
+                '/etc/ceph/ceph.client.{}.keyring'.format(key_name))
+            data = str(generic_utils.get_file_contents(
+                unit, keyring_file))
+
+            result = regex.findall(data)[0]
+
+            # Assert keyring file name matches intended name
+            self.assertEqual(2, len(result))
+            self.assertEqual(result[0], key_name)
+
+            # Confirm the keys are different from each other and the
+            # same across all units
+            for k, v in key_dict.items():
+                if k == result[0]:
+                    self.assertEqual(v, result[1])
+                else:
+                    self.assertNotEqual(v, result[1])
+            key_dict[result[0]] = result[1]
+
+        for unit in zaza.model.get_units(
+                self.application_name, model_name=self.model_name):
+
+            # old key
+            check_keyring(self.application_name)
+            # new key
+            check_keyring('nova-compute-ceph-auth-c91ce26f')
 
     def test_930_check_virsh_default_network(self):
         """Test default virt network is not present."""
