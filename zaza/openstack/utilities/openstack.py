@@ -238,7 +238,7 @@ async def async_block_until_ca_exists(application_name, ca_cert,
             for unit in units:
                 try:
                     output = await unit.run('cat {}'.format(ca_file))
-                    contents = output.data.get('results').get('Stdout', '')
+                    contents = output.data.get('results', {}).get('Stdout', '')
                     if ca_cert not in contents:
                         break
                 # libjuju throws a generic error for connection failure. So we
