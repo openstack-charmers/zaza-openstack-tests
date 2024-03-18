@@ -1700,6 +1700,7 @@ class TestAsyncOpenstackUtils(ut_utils.AioTestCase):
                     'Stderr': stderr,
                     'Stdout': stdout}}
             return action
+
         results = {
             '/tmp/missing.cert': _get_action_output(
                 '',
@@ -1707,12 +1708,16 @@ class TestAsyncOpenstackUtils(ut_utils.AioTestCase):
                 'cat: /tmp/missing.cert: No such file or directory'),
             '/tmp/good.cert': _get_action_output('CERTIFICATE', '0')}
 
-        async def _run(command, timeout=None):
-            return results[command.split()[-1]]
+        self.patch_object(openstack_utils.zaza.model, "async_run_on_unit")
+
+        async def _run_on_unit(unit_name, command, model_name=None,
+                               timeout=None):
+            return results[command.split()[-1]].data.get('results')
+
+        self.async_run_on_unit.side_effect = _run_on_unit
+
         self.unit1 = mock.MagicMock()
         self.unit2 = mock.MagicMock()
-        self.unit2.run.side_effect = _run
-        self.unit1.run.side_effect = _run
         self.units = [self.unit1, self.unit2]
         _units = mock.MagicMock()
         _units.units = self.units

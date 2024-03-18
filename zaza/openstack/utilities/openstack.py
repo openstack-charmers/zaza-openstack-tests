@@ -237,8 +237,12 @@ async def async_block_until_ca_exists(application_name, ca_cert,
         for ca_file in ca_files:
             for unit in units:
                 try:
-                    output = await unit.run('cat {}'.format(ca_file))
-                    contents = output.data.get('results').get('Stdout', '')
+                    output = await zaza.model.async_run_on_unit(
+                        unit.name,
+                        'cat {}'.format(ca_file),
+                        model_name=model_name
+                    )
+                    contents = output.get('Stdout', '')
                     if ca_cert not in contents:
                         break
                 # libjuju throws a generic error for connection failure. So we
