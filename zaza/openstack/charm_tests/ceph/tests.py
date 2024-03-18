@@ -648,7 +648,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
 
     This Testset is not idempotent, because we don't support scale down from
     multisite to singlesite (yet). Tests can be performed independently.
-    However, If test_004 has completed migration, retriggering the test-set
+    However, If test_100 has completed migration, retriggering the test-set
     would cause a time-out in test_003.
     """
 
@@ -1038,7 +1038,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
         zaza_model.block_until_unit_wl_status(self.secondary_rgw_unit,
                                               'active')
 
-    def test_004_migration_and_multisite_failover(self):
+    def test_100_migration_and_multisite_failover(self):
         """Perform multisite migration and verify failover."""
         container_name = 'zaza-container'
         obj_data = 'Test data from Zaza'
