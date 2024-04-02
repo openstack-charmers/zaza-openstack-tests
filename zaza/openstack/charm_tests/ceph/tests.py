@@ -902,7 +902,6 @@ class CephRGWTest(test_utils.BaseCharmTest):
 
     def enable_virtual_hosted_bucket(self):
         """Enable virtual hosted bucket on primary rgw app."""
-
         zaza_model.set_application_config(
             self.primary_rgw_app,
             {
@@ -912,7 +911,6 @@ class CephRGWTest(test_utils.BaseCharmTest):
 
     def set_os_public_hostname(self):
         """Set os-public-hostname on primary rgw app."""
-
         zaza_model.set_application_config(
             self.primary_rgw_app,
             {
@@ -921,11 +919,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
         )
 
     def clean_virtual_hosted_bucket(self):
-        """Clear virtual hosted bucket on primary app.
-
-        :param app_name: App for which config values are to be cleared
-        :type app_name: str
-        """
+        """Clear virtual hosted bucket on primary app."""
         zaza_model.set_application_config(
             self.primary_rgw_app,
             {
@@ -1239,9 +1233,9 @@ class CephRGWTest(test_utils.BaseCharmTest):
         assert_state = {
             self.primary_rgw_app: {
                 "workload-status": "blocked",
-                "workload-status-message-prefix": "os_public_hostname "
-                    "must have a value since virtual_hosted_bucket_enabled"
-                    " is true"
+                "workload-status-message-prefix":
+                    "os_public_hostname must have a value since "
+                    "virtual_hosted_bucket_enabled is true"
             }
         }
         zaza_model.wait_for_application_states(self.model_name,
