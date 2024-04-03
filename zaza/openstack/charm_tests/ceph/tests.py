@@ -1226,6 +1226,12 @@ class CephRGWTest(test_utils.BaseCharmTest):
 
     def test_005_virtual_hosted_bucket(self):
         """Test virtual hosted bucket."""
+        primary_rgw_unit = zaza_model.get_unit_from_name(self.primary_rgw_unit)
+        if primary_rgw_unit.workload_status != "active":
+            logging.info('Skipping virtual hosted bucket test since '
+                         'primary rgw unit is not in active state')
+            return
+            
         logging.info('Testing virtual hosted bucket')
 
         # 0. Configure virtual hosted bucket
@@ -1234,8 +1240,8 @@ class CephRGWTest(test_utils.BaseCharmTest):
             self.primary_rgw_app: {
                 "workload-status": "blocked",
                 "workload-status-message-prefix":
-                    "os_public_hostname must have a value since "
-                    "virtual_hosted_bucket_enabled is true"
+                    "os-public-hostname must have a value "
+                    "when virtual hosted bucket is enabled"
             }
         }
         zaza_model.wait_for_application_states(self.model_name,
