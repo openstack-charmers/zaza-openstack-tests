@@ -1231,7 +1231,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
             logging.info('Skipping virtual hosted bucket test since '
                          'primary rgw unit is not in active state')
             return
-            
+
         logging.info('Testing virtual hosted bucket')
 
         # 0. Configure virtual hosted bucket
