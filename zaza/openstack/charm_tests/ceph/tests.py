@@ -1748,3 +1748,39 @@ class CephMonJujuPersistent(test_utils.BaseCharmTest):
             )
             data = json.loads(result['Stdout'])
             assert data['loglevel'] == 2
+
+
+class CephMonKeyRotationTests(test_utils.BaseCharmTest):
+    """Tests for the rotate-key action."""
+
+    def _get_key_for_mgr(self, unit, mgr_id):
+        cmd = 'sudo ceph auth ls'
+        result = zaza_model.run_on_unit(unit, cmd)
+        # Don't use json formatting, as it's buggy upstream.
+        data = result['Stdout'].split()
+
+        for ix, line in enumerate(data):
+            # Structure:
+            # mgr.XXXX
+            # key:
+            # key contents
+            # That's why we need to move 2 positions ahead.
+            if line.startswith('mgr.') and line.endswith(mgr_id):
+                return data[ix + 2]
+
+    def test_mgr_key_rotate(self):
+        """Test that rotating the manager key actually changes it."""
+        unit = 'ceph-mon/0'
+        mgr_id = unit[-1]
+        old_key = self._get_key_for_mgr(unit, mgr_id)
+        self.assertIsNotNone(old_key)
+
+        action_obj = zaza_model.run_action(
+            unit_name=unit,
+            action_name='rotate-key',
+            action_params={'entity': 'mgr'}
+        )
+        zaza_utils.assertActionRanOk(action_obj)
+        new_key = self._get_key_for_mgr(unit, mgr_id)
+        self.assertIsNotNone(new_key)
+        self.assertNotEqual(old_key, new_key)
