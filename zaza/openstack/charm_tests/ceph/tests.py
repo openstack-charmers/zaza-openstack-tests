@@ -1767,7 +1767,7 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
             # key contents
             # That's why we need to move one position ahead.
             if 'key:' in line and entity_filter(data[ix - 1]):
-                ret.add(data[ix + 1])
+                ret.add((data[ix - 1], data[ix + 1]))
         return ret
 
     def _check_key_rotation(self, entity, unit):
@@ -1784,7 +1784,13 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
         zaza_model.wait_for_application_states()
         new_keys = self._get_all_keys(unit, entity_filter)
         self.assertNotEqual(old_keys, new_keys)
-        self.assertEqual(len(new_keys - old_keys), 1)
+        diff = new_keys - old_keys
+        self.assertEqual(len(diff), 1)
+        first = next(iter(diff))
+        # Check that the entity matches. The 'entity_filter'
+        # callable will return a true-like value if it
+        # matches the type of entity we're after (i.e: 'mgr')
+        self.assertTrue(entity_filter(first[0]))
 
     def _get_rgw_client(self, unit):
         cmd = 'sudo ceph auth ls | grep client.rgw'
@@ -1801,5 +1807,7 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
             rgw_client = self._get_rgw_client('ceph-radosgw/0')
             if rgw_client:
                 self._check_key_rotation(rgw_client, unit)
+            else:
+                logging.info('ceph-radosgw units present, but no RGW service')
         except KeyError:
             pass
