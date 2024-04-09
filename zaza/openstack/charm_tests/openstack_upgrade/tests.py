@@ -43,7 +43,7 @@ class OpenStackUpgradeVMLaunchBase(unittest.TestCase):
     nova-cloud-controller, nova-compute, neutron-gateway, neutron-api and
     neutron-openvswitch.
 
-    This class should be used as a base class to the upgrade 'test'.
+    This class can be used as a base class to the upgrade 'test'.
     """
 
     @classmethod
@@ -85,21 +85,7 @@ class WaitForMySQL(unittest.TestCase):
         logging.info("Done .. all seems well.")
 
 
-class OpenStackUpgradeTestsFocalUssuri(OpenStackUpgradeVMLaunchBase):
-    """Upgrade OpenStack from distro -> cloud:focal-victoria."""
-
-    @classmethod
-    def setUpClass(cls):
-        """Run setup for OpenStack Upgrades."""
-        super().setUpClass()
-        cli_utils.setup_logging()
-
-    def test_200_run_openstack_upgrade(self):
-        """Run openstack upgrade, but work out what to do."""
-        openstack_upgrade.run_upgrade_tests("cloud:focal-victoria")
-
-
-class OpenStackUpgradeTestsByOption(OpenStackUpgradeVMLaunchBase):
+class OpenStackUpgradeTestsByOption(unittest.TestCase):
     """A Principal Class to encapsulate OpenStack Upgrade Tests.
 
     A generic Test class that uses the options in the tests.yaml to use a charm
@@ -121,12 +107,7 @@ class OpenStackUpgradeTestsByOption(OpenStackUpgradeVMLaunchBase):
         cli_utils.setup_logging()
 
     def test_200_run_openstack_upgrade(self):
-        """Run openstack upgrade, but work out what to do.
-
-        TODO: This is really inefficient at the moment, and doesn't (yet)
-        determine which ubuntu version to work from.  Don't use until we can
-        make it better.
-        """
+        """Run openstack upgrade, but work out what to do."""
         # get the tests_options / openstack-upgrade.detect-using-charm so that
         # the ubuntu version and OpenStack version can be detected.
         try:

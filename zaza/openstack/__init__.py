@@ -13,3 +13,25 @@
 # limitations under the License.
 
 """OpenStack specific zaza functionality."""
+
+import os
+import tempfile
+
+
+# The temporary directory can't be used when juju's snap is installed in strict
+# mode, so zaza-openstack-tests changes the default tmp directory to the
+# directory referenced by TEST_TMPDIR otherwise a directory is created under
+# the user's home.
+def _set_tmpdir():
+    tmpdir = os.environ.get('TEST_TMPDIR')
+
+    if tmpdir and os.path.exists(tmpdir) and os.path.isdir(tmpdir):
+        tempfile.tempdir = tmpdir
+    else:
+        tmpdir = os.path.expanduser('~/tmp')
+        if not os.path.isdir(tmpdir):
+            os.mkdir(tmpdir, 0o770)
+        tempfile.tempdir = tmpdir
+
+
+_set_tmpdir()

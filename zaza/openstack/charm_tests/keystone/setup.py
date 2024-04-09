@@ -16,7 +16,6 @@
 
 import logging
 import requests
-import tenacity
 
 import keystoneauth1
 
@@ -171,27 +170,6 @@ def add_tempest_roles():
     _add_additional_roles(TEMPEST_ROLES)
 
 
-def wait_for_url(url, ok_codes=None):
-    """Wait for url to return acceptable return code.
-
-    :param url: url to test
-    :type url: str
-    :param ok_codes: HTTP codes that are acceptable
-    :type ok_codes: Optional[List[int]]
-    :raises: AssertionError
-    """
-    if not ok_codes:
-        ok_codes = [requests.codes.ok]
-    for attempt in tenacity.Retrying(
-            stop=tenacity.stop_after_attempt(10),
-            wait=tenacity.wait_exponential(
-                multiplier=1, min=2, max=60)):
-        with attempt:
-            r = requests.get(url)
-            logging.info("{} returned {}".format(url, r.status_code))
-            assert r.status_code in ok_codes
-
-
 def wait_for_all_endpoints(interface='public'):
     """Check all endpoints are returning an acceptable return code.
 
@@ -199,14 +177,11 @@ def wait_for_all_endpoints(interface='public'):
     :type interface: str
     :raises: AssertionError
     """
-    overcloud_auth = openstack_utils.get_overcloud_auth()
-    wait_for_url(overcloud_auth['OS_AUTH_URL'])
-    session = openstack_utils.get_overcloud_keystone_session()
-    keystone_client = openstack_utils.get_keystone_session_client(session)
+    keystone_client = openstack_utils.get_keystone_overcloud_session_client()
     for service in keystone_client.services.list():
         for ep in keystone_client.endpoints.list(service=service,
                                                  interface=interface):
-            wait_for_url(
+            openstack_utils.wait_for_url(
                 ep.url,
                 # Heat cloudformation and orchestration return 400 and 401
                 [

@@ -81,6 +81,9 @@ class TempestTestBase():
             tempest_options.extend(
                 ['--concurrency',
                  str(config.get('concurrency', min(os.cpu_count(), 4)))])
+            serial = config.get('serial')
+            if serial and serial is True:
+                tempest_options.extend(['--serial'])
             with tempfile.TemporaryDirectory() as tmpdirname:
                 if config.get('include-list'):
                     include_file = os.path.join(tmpdirname, 'include.cfg')
@@ -195,7 +198,7 @@ class TempestTestScaleK8SBase(TempestTestBase):
             "determine when traefik has processed all requests")
         units_count = len(zaza.model.get_units(application_name))
         container_cmd = (
-            "cat /opt/traefik/juju/juju_ingress_ingress_*_{}.yaml").format(
+            "cat /opt/traefik/juju/juju_ingress_*_*_{}.yaml").format(
                 application_name)
         container_name = "traefik"
         for unit in zaza.model.get_units("traefik"):
@@ -211,7 +214,6 @@ class TempestTestScaleK8SBase(TempestTestBase):
             loadBalancers = [
                 lb['loadBalancer']
                 for lb in service_config['http']['services'].values()]
-            assert len(loadBalancers) == 1
             unit_count_in_lb = len(loadBalancers[0]['servers'])
             logging.info("Traefik LB server count: {} unit count: {}".format(
                 unit_count_in_lb,

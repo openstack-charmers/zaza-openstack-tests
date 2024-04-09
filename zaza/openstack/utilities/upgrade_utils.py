@@ -50,9 +50,37 @@ SERVICE_GROUPS = (
         'swift-proxy', 'swift-storage']))
 
 UPGRADE_EXCLUDE_LIST = [
-    'rabbitmq-server',
+    'ceph-fs',
+    'ceph-mon',
+    'ceph-osd',
+    'memcached',
+    'mysql-innodb-cluster',
+    'ovn-central',
+    'ovn-chassis',
     'percona-cluster',
+    # glance-simplestreams-sync disabled due to:
+    # https://bugs.launchpad.net/juju/+bug/1951182
     'glance-simplestreams-sync',
+    'percona-cluster',
+    'rabbitmq-server',
+    'vault',
+    'aodh-mysql-router',
+    'barbican-mysql-router',
+    'cinder-mysql-router',
+    'designate-mysql-router',
+    'glance-mysql-router',
+    'gnocchi-mysql-router',
+    'heat-mysql-router',
+    'keystone-mysql-router',
+    'magnum-mysql-router',
+    'manila-ganesha-mysql-router',
+    'manila-mysql-router',
+    'neutron-mysql-router',
+    'nova-mysql-router',
+    'octavia-mysql-router',
+    'placement-mysql-router',
+    'vault-mysql-router',
+    'watcher-mysql-router',
 ]
 
 
@@ -231,7 +259,10 @@ def get_charm_upgrade_groups(model_name=None, extra_filters=None):
     :returns: Dict of group lists keyed on group name.
     :rtype: collections.OrderedDict
     """
-    filters = _apply_extra_filters([], extra_filters)
+    filters = [
+        _filter_openstack_upgrade_list,
+    ]
+    filters = _apply_extra_filters(filters, extra_filters)
     apps_in_model = get_upgrade_candidates(
         model_name=model_name,
         filters=filters)
@@ -306,13 +337,18 @@ def determine_next_openstack_release(release):
 
     The returned value is a tuple of the form: ('2020.1', 'ussuri')
 
-    :param release: the release to use as the base
+    :param release: the release version or codename to use as the base
     :type release: str
     :returns: the release tuple immediately after the current one.
     :rtype: Tuple[str, str]
     :raises: KeyError if the current release doesn't actually exist
     """
-    old_index = list(OPENSTACK_CODENAMES.values()).index(release)
+    version_match = r"[0-9]{4}\.[0-2]"
+    if re.match(version_match, release):
+        releases = list(OPENSTACK_CODENAMES.keys())
+    else:
+        releases = list(OPENSTACK_CODENAMES.values())
+    old_index = releases.index(release)
     new_index = old_index + 1
     return list(OPENSTACK_CODENAMES.items())[new_index]
 

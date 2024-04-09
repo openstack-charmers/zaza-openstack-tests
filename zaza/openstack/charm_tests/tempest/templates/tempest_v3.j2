@@ -77,10 +77,26 @@ port_security = true
 {% endif %}
 
 {% if 'heat' in enabled_services %}
-[orchestration]
-stack_owner_role = Admin
-instance_type = m1.small
+[heat_plugin]
 keypair_name = testkey
+username = demo
+password = password
+project_name = demoProject
+user_domain_name = demoDomain
+project_domain_name = demoDomain
+admin_username = {{ admin_username }}
+admin_password = {{ admin_password }}
+admin_project_name = {{ admin_project_name }}
+admin_domain_name = {{ admin_domain_name }}
+auth_url = {{ proto }}://{{ keystone }}:5000//v3
+auth_version = 3
+disable_ssl_certificate_validation = true
+region = RegionOne
+instance_type = m1.small
+minimal_instance_type = m1.small
+image_ref = {{ image_id }}
+minimal_image_ref = {{ image_id }}
+vm_to_heat_api_insecure = True
 {% endif %}
 
 [oslo_concurrency]
@@ -95,6 +111,7 @@ img_disk_format = qcow2
 [validation]
 run_validation = true
 image_ssh_user = cirros
+ssh_timeout = 600
 
 [service_available]
 {% for svc in enabled_services -%}
@@ -120,6 +137,11 @@ enable_security_groups = true
 test_with_ipv6 = false
 test_server_path = {{ workspace_path }}/test_server.bin
 provider = amphora
+octavia_svc_username = octavia
+member_role = load-balancer_member
+admin_role = Admin
+RBAC_test_type = none
+log_user_roles = False
 {% endif %}
 
 {%- if 'magnum' in enabled_services %}

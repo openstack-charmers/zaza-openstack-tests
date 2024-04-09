@@ -29,6 +29,7 @@ import os
 import paramiko
 import pathlib
 import re
+import requests
 import shutil
 import six
 import subprocess
@@ -85,6 +86,7 @@ from zaza import model
 from zaza.openstack.utilities import (
     exceptions,
     generic as generic_utils,
+    ObjectRetrierWraps,
 )
 import zaza.utilities.networking as network_utils
 
@@ -235,8 +237,12 @@ async def async_block_until_ca_exists(application_name, ca_cert,
         for ca_file in ca_files:
             for unit in units:
                 try:
-                    output = await unit.run('cat {}'.format(ca_file))
-                    contents = output.data.get('results').get('Stdout', '')
+                    output = await zaza.model.async_run_on_unit(
+                        unit.name,
+                        'cat {}'.format(ca_file),
+                        model_name=model_name
+                    )
+                    contents = output.get('Stdout', '')
                     if ca_cert not in contents:
                         break
                 # libjuju throws a generic error for connection failure. So we
@@ -379,7 +385,8 @@ def get_nova_session_client(session, version=None):
     """
     if not version:
         version = 2
-    return novaclient_client.Client(version, session=session)
+    return ObjectRetrierWraps(
+        novaclient_client.Client(version, session=session))
 
 
 def get_neutron_session_client(session):
@@ -3447,3 +3454,43 @@ def get_cli_auth_args(keystone_client):
             )
         )
     return " ".join(params)
+
+
+def wait_for_url(url, ok_codes=None):
+    """Wait for url to return acceptable return code.
+
+    :param url: url to test
+    :type url: str
+    :param ok_codes: HTTP codes that are acceptable
+    :type ok_codes: Optional[List[int]]
+    :raises: AssertionError
+    """
+    if not ok_codes:
+        ok_codes = [requests.codes.ok]
+    for attempt in tenacity.Retrying(
+            stop=tenacity.stop_after_attempt(10),
+            wait=tenacity.wait_exponential(
+                multiplier=1, min=2, max=60)):
+        with attempt:
+            r = requests.get(url)
+            logging.info("{} returned {}".format(url, r.status_code))
+            assert r.status_code in ok_codes
+
+
+def get_keystone_overcloud_session_client():
+    """Return keystone client for overcloud.
+
+    If keystone is still in a transient state then it may take a few retries
+    before a client is returned
+    """
+    for attempt in tenacity.Retrying(
+            stop=tenacity.stop_after_attempt(10),
+            wait=tenacity.wait_exponential(
+                multiplier=1, min=2, max=60)):
+        with attempt:
+            overcloud_auth = get_overcloud_auth()
+            wait_for_url(overcloud_auth['OS_AUTH_URL'])
+            session = get_overcloud_keystone_session()
+            keystone_client = get_keystone_session_client(session)
+
+    return keystone_client

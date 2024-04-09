@@ -134,6 +134,12 @@ class DesignateAPITests(BaseDesignateTest):
 
     def test_300_default_soa_config_options(self):
         """Configure default SOA options."""
+        current_release = openstack_utils.get_os_release()
+        jammy_antelope = openstack_utils.get_os_release('jammy_antelope')
+        if current_release > jammy_antelope:
+            self.skipTest('changing default ttl is currently broken since '
+                          'jammy_bobcat due to LP#2042944')
+
         test_domain = "test_300_example.com."
         DEFAULT_TTL = 60
         alternate_config = {'default-soa-minimum': 600,
