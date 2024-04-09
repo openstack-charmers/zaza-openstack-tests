@@ -1766,7 +1766,7 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
             # key:
             # key contents
             # That's why we need to move one position ahead.
-            if 'key:' in line and entity_filter(line[ix - 1]):
+            if 'key:' in line and entity_filter(data[ix - 1]):
                 ret.add(data[ix + 1])
         return ret
 
@@ -1784,7 +1784,7 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
         zaza_model.wait_for_application_states()
         new_keys = self._get_all_keys(unit, entity_filter)
         self.assertNotEqual(old_keys, new_keys)
-        self.assertEqual(new_keys - old_keys, 1)
+        self.assertEqual(len(new_keys - old_keys), 1)
 
     def _get_rgw_client(self, unit):
         cmd = 'sudo ceph auth ls | grep client.rgw'
