@@ -1753,7 +1753,7 @@ class CephMonJujuPersistent(test_utils.BaseCharmTest):
 class CephMonKeyRotationTests(test_utils.BaseCharmTest):
     """Tests for the rotate-key action."""
 
-    def _get_mgrs_keys(self, unit):
+    def _get_all_keys(self, unit, entity_filter):
         cmd = 'sudo ceph auth ls'
         result = zaza_model.run_on_unit(unit, cmd)
         # Don't use json formatting, as it's buggy upstream.
@@ -1762,24 +1762,44 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
 
         for ix, line in enumerate(data):
             # Structure:
-            # mgr.XXXX
+            # $ENTITY
             # key:
             # key contents
-            # That's why we need to move 2 positions ahead.
-            if line.startswith('mgr.'):
-                ret.add(data[ix + 2])
+            # That's why we need to move one position ahead.
+            if 'key:' in line and entity_filter(line[ix - 1]):
+                ret.add(data[ix + 1])
         return ret
 
-    def test_mgr_key_rotate(self):
-        """Test that rotating the manager key actually changes it."""
-        unit = 'ceph-mon/0'
-        old_keys = self._get_mgrs_keys(unit)
+    def _check_key_rotation(self, entity, unit):
+        def entity_filter(name):
+            return name.startswith(entity)
 
+        old_keys = self._get_all_keys(unit, entity_filter)
         action_obj = zaza_model.run_action(
             unit_name=unit,
             action_name='rotate-key',
-            action_params={'entity': 'mgr'}
+            action_params={'entity': entity}
         )
         zaza_utils.assertActionRanOK(action_obj)
-        new_keys = self._get_mgrs_keys(unit)
+        zaza_model.wait_for_application_states()
+        new_keys = self._get_all_keys(unit, entity_filter)
         self.assertNotEqual(old_keys, new_keys)
+        self.assertEqual(new_keys - old_keys, 1)
+
+    def _get_rgw_client(self, unit):
+        cmd = 'sudo ceph auth ls | grep client.rgw'
+        result = zaza_model.run_on_unit(unit, cmd)
+        return result['Stdout'].strip()
+
+    def test_key_rotate(self):
+        """Test that rotating the keys actually changes them."""
+        unit = 'ceph-mon/0'
+        self._check_key_rotation('mgr', unit)
+
+        try:
+            zaza_model.get_application('ceph-radosgw')
+            rgw_client = self._get_rgw_client('ceph-radosgw/0')
+            if rgw_client:
+                self._check_key_rotation(rgw_client, unit)
+        except KeyError:
+            pass
