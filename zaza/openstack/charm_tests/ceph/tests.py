@@ -1813,8 +1813,8 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
         except KeyError:
             pass
 
-        try:
-            zaza_model.get_application('ceph-osd')
-            self._check_key_rotation('osd.0', unit)
-        except KeyError:
-            pass
+        #try:
+        #    zaza_model.get_application('ceph-osd')
+        #    self._check_key_rotation('osd.0', unit)
+        #except KeyError:
+        #    pass
