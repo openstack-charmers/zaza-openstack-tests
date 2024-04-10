@@ -1793,9 +1793,10 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
         self.assertTrue(entity_filter(first[0]))
 
     def _get_rgw_client(self, unit):
-        cmd = 'sudo ceph auth ls | grep client.rgw'
-        result = zaza_model.run_on_unit(unit, cmd)
-        return result['Stdout'].strip()
+        ret = self._get_all_keys(unit, 'client.rgw')
+        if not ret:
+            return None
+        return next(iter(ret))[0]
 
     def test_key_rotate(self):
         """Test that rotating the keys actually changes them."""
