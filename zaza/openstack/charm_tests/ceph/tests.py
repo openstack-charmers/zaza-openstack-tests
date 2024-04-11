@@ -1264,7 +1264,13 @@ class CephRGWTest(test_utils.BaseCharmTest):
                                         endpoint_url=primary_endpoint,
                                         aws_access_key_id=access_key,
                                         aws_secret_access_key=secret_key)
-        primary_client.Bucket(container_name).create()
+        # We may not have certs for the pub hostname yet, so retry a few times.
+        for attempt in tenacity.Retrying(
+            stop=tenacity.stop_after_attempt(10),
+            wait=tenacity.wait_fixed(4),
+        ):
+            with attempt:
+                primary_client.Bucket(container_name).create()
         primary_object_one = primary_client.Object(
             container_name,
             obj_name
