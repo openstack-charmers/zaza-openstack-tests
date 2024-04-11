@@ -1799,7 +1799,7 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
         self.assertTrue(entity_filter(first[0]))
 
     def _get_rgw_client(self, unit):
-        ret = self._get_all_keys(unit, 'client.rgw')
+        ret = self._get_all_keys(unit, lambda x: x.startswith('client.rgw'))
         if not ret:
             return None
         return next(iter(ret))[0]
