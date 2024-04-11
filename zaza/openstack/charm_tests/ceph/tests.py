@@ -1811,7 +1811,7 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
 
         try:
             zaza_model.get_application('ceph-radosgw')
-            rgw_client = self._get_rgw_client('ceph-radosgw/0')
+            rgw_client = self._get_rgw_client(unit)
             if rgw_client:
                 self._check_key_rotation(rgw_client, unit)
             else:
