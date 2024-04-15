@@ -23,6 +23,7 @@ from os import (
 )
 import requests
 import tempfile
+import time
 import boto3
 import botocore.exceptions
 import urllib3
@@ -1788,6 +1789,7 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
         )
         zaza_utils.assertActionRanOK(action_obj)
         zaza_model.wait_for_application_states()
+        time.sleep(5)   # Give it time to finish.
         new_keys = self._get_all_keys(unit, entity_filter)
         self.assertNotEqual(old_keys, new_keys)
         diff = new_keys - old_keys
