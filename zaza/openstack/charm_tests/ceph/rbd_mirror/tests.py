@@ -172,6 +172,18 @@ def setup_rbd_mirror():
     )
 
 
+def get_action_result(result: dict) -> str:
+    """Get action result code."""
+    if result.get('Code', None):
+        return result['Code']
+    elif result.get('return-code', None):
+        return result['return-code']
+    else:
+        # default for non-zero return code.
+        logging.error("No suitable return code found in action result.")
+        return "-1"
+
+
 class CephRBDMirrorBase(test_utils.BaseCharmTest):
     """Base class for ``ceph-rbd-mirror`` tests."""
 
@@ -503,7 +515,7 @@ class CephRBDMirrorControlledFailoverTest(CephRBDMirrorBase):
                 'pools': ','.join(primary_site_pools)
             })
         logging.info(result.results)
-        self.assertEqual(int(result.results['Code']), 0)
+        self.assertEqual(int(get_action_result(result.results)), 0)
 
         # Validate that the demoted pools count matches the total primary site
         # pools count.
@@ -537,7 +549,7 @@ class CephRBDMirrorControlledFailoverTest(CephRBDMirrorBase):
                 'pools': ','.join(secondary_site_pools)
             })
         logging.info(result.results)
-        self.assertEqual(int(result.results['Code']), 0)
+        self.assertEqual(int(get_action_result(result.results)), 0)
 
         # Validate that the promoted pools count matches the total secondary
         # site pools count.
@@ -711,7 +723,7 @@ class CephRBDMirrorControlledFailoverTest(CephRBDMirrorBase):
                 'i-really-mean-it': True,
             })
         logging.info(result.results)
-        self.assertEqual(int(result.results['Code']), 0)
+        self.assertEqual(int(get_action_result(result.results)), 0)
 
         # Validate that the Ceph images from site-b report 'up+replaying'
         # (which is reported by secondary Ceph images). And check that images
@@ -801,7 +813,7 @@ class CephRBDMirrorDisasterFailoverTest(CephRBDMirrorBase):
             action_params={
                 'pools': ','.join(site_b_pools),
             })
-        self.assertEqual(int(result.results['Code']), 0)
+        self.assertEqual(int(get_action_result(result.results)), 0)
 
         # The action may not show up as 'failed' if there are no pools that
         # needed to be promoted.
@@ -816,7 +828,7 @@ class CephRBDMirrorDisasterFailoverTest(CephRBDMirrorBase):
                 'force': True,
                 'pools': ','.join(site_b_pools),
             })
-        self.assertEqual(int(result.results['Code']), 0)
+        self.assertEqual(int(get_action_result(result.results)), 0)
 
         # Validate successful Juju action execution
         self.assertEqual(result.status, 'completed')
