@@ -1236,17 +1236,11 @@ class CephRGWTest(test_utils.BaseCharmTest):
 
         # 0. Configure virtual hosted bucket
         self.enable_virtual_hosted_bucket()
-        assert_state = {
-            self.primary_rgw_app: {
-                "workload-status": "blocked",
-                "workload-status-message-prefix":
-                    "os-public-hostname must have a value "
-                    "when virtual hosted bucket is enabled"
-            }
-        }
-        zaza_model.wait_for_application_states(self.model_name,
-                                               states=assert_state,
-                                               timeout=900)
+        zaza_model.block_until_wl_status_info_starts_with(
+            self.primary_rgw_app,
+            'os-public-hostname must have a value',
+            timeout=900
+        )
         self.set_os_public_hostname()
         zaza_model.block_until_all_units_idle(self.model_name)
         container_name = 'zaza-bucket'
