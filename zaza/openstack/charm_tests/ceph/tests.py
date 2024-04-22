@@ -1802,6 +1802,7 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
         """Test that rotating the keys actually changes them."""
         unit = 'ceph-mon/0'
         self._check_key_rotation('mgr', unit)
+        self._check_key_rotation('osd.0', unit)
 
         try:
             zaza_model.get_application('ceph-radosgw')
