@@ -1812,3 +1812,13 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
                 logging.info('ceph-radosgw units present, but no RGW service')
         except KeyError:
             pass
+
+        try:
+            zaza_model.get_application('ceph-fs')
+            fs_entity = self._get_all_keys(unit, lambda x: x.startswith('mds.'))
+            if fs_entity is not None:
+                self._check_key_rotation(next(iter(fs_entity))[0], unit)
+            else:
+                logging.info('ceph-fs units present, but no MDS service')
+        except KeyError:
+            pass
