@@ -1770,7 +1770,7 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
                 ret.add((data[ix - 1], data[ix + 1]))
         return ret
 
-    def _check_key_rotation(self, entity, unit):
+    def _check_key_rotation(self, entity, unit, states=None):
         def entity_filter(name):
             return name.startswith(entity)
 
@@ -1781,7 +1781,7 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
             action_params={'entity': entity}
         )
         zaza_utils.assertActionRanOK(action_obj)
-        zaza_model.wait_for_application_states()
+        zaza_model.wait_for_application_states(states=states)
         new_keys = self._get_all_keys(unit, entity_filter)
         self.assertNotEqual(old_keys, new_keys)
         diff = new_keys - old_keys
@@ -1817,7 +1817,14 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
             zaza_model.get_application('ceph-fs')
             fs_svc = self._get_all_keys(unit, lambda x: x.startswith('mds.'))
             if fs_svc is not None:
-                self._check_key_rotation(next(iter(fs_svc))[0], unit)
+                ubuntu_states = {
+                    'ubuntu': {
+                        'workload-status': 'active',
+                        'workload-status-message': ''
+                    }
+                }
+                self._check_key_rotation(next(iter(fs_svc))[0], unit,
+                                         ubuntu_states)
             else:
                 logging.info('ceph-fs units present, but no MDS service')
         except KeyError:
