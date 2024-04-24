@@ -1139,6 +1139,10 @@ class CephRGWTest(test_utils.BaseCharmTest):
             'Body'
         ].read().decode('UTF-8')
 
+        # Wait for Sites to be syncronised.
+        self.wait_for_status(self.primary_rgw_app, is_primary=False)
+        self.wait_for_status(self.secondary_rgw_app, is_primary=True)
+
         # Recovery scenario, reset ceph-rgw as primary.
         self.promote_rgw_to_primary(self.primary_rgw_app)
         self.wait_for_status(self.primary_rgw_app, is_primary=True)
