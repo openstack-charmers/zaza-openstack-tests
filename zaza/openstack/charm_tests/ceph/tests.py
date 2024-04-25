@@ -1753,6 +1753,20 @@ class CephMonJujuPersistent(test_utils.BaseCharmTest):
 class CephMonKeyRotationTests(test_utils.BaseCharmTest):
     """Tests for the rotate-key action."""
 
+    def setUp(self):
+        """Initialize key rotation test class."""
+        super(CephMonKeyRotationTests, self).setUp()
+        try:
+            # Workaround for ubuntu units that don't play nicely with zaza.
+            zaza_model.get_application('ubuntu')
+            self.app_states = {
+                'ubuntu': {
+                    'workload-status-message': ''
+                }
+            }
+        except KeyError:
+            self.app_states = None
+
     def _get_all_keys(self, unit, entity_filter):
         cmd = 'sudo ceph auth ls'
         result = zaza_model.run_on_unit(unit, cmd)
@@ -1770,7 +1784,7 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
                 ret.add((data[ix - 1], data[ix + 1]))
         return ret
 
-    def _check_key_rotation(self, entity, unit, wait_for_unit=None):
+    def _check_key_rotation(self, entity, unit):
         def entity_filter(name):
             return name.startswith(entity)
 
@@ -1781,11 +1795,7 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
             action_params={'entity': entity}
         )
         zaza_utils.assertActionRanOK(action_obj)
-        if wait_for_unit is None:
-            # Wait for all applications
-            zaza_model.wait_for_application_states()
-        else:
-            zaza_model.wait_for_unit_idle(wait_for_unit)
+        zaza_model.wait_for_application_states(states=self.app_states)
         new_keys = self._get_all_keys(unit, entity_filter)
         self.assertNotEqual(old_keys, new_keys)
         diff = new_keys - old_keys
@@ -1824,8 +1834,7 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
                 # Only wait for ceph-fs, as this model includes 'ubuntu'
                 # units, and those don't play nice with zaza (they don't
                 # set the workload-status-message correctly).
-                self._check_key_rotation(next(iter(fs_svc))[0], unit,
-                                         'ceph-fs/0')
+                self._check_key_rotation(next(iter(fs_svc))[0], unit)
             else:
                 logging.info('ceph-fs units present, but no MDS service')
         except KeyError:
