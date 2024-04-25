@@ -877,6 +877,33 @@ class CephRGWTest(test_utils.BaseCharmTest):
             }
         )
 
+    def configure_rgw_multisite_relation(self):
+        """Configure multi-site relation between primary and secondary apps."""
+        multisite_relation = zaza_model.get_relation_id(
+            self.primary_rgw_app, self.secondary_rgw_app,
+            remote_interface_name='secondary'
+        )
+        if multisite_relation is None:
+            logging.info('Configuring Multisite')
+            self.configure_rgw_apps_for_multisite()
+            zaza_model.add_relation(
+                self.primary_rgw_app,
+                self.primary_rgw_app + ":primary",
+                self.secondary_rgw_app + ":secondary"
+            )
+            zaza_model.block_until_unit_wl_status(
+                self.secondary_rgw_unit, "waiting"
+            )
+
+        zaza_model.block_until_unit_wl_status(
+            self.secondary_rgw_unit, "active"
+        )
+        zaza_model.block_until_unit_wl_status(
+            self.primary_rgw_unit, "active"
+        )
+        zaza_model.wait_for_unit_idle(self.secondary_rgw_unit)
+        zaza_model.wait_for_unit_idle(self.primary_rgw_unit)
+
     def clean_rgw_multisite_config(self, app_name):
         """Clear Multisite Juju config values to default.
 
@@ -1073,29 +1100,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
         zaza_model.wait_for_unit_idle(self.primary_rgw_unit)
 
         # Setup multisite relation.
-        multisite_relation = zaza_model.get_relation_id(
-            self.primary_rgw_app, self.secondary_rgw_app,
-            remote_interface_name='secondary'
-        )
-        if multisite_relation is None:
-            logging.info('Configuring Multisite')
-            self.configure_rgw_apps_for_multisite()
-            zaza_model.add_relation(
-                self.primary_rgw_app,
-                self.primary_rgw_app + ":primary",
-                self.secondary_rgw_app + ":secondary"
-            )
-            zaza_model.block_until_unit_wl_status(
-                self.secondary_rgw_unit, "waiting"
-            )
-        zaza_model.block_until_unit_wl_status(
-            self.primary_rgw_unit, "active"
-        )
-        zaza_model.block_until_unit_wl_status(
-            self.secondary_rgw_unit, "active"
-        )
-        zaza_model.wait_for_unit_idle(self.secondary_rgw_unit)
-        zaza_model.wait_for_unit_idle(self.primary_rgw_unit)
+        self.configure_rgw_multisite_relation()
 
         logging.info('Waiting for Data and Metadata to Synchronize')
         # NOTE: We only check the secondary zone, because the sync policy flow
@@ -1288,24 +1293,8 @@ class CephRGWTest(test_utils.BaseCharmTest):
         ).put(Body=obj_data)
 
         # If Primary/Secondary relation does not exist, add it.
-        if zaza_model.get_relation_id(
-                self.primary_rgw_app, self.secondary_rgw_app,
-                remote_interface_name='secondary'
-        ) is None:
-            logging.info('Configuring Multisite')
-            self.configure_rgw_apps_for_multisite()
-            zaza_model.add_relation(
-                self.primary_rgw_app,
-                self.primary_rgw_app + ":primary",
-                self.secondary_rgw_app + ":secondary"
-            )
-            zaza_model.block_until_unit_wl_status(
-                self.secondary_rgw_unit, "waiting"
-            )
+        self.configure_rgw_multisite_relation()
 
-        zaza_model.block_until_unit_wl_status(
-            self.secondary_rgw_unit, "active"
-        )
         logging.info('Waiting for Data and Metadata to Synchronize')
         self.wait_for_status(self.secondary_rgw_app, is_primary=False)
         self.wait_for_status(self.primary_rgw_app, is_primary=True)
@@ -1422,6 +1411,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
         self.purge_bucket(self.secondary_rgw_app, container)
         self.purge_bucket(self.secondary_rgw_app, 'zaza-container')
         self.purge_bucket(self.secondary_rgw_app, 'failover-container')
+
 
 class CephProxyTest(unittest.TestCase):
     """Test ceph via proxy."""
