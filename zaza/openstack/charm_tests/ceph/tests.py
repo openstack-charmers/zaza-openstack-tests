@@ -1841,7 +1841,7 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
                 # Only wait for ceph-fs, as this model includes 'ubuntu'
                 # units, and those don't play nice with zaza (they don't
                 # set the workload-status-message correctly).
-                self._check_key_rotation(next(iter(fs_svc))[0], unit)
+                self._check_key_rotation(fs_svc, unit)
             else:
                 logging.info('ceph-fs units present, but no MDS service')
         except KeyError:
