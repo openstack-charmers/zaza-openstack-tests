@@ -1812,6 +1812,13 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
             return None
         return next(iter(ret))[0]
 
+    def _get_fs_client(self, unit):
+        ret = self._get_all_keys(unit, lambda x: (x.startswith('mds.') and
+                                                  x != 'mds.ceph-fs'))
+        if not ret:
+            return None
+        return next(iter(ret))[0]
+
     def test_key_rotate(self):
         """Test that rotating the keys actually changes them."""
         unit = 'ceph-mon/0'
@@ -1829,7 +1836,7 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
 
         try:
             zaza_model.get_application('ceph-fs')
-            fs_svc = self._get_all_keys(unit, lambda x: x.startswith('mds.'))
+            fs_svc = self._get_fs_client(unit)
             if fs_svc is not None:
                 # Only wait for ceph-fs, as this model includes 'ubuntu'
                 # units, and those don't play nice with zaza (they don't
