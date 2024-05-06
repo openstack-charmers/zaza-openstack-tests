@@ -1753,6 +1753,20 @@ class CephMonJujuPersistent(test_utils.BaseCharmTest):
 class CephMonKeyRotationTests(test_utils.BaseCharmTest):
     """Tests for the rotate-key action."""
 
+    def setUp(self):
+        """Initialize key rotation test class."""
+        super(CephMonKeyRotationTests, self).setUp()
+        try:
+            # Workaround for ubuntu units that don't play nicely with zaza.
+            zaza_model.get_application('ubuntu')
+            self.app_states = {
+                'ubuntu': {
+                    'workload-status-message': ''
+                }
+            }
+        except KeyError:
+            self.app_states = None
+
     def _get_all_keys(self, unit, entity_filter):
         cmd = 'sudo ceph auth ls'
         result = zaza_model.run_on_unit(unit, cmd)
@@ -1781,7 +1795,7 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
             action_params={'entity': entity}
         )
         zaza_utils.assertActionRanOK(action_obj)
-        zaza_model.wait_for_application_states()
+        zaza_model.wait_for_application_states(states=self.app_states)
         new_keys = self._get_all_keys(unit, entity_filter)
         self.assertNotEqual(old_keys, new_keys)
         diff = new_keys - old_keys
@@ -1798,6 +1812,13 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
             return None
         return next(iter(ret))[0]
 
+    def _get_fs_client(self, unit):
+        ret = self._get_all_keys(unit, lambda x: (x.startswith('mds.') and
+                                                  x != 'mds.ceph-fs'))
+        if not ret:
+            return None
+        return next(iter(ret))[0]
+
     def test_key_rotate(self):
         """Test that rotating the keys actually changes them."""
         unit = 'ceph-mon/0'
@@ -1810,5 +1831,18 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
                 self._check_key_rotation(rgw_client, unit)
             else:
                 logging.info('ceph-radosgw units present, but no RGW service')
+        except KeyError:
+            pass
+
+        try:
+            zaza_model.get_application('ceph-fs')
+            fs_svc = self._get_fs_client(unit)
+            if fs_svc is not None:
+                # Only wait for ceph-fs, as this model includes 'ubuntu'
+                # units, and those don't play nice with zaza (they don't
+                # set the workload-status-message correctly).
+                self._check_key_rotation(fs_svc, unit)
+            else:
+                logging.info('ceph-fs units present, but no MDS service')
         except KeyError:
             pass
