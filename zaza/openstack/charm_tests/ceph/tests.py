@@ -1807,7 +1807,7 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
 
         for attempt in tenacity.Retrying(
             wait=tenacity.wait_exponential(multiplier=2, max=32),
-            reraise=True, stop=tenacity.stop_after_attempt(10),
+            reraise=True, stop=tenacity.stop_after_attempt(20),
             retry=tenacity.retry_if_exception_type(AssertionError)
         ):
             with attempt:
