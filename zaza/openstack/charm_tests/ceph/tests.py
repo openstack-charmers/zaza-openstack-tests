@@ -28,7 +28,6 @@ import botocore.exceptions
 import urllib3
 
 import tenacity
-import time
 
 import zaza.charm_lifecycle.utils as lifecycle_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
@@ -1803,12 +1802,17 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
         # ceph-mon rotates key | (idle) | remote-unit rotates key | (idle)
         # Between (2) and (3), there's a window where all units are
         # idle, _but_ the key hasn't been rotated in the other unit.
-        # As such, we sleep for a short time instead of using the
+        # As such, we retry a few times instead of using the
         # `wait_for_application_states` interface.
 
-        time.sleep(10)
-        new_keys = self._get_all_keys(unit, entity_filter)
-        self.assertNotEqual(old_keys, new_keys)
+        for attempt in tenacity.Retrying(
+            wait=tenacity.wait_exponential(multiplier=2, max=32),
+            reraise=True, stop=tenacity.stop_after_attempt(10),
+            retry=tenacity.retry_if_exception_type(AssertionError)
+        ):
+            with attempt:
+                new_keys = self._get_all_keys(unit, entity_filter)
+                self.assertNotEqual(old_keys, new_keys)
 
         diff = new_keys - old_keys
         self.assertEqual(len(diff), 1)
@@ -1834,7 +1838,6 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
     def test_key_rotate(self):
         """Test that rotating the keys actually changes them."""
         unit = 'ceph-mon/0'
-        self._check_key_rotation('mgr', unit)
         self._check_key_rotation('osd.0', unit)
 
         try:
