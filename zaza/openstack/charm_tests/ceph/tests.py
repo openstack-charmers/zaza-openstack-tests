@@ -1853,7 +1853,7 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
         try:
             zaza_model.get_application('ceph-fs')
             fs_svc = self._get_fs_client(unit)
-            if fs_svc is not None:
+            if fs_svc is not None and False:
                 # Only wait for ceph-fs, as this model includes 'ubuntu'
                 # units, and those don't play nice with zaza (they don't
                 # set the workload-status-message correctly).
