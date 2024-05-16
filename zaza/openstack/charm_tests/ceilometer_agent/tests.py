@@ -70,7 +70,7 @@ class CeilometerAgentTest(test_utils.OpenStackBaseTest):
         expected_metric_names = self.__get_expected_metric_names(
             current_os_release)
 
-        min_timeout_seconds = 500
+        min_timeout_seconds = 1000
         polling_interval_seconds = (
             openstack_utils.get_application_config_option(
                 self.application_name, 'polling-interval'))
