@@ -1829,8 +1829,11 @@ class CephMonKeyRotationTests(test_utils.BaseCharmTest):
         return next(iter(ret))[0]
 
     def _get_fs_client(self, unit):
-        ret = self._get_all_keys(unit, lambda x: (x.startswith('mds.') and
-                                                  x != 'mds.ceph-fs'))
+        def _filter_fs(name):
+            return (name.startswith('mds.') and
+                    name not in ('mds.ceph-fs', 'mds.None'))
+
+        ret = self._get_all_keys(unit, _filter_fs)
         if not ret:
             return None
         return next(iter(ret))[0]
