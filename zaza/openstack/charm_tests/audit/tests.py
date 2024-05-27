@@ -37,10 +37,19 @@ class KeystoneAuditMiddlewareBaseTest(test_utils.OpenStackBaseTest):
         super(KeystoneAuditMiddlewareBaseTest, cls).setUpClass()
         test_config = cls.test_config['tests_options']['audit-middleware']
         cls.service_name = test_config['service']
+
+        # For cases when service name and application name differ
+        if not test_config["application"]:
+            cls.application_name = cls.service_name
+        else:
+            cls.application_name = test_config['application']
+        print(test_config)
+        print(cls.model_name)
         cls.lead_unit = zaza.model.get_lead_unit_name(
-            cls.service_name,
+            cls.application_name,
             model_name=cls.model_name
         )
+        print(cls.lead_unit)
         logging.info('Leader unit is %s', cls.lead_unit)
         logging.info('Service name is %s', cls.service_name)
 
@@ -73,7 +82,7 @@ class KeystoneAuditMiddlewareTest(KeystoneAuditMiddlewareBaseTest):
 
         with self.config_change(default_config=set_default,
                                 alternate_config=set_alternate,
-                                application_name=self.service_name):
+                                application_name=self.application_name):
             api_paste_content = self.fetch_api_paste_content()
             for line in expected_content:
                 self.assertIn(line, api_paste_content)
@@ -82,9 +91,8 @@ class KeystoneAuditMiddlewareTest(KeystoneAuditMiddlewareBaseTest):
         """Test api_paste.ini does not render audit section when disabled."""
         section_heading = '[filter:audit]'
 
-        if not self.config_current(self.service_name)['audit-middleware']:
+        if not self.config_current(self.application_name)['audit-middleware']:
             api_paste_content = self.fetch_api_paste_content()
             self.assertNotIn(section_heading, api_paste_content)
         else:
-            self.fail("Failed due to audit-middleware being incorrectly set to\
-                      True")
+            self.fail("Config option audit-middleware incorrectly set to true")
