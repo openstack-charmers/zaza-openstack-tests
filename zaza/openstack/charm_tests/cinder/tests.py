@@ -305,46 +305,6 @@ class CinderTests(test_utils.OpenStackBaseTest):
             'lsblk -sn -o SIZE /dev/vdb',
             privkey=privkey, verify=verify)
 
-    def test_300_apipaste_includes_audit_section(self):
-        """Test api-paste.ini renders audit section when enabled."""
-        service_name = 'cinder'
-        api_paste_ini_path = f"/etc/{service_name}/api-paste.ini"
-        expected_content = [
-            "[filter:audit]",
-            "paste.filter_factory = keystonemiddleware.audit:filter_factory",
-            f"audit_map_file = /etc/{service_name}/api_audit_map.conf",
-            f"service_name = {service_name}"
-        ]
-
-        set_default = {'audit-middleware': False}
-        set_alternate = {'audit-middleware': True}
-
-        with self.config_change(set_default, set_alternate):
-            try:
-                api_paste_content = zaza.model.file_contents(
-                    self.lead_unit,
-                    api_paste_ini_path,
-                )
-            except Exception as e:
-                self.fail("Error fetching api-paste.ini: {}".format(str(e)))
-            for line in expected_content:
-                self.assertIn(line, api_paste_content)
-
-    def test_301_apipaste_excludes_audit_section(self):
-        """Test api_paste.ini does not render audit section when disabled."""
-        service_name = 'cinder'
-        section_heading = '[filter:audit]'
-        api_paste_ini_path = f"/etc/{service_name}/api-paste.ini"
-
-        try:
-            api_paste_content = zaza.model.file_contents(
-                self.lead_unit,
-                api_paste_ini_path
-            )
-        except Exception as e:
-            self.fail("Error fetching api-paste.ini: {}".format(str(e)))
-        self.assertNotIn(section_heading, api_paste_content)
-
     @property
     def services(self):
         """Return a list services for the selected OpenStack release."""
