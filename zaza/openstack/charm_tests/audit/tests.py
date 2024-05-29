@@ -38,12 +38,8 @@ class KeystoneAuditMiddlewareTest(test_utils.OpenStackBaseTest):
         test_config = cls.test_config['tests_options']['audit-middleware']
         cls.service_name = test_config['service']
 
-        if test_config['application']:
-            cls.application_name = test_config['application']
-        else:
-            cls.application_name = cls.service_name
-            logging.info('Application name not set, using service name:\
-                         %s', cls.service_name)
+        cls.application_name = test_config.get('application', cls.service_name)
+        logging.info('Using application name: %s', cls.application_name)
 
         cls.initial_audit_middleware = zaza.model.get_application_config(
             cls.application_name)['audit-middleware']['value']
