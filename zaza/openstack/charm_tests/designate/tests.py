@@ -44,8 +44,15 @@ class BaseDesignateTest(test_utils.OpenStackBaseTest):
         model_alias = model_alias or ""
         super(BaseDesignateTest, cls).setUpClass(application_name, model_alias)
         os_release = openstack_utils.get_os_release
+        current_release = os_release()
 
-        if os_release() >= os_release('bionic_rocky'):
+        if current_release >= os_release('jammy_caracal'):
+            cls.designate_svcs = [
+                'designate-api', 'designate-central',
+                'designate-mdns', 'designate-worker', 'designate-sink',
+                'designate-producer',
+            ]
+        elif current_release >= os_release('bionic_rocky'):
             cls.designate_svcs = [
                 'designate-agent', 'designate-api', 'designate-central',
                 'designate-mdns', 'designate-worker', 'designate-sink',
