@@ -1449,7 +1449,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.patch_object(openstack_utils.juju_utils,
                           'get_machine_uuids_for_application')
         self.get_machine_uuids_for_application.return_value = 'ret'
-        self.assertEquals(openstack_utils.get_gateway_uuids(), 'ret')
+        self.assertEqual(openstack_utils.get_gateway_uuids(), 'ret')
         self.get_machine_uuids_for_application.assert_called_once_with(
             'neutron-gateway')
 
@@ -1457,7 +1457,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.patch_object(openstack_utils.juju_utils,
                           'get_machine_uuids_for_application')
         self.get_machine_uuids_for_application.return_value = 'ret'
-        self.assertEquals(openstack_utils.get_ovs_uuids(), 'ret')
+        self.assertEqual(openstack_utils.get_ovs_uuids(), 'ret')
         self.get_machine_uuids_for_application.assert_called_once_with(
             'neutron-openvswitch')
 
@@ -1465,8 +1465,8 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.patch_object(openstack_utils.juju_utils,
                           'get_machine_uuids_for_application')
         self.get_machine_uuids_for_application.return_value = ['ret']
-        self.assertEquals(list(openstack_utils.get_ovn_uuids()),
-                          ['ret', 'ret'])
+        self.assertEqual(list(openstack_utils.get_ovn_uuids()),
+                         ['ret', 'ret'])
         self.get_machine_uuids_for_application.assert_has_calls([
             mock.call('ovn-chassis'),
             mock.call('ovn-dedicated-chassis'),
@@ -1514,7 +1514,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         with self.assertRaises(RuntimeError):
             openstack_utils.get_charm_networking_data()
         self.ngw_present.return_value = True
-        self.assertEquals(
+        self.assertEqual(
             openstack_utils.get_charm_networking_data(),
             openstack_utils.CharmedOpenStackNetworkingData(
                 openstack_utils.OpenStackNetworkingTopology.ML2_OVS,
@@ -1523,7 +1523,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 'data-port',
                 {}))
         self.dvr_enabled.return_value = True
-        self.assertEquals(
+        self.assertEqual(
             openstack_utils.get_charm_networking_data(),
             openstack_utils.CharmedOpenStackNetworkingData(
                 openstack_utils.OpenStackNetworkingTopology.ML2_OVS_DVR,
@@ -1532,7 +1532,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 'data-port',
                 {}))
         self.ngw_present.return_value = False
-        self.assertEquals(
+        self.assertEqual(
             openstack_utils.get_charm_networking_data(),
             openstack_utils.CharmedOpenStackNetworkingData(
                 openstack_utils.OpenStackNetworkingTopology.ML2_OVS_DVR_SNAT,
@@ -1542,7 +1542,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 {}))
         self.dvr_enabled.return_value = False
         self.ovn_present.return_value = True
-        self.assertEquals(
+        self.assertEqual(
             openstack_utils.get_charm_networking_data(),
             openstack_utils.CharmedOpenStackNetworkingData(
                 openstack_utils.OpenStackNetworkingTopology.ML2_OVN,
@@ -1551,7 +1551,7 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
                 'bridge-interface-mappings',
                 {'ovn-bridge-mappings': 'physnet1:br-ex'}))
         self.get_application.side_effect = None
-        self.assertEquals(
+        self.assertEqual(
             openstack_utils.get_charm_networking_data(),
             openstack_utils.CharmedOpenStackNetworkingData(
                 openstack_utils.OpenStackNetworkingTopology.ML2_OVN,

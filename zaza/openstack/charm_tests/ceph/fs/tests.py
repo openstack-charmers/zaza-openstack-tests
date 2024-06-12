@@ -147,7 +147,7 @@ class CephFSTests(unittest.TestCase):
             """
             model.set_application_config('ceph-fs', mds_config)
             results = _get_conf()
-            self.assertEquals(
+            self.assertEqual(
                 results['mds_cache_memory_limit'],
                 mds_config['mds-cache-memory-limit'])
             self.assertAlmostEqual(
