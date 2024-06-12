@@ -840,13 +840,12 @@ class CephRGWTest(test_utils.BaseCharmTest):
         :param unit_name: Unit name for which RGW endpoint is required.
         :type unit_name: str
         """
-        unit = zaza_model.get_unit_from_name(unit_name)
-        unit_address = zaza_model.get_unit_public_address(
-            unit,
-            self.model_name
-        )
+        # Get address  "public" network binding.
+        unit_address = zaza_model.run_on_unit(
+            unit_name, "network-get public --bind-address"
+        ).get('Stdout', '').strip()
 
-        logging.debug("Unit: {}, Endpoint: {}".format(unit_name, unit_address))
+        logging.info("Unit: {}, Endpoint: {}".format(unit_name, unit_address))
         if unit_address is None:
             return None
         # Evaluate port
