@@ -648,7 +648,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
 
     This Testset is not idempotent, because we don't support scale down from
     multisite to singlesite (yet). Tests can be performed independently.
-    However, If test_004 has completed migration, retriggering the test-set
+    However, If test_100 has completed migration, retriggering the test-set
     would cause a time-out in test_003.
     """
 
@@ -878,6 +878,33 @@ class CephRGWTest(test_utils.BaseCharmTest):
             }
         )
 
+    def configure_rgw_multisite_relation(self):
+        """Configure multi-site relation between primary and secondary apps."""
+        multisite_relation = zaza_model.get_relation_id(
+            self.primary_rgw_app, self.secondary_rgw_app,
+            remote_interface_name='secondary'
+        )
+        if multisite_relation is None:
+            logging.info('Configuring Multisite')
+            self.configure_rgw_apps_for_multisite()
+            zaza_model.add_relation(
+                self.primary_rgw_app,
+                self.primary_rgw_app + ":primary",
+                self.secondary_rgw_app + ":secondary"
+            )
+            zaza_model.block_until_unit_wl_status(
+                self.secondary_rgw_unit, "waiting"
+            )
+
+        zaza_model.block_until_unit_wl_status(
+            self.secondary_rgw_unit, "active"
+        )
+        zaza_model.block_until_unit_wl_status(
+            self.primary_rgw_unit, "active"
+        )
+        zaza_model.wait_for_unit_idle(self.secondary_rgw_unit)
+        zaza_model.wait_for_unit_idle(self.primary_rgw_unit)
+
     def clean_rgw_multisite_config(self, app_name):
         """Clear Multisite Juju config values to default.
 
@@ -1066,7 +1093,209 @@ class CephRGWTest(test_utils.BaseCharmTest):
         zaza_model.block_until_unit_wl_status(self.secondary_rgw_unit,
                                               'active')
 
-    def test_004_migration_and_multisite_failover(self):
+    def test_004_multisite_directional_sync_policy(self):
+        """Verify Multisite Directional Sync Policy."""
+        # Skip multisite tests if not compatible with bundle.
+        if not self.multisite:
+            logging.info('Skipping multisite sync policy verification')
+            return
+
+        container_name = 'zaza-container'
+        primary_obj_name = 'primary-testfile'
+        primary_obj_data = 'Primary test data'
+        secondary_directional_obj_name = 'secondary-directional-testfile'
+        secondary_directional_obj_data = 'Secondary directional test data'
+        secondary_symmetrical_obj_name = 'secondary-symmetrical-testfile'
+        secondary_symmetrical_obj_data = 'Secondary symmetrical test data'
+
+        logging.info('Verifying multisite directional sync policy')
+
+        # Set default sync policy to "allowed", which allows buckets to sync,
+        # but the sync is disabled by default in the zone group. Also, set the
+        # secondary zone sync policy flow type policy to "directional".
+        zaza_model.set_application_config(
+            self.primary_rgw_app,
+            {
+                "sync-policy-state": "allowed",
+            }
+        )
+        zaza_model.set_application_config(
+            self.secondary_rgw_app,
+            {
+                "sync-policy-flow-type": "directional",
+            }
+        )
+        zaza_model.wait_for_unit_idle(self.secondary_rgw_unit)
+        zaza_model.wait_for_unit_idle(self.primary_rgw_unit)
+
+        # Setup multisite relation.
+        self.configure_rgw_multisite_relation()
+
+        logging.info('Waiting for Data and Metadata to Synchronize')
+        # NOTE: We only check the secondary zone, because the sync policy flow
+        # type is set to "directional" between the primary and secondary zones.
+        self.wait_for_status(self.secondary_rgw_app, is_primary=False)
+
+        # Create bucket on primary RGW zone.
+        logging.info('Creating bucket on primary zone')
+        primary_endpoint = self.get_rgw_endpoint(self.primary_rgw_unit)
+        self.assertNotEqual(primary_endpoint, None)
+
+        access_key, secret_key = self.get_client_keys()
+        primary_client = boto3.resource("s3",
+                                        verify=False,
+                                        endpoint_url=primary_endpoint,
+                                        aws_access_key_id=access_key,
+                                        aws_secret_access_key=secret_key)
+        primary_client.Bucket(container_name).create()
+
+        # Enable sync on the bucket.
+        logging.info('Enabling sync on the bucket from the primary zone')
+        zaza_model.run_action_on_leader(
+            self.primary_rgw_app,
+            'enable-buckets-sync',
+            action_params={
+                'buckets': container_name,
+            },
+            raise_on_failure=True,
+        )
+
+        # Check that sync cannot be enabled using secondary Juju RGW app.
+        with self.assertRaises(zaza_model.ActionFailed):
+            zaza_model.run_action_on_leader(
+                self.secondary_rgw_app,
+                'enable-buckets-sync',
+                action_params={
+                    'buckets': container_name,
+                },
+                raise_on_failure=True,
+            )
+
+        logging.info('Waiting for Data and Metadata to Synchronize')
+        self.wait_for_status(self.secondary_rgw_app, is_primary=False)
+
+        # Perform IO on primary zone bucket.
+        logging.info('Performing IO on primary zone bucket')
+        primary_object = primary_client.Object(
+            container_name,
+            primary_obj_name
+        )
+        primary_object.put(Body=primary_obj_data)
+
+        # Verify that the object is replicated to the secondary zone.
+        logging.info('Verifying that the object is replicated to the '
+                     'secondary zone')
+        secondary_endpoint = self.get_rgw_endpoint(self.secondary_rgw_unit)
+        self.assertNotEqual(secondary_endpoint, None)
+
+        secondary_client = boto3.resource("s3",
+                                          verify=False,
+                                          endpoint_url=secondary_endpoint,
+                                          aws_access_key_id=access_key,
+                                          aws_secret_access_key=secret_key)
+        secondary_data = self.fetch_rgw_object(
+            secondary_client,
+            container_name,
+            primary_obj_name
+        )
+        self.assertEqual(secondary_data, primary_obj_data)
+
+        # Write object to the secondary zone bucket, when the sync policy
+        # flow type is set to "directional" between the zones.
+        logging.info('Writing object to the secondary zone bucket, which '
+                     'should not be replicated to the primary zone')
+        secondary_object = secondary_client.Object(
+            container_name,
+            secondary_directional_obj_name
+        )
+        secondary_object.put(Body=secondary_directional_obj_data)
+
+        # Verify that the object is not replicated to the primary zone.
+        logging.info('Verifying that the object is not replicated to the '
+                     'primary zone')
+        with self.assertRaises(botocore.exceptions.ClientError):
+            self.fetch_rgw_object(
+                primary_client,
+                container_name,
+                secondary_directional_obj_name
+            )
+
+        logging.info('Setting sync policy flow to "symmetrical" on the '
+                     'secondary RGW zone')
+        zaza_model.set_application_config(
+            self.secondary_rgw_app,
+            {
+                "sync-policy-flow-type": "symmetrical",
+            }
+        )
+        zaza_model.wait_for_unit_idle(self.secondary_rgw_unit)
+        zaza_model.wait_for_unit_idle(self.primary_rgw_unit)
+
+        # Write another object to the secondary zone bucket.
+        logging.info('Writing another object to the secondary zone bucket.')
+        secondary_object = secondary_client.Object(
+            container_name,
+            secondary_symmetrical_obj_name
+        )
+        secondary_object.put(Body=secondary_symmetrical_obj_data)
+
+        logging.info('Waiting for Data and Metadata to Synchronize')
+        # NOTE: This time, we check both the primary and secondary zones,
+        # because the sync policy flow type is set to "symmetrical" between
+        # the zones.
+        self.wait_for_status(self.secondary_rgw_app, is_primary=False)
+        self.wait_for_status(self.primary_rgw_app, is_primary=True)
+
+        # Verify that all objects are replicated to the primary zone.
+        logging.info('Verifying that all objects are replicated to the '
+                     'primary zone (including older objects).')
+        test_cases = [
+            {
+                'obj_name': primary_obj_name,
+                'obj_data': primary_obj_data,
+            },
+            {
+                'obj_name': secondary_directional_obj_name,
+                'obj_data': secondary_directional_obj_data,
+            },
+            {
+                'obj_name': secondary_symmetrical_obj_name,
+                'obj_data': secondary_symmetrical_obj_data,
+            },
+        ]
+        for tc in test_cases:
+            logging.info('Verifying that object "{}" is replicated'.format(
+                tc['obj_name']))
+            primary_data = self.fetch_rgw_object(
+                primary_client,
+                container_name,
+                tc['obj_name']
+            )
+            self.assertEqual(primary_data, tc['obj_data'])
+
+        # Cleanup.
+        logging.info('Cleaning up buckets after test case')
+        self.purge_bucket(self.primary_rgw_app, container_name)
+        self.purge_bucket(self.secondary_rgw_app, container_name)
+
+        logging.info('Waiting for Data and Metadata to Synchronize')
+        self.wait_for_status(self.secondary_rgw_app, is_primary=False)
+        self.wait_for_status(self.primary_rgw_app, is_primary=True)
+
+        # Set multisite sync policy state to "enabled" on the primary RGW app.
+        # Paired with "symmetrical" sync policy flow on the secondary RGW app,
+        # this enables bidirectional sync between the zones (which is the
+        # default behaviour without multisite sync policies configured).
+        logging.info('Setting sync policy state to "enabled".')
+        zaza_model.set_application_config(
+            self.primary_rgw_app,
+            {
+                "sync-policy-state": "enabled",
+            }
+        )
+        zaza_model.wait_for_unit_idle(self.primary_rgw_unit)
+
+    def test_100_migration_and_multisite_failover(self):
         """Perform multisite migration and verify failover."""
         container_name = 'zaza-container'
         obj_data = 'Test data from Zaza'
@@ -1093,24 +1322,8 @@ class CephRGWTest(test_utils.BaseCharmTest):
         ).put(Body=obj_data)
 
         # If Primary/Secondary relation does not exist, add it.
-        if zaza_model.get_relation_id(
-                self.primary_rgw_app, self.secondary_rgw_app,
-                remote_interface_name='secondary'
-        ) is None:
-            logging.info('Configuring Multisite')
-            self.configure_rgw_apps_for_multisite()
-            zaza_model.add_relation(
-                self.primary_rgw_app,
-                self.primary_rgw_app + ":primary",
-                self.secondary_rgw_app + ":secondary"
-            )
-            zaza_model.block_until_unit_wl_status(
-                self.secondary_rgw_unit, "waiting"
-            )
+        self.configure_rgw_multisite_relation()
 
-        zaza_model.block_until_unit_wl_status(
-            self.secondary_rgw_unit, "active"
-        )
         logging.info('Waiting for Data and Metadata to Synchronize')
         self.wait_for_status(self.secondary_rgw_app, is_primary=False)
         self.wait_for_status(self.primary_rgw_app, is_primary=True)
@@ -1166,6 +1379,10 @@ class CephRGWTest(test_utils.BaseCharmTest):
         secondary_content = secondary_object.get()[
             'Body'
         ].read().decode('UTF-8')
+
+        # Wait for Sites to be syncronised.
+        self.wait_for_status(self.primary_rgw_app, is_primary=False)
+        self.wait_for_status(self.secondary_rgw_app, is_primary=True)
 
         # Recovery scenario, reset ceph-rgw as primary.
         self.promote_rgw_to_primary(self.primary_rgw_app)
@@ -1224,7 +1441,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
         self.purge_bucket(self.secondary_rgw_app, 'zaza-container')
         self.purge_bucket(self.secondary_rgw_app, 'failover-container')
 
-    def test_005_virtual_hosted_bucket(self):
+    def test_101_virtual_hosted_bucket(self):
         """Test virtual hosted bucket."""
         primary_rgw_unit = zaza_model.get_unit_from_name(self.primary_rgw_unit)
         if primary_rgw_unit.workload_status != "active":
@@ -1236,17 +1453,11 @@ class CephRGWTest(test_utils.BaseCharmTest):
 
         # 0. Configure virtual hosted bucket
         self.enable_virtual_hosted_bucket()
-        assert_state = {
-            self.primary_rgw_app: {
-                "workload-status": "blocked",
-                "workload-status-message-prefix":
-                    "os-public-hostname must have a value "
-                    "when virtual hosted bucket is enabled"
-            }
-        }
-        zaza_model.wait_for_application_states(self.model_name,
-                                               states=assert_state,
-                                               timeout=900)
+        zaza_model.block_until_wl_status_info_starts_with(
+            self.primary_rgw_app,
+            'os-public-hostname must have a value',
+            timeout=900
+        )
         self.set_os_public_hostname()
         zaza_model.block_until_all_units_idle(self.model_name)
         container_name = 'zaza-bucket'
@@ -1264,7 +1475,13 @@ class CephRGWTest(test_utils.BaseCharmTest):
                                         endpoint_url=primary_endpoint,
                                         aws_access_key_id=access_key,
                                         aws_secret_access_key=secret_key)
-        primary_client.Bucket(container_name).create()
+        # We may not have certs for the pub hostname yet, so retry a few times.
+        for attempt in tenacity.Retrying(
+            stop=tenacity.stop_after_attempt(10),
+            wait=tenacity.wait_fixed(4),
+        ):
+            with attempt:
+                primary_client.Bucket(container_name).create()
         primary_object_one = primary_client.Object(
             container_name,
             obj_name
@@ -1748,3 +1965,120 @@ class CephMonJujuPersistent(test_utils.BaseCharmTest):
             )
             data = json.loads(result['Stdout'])
             assert data['loglevel'] == 2
+
+
+class CephMonKeyRotationTests(test_utils.BaseCharmTest):
+    """Tests for the rotate-key action."""
+
+    def setUp(self):
+        """Initialize key rotation test class."""
+        super(CephMonKeyRotationTests, self).setUp()
+        try:
+            # Workaround for ubuntu units that don't play nicely with zaza.
+            zaza_model.get_application('ubuntu')
+            self.app_states = {
+                'ubuntu': {
+                    'workload-status-message': ''
+                }
+            }
+        except KeyError:
+            self.app_states = None
+
+    def _get_all_keys(self, unit, entity_filter):
+        cmd = 'sudo ceph auth ls'
+        result = zaza_model.run_on_unit(unit, cmd)
+        # Don't use json formatting, as it's buggy upstream.
+        data = result['Stdout'].split()
+        ret = set()
+
+        for ix, line in enumerate(data):
+            # Structure:
+            # $ENTITY
+            # key:
+            # key contents
+            # That's why we need to move one position ahead.
+            if 'key:' in line and entity_filter(data[ix - 1]):
+                ret.add((data[ix - 1], data[ix + 1]))
+        return ret
+
+    def _check_key_rotation(self, entity, unit):
+        def entity_filter(name):
+            return name.startswith(entity)
+
+        old_keys = self._get_all_keys(unit, entity_filter)
+        action_obj = zaza_model.run_action(
+            unit_name=unit,
+            action_name='rotate-key',
+            action_params={'entity': entity}
+        )
+        zaza_utils.assertActionRanOK(action_obj)
+        # NOTE(lmlg): There's a nasty race going on here. Essentially,
+        # since this action involves 2 different applications, what
+        # happens is as follows:
+        #          (1)            (2)               (3)              (4)
+        # ceph-mon rotates key | (idle) | remote-unit rotates key | (idle)
+        # Between (2) and (3), there's a window where all units are
+        # idle, _but_ the key hasn't been rotated in the other unit.
+        # As such, we retry a few times instead of using the
+        # `wait_for_application_states` interface.
+
+        for attempt in tenacity.Retrying(
+            wait=tenacity.wait_exponential(multiplier=2, max=32),
+            reraise=True, stop=tenacity.stop_after_attempt(20),
+            retry=tenacity.retry_if_exception_type(AssertionError)
+        ):
+            with attempt:
+                new_keys = self._get_all_keys(unit, entity_filter)
+                self.assertNotEqual(old_keys, new_keys)
+
+        diff = new_keys - old_keys
+        self.assertEqual(len(diff), 1)
+        first = next(iter(diff))
+        # Check that the entity matches. The 'entity_filter'
+        # callable will return a true-like value if it
+        # matches the type of entity we're after (i.e: 'mgr')
+        self.assertTrue(entity_filter(first[0]))
+
+    def _get_rgw_client(self, unit):
+        ret = self._get_all_keys(unit, lambda x: x.startswith('client.rgw'))
+        if not ret:
+            return None
+        return next(iter(ret))[0]
+
+    def _get_fs_client(self, unit):
+        def _filter_fs(name):
+            return (name.startswith('mds.') and
+                    name not in ('mds.ceph-fs', 'mds.None'))
+
+        ret = self._get_all_keys(unit, _filter_fs)
+        if not ret:
+            return None
+        return next(iter(ret))[0]
+
+    def test_key_rotate(self):
+        """Test that rotating the keys actually changes them."""
+        unit = 'ceph-mon/0'
+        self._check_key_rotation('osd.0', unit)
+
+        try:
+            zaza_model.get_application('ceph-radosgw')
+            rgw_client = self._get_rgw_client(unit)
+            if rgw_client:
+                self._check_key_rotation(rgw_client, unit)
+            else:
+                logging.info('ceph-radosgw units present, but no RGW service')
+        except KeyError:
+            pass
+
+        try:
+            zaza_model.get_application('ceph-fs')
+            fs_svc = self._get_fs_client(unit)
+            if fs_svc is not None:
+                # Only wait for ceph-fs, as this model includes 'ubuntu'
+                # units, and those don't play nice with zaza (they don't
+                # set the workload-status-message correctly).
+                self._check_key_rotation(fs_svc, unit)
+            else:
+                logging.info('ceph-fs units present, but no MDS service')
+        except KeyError:
+            pass
