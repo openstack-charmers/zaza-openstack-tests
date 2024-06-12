@@ -24,6 +24,7 @@ import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.ceph as ceph_utils
 import zaza.openstack.utilities.openstack as openstack_utils
+from zaza.openstack.utilities import ObjectRetrierWraps
 
 
 class CinderBackupTest(test_utils.OpenStackBaseTest):
@@ -35,8 +36,9 @@ class CinderBackupTest(test_utils.OpenStackBaseTest):
     def setUpClass(cls):
         """Run class setup for running Cinder Backup tests."""
         super(CinderBackupTest, cls).setUpClass()
-        cls.cinder_client = openstack_utils.get_cinder_session_client(
-            cls.keystone_session)
+        cls.cinder_client = ObjectRetrierWraps(
+            openstack_utils.get_cinder_session_client(
+                cls.keystone_session))
 
     @property
     def services(self):
