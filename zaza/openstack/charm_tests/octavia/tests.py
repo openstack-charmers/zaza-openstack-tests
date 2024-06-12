@@ -26,6 +26,8 @@ import osc_lib.exceptions
 import zaza.model
 import zaza.openstack.charm_tests.tempest.tests as tempest_tests
 import zaza.openstack.charm_tests.test_utils as test_utils
+import zaza.openstack.charm_tests.neutron.utils as neutron_utils
+import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 
 from zaza.openstack.utilities import generic as generic_utils
@@ -456,6 +458,25 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
              'http://{}/'.format(ip)],
             universal_newlines=True)
 
+    @staticmethod
+    @tenacity.retry(wait=tenacity.wait_fixed(1),
+                    reraise=True, stop=tenacity.stop_after_delay(900))
+    def _get_payload_via_ssh(ssh_ip, payload_ip):
+        ssh_output = ''
+
+        def verify(stdin, stdout, stderr):
+            nonlocal ssh_output
+            ssh_output = stdout.read().decode('utf-8')
+
+        openstack_utils.ssh_command(
+            'ubuntu',
+            ssh_ip,
+            ssh_ip,
+            'wget -O - http://{}/'.format(payload_ip),
+            privkey=openstack_utils.get_private_key(nova_utils.KEYPAIR_NAME),
+            verify=verify)
+        return ssh_output
+
     def test_create_loadbalancer(self):
         """Create load balancer."""
         # Prepare payload instances
@@ -519,12 +540,24 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
                 openstack_utils.EXT_NET,
                 port={'id': lb['vip_port_id']})
 
+            # Access payload through FIP -> LB VIP -> backend
             snippet = 'This is the default welcome page'
             assert snippet in self._get_payload(lb_fp['floating_ip_address'])
             logging.info('Found "{}" in page retrieved through load balancer '
-                         ' (provider="{}") at "http://{}/"'
+                         ' (provider="{}") at "http://{}/" (FIP)'
                          .format(snippet, provider,
                                  lb_fp['floating_ip_address']))
+
+            # Access payload through LB VIP -> backend (without FIP)
+            for instance in (instance_1, instance_2):
+                fip = neutron_utils.floating_ips_from_instance(instance)[0]
+                assert snippet in self._get_payload_via_ssh(
+                    fip, lb['vip_address'])
+                logging.info('Found "{}" in page retrieved through load '
+                             'balancer (provider="{}") at "http://{}/" (VIP) '
+                             'read from instance on {}.'
+                             .format(snippet, provider,
+                                     lb['vip_address'], fip))
 
         # If we get here, it means the tests passed
         self.run_resource_cleanup = True
