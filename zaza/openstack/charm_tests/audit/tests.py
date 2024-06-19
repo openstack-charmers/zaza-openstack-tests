@@ -106,7 +106,7 @@ class KeystoneAuditMiddlewareTest(test_utils.OpenStackBaseTest):
             api_paste_content = self.fetch_api_paste_content()
             self.assertNotIn(section_heading, api_paste_content)
 
-
+            
 class IronicAuditMiddlewareTest(KeystoneAuditMiddlewareTest):
     """Ironic-API audit middleware test class."""
 
