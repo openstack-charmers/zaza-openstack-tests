@@ -105,3 +105,15 @@ class KeystoneAuditMiddlewareTest(test_utils.OpenStackBaseTest):
                                 application_name=self.application_name):
             api_paste_content = self.fetch_api_paste_content()
             self.assertNotIn(section_heading, api_paste_content)
+
+
+class IronicAuditMiddlewareTest(KeystoneAuditMiddlewareTest):
+    """Ironic-API audit middleware test class."""
+
+    def test_101_apipaste_includes_audit_section(self):
+        """Test api-paste.ini renders audit section when enabled."""
+        self.skipTest('ironic-api does not use an api-paste.ini file')
+
+    def test_102_apipaste_excludes_audit_section(self):
+        """Test api_paste.ini does not render audit section when disabled."""
+        self.skipTest('ironic-api does not use an api-paste.ini file')
