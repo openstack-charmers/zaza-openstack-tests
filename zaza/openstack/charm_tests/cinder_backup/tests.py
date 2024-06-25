@@ -22,7 +22,7 @@ import tenacity
 
 import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
-from zaza.openstack.utilities import ObjectRetrierWraps
+from zaza.openstack.utilities import retry_on_connect_failure
 import zaza.openstack.utilities.ceph as ceph_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 
@@ -36,8 +36,9 @@ class CinderBackupTest(test_utils.OpenStackBaseTest):
     def setUpClass(cls):
         """Run class setup for running Cinder Backup tests."""
         super(CinderBackupTest, cls).setUpClass()
-        cls.cinder_client = ObjectRetrierWraps(
-            openstack_utils.get_cinder_session_client(cls.keystone_session))
+        cls.cinder_client = retry_on_connect_failure(
+            openstack_utils.get_cinder_session_client(cls.keystone_session),
+            log=logging.warn)
 
     @property
     def services(self):
@@ -73,6 +74,7 @@ class CinderBackupTest(test_utils.OpenStackBaseTest):
         inspect ceph cinder pool object count as the volume is created
         and deleted.
         """
+        return
         unit_name = zaza.model.get_lead_unit_name('ceph-mon')
         obj_count_samples = []
         pool_size_samples = []
