@@ -19,6 +19,25 @@ import time
 
 from keystoneauth1.exceptions.connection import ConnectFailure
 
+NEVER_RETRY_EXCEPTIONS = (
+    AssertionError,
+    AttributeError,
+    ImportError,
+    IndexError,
+    KeyError,
+    NotImplementedError,
+    OverflowError,
+    RecursionError,
+    ReferenceError,
+    RuntimeError,
+    SyntaxError,
+    IndentationError,
+    SystemExit,
+    TypeError,
+    UnicodeError,
+    ZeroDivisionError,
+)
+
 
 class ObjectRetrierWraps(object):
     """An automatic retrier for an object.
@@ -94,11 +113,19 @@ class ObjectRetrierWraps(object):
         """Get attribute; delegates to wrapped object."""
         # Note the above may generate an attribute error; we expect this and
         # will fail with an attribute error.
+        __log = self.__kwargs['log']
+        __log(f"__getattr__(..) called with {name}")
         attr = getattr(self.__obj, name)
         if callable(attr) or hasattr(attr, "__getattr__"):
+            __log(f"__getattr__(..): wrapping {attr}")
             return ObjectRetrierWraps(attr, **self.__kwargs)
-        else:
-            return attr
+        __log( f"__getattr__(): {name} is not callable or has __getattr__")
+        if isinstance(attr, property):
+            __log(f"__getattr__(): {name} is a property")
+        __log(f"__getattr__(): {name} on {self.__obj} is a {type(attr)}")
+        # return attr
+        __log(f"__getattr__(): wrapping {attr}")
+        return ObjectRetrierWraps(attr, **self.__kwargs)
         # TODO(ajkavanagh): Note detecting a property is a bit trickier.  we
         # can do isinstance(attr, property), but then the act of accessing it
         # is what calls it.  i.e. it would fail at the getattr(self.__obj,
@@ -120,12 +147,17 @@ class ObjectRetrierWraps(object):
         wait_so_far = 0
         while True:
             try:
+                log(f"Running {self.__name__}({args}, {kwargs})")
                 return obj(*args, **kwargs)
             except Exception as e:
                 # if retry_exceptions is not None, or the type of the exception
                 # is not in the list of retries, then raise an exception
                 # immediately.  This means that if retry_exceptions is None,
                 # then the method is always retried.
+                if isinstance(e, NEVER_RETRY_EXCEPTIONS):
+                    log("ObjectRetrierWraps: error {} is never caught"
+                        .format(str(e)))
+                    raise
                 if (retry_exceptions is not None and
                         type(e) not in retry_exceptions):
                     raise
