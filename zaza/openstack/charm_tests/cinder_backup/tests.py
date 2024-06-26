@@ -74,7 +74,6 @@ class CinderBackupTest(test_utils.OpenStackBaseTest):
         inspect ceph cinder pool object count as the volume is created
         and deleted.
         """
-        return
         unit_name = zaza.model.get_lead_unit_name('ceph-mon')
         obj_count_samples = []
         pool_size_samples = []
