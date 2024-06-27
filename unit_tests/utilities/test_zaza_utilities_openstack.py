@@ -99,6 +99,9 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.neutronclient.list_agents.return_value = self.agents
         self.neutronclient.list_bgp_speaker_on_dragent.return_value = \
             self.bgp_speakers
+        self.patch("zaza.openstack.utilities.ObjectRetrierWraps",
+                   name="_object_retrier_wraps",
+                   new=lambda x, *_, **__: x)
 
     def test_create_port(self):
         self.patch_object(openstack_utils, "get_net_uuid")
