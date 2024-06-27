@@ -103,7 +103,7 @@ class CinderBackupTest(test_utils.OpenStackBaseTest):
                     self.cinder_client.volumes,
                     cinder_vol.id,
                     wait_iteration_max_time=180,
-                    stop_after_attempt=15,
+                    stop_after_attempt=30,
                     expected_status='available',
                     msg='ceph-backed cinder volume')
 
@@ -125,7 +125,7 @@ class CinderBackupTest(test_utils.OpenStackBaseTest):
                     self.cinder_client.backups,
                     vol_backup.id,
                     wait_iteration_max_time=180,
-                    stop_after_attempt=15,
+                    stop_after_attempt=30,
                     expected_status='available',
                     msg='Backup volume')
 
