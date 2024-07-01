@@ -144,7 +144,6 @@ class ObjectRetrierWraps(object):
         wait_so_far = 0
         while True:
             try:
-                log(f"Running {self}({args}, {kwargs})")
                 return obj(*args, **kwargs)
             except Exception as e:
                 # if retry_exceptions is not None, or the type of the exception
@@ -160,16 +159,15 @@ class ObjectRetrierWraps(object):
                     raise
                 retry += 1
                 if retry > num_retries:
-                    log("ObjectRetrierWraps: {}: exceeded number of retries, "
-                        "so erroring out" .format(str(obj)))
+                    log("ObjectRetrierWraps: exceeded number of retries, "
+                        "so erroring out")
                     raise e
-                log("ObjectRetrierWraps: {}: call failed: retrying in {} "
-                    "seconds" .format(str(obj), wait))
+                log("ObjectRetrierWraps: call failed: retrying in {} "
+                    "seconds" .format(wait))
                 time.sleep(wait)
                 wait_so_far += wait
                 if wait_so_far >= total_wait:
                     raise e
-                print('wait: ', wait, '  backoff:', backoff)
                 wait = wait * backoff
                 if wait > max_interval:
                     wait = max_interval
