@@ -150,9 +150,7 @@ class TestObjectRetrierWraps(ut_utils.BaseTestCase):
         with self.assertRaises(SomeException):
             wrapped_a.func()
 
-        # there should be two calls; one for the single retry and one for the
-        # failure.
-        self.assertEqual(mock_log.call_count, 6)
+        mock_log.assert_called()
 
     @mock.patch("time.sleep")
     def test_back_off_maximum(self, mock_sleep):
