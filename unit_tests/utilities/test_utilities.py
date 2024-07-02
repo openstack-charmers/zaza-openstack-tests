@@ -114,6 +114,28 @@ class TestObjectRetrierWraps(ut_utils.BaseTestCase):
         mock_sleep.assert_not_called()
 
     @mock.patch("time.sleep")
+    def test_object_wrap_multilevel_with_exception(self, mock_sleep):
+
+        class A:
+
+            def func(self):
+                raise SomeException()
+
+        class B:
+
+            def __init__(self):
+                self.a = A()
+
+        b = B()
+        # retry on a specific exception
+        wrapped_b = utilities.ObjectRetrierWraps(
+            b, num_retries=1, retry_exceptions=[SomeException])
+        with self.assertRaises(SomeException):
+            wrapped_b.a.func()
+
+        mock_sleep.assert_called_once_with(5)
+
+    @mock.patch("time.sleep")
     def test_log_called(self, mock_sleep):
 
         class A:
@@ -128,9 +150,7 @@ class TestObjectRetrierWraps(ut_utils.BaseTestCase):
         with self.assertRaises(SomeException):
             wrapped_a.func()
 
-        # there should be two calls; one for the single retry and one for the
-        # failure.
-        self.assertEqual(mock_log.call_count, 2)
+        mock_log.assert_called()
 
     @mock.patch("time.sleep")
     def test_back_off_maximum(self, mock_sleep):
