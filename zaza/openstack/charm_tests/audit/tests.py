@@ -19,12 +19,14 @@ Keystone audit middleware API logging testing.
 
 These methods test the rendering of the charm api-paste.ini file to
 ensure the appropriate sections are rendered or not rendered depending
-on the state of the audit-middleware configuration option.
+on the state of the audit-middleware configuration option. OpenStack
+releases older than Yoga are skipped as this feature is not supported.
 """
 
 import textwrap
 import logging
 import zaza.model
+from zaza.openstack.utilities import openstack as openstack_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 
 
@@ -35,6 +37,15 @@ class KeystoneAuditMiddlewareTest(test_utils.OpenStackBaseTest):
     def setUpClass(cls):
         """Run class setup for Keystone audit middleware tests."""
         super(KeystoneAuditMiddlewareTest, cls).setUpClass()
+        os_version = openstack_utils.get_openstack_release(
+            cls.application_name,
+            cls.model_name
+        )
+
+        if os_version < 'yoga':
+            cls.skipTest(cls, 'Skipping audit middleware test in unsupported'
+                         ' version of OpenStack: %s' % os_version)
+
         test_config = cls.test_config['tests_options']['audit-middleware']
         cls.service_name = test_config['service']
 
