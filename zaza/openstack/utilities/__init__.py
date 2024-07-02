@@ -15,9 +15,29 @@
 """Collection of utilities to support zaza tests etc."""
 
 
+import logging
 import time
 
 from keystoneauth1.exceptions.connection import ConnectFailure
+
+NEVER_RETRY_EXCEPTIONS = (
+    AssertionError,
+    AttributeError,
+    ImportError,
+    IndexError,
+    KeyError,
+    NotImplementedError,
+    OverflowError,
+    RecursionError,
+    ReferenceError,
+    RuntimeError,
+    SyntaxError,
+    IndentationError,
+    SystemExit,
+    TypeError,
+    UnicodeError,
+    ZeroDivisionError,
+)
 
 
 class ObjectRetrierWraps(object):
@@ -76,10 +96,19 @@ class ObjectRetrierWraps(object):
             If a list, then it will only retry if the exception is one of the
             ones in the list.
         :type retry_exceptions: List[Exception]
+        :param log: If False, disable logging; if None (the default) or True,
+            use logging.warn; otherwise use the passed param `log`.
+        :type param: None | Boolean | Callable
         """
         # Note we use semi-private variable names that shouldn't clash with any
         # on the actual object.
         self.__obj = obj
+        if log in (None, True):
+            _log = logging.warning
+        elif log is False:
+            _log = lambda *_, **__: None  # noqa
+        else:
+            _log = log
         self.__kwargs = {
             'num_retries': num_retries,
             'initial_interval': initial_interval,
@@ -87,24 +116,19 @@ class ObjectRetrierWraps(object):
             'max_interval': max_interval,
             'total_wait': total_wait,
             'retry_exceptions': retry_exceptions,
-            'log': log or (lambda x: None),
+            'log': _log,
         }
+        _log(f"ObjectRetrierWraps: wrapping {self.__obj}")
 
     def __getattr__(self, name):
         """Get attribute; delegates to wrapped object."""
-        # Note the above may generate an attribute error; we expect this and
-        # will fail with an attribute error.
-        attr = getattr(self.__obj, name)
-        if callable(attr) or hasattr(attr, "__getattr__"):
+        obj = self.__obj
+        attr = getattr(obj, name)
+        if callable(attr):
             return ObjectRetrierWraps(attr, **self.__kwargs)
-        else:
+        if attr.__class__.__module__ == 'builtins':
             return attr
-        # TODO(ajkavanagh): Note detecting a property is a bit trickier.  we
-        # can do isinstance(attr, property), but then the act of accessing it
-        # is what calls it.  i.e. it would fail at the getattr(self.__obj,
-        # name) stage.  The solution is to check first, and if it's a property,
-        # then treat it like the retrier.  However, I think this is too
-        # complex for the first go, and to use manual retries in that instance.
+        return ObjectRetrierWraps(attr, **self.__kwargs)
 
     def __call__(self, *args, **kwargs):
         """Call the object; delegates to the wrapped object."""
@@ -126,16 +150,20 @@ class ObjectRetrierWraps(object):
                 # is not in the list of retries, then raise an exception
                 # immediately.  This means that if retry_exceptions is None,
                 # then the method is always retried.
+                if isinstance(e, NEVER_RETRY_EXCEPTIONS):
+                    log("ObjectRetrierWraps: error {} is never caught; raising"
+                        .format(str(e)))
+                    raise
                 if (retry_exceptions is not None and
                         type(e) not in retry_exceptions):
                     raise
                 retry += 1
                 if retry > num_retries:
-                    log("{}: exceeded number of retries, so erroring out"
-                        .format(str(obj)))
+                    log("ObjectRetrierWraps: exceeded number of retries, "
+                        "so erroring out")
                     raise e
-                log("{}: call failed: retrying in {} seconds"
-                    .format(str(obj), wait))
+                log("ObjectRetrierWraps: call failed: retrying in {} "
+                    "seconds" .format(wait))
                 time.sleep(wait)
                 wait_so_far += wait
                 if wait_so_far >= total_wait:

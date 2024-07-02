@@ -22,6 +22,7 @@ import tenacity
 
 import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
+from zaza.openstack.utilities import retry_on_connect_failure
 import zaza.openstack.utilities.ceph as ceph_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 
@@ -35,8 +36,9 @@ class CinderBackupTest(test_utils.OpenStackBaseTest):
     def setUpClass(cls):
         """Run class setup for running Cinder Backup tests."""
         super(CinderBackupTest, cls).setUpClass()
-        cls.cinder_client = openstack_utils.get_cinder_session_client(
-            cls.keystone_session)
+        cls.cinder_client = retry_on_connect_failure(
+            openstack_utils.get_cinder_session_client(cls.keystone_session),
+            log=logging.warn)
 
     @property
     def services(self):
@@ -101,7 +103,7 @@ class CinderBackupTest(test_utils.OpenStackBaseTest):
                     self.cinder_client.volumes,
                     cinder_vol.id,
                     wait_iteration_max_time=180,
-                    stop_after_attempt=15,
+                    stop_after_attempt=30,
                     expected_status='available',
                     msg='ceph-backed cinder volume')
 
@@ -123,7 +125,7 @@ class CinderBackupTest(test_utils.OpenStackBaseTest):
                     self.cinder_client.backups,
                     vol_backup.id,
                     wait_iteration_max_time=180,
-                    stop_after_attempt=15,
+                    stop_after_attempt=30,
                     expected_status='available',
                     msg='Backup volume')
 

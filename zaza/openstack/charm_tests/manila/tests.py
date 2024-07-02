@@ -359,7 +359,7 @@ packages:
             self.manila_client.shares,
             share.id,
             wait_iteration_max_time=120,
-            stop_after_attempt=2,
+            stop_after_attempt=10,
             expected_status="available",
             msg="Waiting for a share to become available")
 
