@@ -50,7 +50,10 @@ python-novaclient
 python-octaviaclient
 python-swiftclient
 python-watcherclient
-tenacity
+# Due to https://github.com/jd/tenacity/pull/479 the strategy for mocking out tenacity
+# waits/times/etc no longer works.  Pin to 8.4.1 until it is solved.
+# Bug in tenacity tracking issue: https://github.com/jd/tenacity/issues/482
+tenacity<8.4.2
 paramiko
 
 # Documentation requirements
