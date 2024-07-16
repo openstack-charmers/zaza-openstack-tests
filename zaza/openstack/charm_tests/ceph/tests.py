@@ -272,8 +272,7 @@ class CephTest(test_utils.BaseCharmTest):
                 source = '/tmp/dmcrypt-keys/*'
                 zaza_model.scp_from_unit(unit_name=unit_name,
                                          source=source,
-                                         destination=tempdir,
-                                         scp_opts='-p')
+                                         destination=tempdir)
                 for elt in listdir(tempdir):
                     file_path = '/'.join([tempdir, elt])
                     if path.isfile(file_path):

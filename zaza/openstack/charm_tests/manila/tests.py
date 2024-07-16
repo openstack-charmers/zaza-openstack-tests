@@ -353,7 +353,7 @@ packages:
         return False
 
     def _wait_for_ceph_healthy(self):
-        """Wait until the ceph health is healthy"""
+        """Wait until the ceph health is healthy."""
         logging.info("Waiting for ceph to be healthy")
         for attempt in tenacity.Retrying(
             wait=tenacity.wait_fixed(5),
@@ -365,8 +365,7 @@ packages:
                 self.assertEqual(
                     zaza.model.run_on_leader(
                         "ceph-mon", "sudo ceph health")["Code"],
-                    "0"
-        )
+                    "0")
         logging.info("...Ceph is healthy")
 
     def test_manila_share(self):

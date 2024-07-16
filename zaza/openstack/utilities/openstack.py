@@ -2323,9 +2323,7 @@ def get_remote_ca_cert_file(application, model_name=None):
                 model.scp_from_unit(
                     unit,
                     cert_file,
-                    _tmp_ca.name,
-                    scp_opts='-q',
-                )
+                    _tmp_ca.name)
             except JujuError:
                 continue
             # ensure that the path to put the local cacert in actually exists.
