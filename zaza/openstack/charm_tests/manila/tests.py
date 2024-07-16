@@ -231,6 +231,35 @@ packages:
                     command=ssh_cmd,
                     verify=verify_status)
 
+    def _umount_share_on_instance(self, instance_ip, ssh_user_name,
+                                  ssh_private_key, share_path):
+        """Umount a share from a Nova instance.
+
+        The mount command is executed via SSH.
+
+        :param instance_ip: IP of the Nova instance.
+        :type instance_ip: string
+        :param ssh_user_name: SSH user name.
+        :type ssh_user_name: string
+        :param ssh_private_key: SSH private key.
+        :type ssh_private_key: string
+        :param share_path: share network path.
+        :type share_path: string
+        """
+        ssh_cmd = 'sudo umount {mount_dir}'.format(mount_dir=self.mount_dir)
+
+        for attempt in tenacity.Retrying(
+                stop=tenacity.stop_after_attempt(5),
+                wait=tenacity.wait_exponential(multiplier=3, min=2, max=10)):
+            with attempt:
+                openstack_utils.ssh_command(
+                    vm_name="instance-{}".format(instance_ip),
+                    ip=instance_ip,
+                    username=ssh_user_name,
+                    privkey=ssh_private_key,
+                    command=ssh_cmd,
+                    verify=verify_status)
+
     @tenacity.retry(
         stop=tenacity.stop_after_attempt(5),
         wait=tenacity.wait_exponential(multiplier=3, min=2, max=10))
@@ -323,6 +352,23 @@ packages:
         """
         return False
 
+    def _wait_for_ceph_healthy(self):
+        """Wait until the ceph health is healthy"""
+        logging.info("Waiting for ceph to be healthy")
+        for attempt in tenacity.Retrying(
+            wait=tenacity.wait_fixed(5),
+            stop=tenacity.stop_after_attempt(10),
+            reraise=True
+        ):
+            logging.info("... testing Ceph")
+            with attempt:
+                self.assertEqual(
+                    zaza.model.run_on_leader(
+                        "ceph-mon", "sudo ceph health")["Code"],
+                    "0"
+        )
+        logging.info("...Ceph is healthy")
+
     def test_manila_share(self):
         """Test that a Manila share can be accessed on two instances.
 
@@ -346,6 +392,10 @@ packages:
         fip_1 = neutron_tests.floating_ips_from_instance(instance_1)[0]
         fip_2 = neutron_tests.floating_ips_from_instance(instance_2)[0]
 
+        # force a restart to clear out any clients that may be hanging around
+        # due to restarts on manila-ganesha during deployment.
+        self._restart_share_instance()
+        self._wait_for_ceph_healthy()
         # Create a share
         share = self.manila_client.shares.create(
             share_type=self.share_type_name,
@@ -403,3 +453,9 @@ packages:
                 fip_2, ssh_user_name, privkey, share_path)
             self._validate_testing_file_from_instance(
                 fip_2, ssh_user_name, privkey)
+
+        # now umount the share on each instance to allow cleaning up.
+        self._umount_share_on_instance(
+            fip_1, ssh_user_name, privkey, share_path)
+        self._umount_share_on_instance(
+            fip_2, ssh_user_name, privkey, share_path)

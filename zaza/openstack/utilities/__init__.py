@@ -118,7 +118,6 @@ class ObjectRetrierWraps(object):
             'retry_exceptions': retry_exceptions,
             'log': _log,
         }
-        _log(f"ObjectRetrierWraps: wrapping {self.__obj}")
 
     def __getattr__(self, name):
         """Get attribute; delegates to wrapped object."""
