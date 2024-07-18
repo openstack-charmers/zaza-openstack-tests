@@ -70,11 +70,15 @@ class ManilaGaneshaTests(manila_tests.ManilaBaseTest):
                     # everywhere isn't harmful. Pacemaker handles restarting
                     # the services
                     logging.info(
-                        "For %s, running systemctl stop manila-share "
-                        "nfs-ganesha", unit.entity_id)
+                        "For %s, running systemctl stop manila-share, "
+                        "kill -HUP pidof ganesha.nfsd", unit.entity_id)
                     zaza.model.run_on_unit(
                         unit.entity_id,
-                        "systemctl stop manila-share nfs-ganesha")
+                        "systemctl stop manila-share")
+                    zaza.model.run_on_unit(
+                        unit.entity_id,
+                        'pidof ganesha.nfsd && '
+                        'kill -HUP $(pidof ganesha.nfsd)')
                 else:
                     logging.info(
                         "For %s, running systemctl restart manila-share "
