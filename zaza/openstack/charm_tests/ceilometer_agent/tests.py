@@ -69,11 +69,13 @@ class CeilometerAgentTest(test_utils.OpenStackBaseTest):
 
         expected_metric_names = self.__get_expected_metric_names(
             current_os_release)
+        logging.info("Expected metric names: %s",
+                     ', '.join(sorted(expected_metric_names)))
 
         min_timeout_seconds = 500
-        polling_interval_seconds = (
+        polling_interval_seconds = int(
             openstack_utils.get_application_config_option(
-                self.application_name, 'polling-interval'))
+                self.application_name, 'polling-interval') or 30)
         timeout_seconds = max(10 * polling_interval_seconds,
                               min_timeout_seconds)
         logging.info('Giving ceilometer-agent {}s to publish all metrics to '
@@ -81,12 +83,17 @@ class CeilometerAgentTest(test_utils.OpenStackBaseTest):
 
         max_time = time.time() + timeout_seconds
         while time.time() < max_time:
+            logging.info("... Looking:")
             found_metric_names = {metric['name']
                                   for metric in gnocchi.metric.list()}
+            logging.info("... found metric names: %s",
+                         ', '.join(sorted(found_metric_names)))
             missing_metric_names = expected_metric_names - found_metric_names
             if len(missing_metric_names) == 0:
                 logging.info('All expected metrics found.')
                 break
+            logging.info("... still missing: %s",
+                         ', '.join(sorted(missing_metric_names)))
             time.sleep(polling_interval_seconds)
 
         unexpected_found_metric_names = (

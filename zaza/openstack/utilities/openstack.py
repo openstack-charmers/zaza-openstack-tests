@@ -86,7 +86,7 @@ from zaza import model
 from zaza.openstack.utilities import (
     exceptions,
     generic as generic_utils,
-    ObjectRetrierWraps,
+    retry_on_connect_failure,
 )
 import zaza.utilities.networking as network_utils
 
@@ -385,7 +385,7 @@ def get_nova_session_client(session, version=None):
     """
     if not version:
         version = 2
-    return ObjectRetrierWraps(
+    return retry_on_connect_failure(
         novaclient_client.Client(version, session=session))
 
 
@@ -2565,7 +2565,7 @@ def resource_removed(resource,
                      msg='resource',
                      wait_exponential_multiplier=1,
                      wait_iteration_max_time=60,
-                     stop_after_attempt=8):
+                     stop_after_attempt=30):
     """Wait for an openstack resource to no longer be present.
 
     :param resource: pointer to os resource type, ex: heat_client.stacks

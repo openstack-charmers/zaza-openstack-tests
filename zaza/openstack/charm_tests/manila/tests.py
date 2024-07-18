@@ -231,6 +231,35 @@ packages:
                     command=ssh_cmd,
                     verify=verify_status)
 
+    def _umount_share_on_instance(self, instance_ip, ssh_user_name,
+                                  ssh_private_key, share_path):
+        """Umount a share from a Nova instance.
+
+        The mount command is executed via SSH.
+
+        :param instance_ip: IP of the Nova instance.
+        :type instance_ip: string
+        :param ssh_user_name: SSH user name.
+        :type ssh_user_name: string
+        :param ssh_private_key: SSH private key.
+        :type ssh_private_key: string
+        :param share_path: share network path.
+        :type share_path: string
+        """
+        ssh_cmd = 'sudo umount {mount_dir}'.format(mount_dir=self.mount_dir)
+
+        for attempt in tenacity.Retrying(
+                stop=tenacity.stop_after_attempt(5),
+                wait=tenacity.wait_exponential(multiplier=3, min=2, max=10)):
+            with attempt:
+                openstack_utils.ssh_command(
+                    vm_name="instance-{}".format(instance_ip),
+                    ip=instance_ip,
+                    username=ssh_user_name,
+                    privkey=ssh_private_key,
+                    command=ssh_cmd,
+                    verify=verify_status)
+
     @tenacity.retry(
         stop=tenacity.stop_after_attempt(5),
         wait=tenacity.wait_exponential(multiplier=3, min=2, max=10))
@@ -403,3 +432,9 @@ packages:
                 fip_2, ssh_user_name, privkey, share_path)
             self._validate_testing_file_from_instance(
                 fip_2, ssh_user_name, privkey)
+
+        # now umount the share on each instance to allow cleaning up.
+        self._umount_share_on_instance(
+            fip_1, ssh_user_name, privkey, share_path)
+        self._umount_share_on_instance(
+            fip_2, ssh_user_name, privkey, share_path)
