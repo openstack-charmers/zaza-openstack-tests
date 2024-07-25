@@ -71,19 +71,20 @@ def skipUntilVersion(service, package, release):
     return _skipUntilVersion_inner_1
 
 
-def skipVersion(application, package, releases, op, reason):
-    """Skip the test if the application is running a versions that matches.
+def package_version_matches(application, package, versions, op):
+    """Determine if the application is running any matching package versions.
 
     The version comparison is delegated to `dpkg --compare-versions`, if the
-    command returns 0, means the release matches, then the test is skipped.
+    command returns 0, means the version matches.
 
     Usage examples:
 
-    * Skip the test if hacluster units have crmsh-4.4.0-1ubuntu1 installed
+    * Return true if hacluster application has crmsh-4.4.0-1ubuntu1 installed
 
-        @skipVersion('hacluster', 'crmsh', ['4.4.0-1ubuntu1'], 'eq',
-                     'LP:# 1234')
         def test_hacluster():
+            if package_version_matches('keystone-hacluster', 'crmsh',
+                                       ['4.4.0-1ubuntu1'], 'eq')
+                return
             ...
 
     :param application: the name of the application to check the package's
@@ -92,30 +93,20 @@ def skipVersion(application, package, releases, op, reason):
     :param versions: list of versions to compare with
     :param op: operation to do the comparison (e.g. lt le eq ne ge gt, see for
                more details dpkg(1))
-    :param reason: The reason logged to skip the test
+    :return: Matching package version
+    :rtype: str
 
     """
-    def _skipVersion_inner_1(f):
-        def _skipVersion_inner_2(*args, **kwargs):
-            package_version = generic_utils.get_pkg_version(application,
-                                                            package)
-            matches = []
-            for release in releases:
-                p = subprocess.run(['dpkg', '--compare-versions',
-                                    package_version, op, release],
-                                   stderr=subprocess.STDOUT,
-                                   universal_newlines=True)
-                # match succeeded, the test should be skipped.
-                matches.append(p.returncode == 0)
-            if any(matches):
-                logging.warning("Skipping test on (%s)"
-                                "application %s, reason: %s",
-                                package_version, application, reason)
-            else:
-                return f(*args, **kwargs)
-
-        return _skipVersion_inner_2
-    return _skipVersion_inner_1
+    package_version = generic_utils.get_pkg_version(application, package)
+    for version in versions:
+        p = subprocess.run(['dpkg', '--compare-versions',
+                            package_version, op, version],
+                           stderr=subprocess.STDOUT,
+                           universal_newlines=True)
+        if p.returncode == 0:
+            logging.info("Package version {version} matches")
+            return package_version
+    return None
 
 
 def audit_assertions(action,
