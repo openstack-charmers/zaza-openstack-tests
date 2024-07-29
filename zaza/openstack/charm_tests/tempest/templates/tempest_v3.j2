@@ -153,7 +153,7 @@ flavor_id = {{ flavor_ref }}
 dns_nameserver = {{ test_name_server }}
 network_driver = flannel
 {%- if test_registry_prefix %}
-labels = container_infra_prefix:{{ test_registry_prefix }}
+labels = container_infra_prefix={{ test_registry_prefix }}
 insecure_registry = {{ test_registry_prefix }}
 {%- endif %}
 {%- endif %}
