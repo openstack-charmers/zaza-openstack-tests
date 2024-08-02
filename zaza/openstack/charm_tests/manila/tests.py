@@ -19,10 +19,9 @@
 import logging
 import tenacity
 
-from manilaclient import client as manilaclient
-
 import zaza.model
 import zaza.openstack.configure.guest as guest
+from zaza.openstack.utilities import retry_on_connect_failure
 import zaza.openstack.utilities.generic as generic_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
@@ -67,8 +66,9 @@ class ManilaTests(test_utils.OpenStackBaseTest):
     def setUpClass(cls):
         """Run class setup for running tests."""
         super(ManilaTests, cls).setUpClass()
-        cls.manila_client = manilaclient.Client(
-            session=cls.keystone_session, client_version='2')
+        cls.manila_client = retry_on_connect_failure(
+            openstack_utils.get_manila_session_client(
+                session=cls.keystone_session))
 
     def test_manila_api(self):
         """Test that the Manila API is working."""
@@ -132,8 +132,8 @@ packages:
         super(ManilaBaseTest, cls).setUpClass()
         cls.nova_client = openstack_utils.get_nova_session_client(
             session=cls.keystone_session)
-        cls.manila_client = manilaclient.Client(
-            session=cls.keystone_session, client_version='2')
+        cls.manila_client = openstack_utils.get_manila_session_client(
+            session=cls.keystone_session)
         cls.share_name = 'test-manila-share'
         cls.share_type_name = 'default_share_type'
         cls.share_protocol = 'nfs'
@@ -221,7 +221,7 @@ packages:
 
         for attempt in tenacity.Retrying(
                 stop=tenacity.stop_after_attempt(5),
-                wait=tenacity.wait_exponential(multiplier=3, min=2, max=10)):
+                wait=tenacity.wait_exponential(multiplier=5, min=2, max=60)):
             with attempt:
                 openstack_utils.ssh_command(
                     vm_name="instance-{}".format(instance_ip),
@@ -262,7 +262,7 @@ packages:
 
     @tenacity.retry(
         stop=tenacity.stop_after_attempt(5),
-        wait=tenacity.wait_exponential(multiplier=3, min=2, max=10))
+        wait=tenacity.wait_exponential(multiplier=5, min=2, max=60))
     def _write_testing_file_on_instance(self, instance_ip, ssh_user_name,
                                         ssh_private_key):
         """Write a file on a Manila share mounted into a Nova instance.
@@ -289,7 +289,7 @@ packages:
 
     @tenacity.retry(
         stop=tenacity.stop_after_attempt(5),
-        wait=tenacity.wait_exponential(multiplier=3, min=2, max=10))
+        wait=tenacity.wait_exponential(multiplier=5, min=2, max=60))
     def _clear_testing_file_on_instance(self, instance_ip, ssh_user_name,
                                         ssh_private_key):
         """Clear a file on a Manila share mounted into a Nova instance.
@@ -316,7 +316,7 @@ packages:
 
     @tenacity.retry(
         stop=tenacity.stop_after_attempt(5),
-        wait=tenacity.wait_exponential(multiplier=3, min=2, max=10))
+        wait=tenacity.wait_exponential(multiplier=5, min=2, max=60))
     def _validate_testing_file_from_instance(self, instance_ip, ssh_user_name,
                                              ssh_private_key):
         """Validate a file from the Manila share mounted into a Nova instance.
