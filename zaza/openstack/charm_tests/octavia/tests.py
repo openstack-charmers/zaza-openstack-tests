@@ -14,9 +14,11 @@
 
 """Encapsulate octavia testing."""
 
+import json
 import logging
 import subprocess
 import tenacity
+import time
 import unittest
 
 from keystoneauth1 import exceptions as keystone_exceptions
@@ -34,6 +36,7 @@ from zaza.openstack.utilities.exceptions import (
     LoadBalancerUnexpectedState,
     LoadBalancerUnrecoverableError,
 )
+from zaza.openstack.utilities.os_versions import CompareOpenStack
 
 LBAAS_ADMIN_ROLE = 'load-balancer_admin'
 
@@ -202,6 +205,8 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
             openstack_utils.get_neutron_session_client(cls.keystone_session))
         cls.octavia_client = ObjectRetrierWraps(
             openstack_utils.get_octavia_session_client(cls.keystone_session))
+        cls.cinder_client = ObjectRetrierWraps(
+            openstack_utils.get_cinder_session_client(cls.keystone_session))
         cls.RESOURCE_PREFIX = 'zaza-octavia'
 
         # NOTE(fnordahl): in the event of a test failure we do not want to run
@@ -529,8 +534,82 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         # If we get here, it means the tests passed
         self.run_resource_cleanup = True
 
+    @staticmethod
+    @tenacity.retry(stop=tenacity.stop_after_attempt(3),
+                    wait=tenacity.wait_exponential(
+                        multiplier=1, min=2, max=10))
+    def get_volumes(cinder_client):
+        """Retrieve list of cinder volumes.
+
+        :param cinder_client: Cinder client object
+        :type cinder_client: CinderAPI
+        :returns: List of volumes
+        :rtype: List[Any]
+        """
+        return cinder_client.volumes.list()
+
 
 class OctaviaTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
     """Test octavia k8s scale out and scale back."""
 
     application_name = "octavia"
+
+
+class VolumeBasedAmphoraTest(LBAASv2Test):
+    """LBaaSv2 Volume-based Amphora tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for LBaaSv2 Volume-based amphora tests."""
+        super(VolumeBasedAmphoraTest, cls).setUpClass()
+        os_versions = openstack_utils.get_current_os_versions(['octavia'])
+        if CompareOpenStack(os_versions['octavia']) < 'ussuri':
+            cls.skipTest('Run only for Openstack Ussuri and newer releases.')
+            return
+
+    def test_volume_based_amphora(self):
+        """Set up volume-based amphora."""
+        default_charm_config = {'enable-volume-based-amphora': False}
+        alternate_charm_config = {'enable-volume-based-amphora': True}
+        with self.config_change(default_charm_config,
+             alternate_charm_config, reset_to_charm_default=True):
+            logging.info("Enabled volume based amphora setting.")
+
+            vols_before = self.get_volumes(self.cinder_client)
+            # There may be some vms incl. amphora vms from prev tests so we
+            # need to ensure we create a new one to get one with volumes
+            # attached.
+            self.test_create_loadbalancer()
+
+            retries = 0
+            while True:
+                if retries > 10:
+                    raise Exception("number of volumes did not increase as "
+                                    "expected after creating amphora vm")
+
+                vols_after = self.get_volumes(self.cinder_client)
+                if len(vols_after) > len(vols_before):
+                    break
+
+                retries += 1
+                time.sleep(5)
+
+            amphora_list = self.octavia_client.amphora_list()
+            self.assertTrue(len(amphora_list) > 0)
+            attached_volumes = []
+            for amphora in amphora_list.get('amphorae', []):
+                for server in self.nova_client.servers.list():
+                    if 'compute_id' in amphora and server.id == amphora[
+                       'compute_id']:
+                        server_id = amphora['compute_id']
+                        attached_volumes.append(json.dumps(vars(
+                            self.nova_client.volumes.get_server_volumes(
+                                server_id)))
+                        )
+            self.assertTrue(len(attached_volumes) > 0)
+            logging.info("Amphora volumes creation successful: {}",
+                         attached_volumes)
+
+    def test_create_loadbalancer(self):
+        """Create load balancer."""
+        super().test_create_loadbalancer()
