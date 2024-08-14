@@ -216,7 +216,7 @@ class CephRBDMirrorBase(test_utils.BaseCharmTest):
         if result.status == "failed":
             logging.error("status action failed: %s", result.message)
             return
-        return json.loads(result.get('Stdout'))
+        return json.loads(result.results['output'])
 
     def get_pools(self):
         """Retrieve list of pools from both sites.
@@ -495,14 +495,14 @@ class CephRBDMirrorControlledFailoverTest(CephRBDMirrorBase):
         # Run the 'demote' Juju action against the primary site pools.
         logging.info('Demoting {} from model {}.'.format(
             primary_site_app_name, primary_site_model))
-        result = zaza.model.run_action_on_leader(
+        result = zaza.model.run_on_leader(
             primary_site_app_name,
             'demote',
             model_name=primary_site_model,
             action_params={
                 'pools': ','.join(primary_site_pools)
             })
-        logging.info(result.results)
+        logging.info(result)
         self.assertEqual(int(result.get('Code')), 0)
 
         # Validate that the demoted pools count matches the total primary site
@@ -529,14 +529,14 @@ class CephRBDMirrorControlledFailoverTest(CephRBDMirrorBase):
         # Run the 'promote' Juju against the secondary site.
         logging.info('Promoting {} from model {}.'.format(
             secondary_site_app_name, secondary_site_model))
-        result = zaza.model.run_action_on_leader(
+        result = zaza.model.run_on_leader(
             secondary_site_app_name,
             'promote',
             model_name=secondary_site_model,
             action_params={
                 'pools': ','.join(secondary_site_pools)
             })
-        logging.info(result.results)
+        logging.info(result)
         self.assertEqual(int(result.get('Code')), 0)
 
         # Validate that the promoted pools count matches the total secondary
@@ -702,7 +702,7 @@ class CephRBDMirrorControlledFailoverTest(CephRBDMirrorBase):
         site_b_app_name = self.application_name + self.site_b_app_suffix
         logging.info('Re-syncing {} from model {}'.format(
             site_b_app_name, self.site_b_model))
-        result = zaza.model.run_action_on_leader(
+        result = zaza.model.run_on_leader(
             site_b_app_name,
             'resync-pools',
             model_name=self.site_b_model,
@@ -710,7 +710,7 @@ class CephRBDMirrorControlledFailoverTest(CephRBDMirrorBase):
                 'pools': ','.join(site_b_pools),
                 'i-really-mean-it': True,
             })
-        logging.info(result.results)
+        logging.info(result)
         self.assertEqual(int(result.get('Code')), 0)
 
         # Validate that the Ceph images from site-b report 'up+replaying'
@@ -794,7 +794,7 @@ class CephRBDMirrorDisasterFailoverTest(CephRBDMirrorBase):
         self.kill_primary_site()
 
         # Try and promote the site-b to primary.
-        result = zaza.model.run_action_on_leader(
+        result = zaza.model.run_on_leader(
             site_b_app_name,
             'promote',
             model_name=self.site_b_model,
@@ -816,7 +816,6 @@ class CephRBDMirrorDisasterFailoverTest(CephRBDMirrorBase):
                 'force': True,
                 'pools': ','.join(site_b_pools),
             })
-        self.assertEqual(int(result.get('Code')), 0)
 
         # Validate successful Juju action execution
         self.assertEqual(result.status, 'completed')
