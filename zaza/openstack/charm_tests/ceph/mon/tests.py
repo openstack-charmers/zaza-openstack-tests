@@ -16,7 +16,11 @@
 
 import logging
 import os
+import unittest
 
+import requests
+import tenacity
+import yaml
 import zaza.model
 
 from zaza.openstack.utilities import (
@@ -225,3 +229,170 @@ def directory_listing(unit_name, directory):
     """
     result = zaza.model.run_on_unit(unit_name, "ls -1 {}".format(directory))
     return result['Stdout'].splitlines()
+
+
+def application_present(name):
+    """Check if the application is present in the model."""
+    try:
+        zaza.model.get_application(name)
+        return True
+    except KeyError:
+        return False
+
+
+def get_up_osd_count(prometheus_url):
+    """Get the number of up OSDs from prometheus."""
+    query = 'ceph_osd_up'
+    response = requests.get(f'{prometheus_url}/query', params={'query': query})
+    data = response.json()
+    if data['status'] != 'success':
+        raise Exception(f"Query failed: {data.get('error', 'Unknown error')}")
+
+    results = data['data']['result']
+    up_osd_count = sum(int(result['value'][1]) for result in results)
+    return up_osd_count
+
+
+def extract_pool_names(prometheus_url):
+    """Extract pool names from prometheus."""
+    query = 'ceph_pool_metadata'
+    response = requests.get(f'{prometheus_url}/query', params={'query': query})
+    data = response.json()
+    if data['status'] != 'success':
+        raise Exception(f"Query failed: {data.get('error', 'Unknown error')}")
+
+    pool_names = []
+    results = data.get("data", {}).get("result", [])
+    for result in results:
+        metric = result.get("metric", {})
+        pool_name = metric.get("name")
+        if pool_name:
+            pool_names.append(pool_name)
+
+    return set(pool_names)
+
+
+def get_alert_rules(prometheus_url):
+    """Get the alert rules from prometheus."""
+    response = requests.get(f'{prometheus_url}/rules')
+    data = response.json()
+    if data['status'] != 'success':
+        raise Exception(f"Query failed: {data.get('error', 'Unknown error')}")
+
+    alert_names = []
+    for obj in data['data']['groups']:
+        rules = obj.get('rules', [])
+        for rule in rules:
+            name = rule.get('name')
+            if name:
+                alert_names.append(name)
+    return set(alert_names)
+
+
+@tenacity.retry(wait=tenacity.wait_fixed(5),
+                stop=tenacity.stop_after_delay(180))
+def get_prom_api_url():
+    """Get the prometheus API URL from the grafana-agent config."""
+    ga_yaml = zaza.model.file_contents(
+        "grafana-agent/leader", "/etc/grafana-agent.yaml"
+    )
+    ga = yaml.safe_load(ga_yaml)
+    url = ga['integrations']['prometheus_remote_write'][0]['url']
+    return url[:-6]  # lob off the /write
+
+
+@tenacity.retry(wait=tenacity.wait_fixed(5),
+                stop=tenacity.stop_after_delay(180))
+def get_dashboards(url, user, passwd):
+    """Retrieve a list of dashboards from Grafana."""
+    response = requests.get(
+        f"{url}/api/search?type=dash-db",
+        auth=(user, passwd)
+    )
+    if response.status_code != 200:
+        raise Exception(f"Failed to retrieve dashboards: {response}")
+    dashboards = response.json()
+    return dashboards
+
+
+class COSIntegrationTest(test_utils.BaseCharmTest):
+    """Test COS integration with cinder-ceph."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running cos integration testing."""
+        # skip if the grafana-agent application isn't present
+        if not application_present('grafana-agent'):
+            raise unittest.SkipTest("grafana-agent not present, skipping")
+
+        # skip if there are no COS models
+        cos_models = [
+            m for m in zaza.controller.list_models() if m.startswith("cos")
+        ]
+        if not cos_models:
+            raise unittest.SkipTest("No COS models found")
+
+        cls.cos_model = cos_models[0]
+
+        cls.grafana_details = zaza.model.run_action_on_leader(
+            'grafana', 'get-admin-password',
+            model_name=cls.cos_model).results
+
+        super().setUpClass()
+
+    def test_100_integration_setup(self):
+        """Test: check that the grafana-agent is related to the ceph-mon."""
+        async def have_rel():
+            app = await zaza.model.async_get_application(self.application_name)
+            spec = "grafana-agent:cos-agent"
+            return any(r.matches(spec) for r in app.relations)
+
+        zaza.model.block_until(have_rel)
+
+    def test_110_retrieve_metrics(self):
+        """Test: retrieve metrics from prometheus."""
+        prom_url = get_prom_api_url()
+        osd_count = get_up_osd_count(prom_url)
+        self.assertGreater(osd_count, 0, "Expected at least one OSD to be up")
+
+        pools = extract_pool_names(prom_url)
+        self.assertTrue(".mgr" in pools, "Expected .mgr pool to be present")
+
+    def test_120_retrieve_alert_rules(self):
+        """Test: retrieve alert rules from prometheus."""
+        prom_url = get_prom_api_url()
+        alert_rules = get_alert_rules(prom_url)
+        self.assertTrue(
+            "CephHealthError" in alert_rules,
+            "Expected CephHealthError alert rule"
+        )
+
+    def test_200_dashboards(self):
+        """Test: retrieve dashboards from Grafana."""
+        dashboards = get_dashboards(
+            self.grafana_details['url'],
+            'admin',
+            self.grafana_details['admin-password']
+        )
+        dashboard_set = {d['title'] for d in dashboards}
+        expect_dashboards = [
+            "Ceph Cluster - Advanced",
+            "Ceph OSD Host Details",
+            "Ceph OSD Host Overview",
+            "Ceph Pool Details",
+            "Ceph Pools Overview",
+            "MDS Performance",
+            "OSD device details",
+            "OSD Overview",
+            "RBD Details",
+            "RBD Overview",
+            "RGW Instance Detail",
+            "RGW Overview",
+            "RGW Sync Overview",
+        ]
+        for d in expect_dashboards:
+            self.assertIn(
+                d,
+                dashboard_set,
+                f"Expected dashboard {d} not found"
+            )
