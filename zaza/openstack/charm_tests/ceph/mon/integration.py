@@ -19,7 +19,7 @@ import unittest
 import zaza.model
 from zaza.openstack.charm_tests import test_utils as test_utils
 
-from openstack.charm_tests.ceph.mon.tests import (
+from zaza.openstack.charm_tests.ceph.mon.tests import (
     get_prom_api_url,
     get_up_osd_count,
     extract_pool_names,
