@@ -63,7 +63,7 @@ install_require = [
     'python-neutronclient<7.0.0',
     'python-octaviaclient<1.11.0',
     'python-ceilometerclient',
-    'python-cinderclient<6.0.0',
+    'python-cinderclient',
     'python-swiftclient<3.9.0',
     'python-watcherclient',
     # 'zaza@git+https://github.com/openstack-charmers/zaza.git#egg=zaza',
