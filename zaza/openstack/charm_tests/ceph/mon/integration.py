@@ -77,14 +77,14 @@ class COSIntegrationTest(test_utils.BaseCharmTest):
         cls.grafana_details = zaza.model.run_action_on_leader(
             "grafana", "get-admin-password", model_name=cls.cos_model
         ).results
-
+        cls.grafana_agent = "grafana-agent-container"
         super().setUpClass()
 
     def test_100_integration_setup(self):
         """Test: check that the grafana-agent is related to the ceph-mon."""
         async def have_rel():
             app = await zaza.model.async_get_application(self.application_name)
-            spec = "grafana-agent:cos-agent"
+            spec = f"{self.grafana_agent}:cos-agent"
             return any(r.matches(spec) for r in app.relations)
 
         zaza.model.block_until(have_rel)
