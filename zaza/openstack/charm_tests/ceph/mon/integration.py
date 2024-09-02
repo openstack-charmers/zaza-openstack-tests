@@ -13,19 +13,13 @@
 # limitations under the License.
 
 """Integration tests for ceph-mon."""
-
+import requests
+import tenacity
+import yaml
 import zaza.model
 from juju import juju
 from zaza import sync_wrapper
 from zaza.openstack.charm_tests import test_utils as test_utils
-
-from zaza.openstack.charm_tests.ceph.mon.tests import (
-    get_prom_api_url,
-    get_up_osd_count,
-    extract_pool_names,
-    get_alert_rules,
-    get_dashboards,
-)
 
 
 async def async_find_cos_model():
@@ -56,6 +50,92 @@ async def async_find_cos_model():
 
 
 find_cos_model = sync_wrapper(async_find_cos_model)
+
+
+def application_present(name):
+    """Check if the application is present in the model."""
+    try:
+        zaza.model.get_application(name)
+        return True
+    except KeyError:
+        return False
+
+
+def get_up_osd_count(prometheus_url):
+    """Get the number of up OSDs from prometheus."""
+    query = 'ceph_osd_up'
+    response = requests.get(f'{prometheus_url}/query', params={'query': query})
+    data = response.json()
+    if data['status'] != 'success':
+        raise Exception(f"Query failed: {data.get('error', 'Unknown error')}")
+
+    results = data['data']['result']
+    up_osd_count = sum(int(result['value'][1]) for result in results)
+    return up_osd_count
+
+
+def extract_pool_names(prometheus_url):
+    """Extract pool names from prometheus."""
+    query = 'ceph_pool_metadata'
+    response = requests.get(f'{prometheus_url}/query', params={'query': query})
+    data = response.json()
+    if data['status'] != 'success':
+        raise Exception(f"Query failed: {data.get('error', 'Unknown error')}")
+
+    pool_names = []
+    results = data.get("data", {}).get("result", [])
+    for result in results:
+        metric = result.get("metric", {})
+        pool_name = metric.get("name")
+        if pool_name:
+            pool_names.append(pool_name)
+
+    return set(pool_names)
+
+
+def get_alert_rules(prometheus_url):
+    """Get the alert rules from prometheus."""
+    response = requests.get(f'{prometheus_url}/rules')
+    data = response.json()
+    if data['status'] != 'success':
+        raise Exception(f"Query failed: {data.get('error', 'Unknown error')}")
+
+    alert_names = set()
+    for obj in data['data']['groups']:
+        rules = obj.get('rules', [])
+        for rule in rules:
+            name = rule.get('name')
+            if name:
+                alert_names.add(name)
+    return alert_names
+
+
+@tenacity.retry(wait=tenacity.wait_fixed(5),
+                stop=tenacity.stop_after_delay(180))
+def get_prom_api_url(grafana_agent):
+    """Get the prometheus API URL from the grafana-agent config."""
+    ga_yaml = zaza.model.file_contents(
+        f"{grafana_agent}/leader", "/etc/grafana-agent.yaml"
+    )
+    ga = yaml.safe_load(ga_yaml)
+    url = ga['integrations']['prometheus_remote_write'][0]['url']
+    if url.ensdwith("/write"):
+        url = url[:-6]  # lob off the /write
+    return url
+
+
+@tenacity.retry(wait=tenacity.wait_fixed(5),
+                stop=tenacity.stop_after_delay(180))
+def get_dashboards(url, user, passwd):
+    """Retrieve a list of dashboards from Grafana."""
+    response = requests.get(
+        f"{url}/api/search?type=dash-db",
+        auth=(user, passwd)
+    )
+    if response.status_code != 200:
+        raise Exception(f"Failed to retrieve dashboards: {response}")
+    dashboards = response.json()
+    return dashboards
 
 
 class COSModelNotFound(Exception):
@@ -91,7 +171,7 @@ class COSIntegrationTest(test_utils.BaseCharmTest):
 
     def test_110_retrieve_metrics(self):
         """Test: retrieve metrics from prometheus."""
-        prom_url = get_prom_api_url()
+        prom_url = get_prom_api_url(self.grafana_agent)
         osd_count = get_up_osd_count(prom_url)
         self.assertGreater(osd_count, 0, "Expected at least one OSD to be up")
 
@@ -100,7 +180,7 @@ class COSIntegrationTest(test_utils.BaseCharmTest):
 
     def test_120_retrieve_alert_rules(self):
         """Test: retrieve alert rules from prometheus."""
-        prom_url = get_prom_api_url()
+        prom_url = get_prom_api_url(self.grafana_agent)
         alert_rules = get_alert_rules(prom_url)
         self.assertTrue(
             "CephHealthError" in alert_rules,

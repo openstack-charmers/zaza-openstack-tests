@@ -17,9 +17,6 @@
 import logging
 import os
 
-import requests
-import tenacity
-import yaml
 import zaza.model
 
 from zaza.openstack.utilities import (
@@ -228,87 +225,3 @@ def directory_listing(unit_name, directory):
     """
     result = zaza.model.run_on_unit(unit_name, "ls -1 {}".format(directory))
     return result['Stdout'].splitlines()
-
-
-def application_present(name):
-    """Check if the application is present in the model."""
-    try:
-        zaza.model.get_application(name)
-        return True
-    except KeyError:
-        return False
-
-
-def get_up_osd_count(prometheus_url):
-    """Get the number of up OSDs from prometheus."""
-    query = 'ceph_osd_up'
-    response = requests.get(f'{prometheus_url}/query', params={'query': query})
-    data = response.json()
-    if data['status'] != 'success':
-        raise Exception(f"Query failed: {data.get('error', 'Unknown error')}")
-
-    results = data['data']['result']
-    up_osd_count = sum(int(result['value'][1]) for result in results)
-    return up_osd_count
-
-
-def extract_pool_names(prometheus_url):
-    """Extract pool names from prometheus."""
-    query = 'ceph_pool_metadata'
-    response = requests.get(f'{prometheus_url}/query', params={'query': query})
-    data = response.json()
-    if data['status'] != 'success':
-        raise Exception(f"Query failed: {data.get('error', 'Unknown error')}")
-
-    pool_names = []
-    results = data.get("data", {}).get("result", [])
-    for result in results:
-        metric = result.get("metric", {})
-        pool_name = metric.get("name")
-        if pool_name:
-            pool_names.append(pool_name)
-
-    return set(pool_names)
-
-
-def get_alert_rules(prometheus_url):
-    """Get the alert rules from prometheus."""
-    response = requests.get(f'{prometheus_url}/rules')
-    data = response.json()
-    if data['status'] != 'success':
-        raise Exception(f"Query failed: {data.get('error', 'Unknown error')}")
-
-    alert_names = []
-    for obj in data['data']['groups']:
-        rules = obj.get('rules', [])
-        for rule in rules:
-            name = rule.get('name')
-            if name:
-                alert_names.append(name)
-    return set(alert_names)
-
-
-@tenacity.retry(wait=tenacity.wait_fixed(5),
-                stop=tenacity.stop_after_delay(180))
-def get_prom_api_url():
-    """Get the prometheus API URL from the grafana-agent config."""
-    ga_yaml = zaza.model.file_contents(
-        "grafana-agent/leader", "/etc/grafana-agent.yaml"
-    )
-    ga = yaml.safe_load(ga_yaml)
-    url = ga['integrations']['prometheus_remote_write'][0]['url']
-    return url[:-6]  # lob off the /write
-
-
-@tenacity.retry(wait=tenacity.wait_fixed(5),
-                stop=tenacity.stop_after_delay(180))
-def get_dashboards(url, user, passwd):
-    """Retrieve a list of dashboards from Grafana."""
-    response = requests.get(
-        f"{url}/api/search?type=dash-db",
-        auth=(user, passwd)
-    )
-    if response.status_code != 200:
-        raise Exception(f"Failed to retrieve dashboards: {response}")
-    dashboards = response.json()
-    return dashboards
