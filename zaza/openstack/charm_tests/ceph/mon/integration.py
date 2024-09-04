@@ -119,7 +119,7 @@ def get_prom_api_url(grafana_agent):
     )
     ga = yaml.safe_load(ga_yaml)
     url = ga['integrations']['prometheus_remote_write'][0]['url']
-    if url.ensdwith("/write"):
+    if url.endswith("/write"):
         url = url[:-6]  # lob off the /write
     return url
 
