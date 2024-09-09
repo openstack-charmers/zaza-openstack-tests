@@ -63,23 +63,27 @@ def application_present(name):
 
 def get_up_osd_count(prometheus_url):
     """Get the number of up OSDs from prometheus."""
-    query = 'ceph_osd_up'
-    response = requests.get(f'{prometheus_url}/query', params={'query': query})
+    query = "ceph_osd_up"
+    response = requests.get(
+        f"{prometheus_url}/query", params={"query": query}, verify=False
+    )
     data = response.json()
-    if data['status'] != 'success':
+    if data["status"] != "success":
         raise Exception(f"Query failed: {data.get('error', 'Unknown error')}")
 
-    results = data['data']['result']
-    up_osd_count = sum(int(result['value'][1]) for result in results)
+    results = data["data"]["result"]
+    up_osd_count = sum(int(result["value"][1]) for result in results)
     return up_osd_count
 
 
 def extract_pool_names(prometheus_url):
     """Extract pool names from prometheus."""
-    query = 'ceph_pool_metadata'
-    response = requests.get(f'{prometheus_url}/query', params={'query': query})
+    query = "ceph_pool_metadata"
+    response = requests.get(
+        f"{prometheus_url}/query", params={"query": query}, verify=False
+    )
     data = response.json()
-    if data['status'] != 'success':
+    if data["status"] != "success":
         raise Exception(f"Query failed: {data.get('error', 'Unknown error')}")
 
     pool_names = []
@@ -95,42 +99,45 @@ def extract_pool_names(prometheus_url):
 
 def get_alert_rules(prometheus_url):
     """Get the alert rules from prometheus."""
-    response = requests.get(f'{prometheus_url}/rules')
+    response = requests.get(f"{prometheus_url}/rules", verify=False)
     data = response.json()
-    if data['status'] != 'success':
+    if data["status"] != "success":
         raise Exception(f"Query failed: {data.get('error', 'Unknown error')}")
 
     alert_names = set()
-    for obj in data['data']['groups']:
-        rules = obj.get('rules', [])
+    for obj in data["data"]["groups"]:
+        rules = obj.get("rules", [])
         for rule in rules:
-            name = rule.get('name')
+            name = rule.get("name")
             if name:
                 alert_names.add(name)
     return alert_names
 
 
-@tenacity.retry(wait=tenacity.wait_fixed(5),
-                stop=tenacity.stop_after_delay(180))
+@tenacity.retry(
+    wait=tenacity.wait_fixed(5), stop=tenacity.stop_after_delay(180)
+)
 def get_prom_api_url(grafana_agent):
     """Get the prometheus API URL from the grafana-agent config."""
     ga_yaml = zaza.model.file_contents(
         f"{grafana_agent}/leader", "/etc/grafana-agent.yaml"
     )
     ga = yaml.safe_load(ga_yaml)
-    url = ga['integrations']['prometheus_remote_write'][0]['url']
+    url = ga["integrations"]["prometheus_remote_write"][0]["url"]
     if url.endswith("/write"):
         url = url[:-6]  # lob off the /write
     return url
 
 
-@tenacity.retry(wait=tenacity.wait_fixed(5),
-                stop=tenacity.stop_after_delay(180))
+@tenacity.retry(
+    wait=tenacity.wait_fixed(5), stop=tenacity.stop_after_delay(180)
+)
 def get_dashboards(url, user, passwd):
     """Retrieve a list of dashboards from Grafana."""
     response = requests.get(
         f"{url}/api/search?type=dash-db",
-        auth=(user, passwd)
+        auth=(user, passwd),
+        verify=False,
     )
     if response.status_code != 200:
         raise Exception(f"Failed to retrieve dashboards: {response}")
