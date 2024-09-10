@@ -61,6 +61,12 @@ def application_present(name):
         return False
 
 
+# retry a few times until osd count is larger than 0
+@tenacity.retry(
+    wait=tenacity.wait_fixed(5),
+    retry=tenacity.retry_if_result(lambda result: result <= 0),
+    stop=tenacity.stop_after_delay(180),
+)
 def get_up_osd_count(prometheus_url):
     """Get the number of up OSDs from prometheus."""
     query = "ceph_osd_up"
