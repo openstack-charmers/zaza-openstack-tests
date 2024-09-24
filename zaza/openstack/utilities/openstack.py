@@ -147,6 +147,10 @@ CHARM_TYPES = {
         'pkg': 'placement-common',
         'origin_setting': 'openstack-origin'
     },
+    'octavia': {
+        'pkg': 'octavia-common',
+        'origin_setting': 'openstack-origin'
+    },
 }
 
 # Older tests use the order the services appear in the list to imply
@@ -168,6 +172,7 @@ UPGRADE_SERVICES = [
     {'name': 'ovn-central', 'type': CHARM_TYPES['ovn-central']},
     {'name': 'ceph-mon', 'type': CHARM_TYPES['ceph-mon']},
     {'name': 'placement', 'type': CHARM_TYPES['placement']},
+    {'name': 'octavia', 'type': CHARM_TYPES['octavia']},
 ]
 
 
