@@ -1127,3 +1127,66 @@ class MySQLRouterTests(test_utils.OpenStackBaseTest):
             {}, {},
             self.services)
         logging.info("Passed restart on changed test.")
+
+    def test_920_mysqlrouter_conf_broken(self):
+        """Checking conf broken case.
+
+        Run the bootstrap when conf is broken
+        """
+        # application_name on test is keystone-mysql-router
+        # using self.conf_file introduces error.
+        # instead of changing current self.conf_file,
+        # define one (it could introduce another issue)
+        config_file = (
+            "/var/lib/mysql/{}/mysqlrouter.conf"
+            .format(self.application_name))
+
+        logging.info("Starting broken conf test")
+
+        # put empty string to conf_file and make it wrong
+        logging.info("Breaking configuration file")
+        zaza.model.run_on_leader(self.application,
+                                 "echo '[DEFAULT]\n \
+                                        [metadata_cache:[\\w$]+$] \
+                                        ' > {}".format(
+                                     config_file))
+
+        logging.info("Getting configuration file")
+        recovered = zaza.model.run_on_leader(self.application,
+                                             "cat {}".format(
+                                                 config_file))['Stdout']
+
+        # Checking conf file length,
+        # if file is broken it is around 250
+        assert len(recovered) < 1000, (
+            "Breaking mysqlrouter conf failed.")
+
+        # verify it is in error state
+        for attempt in tenacity.Retrying(
+            reraise=True,
+            wait=tenacity.wait_fixed(10),
+            stop=tenacity.stop_after_attempt(30),
+        ):
+            with attempt:
+                # update status to make the status error
+                logging.info("Run update-status")
+                self.run_update_status_hooks(['keystone-mysql-router/0'])
+
+                # get current status
+                unit_status = (zaza.model.get_status()
+                               .applications
+                               ['keystone-mysql-router']['status'])
+                logging.info("Status:{}".format(unit_status['status']))
+                self.assertEqual(unit_status['status'], "active")
+
+        logging.info("Getting configuration file")
+        recovered = zaza.model.run_on_leader(self.application,
+                                             "cat {}".format(
+                                                 config_file))['Stdout']
+
+        # Checking conf file length,
+        # if file is broken it is around 250
+        assert len(recovered) > 1000, (
+            "Fixing mysqlrouter conf failed.")
+
+        logging.info("Passed broken conf test.")
