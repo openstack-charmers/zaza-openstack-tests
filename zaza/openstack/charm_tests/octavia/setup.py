@@ -35,7 +35,6 @@ def ensure_lts_images():
     glance_setup.add_lts_image(image_name='bionic', release='bionic')
     glance_setup.add_lts_image(image_name='focal', release='focal')
     glance_setup.add_lts_image(image_name='jammy', release='jammy')
-    glance_setup.add_lts_image(image_name='noble', release='noble')
 
 
 def add_amphora_image(image_url=None):
