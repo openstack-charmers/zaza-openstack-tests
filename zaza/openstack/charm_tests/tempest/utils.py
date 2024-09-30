@@ -20,6 +20,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import tempfile
 import urllib.parse
 
 from neutronclient.common import exceptions as neutronexceptions
@@ -379,15 +380,24 @@ def _add_octavia_config(ctxt, missing_fatal=True):
     :rtype: None
     :raises: subprocess.CalledProcessError
     """
+    cachedir = tempfile.gettempdir()
+    local_path = os.path.join(cachedir, 'test_server.bin')
+    workspace_path = os.path.join(ctxt['workspace_path'], 'test_server.bin')
+    if not os.path.exists(local_path):
+        subprocess.check_call([
+            'curl',
+            "{}:80/swift/v1/fixtures/test_server.bin".format(
+                ctxt['test_swift_ip']),
+            '-o', workspace_path
+        ])
+        shutil.copy(workspace_path, cachedir)
+    else:
+        logging.info("Found octavia tempest test test_server.bin in local "
+                     "cache ({}) - skipping download".format(local_path))
+        shutil.copy(local_path, workspace_path)
+
     subprocess.check_call([
-        'curl',
-        "{}:80/swift/v1/fixtures/test_server.bin".format(
-            ctxt['test_swift_ip']),
-        '-o', "{}/test_server.bin".format(ctxt['workspace_path'])
-    ])
-    subprocess.check_call([
-        'chmod', '+x',
-        "{}/test_server.bin".format(ctxt['workspace_path'])
+        'chmod', '+x', workspace_path
     ])
 
 
