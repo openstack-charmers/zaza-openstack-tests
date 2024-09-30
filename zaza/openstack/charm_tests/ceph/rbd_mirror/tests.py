@@ -495,19 +495,19 @@ class CephRBDMirrorControlledFailoverTest(CephRBDMirrorBase):
         # Run the 'demote' Juju action against the primary site pools.
         logging.info('Demoting {} from model {}.'.format(
             primary_site_app_name, primary_site_model))
-        result = zaza.model.run_action_on_leader(
+        result = zaza.model.run_on_leader(
             primary_site_app_name,
             'demote',
             model_name=primary_site_model,
             action_params={
                 'pools': ','.join(primary_site_pools)
             })
-        logging.info(result.results)
-        self.assertEqual(int(result.results['Code']), 0)
+        logging.info(result)
+        self.assertEqual(int(result.get('Code')), 0)
 
         # Validate that the demoted pools count matches the total primary site
         # pools count.
-        n_pools_demoted = len(result.results['output'].split('\n'))
+        n_pools_demoted = len(result.get('Stdout').split('\n'))
         self.assertEqual(len(primary_site_pools), n_pools_demoted)
 
         # At this point, both primary and secondary sites are demoted. Validate
@@ -529,19 +529,19 @@ class CephRBDMirrorControlledFailoverTest(CephRBDMirrorBase):
         # Run the 'promote' Juju against the secondary site.
         logging.info('Promoting {} from model {}.'.format(
             secondary_site_app_name, secondary_site_model))
-        result = zaza.model.run_action_on_leader(
+        result = zaza.model.run_on_leader(
             secondary_site_app_name,
             'promote',
             model_name=secondary_site_model,
             action_params={
                 'pools': ','.join(secondary_site_pools)
             })
-        logging.info(result.results)
-        self.assertEqual(int(result.results['Code']), 0)
+        logging.info(result)
+        self.assertEqual(int(result.get('Code')), 0)
 
         # Validate that the promoted pools count matches the total secondary
         # site pools count.
-        n_pools_promoted = len(result.results['output'].split('\n'))
+        n_pools_promoted = len(result.get('Stdout').split('\n'))
         self.assertEqual(len(secondary_site_pools), n_pools_promoted)
 
         # Validate that the Ceph images from the newly promoted site
@@ -702,7 +702,7 @@ class CephRBDMirrorControlledFailoverTest(CephRBDMirrorBase):
         site_b_app_name = self.application_name + self.site_b_app_suffix
         logging.info('Re-syncing {} from model {}'.format(
             site_b_app_name, self.site_b_model))
-        result = zaza.model.run_action_on_leader(
+        result = zaza.model.run_on_leader(
             site_b_app_name,
             'resync-pools',
             model_name=self.site_b_model,
@@ -710,8 +710,8 @@ class CephRBDMirrorControlledFailoverTest(CephRBDMirrorBase):
                 'pools': ','.join(site_b_pools),
                 'i-really-mean-it': True,
             })
-        logging.info(result.results)
-        self.assertEqual(int(result.results['Code']), 0)
+        logging.info(result)
+        self.assertEqual(int(result.get('Code')), 0)
 
         # Validate that the Ceph images from site-b report 'up+replaying'
         # (which is reported by secondary Ceph images). And check that images
@@ -794,14 +794,14 @@ class CephRBDMirrorDisasterFailoverTest(CephRBDMirrorBase):
         self.kill_primary_site()
 
         # Try and promote the site-b to primary.
-        result = zaza.model.run_action_on_leader(
+        result = zaza.model.run_on_leader(
             site_b_app_name,
             'promote',
             model_name=self.site_b_model,
             action_params={
                 'pools': ','.join(site_b_pools),
             })
-        self.assertEqual(int(result.results['Code']), 0)
+        self.assertEqual(int(result.get('Code')), 0)
 
         # The action may not show up as 'failed' if there are no pools that
         # needed to be promoted.
@@ -816,7 +816,6 @@ class CephRBDMirrorDisasterFailoverTest(CephRBDMirrorBase):
                 'force': True,
                 'pools': ','.join(site_b_pools),
             })
-        self.assertEqual(int(result.results['Code']), 0)
 
         # Validate successful Juju action execution
         self.assertEqual(result.status, 'completed')
