@@ -1442,6 +1442,14 @@ class CephRGWTest(test_utils.BaseCharmTest):
 
     def test_101_virtual_hosted_bucket(self):
         """Test virtual hosted bucket."""
+        # skip if quincy or older
+        current_release = zaza_openstack.get_os_release(
+            application='ceph-mon')
+        reef = zaza_openstack.get_os_release('jammy_bobcat')
+        if current_release < reef:
+            raise unittest.SkipTest(
+                'Virtual hosted bucket not supported in quincy or older')
+
         primary_rgw_unit = zaza_model.get_unit_from_name(self.primary_rgw_unit)
         if primary_rgw_unit.workload_status != "active":
             logging.info('Skipping virtual hosted bucket test since '
