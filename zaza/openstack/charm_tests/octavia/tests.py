@@ -14,6 +14,7 @@
 
 """Encapsulate octavia testing."""
 
+import json
 import logging
 import subprocess
 import tenacity
@@ -33,6 +34,7 @@ from zaza.openstack.utilities.exceptions import (
     LoadBalancerUnexpectedState,
     LoadBalancerUnrecoverableError,
 )
+from zaza.openstack.utilities.os_versions import CompareOpenStack
 
 LBAAS_ADMIN_ROLE = 'load-balancer_admin'
 
@@ -191,12 +193,6 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         cls.keystone_client = ObjectRetrierWraps(
             openstack_utils.get_keystone_session_client(cls.keystone_session))
 
-        if (openstack_utils.get_os_release() >=
-                openstack_utils.get_os_release('focal_wallaby')):
-            # add role to admin user for the duration of the test
-            grant_role_current_user(cls.keystone_client, cls.keystone_session,
-                                    LBAAS_ADMIN_ROLE)
-
         cls.neutron_client = ObjectRetrierWraps(
             openstack_utils.get_neutron_session_client(cls.keystone_session))
         cls.octavia_client = ObjectRetrierWraps(
@@ -213,6 +209,16 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         cls.loadbalancers = []
         # List of floating IPs created by this test
         cls.fips = []
+
+    def setUp(self):
+        """Configure the octavia test environment."""
+        super(LBAASv2Test, self).setUp()
+        if (openstack_utils.get_os_release() >=
+                openstack_utils.get_os_release('focal_wallaby')):
+            # add role to admin user for the duration of the test
+            grant_role_current_user(self.keystone_client,
+                                    self.keystone_session,
+                                    LBAAS_ADMIN_ROLE)
 
     def _remove_amphorae_instances(self):
         """Remove amphorae instances forcefully.
@@ -244,6 +250,7 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         :param only_local: When set to true do not call parent method
         :type only_local: bool
         """
+        logging.info("deleting loadbalancer(s): {}".format(self.loadbalancers))
         for lb in self.loadbalancers:
             try:
                 self.octavia_client.load_balancer_delete(
@@ -450,7 +457,7 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
              'http://{}/'.format(ip)],
             universal_newlines=True)
 
-    def test_create_loadbalancer(self):
+    def create_loadbalancer(self, ensure_volume_backed=False):
         """Create load balancer."""
         # Prepare payload instances
         # First we allow communication to port 80 by adding a security group
@@ -520,5 +527,47 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
                          .format(snippet, provider,
                                  lb_fp['floating_ip_address']))
 
+            if ensure_volume_backed:
+                amphora_list = self.octavia_client.amphora_list()
+                self.assertTrue(len(amphora_list) > 0)
+                attached_volumes = []
+                for amphora in amphora_list.get('amphorae', []):
+                    server_id = amphora['compute_id']
+                    logging.info("Checking amphora {} server {} for attached "
+                                 "volumes".format(amphora['id'], server_id))
+                    volumes = self.nova_client.volumes.get_server_volumes(
+                        server_id)
+                    logging.info('amphora {} server {} has volumes={}'.
+                                 format(amphora['id'],
+                                        server_id, volumes))
+                    attached_volumes.append(json.dumps(vars(volumes)))
+
+                self.assertTrue(len(attached_volumes) > 0)
+                logging.info("Amphora volumes creation successful: {}".format(
+                             attached_volumes))
+
         # If we get here, it means the tests passed
         self.run_resource_cleanup = True
+
+    def test_create_loadbalancer(self):
+        """Test creating a load balancer."""
+        self.create_loadbalancer()
+
+
+class OctaviaVolumeBackedAmphoraTest(LBAASv2Test):
+    """Octavia service tests."""
+
+    def test_volume_backed_amphora(self):
+        """Test volume-backed amphora load balancer."""
+        os_versions = openstack_utils.get_current_os_versions(['octavia'])
+        if CompareOpenStack(os_versions['octavia']) < 'ussuri':
+            self.skipTest('Run only for Openstack Ussuri and newer releases.')
+            return
+
+        """Test creating a load balancer that uses volume-based amphora."""
+        default_charm_config = {'enable-volume-based-amphora': False}
+        alternate_charm_config = {'enable-volume-based-amphora': True}
+        with self.config_change(default_charm_config,
+             alternate_charm_config, reset_to_charm_default=True):
+            logging.info("Testing create volume-backed amphora loadbalancer")
+            self.create_loadbalancer(ensure_volume_backed=True)
