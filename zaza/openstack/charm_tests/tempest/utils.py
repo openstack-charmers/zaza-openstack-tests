@@ -217,9 +217,10 @@ def _add_application_ips(ctxt):
     :returns: None
     :rtype: None
     """
-    ctxt['keystone'] = juju_utils.get_application_ip('keystone')
-    ctxt['dashboard'] = juju_utils.get_application_ip('openstack-dashboard')
-    ctxt['ncc'] = juju_utils.get_application_ip('nova-cloud-controller')
+    for ctxt_key, application_name in (('keystone', 'keystone'),
+                                       ('dashboard', 'openstack-dashboard'),
+                                       ('ncc', 'nova-cloud-controller')):
+        ctxt[ctxt_key] = zaza_juju_utils.get_application_ip(application_name)
 
 
 def _add_nova_config(ctxt, keystone_session, missing_fatal=True):
