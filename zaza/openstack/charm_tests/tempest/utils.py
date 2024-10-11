@@ -241,6 +241,7 @@ def _add_nova_config(ctxt, keystone_session, missing_fatal=True):
             ctxt['flavor_ref'] = flavor.id
         if flavor.name == TEMPEST_ALT_FLAVOR_NAME:
             ctxt['flavor_ref_alt'] = flavor.id
+    ctxt['min_compute_nodes'] = len(model.get_units('nova-compute'))
 
 
 def _add_neutron_config(ctxt, keystone_session, missing_fatal=True):
