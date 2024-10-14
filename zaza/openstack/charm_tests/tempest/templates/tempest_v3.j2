@@ -55,7 +55,7 @@ api_v2 = false
 api_v3 = true
 {% endif %}
 
-{% if 'glance' in enabled_services %}
+{% if 'glance' in enabled_services and test_swift_ip %}
 [image]
 http_image = http://{{ test_swift_ip }}:80/swift/v1/images/cirros-0.3.4-x86_64-uec.tar.gz
 {% endif %}
