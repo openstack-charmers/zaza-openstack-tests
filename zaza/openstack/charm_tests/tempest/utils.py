@@ -28,7 +28,7 @@ from neutronclient.common import exceptions as neutronexceptions
 import zaza.model as model
 import zaza.utilities.deployment_env as deployment_env
 import zaza.utilities.juju as zaza_juju_utils
-import zaza.openstack.utilities.juju as juju_utils
+import zaza.utilities.networking
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.glance.setup as glance_setup
 import zaza.openstack.charm_tests.magnum.setup as magnum_setup
@@ -217,9 +217,13 @@ def _add_application_ips(ctxt):
     :returns: None
     :rtype: None
     """
-    ctxt['keystone'] = juju_utils.get_application_ip('keystone')
-    ctxt['dashboard'] = juju_utils.get_application_ip('openstack-dashboard')
-    ctxt['ncc'] = juju_utils.get_application_ip('nova-cloud-controller')
+    for ctxt_key, application_name in (('keystone', 'keystone'),
+                                       ('dashboard', 'openstack-dashboard'),
+                                       ('ncc', 'nova-cloud-controller')):
+        ip = zaza_juju_utils.get_application_ip(application_name)
+        if ip:
+            ip = zaza.utilities.networking.format_addr(ip)
+        ctxt[ctxt_key] = ip
 
 
 def _add_nova_config(ctxt, keystone_session, missing_fatal=True):
