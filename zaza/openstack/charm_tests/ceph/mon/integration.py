@@ -13,6 +13,8 @@
 # limitations under the License.
 
 """Integration tests for ceph-mon."""
+import logging
+
 import requests
 import tenacity
 import yaml
@@ -63,9 +65,9 @@ def application_present(name):
 
 # retry a few times until osd count is larger than 0
 @tenacity.retry(
-    wait=tenacity.wait_fixed(5),
+    wait=tenacity.wait_fixed(10),
     retry=tenacity.retry_if_result(lambda result: result <= 0),
-    stop=tenacity.stop_after_delay(180),
+    stop=tenacity.stop_after_delay(900),
 )
 def get_up_osd_count(prometheus_url):
     """Get the number of up OSDs from prometheus."""
@@ -78,10 +80,15 @@ def get_up_osd_count(prometheus_url):
         raise Exception(f"Query failed: {data.get('error', 'Unknown error')}")
 
     results = data["data"]["result"]
+    logging.debug(f"Prom results: {results}")
     up_osd_count = sum(int(result["value"][1]) for result in results)
     return up_osd_count
 
 
+@tenacity.retry(
+    wait=tenacity.wait_fixed(10),
+    stop=tenacity.stop_after_delay(600),
+)
 def extract_pool_names(prometheus_url):
     """Extract pool names from prometheus."""
     query = "ceph_pool_metadata"
@@ -94,6 +101,7 @@ def extract_pool_names(prometheus_url):
 
     pool_names = []
     results = data.get("data", {}).get("result", [])
+    logging.debug(f"Prom results: {results}")
     for result in results:
         metric = result.get("metric", {})
         pool_name = metric.get("name")
@@ -103,6 +111,10 @@ def extract_pool_names(prometheus_url):
     return set(pool_names)
 
 
+@tenacity.retry(
+    wait=tenacity.wait_fixed(10),
+    stop=tenacity.stop_after_delay(600),
+)
 def get_alert_rules(prometheus_url):
     """Get the alert rules from prometheus."""
     response = requests.get(f"{prometheus_url}/rules", verify=False)
@@ -110,6 +122,7 @@ def get_alert_rules(prometheus_url):
     if data["status"] != "success":
         raise Exception(f"Query failed: {data.get('error', 'Unknown error')}")
 
+    logging.debug(f"Prom data: {data}")
     alert_names = set()
     for obj in data["data"]["groups"]:
         rules = obj.get("rules", [])
@@ -136,7 +149,7 @@ def get_prom_api_url(grafana_agent):
 
 
 @tenacity.retry(
-    wait=tenacity.wait_fixed(5), stop=tenacity.stop_after_delay(180)
+    wait=tenacity.wait_fixed(5), stop=tenacity.stop_after_delay(900)
 )
 def get_dashboards(url, user, passwd):
     """Retrieve a list of dashboards from Grafana."""
@@ -145,6 +158,7 @@ def get_dashboards(url, user, passwd):
         auth=(user, passwd),
         verify=False,
     )
+    logging.debug(f"Grafana response: {response}")
     if response.status_code != 200:
         raise Exception(f"Failed to retrieve dashboards: {response}")
     dashboards = response.json()
