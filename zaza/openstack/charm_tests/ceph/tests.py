@@ -35,6 +35,7 @@ import zaza.model as zaza_model
 import zaza.openstack.utilities.ceph as zaza_ceph
 import zaza.openstack.utilities.exceptions as zaza_exceptions
 import zaza.openstack.utilities.generic as zaza_utils
+import zaza.utilities.networking as network_utils
 import zaza.utilities.juju as juju_utils
 import zaza.openstack.utilities.openstack as zaza_openstack
 import zaza.openstack.utilities.generic as generic_utils
@@ -848,6 +849,7 @@ class CephRGWTest(test_utils.BaseCharmTest):
         logging.info("Unit: {}, Endpoint: {}".format(unit_name, unit_address))
         if unit_address is None:
             return None
+        unit_address = network_utils.format_addr(unit_address)
         # Evaluate port
         try:
             zaza_model.get_application("vault")
@@ -1658,6 +1660,7 @@ class CheckPoolTypes(unittest.TestCase):
                                                min=5, max=10),
                 reraise=True)
 def _get_mon_count_from_prometheus(prometheus_ip):
+    prometheus_ip = network_utils.format_addr(prometheus_ip)
     url = ('http://{}:9090/api/v1/query?query='
            'count(ceph_mon_metadata)'.format(prometheus_ip))
     client = requests.session()
