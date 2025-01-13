@@ -495,7 +495,7 @@ class CephRBDMirrorControlledFailoverTest(CephRBDMirrorBase):
         # Run the 'demote' Juju action against the primary site pools.
         logging.info('Demoting {} from model {}.'.format(
             primary_site_app_name, primary_site_model))
-        result = zaza.model.run_on_leader(
+        result = zaza.model.run_action_on_leader(
             primary_site_app_name,
             'demote',
             model_name=primary_site_model,
@@ -526,10 +526,10 @@ class CephRBDMirrorControlledFailoverTest(CephRBDMirrorBase):
             model_name=secondary_site_model,
             pools=secondary_site_pools)
 
-        # Run the 'promote' Juju against the secondary site.
+        # Run the 'promote' Juju action against the secondary site.
         logging.info('Promoting {} from model {}.'.format(
             secondary_site_app_name, secondary_site_model))
-        result = zaza.model.run_on_leader(
+        result = zaza.model.run_action_on_leader(
             secondary_site_app_name,
             'promote',
             model_name=secondary_site_model,
@@ -702,7 +702,7 @@ class CephRBDMirrorControlledFailoverTest(CephRBDMirrorBase):
         site_b_app_name = self.application_name + self.site_b_app_suffix
         logging.info('Re-syncing {} from model {}'.format(
             site_b_app_name, self.site_b_model))
-        result = zaza.model.run_on_leader(
+        result = zaza.model.run_action_on_leader(
             site_b_app_name,
             'resync-pools',
             model_name=self.site_b_model,
@@ -794,7 +794,7 @@ class CephRBDMirrorDisasterFailoverTest(CephRBDMirrorBase):
         self.kill_primary_site()
 
         # Try and promote the site-b to primary.
-        result = zaza.model.run_on_leader(
+        result = zaza.model.run_action_on_leader(
             site_b_app_name,
             'promote',
             model_name=self.site_b_model,
