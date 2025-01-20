@@ -503,11 +503,11 @@ class CephRBDMirrorControlledFailoverTest(CephRBDMirrorBase):
                 'pools': ','.join(primary_site_pools)
             })
         logging.info(result)
-        self.assertEqual(int(result.get('Code')), 0)
+        self.assertEqual(int(result.results["return-code"]), 0)
 
         # Validate that the demoted pools count matches the total primary site
         # pools count.
-        n_pools_demoted = len(result.get('Stdout').split('\n'))
+        n_pools_demoted = len(result.results["output"].split('\n'))
         self.assertEqual(len(primary_site_pools), n_pools_demoted)
 
         # At this point, both primary and secondary sites are demoted. Validate
@@ -537,11 +537,11 @@ class CephRBDMirrorControlledFailoverTest(CephRBDMirrorBase):
                 'pools': ','.join(secondary_site_pools)
             })
         logging.info(result)
-        self.assertEqual(int(result.get('Code')), 0)
+        self.assertEqual(int(result.results["return-code"]), 0)
 
         # Validate that the promoted pools count matches the total secondary
         # site pools count.
-        n_pools_promoted = len(result.get('Stdout').split('\n'))
+        n_pools_promoted = len(result.results["output"].split('\n'))
         self.assertEqual(len(secondary_site_pools), n_pools_promoted)
 
         # Validate that the Ceph images from the newly promoted site
@@ -711,7 +711,7 @@ class CephRBDMirrorControlledFailoverTest(CephRBDMirrorBase):
                 'i-really-mean-it': True,
             })
         logging.info(result)
-        self.assertEqual(int(result.get('Code')), 0)
+        self.assertEqual(int(result.results["return-code"]), 0)
 
         # Validate that the Ceph images from site-b report 'up+replaying'
         # (which is reported by secondary Ceph images). And check that images
