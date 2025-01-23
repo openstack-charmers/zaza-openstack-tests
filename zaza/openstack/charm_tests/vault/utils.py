@@ -536,6 +536,7 @@ def validate_ca(cacertificate, application="keystone", port=5000):
         ip = vip
     else:
         ip = zaza.model.get_app_ips(application)[0]
+    ip = network_utils.format_addr(ip)
     with tempfile.NamedTemporaryFile(mode='w') as fp:
         fp.write(cacertificate.decode())
         fp.flush()
