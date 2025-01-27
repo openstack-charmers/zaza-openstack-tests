@@ -170,22 +170,25 @@ def add_tempest_roles():
     _add_additional_roles(TEMPEST_ROLES)
 
 
-def wait_for_all_endpoints(interface='public'):
+def wait_for_all_endpoints(interface='public', service_codes=None):
     """Check all endpoints are returning an acceptable return code.
 
     :param interface: Endpoint type to check. public, admin or internal
     :type interface: str
+    :param service_codes: Dict of service names and acceptable return codes
+    :type service_codes: Optional[dict]
     :raises: AssertionError
     """
+    if service_codes is None:
+        service_codes = {}
     keystone_client = openstack_utils.get_keystone_overcloud_session_client()
     for service in keystone_client.services.list():
         for ep in keystone_client.endpoints.list(service=service,
                                                  interface=interface):
             openstack_utils.wait_for_url(
                 ep.url,
-                # Heat cloudformation and orchestration return 400 and 401
                 [
                     requests.codes.ok,
                     requests.codes.multiple_choices,
-                    requests.codes.bad_request,
-                    requests.codes.unauthorized])
+                    requests.codes.unauthorized,
+                ] + service_codes.get(service.name, []))
