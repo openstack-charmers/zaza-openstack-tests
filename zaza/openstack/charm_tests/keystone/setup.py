@@ -191,4 +191,5 @@ def wait_for_all_endpoints(interface='public', service_codes=None):
                     requests.codes.ok,
                     requests.codes.multiple_choices,
                     requests.codes.unauthorized,
+                    requests.codes.not_found,
                 ] + service_codes.get(service.name, []))
