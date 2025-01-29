@@ -801,7 +801,7 @@ class CephRBDMirrorDisasterFailoverTest(CephRBDMirrorBase):
             action_params={
                 'pools': ','.join(site_b_pools),
             })
-        self.assertEqual(int(result.get('Code')), 0)
+        self.assertEqual(int(result.results["return-code"]), 0)
 
         # The action may not show up as 'failed' if there are no pools that
         # needed to be promoted.
