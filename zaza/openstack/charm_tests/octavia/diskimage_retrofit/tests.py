@@ -55,7 +55,7 @@ class OctaviaDiskimageRetrofitTest(test_utils.OpenStackBaseTest):
         glance = openstack.get_glance_session_client(session)
 
         for image in glance.images.list(filters={'os_distro': 'ubuntu',
-                                                 'os_version': '18.04'}):
+                                                 'os_version': '20.04'}):
             action = zaza.model.run_action(
                 'octavia-diskimage-retrofit/0',
                 'retrofit-image',
