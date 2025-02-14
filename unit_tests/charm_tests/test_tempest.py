@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import mock
+import os
 import unittest
+
+from unittest import mock
 
 import zaza.openstack.charm_tests.tempest.utils as tempest_utils
 
@@ -61,3 +63,21 @@ class TestTempestUtils(unittest.TestCase):
             ('Environment variables [TEST_CIDR_EXT, TEST_FIP_RANGE] must '
              'all be set to run this test'),
             str(context.exception))
+
+    @mock.patch.object(tempest_utils, '_add_image_id')
+    def test_add_magnum_config(self, _add_image_id):
+        ctxt = {}
+        keystone_session = mock.MagicMock()
+        with mock.patch.dict(os.environ,
+                             {'TEST_REGISTRY_PREFIX': '1.2.3.4:5000'},
+                             clear=True) as environ:  # noqa:F841
+            tempest_utils._add_magnum_config(ctxt, keystone_session)
+            self.assertIn('test_registry_prefix', ctxt)
+            self.assertEqual(ctxt['test_registry_prefix'], '1.2.3.4:5000')
+
+        _add_image_id.assert_called()
+        ctxt = {}
+        with mock.patch.dict(os.environ, {},
+                             clear=True) as environ:  # noqa:F841
+            tempest_utils._add_magnum_config(ctxt, keystone_session)
+            self.assertNotIn('test_registry_prefix', ctxt)
