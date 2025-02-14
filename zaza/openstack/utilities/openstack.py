@@ -504,17 +504,34 @@ def get_aodh_session_client(session):
     return aodh_client.Client(session=session)
 
 
-def get_manila_session_client(session, version='2'):
+def get_manila_session_client(session, version='2', model_name=None):
     """Return Manila client authenticated by keystone session.
 
     :param session: Keystone session object
     :type session: keystoneauth1.session.Session object
     :param version: Manila API version
     :type version: str
+    :param model_name: Optional model name to get the client for.
+    :type model_name: str
     :returns: Authenticated manilaclient
     :rtype: manilaclient.Client
     """
-    return manilaclient.Client(session=session, client_version=version)
+    tls_rid = model.get_relation_id('manila', 'vault',
+                                    model_name=model_name,
+                                    remote_interface_name='certificates')
+    ssl_config = get_application_config_option(
+        'manila',
+        'ssl_cert',
+        model_name=model_name)
+    extra_kwargs = {}
+    if tls_rid or ssl_config:
+        cacert = get_cacert()
+        if cacert:
+            extra_kwargs['cacert'] = cacert
+
+    return manilaclient.Client(session=session,
+                               client_version=version,
+                               **extra_kwargs)
 
 
 def get_keystone_scope(model_name=None):
@@ -2207,6 +2224,7 @@ def _get_overcloud_auth(address=None, model_name=None):
     else:
         transport = 'http'
         port = 5000
+    print("transport =", transport, " port=", port)
 
     if not address:
         address = get_keystone_ip(model_name=model_name)
@@ -2246,6 +2264,7 @@ def _get_overcloud_auth(address=None, model_name=None):
     if local_ca_cert:
         auth_settings['OS_CACERT'] = local_ca_cert
 
+    print("auth_settings\n", auth_settings)
     return auth_settings
 
 
@@ -2438,6 +2457,8 @@ def _resource_reaches_status(resource, resource_id,
     logging.info("{}: resource {} in {} state, waiting for {}".format(
         msg, resource_id, resource_status, expected_status))
     assert resource_status == expected_status
+    logging.info("{}: resource {} now in {} state".format(
+        msg, resource_id, resource_status))
 
 
 def resource_reaches_status(resource,
