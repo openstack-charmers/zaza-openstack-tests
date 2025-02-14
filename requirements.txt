@@ -3,7 +3,7 @@
 # BUG: https://github.com/openstack-charmers/zaza-openstack-tests/issues/530
 lxml<4.6.3; python_version < '3.8'
 lxml; python_version >= '3.8'
-pyparsing<3.0.0; python_version <= '3.5'  # pin for aodhclient which is held for py35
+pyparsing<3.1.0
 aiounittest
 async_generator
 # pyopenssl depends on a newer version of cryptography since 22.1.0
@@ -31,7 +31,7 @@ six>=1.9.0
 dnspython>=1.12.0
 psutil>=1.1.1,<2.0.0
 python-openstackclient>=3.14.0
-aodhclient
+aodhclient<3.3.0
 gnocchiclient>=7.0.5,<8.0.0
 pika>=1.1.0,<2.0.0
 python-barbicanclient
