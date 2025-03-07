@@ -540,6 +540,56 @@ class NovaCompute(NovaCommonTests):
                 model_name=self.model_name)
             self.assertFalse(int(run['Code']) == 0)
 
+    def test_1000_ceph_pool_created(self):
+        """Test if ceph broker messages were exchanged correctly."""
+        self._skip_if_not_rbd_backend()
+
+        ceph_sentries = zaza.model.get_units(
+            'ceph-mon', model_name=self.model_name)
+
+        # Make sure pool was created
+        ceph_sentry = ceph_sentries[0]
+        pools = zaza.model.run_on_unit(
+            ceph_sentry.entity_id,
+            'sudo ceph osd lspools').get('Stdout').strip()
+        logging.info('Pools found: {}'.format(pools))
+        if "nova" not in pools:
+            msg = "Nova ceph pool was not created successfully"
+            raise Exception("Test failed: {}".format(msg))
+
+        logging.info('test_1000_ceph_broker_message_marked_done successful')
+
+    def test_1001_config_changed_cause_restarts(self):
+        """Verify service is not restarted on manual config-changed hook."""
+        sentry = zaza.model.get_units(
+            'nova-compute', model_name=self.model_name)[0]
+
+        # Make config change, check for service restarts
+        logging.debug('Invoking config-changed hook *manually* '
+                      'on nova-compute...')
+
+        stime = zaza.model.get_unit_service_start_time(
+            sentry.entity_id, 'nova-compute', model_name=self.model_name)
+        zaza.model.run_on_unit(sentry.entity_id, './hooks/config-changed')
+
+        zaza.model.wait_for_application_states()
+
+        s2time = zaza.model.get_unit_service_start_time(
+            sentry.entity_id, 'nova-compute', model_name=self.model_name)
+
+        if s2time > stime:
+            msg = "service nova-compute restarted after manual config-changed"
+            raise Exception("Test failed: {}".format(msg))
+        logging.info('test_1001_config_changed_cause_restarts successful')
+
+    def _skip_if_not_rbd_backend(self):
+        backend = zaza.model.get_application_config(
+            self.application_name)['libvirt-image-backend']
+        rbd_enabled = backend['value'].lower() == "rbd"
+        if not rbd_enabled:
+            raise unittest.SkipTest(
+                'RBD backend is not enabled, skipping test')
+
 
 class NovaComputeActionTest(test_utils.OpenStackBaseTest):
     """Run nova-compute specific tests.
