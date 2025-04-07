@@ -121,11 +121,11 @@ class ChassisCharmOperationTest(BaseCharmOperationTest):
             'ovn-controller',
         ]
         if cls.application_name == 'ovn-chassis':
-            principal_app_name = 'magpie'
+            principal_app_name = 'ubuntu'
         else:
             principal_app_name = cls.application_name
         source = zaza.model.get_application_config(
-            principal_app_name)['source']['value']
+            principal_app_name).get('source', {}).get('value', "")
         logging.info(source)
         if 'train' in source:
             cls.nrpe_checks = [
