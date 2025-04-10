@@ -474,6 +474,47 @@ class RmqTests(test_utils.OpenStackBaseTest):
 
         logging.info('OK')
 
+    def test_policies(self):
+        """Test if policies can be created, detroyed and listed."""
+        units = zaza.model.get_units(self.application_name)
+        rmq_utils.add_user(units)
+        unit = units[0]
+        action = zaza.model.run_action(unit.entity_id, "show-policies")
+        policies_before = json.loads(action.results["output"])
+        logging.info("Creating queue: my_queue")
+        rmq_utils.publish_amqp_message_by_unit(
+            unit, "My Message", queue="my_queue"
+        )
+        logging.info("Creating a max length policy")
+        action = zaza.model.run_action(
+            unit.entity_id,
+            "set-policy-max-length",
+            action_params={"name": "my_pol", "pattern": "^my_queue$"},
+        )
+        self.assertIsInstance(action, juju.action.Action)
+
+        action = zaza.model.run_action(unit.entity_id, "show-policies")
+        policies_after = json.loads(action.results["output"])
+        self.assertEqual(len(policies_after), len(policies_before) + 1)
+        logging.info("Max-length policy successfully created")
+
+        logging.info("Clear my_pol policy")
+        action = zaza.model.run_action(
+            unit.entity_id,
+            "clear-policy",
+            action_params={
+                "name": "my_pol",
+            },
+        )
+
+        action = zaza.model.run_action(unit.entity_id, "show-policies")
+        policies_after = json.loads(action.results["output"])
+        self.assertEqual(len(policies_after), len(policies_before))
+        logging.info("my_pol policy successfully deleted")
+
+        # Delete the test user
+        rmq_utils.delete_user(units)
+
 
 class RmqRotateServiceUserPasswordTests(test_utils.OpenStackBaseTest):
     """RMQ service user password rotation tests."""
