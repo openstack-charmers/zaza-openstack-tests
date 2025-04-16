@@ -18,6 +18,7 @@ import logging
 
 import juju
 
+import requests
 import tenacity
 import yaml
 import zaza
@@ -33,6 +34,9 @@ class BaseCharmOperationTest(test_utils.BaseCharmTest):
 
     # override if not possible to determine release pair from charm under test
     release_application = None
+    # override in child classes to reflect real OVN/OVS prometheus exporter
+    # ports.
+    exporter_port = None
 
     @classmethod
     def setUpClass(cls):
@@ -78,9 +82,19 @@ class BaseCharmOperationTest(test_utils.BaseCharmTest):
             logging.info(ret)
         self.assertIsNone(ret, msg=ret)
 
+    def test_prometheus_exporter_reachable(self):
+        """Ensure that the OVS/OVN exporter responds to requests."""
+        for unit in zaza.model.get_units(self.application_name):
+            ip = zaza.model.get_unit_public_address(unit)
+            response = requests.get(
+                f"http://{ip}:{self.exporter_port}/metrics")
+            response.raise_for_status()
+
 
 class CentralCharmOperationTest(BaseCharmOperationTest):
     """OVN Central Charm operation tests."""
+
+    exporter_port = 9476
 
     @classmethod
     def setUpClass(cls):
@@ -112,6 +126,7 @@ class ChassisCharmOperationTest(BaseCharmOperationTest):
     """OVN Chassis Charm operation tests."""
 
     release_application = 'ovn-central'
+    exporter_port = 9475
 
     @classmethod
     def setUpClass(cls):
