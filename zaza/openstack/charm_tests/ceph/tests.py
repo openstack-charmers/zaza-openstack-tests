@@ -14,6 +14,7 @@
 
 """Ceph Testing."""
 
+import collections
 import unittest
 import json
 import logging
@@ -1606,28 +1607,32 @@ class CheckPoolTypes(unittest.TestCase):
 
     def test_check_pool_types(self):
         """Check type of pools created for clients."""
-        app_pools = [
-            ('glance', 'glance'),
-            ('nova-compute', 'nova'),
-            ('cinder-ceph', 'cinder-ceph')]
+        CephClient = collections.namedtuple(
+            'CephClient',
+            ['name', 'pool', 'relation'])
+        clients = [
+            CephClient('glance', 'glance', 'client'),
+            CephClient('nova-compute', 'nova', 'client'),
+            CephClient('ceph-radosgw', 'default.rgw.buckets.data', 'radosgw'),
+            CephClient('cinder-ceph', 'cinder-ceph', 'client')]
         runtime_pool_details = zaza_ceph.get_ceph_pool_details()
-        for app, pool_name in app_pools:
+        for client in clients:
             try:
-                app_config = zaza_model.get_application_config(app)
+                app_config = zaza_model.get_application_config(client.name)
             except KeyError:
                 logging.info(
                     'Skipping pool check of %s, application %s not present',
-                    pool_name,
-                    app)
+                    client.pool,
+                    client.name)
                 continue
             rel_id = zaza_model.get_relation_id(
-                app,
+                client.name,
                 'ceph-mon',
-                remote_interface_name='client')
+                remote_interface_name=client.relation)
             if not rel_id:
                 logging.info(
                     'Skipping pool check of %s, ceph relation not present',
-                    app)
+                    client.name)
                 continue
             juju_pool_config = app_config.get('pool-type')
             if juju_pool_config:
@@ -1637,9 +1642,9 @@ class CheckPoolTypes(unittest.TestCase):
                 # replicated.
                 expected_pool_type = zaza_ceph.REPLICATED_POOL_TYPE
             for pool_config in runtime_pool_details:
-                if pool_config['pool_name'] == pool_name:
+                if pool_config['pool_name'] == client.pool:
                     logging.info('Checking {} is {}'.format(
-                        pool_name,
+                        client.pool,
                         expected_pool_type))
                     expected_pool_code = -1
                     if expected_pool_type == zaza_ceph.REPLICATED_POOL_TYPE:
@@ -1652,7 +1657,7 @@ class CheckPoolTypes(unittest.TestCase):
                     break
             else:
                 raise CephPoolConfig(
-                    "Failed to find config for {}".format(pool_name))
+                    "Failed to find config for {}".format(client.pool))
 
 
 # NOTE: We might query before prometheus has fetch data
