@@ -20,8 +20,6 @@
 
 import zaza.openstack.utilities.openstack as openstack_utils
 
-from manilaclient import client as manilaclient
-
 
 MANILA_GANESHA_TYPE_NAME = "cephfsnfstype"
 
@@ -34,8 +32,8 @@ def setup_ganesha_share_type(manila_client=None):
     """
     if manila_client is None:
         keystone_session = openstack_utils.get_overcloud_keystone_session()
-        manila_client = manilaclient.Client(
-            session=keystone_session, client_version='2')
+        manila_client = openstack_utils.get_manila_session_client(
+            keystone_session)
 
     manila_client.share_types.create(
         name=MANILA_GANESHA_TYPE_NAME, spec_driver_handles_share_servers=False,
