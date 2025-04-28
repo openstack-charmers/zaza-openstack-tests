@@ -21,8 +21,13 @@ jobs:
       run: |
         sudo apt-get install -q --yes libxml2-dev libxslt1-dev
         python -m pip install --upgrade pip
-        pip install tox tox-gh-actions
+        pip install tox tox-gh-actions coveragepy
     - name: Lint with tox
       run: tox -e pep8
     - name: Test with tox
       run: tox -e py${{ matrix.python-version }}
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v1
+      with:
+        verbose: true
+        fail_ci_if_error: true
