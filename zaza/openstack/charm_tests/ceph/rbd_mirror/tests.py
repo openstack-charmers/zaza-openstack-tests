@@ -182,7 +182,9 @@ class CephRBDMirrorBase(test_utils.BaseCharmTest):
         cls.cinder_ceph_app_name = 'cinder-ceph'
         cls.test_cinder_volume_name = 'test-cinder-ceph-volume'
         # get ready for multi-model Zaza
-        cls.site_a_model = cls.site_b_model = zaza.model.get_juju_model()
+        default_model = zaza.model.get_juju_model()
+        cls.site_a_model = cls.model_aliases.get('ceph_site_a', default_model)
+        cls.site_b_model = cls.model_aliases.get('ceph_site_b', default_model)
         cls.site_b_app_suffix = '-b'
 
     def test_if_cinder_present(self):
