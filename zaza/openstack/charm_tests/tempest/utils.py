@@ -46,6 +46,9 @@ TEMPEST_ALT_FLAVOR_NAME = 'm2.tempest'
 TEMPEST_SVC_LIST = ['ceilometer', 'cinder', 'glance', 'heat', 'horizon',
                     'ironic', 'manila', 'neutron', 'nova', 'octavia',
                     'sahara', 'swift', 'trove', 'watcher', 'zaqar']
+SUPPORTS_ENFORCE_SCOPE = ['barbican', 'cinder', 'designate', 'glance',
+                          'ironic', 'keystone', 'nova', 'magnum',
+                          'manila', 'neutron', 'octavia', 'placement']
 
 
 def render_tempest_config_keystone_v2():
@@ -57,18 +60,21 @@ def render_tempest_config_keystone_v2():
     _setup_tempest('tempest_v2.j2', 'accounts.j2')
 
 
-def render_tempest_config_keystone_v3(minimal=False):
+def render_tempest_config_keystone_v3(minimal=False, new_rbac=False):
     """Render tempest config for Keystone V3 API.
 
     :param minimal: Run in minimal mode eg ignore missing setup
     :type minimal: bool
+    :param new_rbac: Use new RBAC rules
+    :type new_rbac: bool
     :returns: None
     :rtype: None
     """
     _setup_tempest(
         'tempest_v3.j2',
         'accounts.j2',
-        minimal=minimal)
+        minimal=minimal,
+        new_rbac=new_rbac)
 
 
 def get_workspace():
@@ -116,7 +122,8 @@ def _init_workspace(workspace_path):
         pass
 
 
-def _setup_tempest(tempest_template, accounts_template, minimal=False):
+def _setup_tempest(tempest_template, accounts_template,
+                   minimal=False, new_rbac=False):
     """Initialize tempest and render tempest config.
 
     :param tempest_template: tempest.conf template
@@ -125,13 +132,17 @@ def _setup_tempest(tempest_template, accounts_template, minimal=False):
     :type accounts_template: module
     :param minimal: Run in minimal mode eg ignore missing setup
     :type minimal: bool
+    :param new_rbac: Use new RBAC rules
+    :type new_rbac: bool
     :returns: None
     :rtype: None
     """
     workspace_name, workspace_path = get_workspace()
     destroy_workspace(workspace_name, workspace_path)
     _init_workspace(workspace_path)
-    context = _get_tempest_context(workspace_path, missing_fatal=not minimal)
+    context = _get_tempest_context(workspace_path,
+                                   missing_fatal=not minimal,
+                                   new_rbac=new_rbac)
     _render_tempest_config(
         os.path.join(workspace_path, 'etc/tempest.conf'),
         context,
@@ -142,13 +153,15 @@ def _setup_tempest(tempest_template, accounts_template, minimal=False):
         accounts_template)
 
 
-def _get_tempest_context(workspace_path, missing_fatal=True):
+def _get_tempest_context(workspace_path, missing_fatal=True, new_rbac=False):
     """Generate the tempest config context.
 
     :param workspace_path: path to workspace directory
     :type workspace_path: str
     :param missing_fatal: Raise an exception if a resource is missing
     :type missing_fatal: bool
+    :param new_rbac: Use new RBAC rules
+    :type new_rbac: bool
     :returns: Context dictionary
     :rtype: dict
     """
@@ -170,6 +183,10 @@ def _get_tempest_context(workspace_path, missing_fatal=True):
     ctxt['disabled_services'] = list(
         set(TEMPEST_SVC_LIST) - set(ctxt['enabled_services']))
     _add_application_ips(ctxt)
+    ctxt['enforce_scopes'] = []
+    for svc_name in ctxt['enabled_services']:
+        if svc_name in SUPPORTS_ENFORCE_SCOPE and new_rbac:
+            ctxt['enforce_scopes'].append(svc_name)
     for svc_name, ctxt_func in ctxt_funcs.items():
         if svc_name in ctxt['enabled_services']:
             ctxt_func(
@@ -375,6 +392,9 @@ def _add_keystone_config(ctxt, keystone_session, missing_fatal=True):
         keystone_session)
     domain = keystone_client.domains.find(name="admin_domain")
     ctxt['default_domain_id'] = domain.id
+    # note(gboutry): Enable admin_domain_scope if new RBAC is not used
+    ctxt['admin_domain_scope'] = 'keystone' not in ctxt.get('enforce_scopes',
+                                                            [])
 
 
 def _add_octavia_config(ctxt, missing_fatal=True):

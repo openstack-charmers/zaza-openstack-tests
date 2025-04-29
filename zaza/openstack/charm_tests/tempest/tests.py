@@ -156,6 +156,27 @@ class TempestTestWithKeystoneMinimal(TempestTestBase):
         return super().run()
 
 
+class TempestTestWithKeystoneMinimalNewRBAC(TempestTestBase):
+    """Tempest test class to validate an OpenStack setup with Keystone V3.
+
+    Validate the new RBAC model.
+    """
+
+    def run(self):
+        """Run tempest tests as specified in tests/tests.yaml.
+
+        Allow test to run even if some components are missing (like
+        external network setup).
+        See TempestTestBase.run() for the available test options.
+
+        :returns: Status of tempest run
+        :rtype: bool
+        """
+        tempest_utils.render_tempest_config_keystone_v3(minimal=True,
+                                                        new_rbac=True)
+        return super().run()
+
+
 class TempestTestScaleK8SBase(TempestTestBase):
     """Tempest test class to validate an OpenStack setup after scaling."""
 
