@@ -733,12 +733,32 @@ class BaseCharmTest(unittest.TestCase):
             logging.info('Checking CPU topology on {}'.format(unit.name))
             self.assert_unit_cpu_topology(unit, nr_1g_hugepages)
             logging.info('Enabling hugepages on {}'.format(unit.name))
-            zaza.utilities.machine_os.enable_hugepages(
-                unit, nr_1g_hugepages, model_name=self.model_name)
-            logging.info('Enabling unsafe VFIO NOIOMMU mode on {}'
-                         .format(unit.name))
-            zaza.utilities.machine_os.enable_vfio_unsafe_noiommu_mode(
-                unit, model_name=self.model_name)
+            try:
+                zaza.utilities.machine_os.enable_hugepages(
+                    unit, nr_1g_hugepages, model_name=self.model_name)
+            except zaza.model.UnitError:
+                logging.warn(f'Unit {unit.name} went into error state during'
+                             ' huge pages enablement. Attempting to recover.'
+                             ' Possible cause:'
+                             ' https://bugs.launchpad.net/juju/+bug/2077936')
+                zaza.model.resolve_units()
+
+            try:
+                logging.info('Enabling unsafe VFIO NOIOMMU mode on {}'
+                             .format(unit.name))
+                zaza.utilities.machine_os.enable_vfio_unsafe_noiommu_mode(
+                    unit, model_name=self.model_name)
+                model.wait_for_application_states(
+                    model_name=self.model_name,
+                    states=self.test_config.get('target_deploy_status', {}))
+            except zaza.model.UnitError:
+                logging.warn(f'Unit {unit.name} went into error state while'
+                             ' setting VFIO NOIOMMU mode. Attempting to'
+                             ' recover. Possible cause:'
+                             ' https://bugs.launchpad.net/juju/+bug/2077936')
+                zaza.model.resolve_units()
+                zaza.utilities.machine_os.enable_vfio_unsafe_noiommu_mode(
+                    unit, model_name=self.model_name)
 
     def disable_hugepages_vfio_on_hvs_in_vms(self):
         """Disable hugepages and unsafe VFIO NOIOMMU on virtual hypervisors."""
