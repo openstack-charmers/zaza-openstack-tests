@@ -28,6 +28,9 @@ Jinja2>=2.6  # BSD License (3 clause)
 six>=1.9.0
 dnspython>=1.12.0
 psutil>=1.1.1,<2.0.0
+# osc-lib-4.0.0 introduced typing hints making it incompatible with py38.
+# https://github.com/openstack/osc-lib/commit/3d221e5992a74d6bb7d1b725e43015b8c87b9718
+osc-lib<4.0.0; python_version <= '3.8'
 python-openstackclient>=3.14.0
 aodhclient
 gnocchiclient>=7.0.5,<8.0.0
