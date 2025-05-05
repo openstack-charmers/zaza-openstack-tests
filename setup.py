@@ -47,6 +47,7 @@ install_require = [
     'PyYAML',
     'tenacity',
     'oslo.config<6.12.0',
+    'osc-lib<4.0.0',  # needed for py38
     'aodhclient',
     'gnocchiclient>=7.0.5,<8.0.0',
     'pika>=1.1.0,<2.0.0',
