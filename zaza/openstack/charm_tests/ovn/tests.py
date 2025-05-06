@@ -866,8 +866,7 @@ class OVNCentralDownscaleTests(test_utils.BaseCharmTest):
 
         return sb_status, nb_status
 
-    @staticmethod
-    def _add_unit(number_of_units=1):
+    def _add_unit(self, number_of_units=1):
         """Add specified number of units to ovn-central application.
 
         This function also waits until the application reaches active state.
@@ -877,10 +876,11 @@ class OVNCentralDownscaleTests(test_utils.BaseCharmTest):
             count=number_of_units,
             wait_appear=True
         )
-        zaza.model.wait_for_application_states()
+        zaza.model.wait_for_application_states(
+            states=self.test_config.get('target_deploy_status', {}),
+        )
 
-    @staticmethod
-    def _remove_unit(unit_name):
+    def _remove_unit(self, unit_name):
         """Remove specified unit from ovn-central application.
 
         This function also waits until the application reaches active state
@@ -888,7 +888,9 @@ class OVNCentralDownscaleTests(test_utils.BaseCharmTest):
         """
         zaza.model.destroy_unit("ovn-central", unit_name)
         zaza.model.block_until_all_units_idle()
-        zaza.model.wait_for_application_states()
+        zaza.model.wait_for_application_states(
+            states=self.test_config.get('target_deploy_status', {}),
+        )
 
     def _assert_servers_cleanly_removed(self, sb_id, nb_id):
         """Assert that specified members were removed from cluster.
