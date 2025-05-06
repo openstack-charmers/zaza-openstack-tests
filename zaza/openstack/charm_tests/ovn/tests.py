@@ -128,6 +128,14 @@ class DedicatedChassisCosIntegrationTest(ChassisCosIntegrationTest):
     APPLICATION_NAME = 'ovn-dedicated-chassis'
 
 
+class CentralCosIntegrationTest(BaseCosIntegrationTest):
+    """Variant of COS integration tests for OVN Central."""
+
+    APPLICATION_NAME = 'ovn-central'
+    DASHBOARD = 'Juju: OVN Central (OVSDB)'
+    PROM_QUERY = 'ovn_up'
+
+
 class BaseCharmOperationTest(test_utils.BaseCharmTest):
     """Base OVN Charm operation tests."""
 
