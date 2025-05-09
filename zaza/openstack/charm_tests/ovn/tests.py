@@ -133,7 +133,9 @@ class CentralCosIntegrationTest(BaseCosIntegrationTest):
 
     APPLICATION_NAME = 'ovn-central'
     DASHBOARD = 'Juju: OVN Central (OVSDB)'
-    PROM_QUERY = 'ovn_up'
+    # make sure to test metric that requires successful connection
+    # of the exporter to the OVN sockets
+    PROM_QUERY = 'ovn_coverage_total'
 
 
 class BaseCharmOperationTest(test_utils.BaseCharmTest):
