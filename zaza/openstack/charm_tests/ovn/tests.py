@@ -24,12 +24,47 @@ import yaml
 import zaza
 
 import zaza.model
-import zaza.openstack.charm_tests.ceph.mon.integration as cos_integration
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.generic as generic_utils
 import zaza.utilities.juju
 
 from zaza.openstack.charm_tests.cos.setup import GRAFANA_OFFER_ALIAS
+
+
+# Note(mkalcok): These two helper function below are borrowed from
+# zaza.openstack.charm_tests.ceph.mon.integration. This module does not exist
+# in caracal branch and to avoid backporting entire module of an unrelated
+# charm tests, we bring only these two, relatively standalone, functions.
+@tenacity.retry(
+    wait=tenacity.wait_fixed(5), stop=tenacity.stop_after_delay(180)
+)
+def _get_prom_api_url(grafana_agent):
+    """Get the prometheus API URL from the grafana-agent config."""
+    ga_yaml = zaza.model.file_contents(
+        f"{grafana_agent}/leader", "/etc/grafana-agent.yaml"
+    )
+    ga = yaml.safe_load(ga_yaml)
+    url = ga["integrations"]["prometheus_remote_write"][0]["url"]
+    if url.endswith("/write"):
+        url = url[:-6]  # lob off the /write
+    return url
+
+
+@tenacity.retry(
+    wait=tenacity.wait_fixed(5), stop=tenacity.stop_after_delay(900)
+)
+def _get_dashboards(url, user, passwd):
+    """Retrieve a list of dashboards from Grafana."""
+    response = requests.get(
+        f"{url}/api/search?type=dash-db",
+        auth=(user, passwd),
+        verify=False,
+    )
+    logging.debug(f"Grafana response: {response}")
+    if response.status_code != 200:
+        raise Exception(f"Failed to retrieve dashboards: {response}")
+    dashboards = response.json()
+    return dashboards
 
 
 class BaseCosIntegrationTest(test_utils.BaseCharmTest):
@@ -93,7 +128,7 @@ class BaseCosIntegrationTest(test_utils.BaseCharmTest):
 
     def test_prometheus_scraping(self):
         """Test that prometheus successfully scrapes OVN metrics."""
-        prom_url = cos_integration.get_prom_api_url("grafana-agent")
+        prom_url = _get_prom_api_url("grafana-agent")
         try:
             self._prometheus_scrape_check(prom_url, self.PROM_QUERY)
         except Exception as exc:
@@ -101,7 +136,7 @@ class BaseCosIntegrationTest(test_utils.BaseCharmTest):
 
     def test_grafana_dashboards(self):
         """Test that grafana dashboard got successfully imported."""
-        dashboards = cos_integration.get_dashboards(
+        dashboards = _get_dashboards(
             self.GRAFANA_CREDENTIALS['url'],
             'admin',
             self.GRAFANA_CREDENTIALS['admin-password'],
