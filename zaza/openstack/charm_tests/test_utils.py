@@ -757,8 +757,9 @@ class BaseCharmTest(unittest.TestCase):
                              ' recover. Possible cause:'
                              ' https://bugs.launchpad.net/juju/+bug/2077936')
                 zaza.model.resolve_units()
-                zaza.utilities.machine_os.enable_vfio_unsafe_noiommu_mode(
-                    unit, model_name=self.model_name)
+                model.wait_for_application_states(
+                    model_name=self.model_name,
+                    states=self.test_config.get('target_deploy_status', {}))
 
     def disable_hugepages_vfio_on_hvs_in_vms(self):
         """Disable hugepages and unsafe VFIO NOIOMMU on virtual hypervisors."""
