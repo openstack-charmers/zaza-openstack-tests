@@ -730,6 +730,25 @@ class BaseCharmTest(unittest.TestCase):
                              'hugepages and IOMMU configuration already '
                              'performed through kernel command line.')
                 continue
+
+            # Note(mkalcok): Some LXD images may come with KVM kernel that
+            # lacks VFIO drivers. We need to replace it with generic before
+            # the machine gets rebooted.
+            kernel = zaza.utilities.juju.remote_run(
+                unit.name, 'uname -r', model_name=self.model_name,
+                fatal=True).rstrip()
+            if kernel.endswith('-kvm'):
+                logging.info('Replacing KVM kernel with generic on {}'
+                             .format(unit.name))
+                cmd = ('export DEBIAN_FRONTEND=noninteractive && '
+                       'apt-get update && '
+                       'apt remove -yqq linux-*-kvm && '
+                       'apt install -yqq linux-generic')
+                zaza.utilities.juju.remote_run(unit.name,
+                                               cmd,
+                                               model_name=self.model_name,
+                                               fatal=True)
+
             logging.info('Checking CPU topology on {}'.format(unit.name))
             self.assert_unit_cpu_topology(unit, nr_1g_hugepages)
             logging.info('Enabling hugepages on {}'.format(unit.name))

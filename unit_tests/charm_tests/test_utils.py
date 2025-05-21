@@ -204,6 +204,152 @@ class TestBaseCharmTest(ut_utils.BaseTestCase):
         get_pkg_version.return_value = '4.4.1'
         self.assertRaises(Exception, _check_should_not_run)
 
+    def test_enable_hugepages_vfio_on_hvs_in_vms(self):
+        """Test basic happy path for enabling huge pages and VFIO."""
+        self.patch_object(test_utils.model, 'get_units')
+        self.patch_object(test_utils.zaza.utilities.machine_os,
+                          'get_hv_application')
+        self.patch_object(test_utils.zaza.utilities.machine_os, 'is_vm')
+        self.patch_object(test_utils.zaza.utilities.juju, 'remote_run')
+        self.patch_target('assert_unit_cpu_topology')
+        self.patch_object(test_utils.zaza.utilities.machine_os,
+                          'enable_hugepages')
+        self.patch_object(test_utils.zaza.utilities.machine_os,
+                          'enable_vfio_unsafe_noiommu_mode')
+        self.patch_object(test_utils.model, 'wait_for_application_states')
+
+        nr_hugepages = 4
+        unit = mock.MagicMock()
+        unit.name = 'unitA'
+        model_name = 'zaza-123'
+        self.target.model_name = model_name
+        self.target.test_config = {}
+        self.get_units.return_value = [unit]
+        self.is_vm.return_value = True
+        self.remote_run.return_value = '5.15.0-1080'
+
+        self.target.enable_hugepages_vfio_on_hvs_in_vms(nr_hugepages)
+
+        self.remote_run.assert_called_once_with(
+            unit.name,
+            'uname -r',
+            model_name=self.target.model_name,
+            fatal=True)
+        self.enable_hugepages.assert_called_once_with(
+            unit,
+            nr_hugepages,
+            model_name=self.target.model_name)
+        self.enable_vfio_unsafe_noiommu_mode.assert_called_once_with(
+            unit,
+            model_name=self.target.model_name)
+
+    def test_enable_hugepages_vfio_on_hvs_in_vms_kvm_kernel(self):
+        """Test enabling huge pages and VFIO if machine has KVM kernel."""
+        self.patch_object(test_utils.model, 'get_units')
+        self.patch_object(test_utils.zaza.utilities.machine_os,
+                          'get_hv_application')
+        self.patch_object(test_utils.zaza.utilities.machine_os, 'is_vm')
+        self.patch_object(test_utils.zaza.utilities.juju, 'remote_run')
+        self.patch_target('assert_unit_cpu_topology')
+        self.patch_object(test_utils.zaza.utilities.machine_os,
+                          'enable_hugepages')
+        self.patch_object(test_utils.zaza.utilities.machine_os,
+                          'enable_vfio_unsafe_noiommu_mode')
+        self.patch_object(test_utils.model, 'wait_for_application_states')
+
+        nr_hugepages = 4
+        unit = mock.MagicMock()
+        unit.name = 'unitA'
+        model_name = 'zaza-123'
+        self.target.model_name = model_name
+        self.target.test_config = {}
+        self.get_units.return_value = [unit]
+        self.is_vm.return_value = True
+        self.remote_run.return_value = '5.15.0-1080-kvm'
+
+        replace_kernel_cmd = ('export DEBIAN_FRONTEND=noninteractive && '
+                              'apt-get update && '
+                              'apt remove -yqq linux-*-kvm && '
+                              'apt install -yqq linux-generic')
+
+        remote_calls = [
+            mock.call(unit.name, 'uname -r', model_name=self.target.model_name,
+                      fatal=True),
+            mock.call(unit.name, replace_kernel_cmd,
+                      model_name=self.target.model_name, fatal=True),
+        ]
+
+        self.target.enable_hugepages_vfio_on_hvs_in_vms(nr_hugepages)
+
+        self.remote_run.assert_has_calls(remote_calls)
+        self.enable_hugepages.assert_called_once_with(
+            unit,
+            nr_hugepages,
+            model_name=self.target.model_name)
+        self.enable_vfio_unsafe_noiommu_mode.assert_called_once_with(
+            unit,
+            model_name=self.target.model_name)
+
+    def test_enable_hugepages_vfio_on_hvs_in_vms_recover_unit_error(self):
+        """Test recovering from UnitError when enabling huge pages and VFIO.
+
+           Unit can go into Error state during reboot due to
+           https://bugs.launchpad.net/juju/+bug/2077936. This can be detected
+           during enabling of hugepages or when enabling VFIO and it's a
+           recoverable error.
+        """
+        self.patch_object(test_utils.model, 'get_units')
+        self.patch_object(test_utils.zaza.utilities.machine_os,
+                          'get_hv_application')
+        self.patch_object(test_utils.zaza.utilities.machine_os, 'is_vm')
+        self.patch_object(test_utils.zaza.utilities.juju, 'remote_run')
+        self.patch_target('assert_unit_cpu_topology')
+        self.patch_object(test_utils.zaza.utilities.machine_os,
+                          'enable_hugepages')
+        self.patch_object(test_utils.zaza.utilities.machine_os,
+                          'enable_vfio_unsafe_noiommu_mode')
+        self.patch_object(test_utils.model, 'wait_for_application_states')
+        self.patch_object(test_utils.model, 'resolve_units')
+
+        nr_hugepages = 4
+        unit = mock.MagicMock()
+        unit.name = 'unitA'
+        model_name = 'zaza-123'
+        self.target.model_name = model_name
+        self.target.test_config = {}
+        self.get_units.return_value = [unit]
+        self.is_vm.return_value = True
+        self.remote_run.return_value = '5.15.0-1080'
+        # Both huge pages and wait for application state after VFIO
+        # can detect unit in Error state
+        self.enable_hugepages.side_effect = \
+            test_utils.zaza.model.UnitError(unit)
+        self.wait_for_application_states.side_effect = \
+            [test_utils.zaza.model.UnitError(unit), None]
+
+        self.target.enable_hugepages_vfio_on_hvs_in_vms(nr_hugepages)
+
+        self.remote_run.assert_called_once_with(
+            unit.name,
+            'uname -r',
+            model_name=self.target.model_name,
+            fatal=True)
+        self.enable_hugepages.assert_called_once_with(
+            unit,
+            nr_hugepages,
+            model_name=self.target.model_name)
+        self.enable_vfio_unsafe_noiommu_mode.assert_called_once_with(
+            unit,
+            model_name=self.target.model_name)
+        self.resolve_units.assert_has_calls([mock.call(), mock.call()])
+        # application state is awaited second time after recovering from error
+        self.wait_for_application_states.assert_has_calls(
+            [
+                mock.call(model_name=self.target.model_name, states={}),
+                mock.call(model_name=self.target.model_name, states={})
+            ]
+        )
+
 
 class TestOpenStackBaseTest(ut_utils.BaseTestCase):
 
