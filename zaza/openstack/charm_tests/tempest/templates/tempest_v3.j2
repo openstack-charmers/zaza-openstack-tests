@@ -111,3 +111,20 @@ enable_security_groups = true
 test_with_ipv6 = false
 test_server_path = {{ workspace_path }}/test_server.bin
 {% endif %}
+
+{%- if 'magnum' in enabled_services %}
+[magnum]
+nic_id = {{ ext_net }}
+image_id = {{ fedora_coreos_id }}
+master_flavor_id = {{ flavor_ref }}
+flavor_id = {{ flavor_ref }}
+dns_nameserver = {{ test_name_server }}
+network_driver = flannel
+{%- if test_registry_prefix %}
+labels = container_infra_prefix:{{ test_registry_prefix }}
+insecure_registry = {{ test_registry_prefix }}
+{%- endif %}
+{%- endif %}
+
+[dns]
+nameservers = {{ test_name_server }}
