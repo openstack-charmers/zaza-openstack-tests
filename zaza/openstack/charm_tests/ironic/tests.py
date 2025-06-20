@@ -22,7 +22,8 @@ import zaza.openstack.utilities.openstack as openstack_utils
 
 
 def _get_ironic_client(ironic_api_version="1.58"):
-    keystone_session = openstack_utils.get_overcloud_keystone_session()
+    keystone_session = openstack_utils.get_overcloud_keystone_session(
+        scope='system')
     ironic = ironic_client.Client(1, session=keystone_session,
                                   os_ironic_api_version=ironic_api_version)
     return ironic

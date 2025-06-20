@@ -592,19 +592,21 @@ def get_keystone_session(openrc_creds, scope='PROJECT', verify=None):
     return session.Session(auth=auth, verify=verify)
 
 
-def get_overcloud_keystone_session(verify=None, model_name=None):
+def get_overcloud_keystone_session(verify=None, model_name=None, scope=None):
     """Return Over cloud keystone session.
 
     :param verify: Control TLS certificate verification behaviour
     :type verify: any
     :param model_name: Name of model to query.
     :type model_name: str
+    :param scope: Keystone scope
+    :type scope: str
     :returns keystone_session: keystoneauth1.session.Session object
     :rtype: keystoneauth1.session.Session
     """
     return get_keystone_session(
         get_overcloud_auth(model_name=model_name),
-        scope=get_keystone_scope(model_name=model_name),
+        scope=scope or get_keystone_scope(model_name=model_name),
         verify=verify)
 
 
