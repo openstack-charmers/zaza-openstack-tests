@@ -186,18 +186,18 @@ class TestBaseCharmTest(ut_utils.BaseTestCase):
         self.config_current.assert_called_once_with(None, None)
 
     @mock.patch('zaza.openstack.utilities.generic.get_pkg_version')
-    def test_skipVersion(self, get_pkg_version):
-        releases = ['4.3.0', '4.0.0']
+    def test_package_version_matches(self, get_pkg_version):
+        versions = ['4.3.0', '4.0.0']
 
-        @test_utils.skipVersion('hacluster', 'crmsh',
-                                releases=releases,
-                                op='eq',
-                                reason='should not run')
         def _check_should_not_run():
+            package_version = test_utils.package_version_matches(
+                'hacluster', 'crmsh', versions=versions, op='eq')
+            if package_version and package_version != '4.4.1':
+                return
             raise Exception('should not run')
 
-        for release in releases:
-            get_pkg_version.return_value = release
+        for version in versions:
+            get_pkg_version.return_value = version
             _check_should_not_run()
             get_pkg_version.reset_mock()
 
