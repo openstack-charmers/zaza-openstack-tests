@@ -789,6 +789,19 @@ class LdapExplicitCharmConfigTests(LdapTests):
                               "user_tree_dn value is expected to be present "
                               "and set to dc=test,dc=com in the config file")
 
+class KeystoneProxyV2Test(BaseKeystoneTest):
+
+    """Test keystone proxy v2."""
+    def test_proxy_v2(self):
+        """Test keystone proxy v2."""
+
+        with self.config_change({
+            'haproxy-enable-proxyv2': True
+        }):
+            logging.info("Waiting for keystone to settle")
+            zaza.model.wait_for_application_states()
+            zaza.model.block_until_all_units_idle()
+            logging.info("Keystone units settled")
 
 class KeystoneTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
     """Test keystone k8s scale out and scale back."""
