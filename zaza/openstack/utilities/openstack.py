@@ -25,6 +25,7 @@ import itertools
 import json
 import juju_wait
 import logging
+import netaddr
 import os
 import paramiko
 import pathlib
@@ -1163,6 +1164,70 @@ def configure_charmed_openstack_on_maas(network_config, limit_gws=None):
                      .format(mim.machine_id, mim.ifname, mim.mac))
         machines.add(mim.machine_id)
         macs.append(mim.mac)
+
+    if macs:
+        configure_networking_charms(
+            networking_data, macs, use_juju_wait=False)
+
+
+def lxd_maybe_add_nic(instance, ifname, network):
+    """Add NIC to instance.
+
+    :param instance: Name of instance.
+    :type instance: str
+    :param ifname: Name of interface inside instance, note that name is only
+                   preserved in containers, interfaces in virtual machines are
+                   subject to udev rules inside the instance.
+    :type: ifname: str
+    :param network: Name of network.
+    :type network: str
+    """
+    try:
+        subprocess.check_call([
+            "lxc", "config", "device", "add", instance,
+            ifname, "nic", "name={}".format(ifname),
+            "network={}".format(network)])
+    except subprocess.CalledProcessError:
+        logging.info("Unable to add device {} to {}, already added?"
+                     .format(ifname, instance))
+
+
+def lxd_get_nic_hwaddr(instance, device_name):
+    """Add NIC to instance.
+
+    :param instance: Name of instance.
+    :type instance: str
+    :param device_name: Name of device config.
+    :type device_name: str
+    :rtype: netaddr.EUI
+    :raises: netaddr.core.AddrFormatError in the event nic does not exist.
+    """
+    # lxc config get succeeds even for non-existing keys.
+    output = subprocess.check_output([
+        "lxc", "config", "get", instance,
+        "volatile.{}.hwaddr".format(device_name)],
+        universal_newlines=True)
+
+    mac = netaddr.EUI(output)
+    mac.dialect = netaddr.mac_unix_expanded
+    return mac
+
+
+def configure_charmed_openstack_on_lxd(network_config, limit_gws=None):
+    """Configure networking charms for charm-based OVS config on LXD provider.
+
+    :param network_config: Network configuration as provided in environment.
+    :type network_config: Dict[str]
+    :param limit_gws: Limit the number of gateways that get a port attached
+    :type limit_gws: Optional[int]
+    """
+    networking_data = get_charm_networking_data(limit_gws=limit_gws)
+    ifname = "eth1"
+    macs = []
+    for instance in networking_data.unit_machine_ids:
+        lxd_maybe_add_nic(instance, ifname,
+                          network_config.get("lxd_network_name"))
+        macs.append(str(lxd_get_nic_hwaddr(instance, ifname)))
 
     if macs:
         configure_networking_charms(

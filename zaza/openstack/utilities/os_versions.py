@@ -43,6 +43,8 @@ UBUNTU_OPENSTACK_RELEASE = OrderedDict([
     ('lunar', 'antelope'),
     ('mantic', 'bobcat'),
     ('noble', 'caracal'),
+    ('noble', 'dalmatian'),
+    ('noble', 'epoxy'),
 ])
 
 
@@ -73,6 +75,8 @@ OPENSTACK_CODENAMES = OrderedDict([
     ('2023.1', 'antelope'),
     ('2023.2', 'bobcat'),
     ('2024.1', 'caracal'),
+    ('2024.2', 'dalmatian'),
+    ('2025.1', 'epoxy'),
 ])
 
 OPENSTACK_RELEASES_PAIRS = [
@@ -90,6 +94,7 @@ OPENSTACK_RELEASES_PAIRS = [
     'kinetic_zed', 'jammy_antelope', 'lunar_antelope',
     'jammy_bobcat', 'mantic_bobcat',
     'jammy_caracal', 'noble_caracal',
+    'noble_dalmatian', 'noble_epoxy',
 ]
 
 SWIFT_CODENAMES = OrderedDict([
@@ -325,6 +330,8 @@ UBUNTU_RELEASES = (
     'lunar',
     'mantic',
     'noble',
+    'oracular',
+    'plucky',
 )
 
 

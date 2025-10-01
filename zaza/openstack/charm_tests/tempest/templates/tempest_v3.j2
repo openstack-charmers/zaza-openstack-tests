@@ -25,7 +25,7 @@ image_ref = {{ image_id }}
 image_ref_alt = {{ image_alt_id }}
 flavor_ref = {{ flavor_ref }}
 flavor_ref_alt = {{ flavor_ref_alt }}
-min_compute_nodes = 3
+min_compute_nodes = {{ min_compute_nodes }}
 
 # TODO: review this as its release specific
 # min_microversion = 2.2
@@ -47,7 +47,11 @@ auth_version = v3
 admin_role = Admin
 region = RegionOne
 default_domain_id = {{ default_domain_id }}
+{% if admin_domain_scope is defined -%}
+admin_domain_scope = {{ admin_domain_scope }}
+{% else -%}
 admin_domain_scope = true
+{% endif -%}
 disable_ssl_certificate_validation = true
 
 [identity-feature-enabled]
@@ -55,7 +59,7 @@ api_v2 = false
 api_v3 = true
 {% endif %}
 
-{% if 'glance' in enabled_services %}
+{% if 'glance' in enabled_services and test_swift_ip %}
 [image]
 http_image = http://{{ test_swift_ip }}:80/swift/v1/images/cirros-0.3.4-x86_64-uec.tar.gz
 {% endif %}
@@ -164,3 +168,10 @@ nameservers = {{ test_name_server }}
 [service-clients]
 # Default is 60s which is not enough for resource constrained environments.
 http_timeout = 120
+
+{% if enforce_scopes is defined and enforce_scopes -%}
+[enforce_scope]
+{% for svc in enforce_scopes -%}
+{{ svc }} = True
+{% endfor -%}
+{% endif -%}

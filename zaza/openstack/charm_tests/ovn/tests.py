@@ -18,14 +18,124 @@ import logging
 
 import juju
 
+import requests
 import tenacity
 import yaml
 import zaza
 
 import zaza.model
+import zaza.openstack.charm_tests.ceph.mon.integration as cos_integration
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.generic as generic_utils
 import zaza.utilities.juju
+
+from zaza.openstack.charm_tests.cos.setup import GRAFANA_OFFER_ALIAS
+
+
+class BaseCosIntegrationTest(test_utils.BaseCharmTest):
+    """Tests to verify that OVN charms are successfully related to COS.
+
+    The integration with COS is facilitated via grafana-agent charm.
+    """
+
+    GRAFANA_AGENT = 'grafana-agent'
+    GRAFANA_CREDENTIALS = {}
+
+    # Class variables below need to be overriden in child classes
+    APPLICATION_NAME = ""
+    DASHBOARD = ""
+    PROM_QUERY = ""
+
+    @classmethod
+    def setUpClass(cls, model_alias=None):
+        """Run class setup for running OVN COS integration tests."""
+        super(BaseCosIntegrationTest, cls).setUpClass(
+            cls.APPLICATION_NAME, model_alias)
+
+        app_data = zaza.model.get_application(cls.GRAFANA_AGENT)
+        units = list(app_data.units)
+        for unit in units:
+            if unit.workload_status == 'blocked':
+                raise Exception(f"Application {cls.GRAFANA_AGENT} is in"
+                                " blocked state and is probably not related"
+                                " to the COS.")
+
+        cos_model = None
+        for remote_app in app_data.model.remote_applications.values():
+            if remote_app.name == GRAFANA_OFFER_ALIAS:
+                offer_url = juju.offerendpoints.parse_offer_url(
+                    remote_app.offer_url
+                )
+                cos_model = offer_url.model
+                break
+        else:
+            raise Exception("COS model offering Grafana relation not found")
+
+        cls.GRAFANA_CREDENTIALS = zaza.model.run_action_on_leader(
+            "grafana", "get-admin-password", model_name=cos_model,
+            raise_on_failure=True
+        ).results
+
+    # Wait for maximum of about 2 minutes for metrics to show up in prometheus
+    @tenacity.retry(wait=tenacity.wait_exponential(min=1, max=60),
+                    reraise=True, stop=tenacity.stop_after_attempt(8))
+    def _prometheus_scrape_check(self, prom_url, query):
+        response = requests.get(
+            f"{prom_url}/query", params={"query": query}, verify=False
+        )
+        data = response.json()
+        logging.debug(data)
+        if data["status"] != "success":
+            raise Exception("Query failed: "
+                            f"{data.get('error', 'Unknown error')}")
+        if not data['data']['result']:
+            raise Exception(f"Metric '{query}' not found in Prometheus")
+
+    def test_prometheus_scraping(self):
+        """Test that prometheus successfully scrapes OVN metrics."""
+        prom_url = cos_integration.get_prom_api_url("grafana-agent")
+        try:
+            self._prometheus_scrape_check(prom_url, self.PROM_QUERY)
+        except Exception as exc:
+            self.fail(exc)
+
+    def test_grafana_dashboards(self):
+        """Test that grafana dashboard got successfully imported."""
+        dashboards = cos_integration.get_dashboards(
+            self.GRAFANA_CREDENTIALS['url'],
+            'admin',
+            self.GRAFANA_CREDENTIALS['admin-password'],
+        )
+
+        for dashboard in dashboards:
+            if dashboard['title'] == self.DASHBOARD:
+                break
+        else:
+            self.fail(f"Grafana dashboard '{self.DASHBOARD}' not found.")
+
+
+class ChassisCosIntegrationTest(BaseCosIntegrationTest):
+    """Variant of COS integration tests for OVN Chassis."""
+
+    APPLICATION_NAME = 'ovn-chassis'
+    DASHBOARD = 'Juju: OVN Chassis'
+    PROM_QUERY = 'ovs_up'
+
+
+class DedicatedChassisCosIntegrationTest(ChassisCosIntegrationTest):
+    """Variant of COS integration tests for OVN Dedicated Chassis."""
+
+    APPLICATION_NAME = 'ovn-dedicated-chassis'
+
+
+class CentralCosIntegrationTest(BaseCosIntegrationTest):
+    """Variant of COS integration tests for OVN Central."""
+
+    APPLICATION_NAME = 'ovn-central'
+    DASHBOARD = 'Juju: OVN Central (OVSDB)'
+    # make sure to test metric that requires successful connection
+    # of the exporter to the OVN sockets
+    PROM_QUERY = 'ovn_coverage_total'
 
 
 class BaseCharmOperationTest(test_utils.BaseCharmTest):
@@ -33,6 +143,9 @@ class BaseCharmOperationTest(test_utils.BaseCharmTest):
 
     # override if not possible to determine release pair from charm under test
     release_application = None
+    # override in child classes to reflect real OVN/OVS prometheus exporter
+    # ports.
+    exporter_port = None
 
     @classmethod
     def setUpClass(cls):
@@ -78,9 +191,19 @@ class BaseCharmOperationTest(test_utils.BaseCharmTest):
             logging.info(ret)
         self.assertIsNone(ret, msg=ret)
 
+    def test_prometheus_exporter_reachable(self):
+        """Ensure that the OVS/OVN exporter responds to requests."""
+        for unit in zaza.model.get_units(self.application_name):
+            ip = zaza.model.get_unit_public_address(unit)
+            response = requests.get(
+                f"http://{ip}:{self.exporter_port}/metrics")
+            response.raise_for_status()
+
 
 class CentralCharmOperationTest(BaseCharmOperationTest):
     """OVN Central Charm operation tests."""
+
+    exporter_port = 9476
 
     @classmethod
     def setUpClass(cls):
@@ -112,6 +235,7 @@ class ChassisCharmOperationTest(BaseCharmOperationTest):
     """OVN Chassis Charm operation tests."""
 
     release_application = 'ovn-central'
+    exporter_port = 9475
 
     @classmethod
     def setUpClass(cls):
@@ -121,11 +245,11 @@ class ChassisCharmOperationTest(BaseCharmOperationTest):
             'ovn-controller',
         ]
         if cls.application_name == 'ovn-chassis':
-            principal_app_name = 'magpie'
+            principal_app_name = 'ubuntu'
         else:
             principal_app_name = cls.application_name
         source = zaza.model.get_application_config(
-            principal_app_name)['source']['value']
+            principal_app_name).get('source', {}).get('value', "")
         logging.info(source)
         if 'train' in source:
             cls.nrpe_checks = [
@@ -327,8 +451,14 @@ class DPDKTest(test_utils.BaseCharmTest):
         logging.info('Post-flight check')
         self._dpdk_pre_post_flight_check()
 
-        self.disable_hugepages_vfio_on_hvs_in_vms()
-        self._ovs_br_ex_port_is_system_interface()
+        # Note(mkalcok): There's currently a bug in Juju that prevents
+        # rebooting machine 2nd time after adding second NIC
+        # (https://github.com/juju/juju/issues/19463). To unblock CI,
+        # we temorarily skip steps to disable hugepages, because they include
+        # reboot.
+        #
+        # self.disable_hugepages_vfio_on_hvs_in_vms()
+        # self._ovs_br_ex_port_is_system_interface()
 
 
 class OVSOVNMigrationTest(test_utils.BaseCharmTest):
@@ -738,8 +868,7 @@ class OVNCentralDownscaleTests(test_utils.BaseCharmTest):
 
         return sb_status, nb_status
 
-    @staticmethod
-    def _add_unit(number_of_units=1):
+    def _add_unit(self, number_of_units=1):
         """Add specified number of units to ovn-central application.
 
         This function also waits until the application reaches active state.
@@ -749,10 +878,11 @@ class OVNCentralDownscaleTests(test_utils.BaseCharmTest):
             count=number_of_units,
             wait_appear=True
         )
-        zaza.model.wait_for_application_states()
+        zaza.model.wait_for_application_states(
+            states=self.test_config.get('target_deploy_status', {}),
+        )
 
-    @staticmethod
-    def _remove_unit(unit_name):
+    def _remove_unit(self, unit_name):
         """Remove specified unit from ovn-central application.
 
         This function also waits until the application reaches active state
@@ -760,7 +890,9 @@ class OVNCentralDownscaleTests(test_utils.BaseCharmTest):
         """
         zaza.model.destroy_unit("ovn-central", unit_name)
         zaza.model.block_until_all_units_idle()
-        zaza.model.wait_for_application_states()
+        zaza.model.wait_for_application_states(
+            states=self.test_config.get('target_deploy_status', {}),
+        )
 
     def _assert_servers_cleanly_removed(self, sb_id, nb_id):
         """Assert that specified members were removed from cluster.
