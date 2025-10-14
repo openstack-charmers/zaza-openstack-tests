@@ -354,6 +354,37 @@ class ChassisCharmOperationTest(BaseCharmOperationTest):
             self.test_config[
                 'target_deploy_status'] = stored_target_deploy_status
 
+    def test_enable_hardware_offload(self):
+        """Confirm that chassis can configure OVS hardware offload."""
+        with self.config_change(
+                {'enable-hardware-offload': 'false'},
+                {'enable-hardware-offload': 'true'}):
+            for unit in zaza.model.get_units(self.application_name):
+                for expected_key, expected_value in (
+                        ('hw-offload', '"true"'),
+                        ('max-idle', '"30000"')):
+                    self.assertEqual(
+                        zaza.model.run_on_unit(
+                            unit.entity_id,
+                            'ovs-vsctl get open-vswitch . other_config:{}'
+                            .format(expected_key)
+                        )['Stdout'].rstrip(),
+                        expected_value)
+                    logging.info(
+                        '{}: "{}" set to "{}"'
+                        .format(unit.entity_id, expected_key, expected_value))
+        for unit in zaza.model.get_units(self.application_name):
+            for expected_key in ('hw-offload', 'max-idle'):
+                self.assertEqual(
+                    zaza.model.run_on_unit(
+                        unit.entity_id,
+                        'ovs-vsctl get open-vswitch . '
+                        'other_config:{}'.format(expected_key))['Code'],
+                    '1')
+                logging.info(
+                    '{}: "{}" no longer present'
+                    .format(unit.entity_id, expected_key))
+
 
 class DPDKTest(test_utils.BaseCharmTest):
     """DPDK-related tests."""
