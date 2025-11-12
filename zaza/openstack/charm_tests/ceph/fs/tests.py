@@ -203,3 +203,13 @@ class CharmOperationTest(test_utils.BaseCharmTest):
         with self.pause_resume(services):
             logging.info('Testing pause resume (services="{}")'
                          .format(services))
+
+    def test_scaling(self):
+        """Scale up and back the CephFS units."""
+        mds = list(x.entity_id for x in model.get_units('ceph-fs'))
+        mds_count = len(mds)
+        logging.info('CephFS count is {}'.format(mds_count))
+        model.add_unit('ceph-fs')
+        model.block_until_unit_count('ceph-fs', mds_count + 1)
+        model.block_until_all_units_idle(model_name=self.model_name)
+        model.destroy_unit('ceph-fs', mds[0])
