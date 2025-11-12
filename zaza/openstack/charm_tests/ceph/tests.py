@@ -658,6 +658,12 @@ class CephRGWTest(test_utils.BaseCharmTest):
     primary_rgw_unit = 'ceph-radosgw/0'
     secondary_rgw_app = 'secondary-ceph-radosgw'
     secondary_rgw_unit = 'secondary-ceph-radosgw/0'
+    cloud_sync_rgw_app = 'cloud-sync-ceph-radosgw'
+    # These S3 Juju apps are used for the cloud sync tests. They are deployed
+    # using the following Juju charm: https://charmhub.io/minio-test
+    # Their purpose is to provide S3 destinations for the cloud sync tests.
+    cloud_sync_default_s3_app = 's3-default'
+    cloud_sync_dev_s3_app = 's3-dev'
 
     @classmethod
     def setUpClass(cls):
@@ -682,6 +688,15 @@ class CephRGWTest(test_utils.BaseCharmTest):
         """Determine whether deployment is multi-site."""
         try:
             zaza_model.get_application(self.secondary_rgw_app)
+            return True
+        except KeyError:
+            return False
+
+    @property
+    def cloud_sync(self):
+        """Determine whether Ceph cloud sync application is present."""
+        try:
+            zaza_model.get_application(self.cloud_sync_rgw_app)
             return True
         except KeyError:
             return False
@@ -857,6 +872,35 @@ class CephRGWTest(test_utils.BaseCharmTest):
         except KeyError:
             return "http://{}:80".format(unit_address)
 
+    def get_minio_boto3_client(self, app_name: str):
+        """Get boto3 client for MinIO application.
+
+        :param app_name: MinIO Juju app name.
+        :type app_name: str
+        """
+        leader_unit = zaza_model.get_lead_unit(app_name)
+        unit_address = zaza_model.get_unit_public_address(
+            leader_unit,
+            self.model_name
+        )
+
+        logging.debug("Minio Leader Unit: {}, Endpoint: {}".format(
+            leader_unit.entity_id, unit_address))
+        if unit_address is None:
+            return None
+
+        app_config = zaza_model.get_application_config(app_name)
+        port = app_config['port'].get('value')
+        access_key = app_config['root-user'].get('value')
+        access_secret = app_config['root-password'].get('value')
+
+        return boto3.resource(
+            "s3",
+            verify=False,
+            endpoint_url="http://{}:{}".format(unit_address, port),
+            aws_access_key_id=access_key,
+            aws_secret_access_key=access_secret)
+
     def configure_rgw_apps_for_multisite(self):
         """Configure Multisite values on primary and secondary apps."""
         realm = 'zaza_realm'
@@ -878,6 +922,15 @@ class CephRGWTest(test_utils.BaseCharmTest):
                 'zone': 'zaza_secondary'
             }
         )
+        if self.cloud_sync:
+            zaza_model.set_application_config(
+                self.cloud_sync_rgw_app,
+                {
+                    'realm': realm,
+                    'zonegroup': zonegroup,
+                    'zone': 'zaza_cloud_sync'
+                }
+            )
 
     def configure_rgw_multisite_relation(self):
         """Configure multi-site relation between primary and secondary apps."""
@@ -1076,6 +1129,13 @@ class CephRGWTest(test_utils.BaseCharmTest):
                     "Non-Pristine RGW site can't be used as secondary"
             }
         }
+        if self.cloud_sync:
+            assert_state[self.cloud_sync_rgw_app] = {
+                "workload-status": "blocked",
+                "workload-status-message-prefix":
+                    "multi-site configuration but primary/secondary "
+                    "relation missing",
+            }
         zaza_model.wait_for_application_states(states=assert_state,
                                                timeout=900)
 
@@ -1295,6 +1355,99 @@ class CephRGWTest(test_utils.BaseCharmTest):
             }
         )
         zaza_model.wait_for_unit_idle(self.primary_rgw_unit)
+
+    def test_005_object_storage_cloud_sync(self):
+        """Verify Ceph RGW Cloud Sync functionality."""
+        # Skip cloud sync tests if not compatible with bundle.
+        if not self.cloud_sync:
+            raise unittest.SkipTest('Skipping Cloud Sync Test')
+
+        obj_name = 'testfile'
+        # Syncs to default S3 target.
+        default_container_name = 'zaza-cloud-sync-container'
+        default_obj_data = 'Test data from Zaza'
+        # Syncs to dev S3 target.
+        dev_container_name = 'dev-zaza-cloud-sync-container'
+        dev_obj_data = 'Test dev data from Zaza'
+
+        # Configure cloud-sync multi-site relation.
+        logging.info('Configuring Cloud Sync Multisite')
+        self.configure_rgw_apps_for_multisite()
+        zaza_model.add_relation(
+            self.primary_rgw_app,
+            self.primary_rgw_app + ":primary",
+            self.cloud_sync_rgw_app + ":cloud-sync"
+        )
+        assert_state = {
+            self.secondary_rgw_app: {
+                "workload-status": "blocked",
+                "workload-status-message-prefix":
+                    "multi-site configuration but primary/secondary "
+                    "relation missing",
+            }
+        }
+        zaza_model.wait_for_application_states(states=assert_state,
+                                               timeout=900)
+
+        logging.info('Verifying Ceph RGW Cloud Sync functionality')
+
+        # Fetch Primary Endpoint Details.
+        primary_endpoint = self.get_rgw_endpoint(self.primary_rgw_unit)
+        self.assertNotEqual(primary_endpoint, None)
+
+        # Create RGW client and perform IO to be synced to both S3 targets.
+        access_key, secret_key = self.get_client_keys()
+        primary_client = boto3.resource("s3",
+                                        verify=False,
+                                        endpoint_url=primary_endpoint,
+                                        aws_access_key_id=access_key,
+                                        aws_secret_access_key=secret_key)
+        default_container = primary_client.Bucket(default_container_name)
+        default_container.create()
+        default_obj = primary_client.Object(default_container_name, obj_name)
+        default_obj.put(Body=default_obj_data)
+        dev_container = primary_client.Bucket(dev_container_name)
+        dev_container.create()
+        dev_obj = primary_client.Object(dev_container_name, obj_name)
+        dev_obj.put(Body=dev_obj_data)
+
+        # Wait for sync to complete.
+        logging.info('Waiting for Cloud Sync Data and Metadata to Synchronize')
+        self.wait_for_status(self.cloud_sync_rgw_app, is_primary=False)
+
+        # Create clients for the cloud-sync S3 targets.
+        default_s3_client = self.get_minio_boto3_client(
+            self.cloud_sync_default_s3_app
+        )
+        self.assertNotEqual(default_s3_client, None)
+        dev_s3_client = self.get_minio_boto3_client(self.cloud_sync_dev_s3_app)
+        self.assertNotEqual(dev_s3_client, None)
+
+        # Verify that data was properly synced.
+        logging.info('Verifying Synced Data on S3 Targets')
+        test_data = self.fetch_rgw_object(default_s3_client,
+                                          default_container_name,
+                                          obj_name)
+        self.assertEqual(test_data, default_obj_data)
+        test_data = self.fetch_rgw_object(dev_s3_client,
+                                          dev_container_name,
+                                          obj_name)
+        self.assertEqual(test_data, dev_obj_data)
+
+        # Perform cleanup.
+        logging.info('Performing Cleanup')
+        self.purge_bucket(self.primary_rgw_app, default_container_name)
+        self.purge_bucket(self.primary_rgw_app, dev_container_name)
+
+        # Wait for sync to complete.
+        self.wait_for_status(self.cloud_sync_rgw_app, is_primary=False)
+
+        # Validate that synced data was removed from the S3 targets.
+        logging.info('Verifying that data was deleted on the S3 targets')
+        with self.assertRaises(botocore.exceptions.ClientError):
+            default_s3_client.Object(default_container_name, obj_name).get()
+        with self.assertRaises(botocore.exceptions.ClientError):
+            dev_s3_client.Object(dev_container_name, obj_name).get()
 
     def test_100_migration_and_multisite_failover(self):
         """Perform multisite migration and verify failover."""
