@@ -465,6 +465,14 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
 
     def create_loadbalancer(self, ensure_volume_backed=False):
         """Create load balancer."""
+        import zaza.model
+        _run = zaza.model.run_on_unit(
+            'octavia/0',
+            'apt-cache policy python3-ovn-octavia-provider')
+        output = _run['Stdout']
+        logging.info('apt-cache policy ovn-octavia-provider :')
+        logging.info(_run)
+
         # Prepare payload instances
         # First we allow communication to port 80 by adding a security group
         # rule
@@ -498,6 +506,7 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
             vip_subnet_id = resp['networks'][0]['subnets'][0]
         else:
             vip_subnet_id = subnet_id
+        logging.info('Providers {}'.format(self.get_lb_providers(self.octavia_client).keys()))
         for provider in self.get_lb_providers(self.octavia_client).keys():
             logging.info('Creating loadbalancer with provider {}'
                          .format(provider))
