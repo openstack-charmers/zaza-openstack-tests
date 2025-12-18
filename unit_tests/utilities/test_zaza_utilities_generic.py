@@ -415,20 +415,31 @@ class TestGenericUtils(ut_utils.BaseTestCase):
             generic_utils.get_ubuntu_release(bad_name)
 
     def test_is_port_open(self):
+        mock_sock_instance = mock.MagicMock()
         self.patch(
-            'zaza.openstack.utilities.generic.telnetlib.Telnet',
-            new_callable=mock.MagicMock(),
-            name='telnet'
+            'zaza.openstack.utilities.generic.socket.socket',
+            return_value=mock_sock_instance,
+            name='mock_socket'
         )
 
         _port = "80"
         _addr = "10.5.254.20"
 
+        # Test successful connection
         self.assertTrue(generic_utils.is_port_open(_port, _addr))
-        self.telnet.assert_called_with(_addr, _port)
+        self.mock_socket.assert_called_with(
+            generic_utils.socket.AF_INET,
+            generic_utils.socket.SOCK_STREAM
+        )
+        mock_sock_instance.settimeout.assert_called_with(5)
+        mock_sock_instance.connect.assert_called_with((_addr, 80))
+        mock_sock_instance.close.assert_called_once()
 
-        self.telnet.side_effect = generic_utils.socket.error
+        # Test failed connection - socket should still be closed
+        mock_sock_instance.reset_mock()
+        mock_sock_instance.connect.side_effect = generic_utils.socket.error
         self.assertFalse(generic_utils.is_port_open(_port, _addr))
+        mock_sock_instance.close.assert_called_once()
 
     def test_get_unit_hostnames(self):
         self.patch(

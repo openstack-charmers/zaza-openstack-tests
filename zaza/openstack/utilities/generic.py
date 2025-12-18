@@ -19,7 +19,6 @@ import logging
 import os
 import socket
 import subprocess
-import telnetlib
 import tempfile
 import yaml
 
@@ -583,20 +582,24 @@ def get_file_contents(unit, f):
                              "cat {}".format(f))['Stdout']
 
 
-def is_port_open(port, address):
+def is_port_open(port, address, timeout=5):
     """Determine if TCP port is accessible.
 
-    Connect to the MySQL port on the VIP.
+    Connect to a TCP port to check if it is accessible.
 
     :param port: Port number
-    :type port: str
-    :param address: IP address
-    :type port: str
+    :type port: str or int
+    :param address: IP address or hostname
+    :type address: str
+    :param timeout: Connection timeout in seconds
+    :type timeout: int
     :returns: True if port is reachable
     :rtype: boolean
     """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(timeout)
     try:
-        telnetlib.Telnet(address, port)
+        sock.connect((address, int(port)))
         return True
     except socket.error as e:
         if e.errno == 113:
@@ -606,6 +609,8 @@ def is_port_open(port, address):
             logging.error("connection refused connecting"
                           " to {}:{}".format(address, port))
         return False
+    finally:
+        sock.close()
 
 
 def port_knock_units(units, port=22, expect_success=True):
