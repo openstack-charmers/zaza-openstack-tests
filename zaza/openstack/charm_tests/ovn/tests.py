@@ -15,6 +15,7 @@
 """Encapsulate OVN testing."""
 
 import logging
+import unittest
 
 import juju
 
@@ -1101,3 +1102,44 @@ class OVNCentralDownscaleTests(test_utils.BaseCharmTest):
         leader_sb, leader_nb = self._get_server_ids(leader_unit)
         self._remove_unit(leader_unit)
         self._assert_servers_cleanly_removed(leader_sb, leader_nb)
+
+
+class OVNCentralSSLExpireTests(test_utils.BaseCharmTest):
+    """Tests for SSL Expiration and renewal actions."""
+
+    def test_check_ssl_expire(self):
+        """Test unit is able to renew a certificate, even if it is expired.
+
+        When the cert expires, then the unit should go into blocked state, and
+        a reissue should then be able to update the certificate.
+        """
+        vault_actions = zaza.model.get_actions("vault")
+
+        if 'reissue-certificates' not in vault_actions:
+            raise unittest.SkipTest('Action not defined')
+
+        with self.config_change(
+                {},
+                {'default-ttl': '1m'},
+                application_name='vault',
+                reset_to_charm_default=True):
+            zaza.model.run_action_on_leader(
+                'vault',
+                'reissue-certificates',
+                action_params={})
+
+            for unit in zaza.model.get_units(self.application_name):
+                zaza.model.block_until_unit_wl_message_match(
+                    unit.entity_id,
+                    '.*certificate verify failed: certificate has '
+                    'expired.*')
+
+            zaza.model.run_action_on_leader(
+                'vault',
+                'reissue-certificates',
+                action_params={})
+
+            for unit in zaza.model.get_units(self.application_name):
+                zaza.model.block_until_unit_wl_message_match(
+                    unit.entity_id,
+                    'Unit is ready.*')
