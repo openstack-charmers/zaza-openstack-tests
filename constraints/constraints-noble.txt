@@ -7,3 +7,7 @@
 # * zaza-openstack-tests
 #
 juju>=3.5.0,<3.6.0
+
+# setuptools>=82 removes deprecated pkg_resources.declare_namespace(),
+# breaking several OpenStack client libraries.
+setuptools<82
