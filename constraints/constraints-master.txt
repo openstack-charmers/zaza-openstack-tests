@@ -7,3 +7,7 @@
 # * zaza-openstack-tests
 #
 juju>=3.1.0,<3.2.0
+
+# There are multiple direct dependencies pulled in from `setup.py` that do not
+# work with a setuptools that does not offer `pkg_resources`.
+setuptools<82
