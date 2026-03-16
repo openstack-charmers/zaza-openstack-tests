@@ -68,3 +68,7 @@ git+https://github.com/openstack-charmers/zaza#egg=zaza
 # * https://github.com/openstack-charmers/zaza/issues/421
 # * https://mail.python.org/pipermail/cryptography-dev/2021-January/001003.html
 cryptography<3.4
+
+# setuptools>=82 removes pkg_resources.declare_namespace() which is still
+# used by several OpenStack client libraries (keystoneclient, etc).
+setuptools<82
