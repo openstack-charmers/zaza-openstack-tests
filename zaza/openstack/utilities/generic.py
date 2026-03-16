@@ -190,6 +190,7 @@ def get_undercloud_env_vars():
     _vars['external_dns'] = os.environ.get('TEST_NAME_SERVER')
     _vars['default_gateway'] = os.environ.get('TEST_GATEWAY')
     _vars['external_net_cidr'] = os.environ.get('TEST_CIDR_EXT')
+    _vars['lxd_network_name'] = os.environ.get('TEST_LXD_NETWORK_NAME')
 
     # Take FIP_RANGE and create start and end floating ips
     _fip_range = os.environ.get('TEST_FIP_RANGE')
@@ -205,7 +206,8 @@ def get_undercloud_env_vars():
              'start_floating_ip',
              'end_floating_ip',
              'external_dns',
-             'external_net_cidr']
+             'external_net_cidr',
+             'lxd_network_name']
     for _key in _keys:
         _val = os.environ.get(_key)
         if _val:

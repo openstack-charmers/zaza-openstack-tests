@@ -66,6 +66,7 @@ DEFAULT_UNDERCLOUD_NETWORK_CONFIG = {
     "external_dns": "10.5.0.2",
     "external_net_cidr": "10.5.0.0/16",
     "default_gateway": "10.5.0.1",
+    "lxd_network_name": "second",
 }
 
 
@@ -104,6 +105,12 @@ def undercloud_and_charm_setup(limit_gws=None):
         #
         # Perform charm based OVS configuration
         openstack_utils.configure_charmed_openstack_on_maas(
+            network_config, limit_gws=limit_gws)
+    elif provider_type == "lxd" or provider_type is None:
+        # NOTE(fnordahl): When juju is bootstrapped towards the special
+        # `localhost` LXD cloud, get_provider_type() has no `clouds.yaml` to
+        # inspect and returns None.
+        openstack_utils.configure_charmed_openstack_on_lxd(
             network_config, limit_gws=limit_gws)
     else:
         logging.warning('Unknown Juju provider type, "{}", will not perform'
