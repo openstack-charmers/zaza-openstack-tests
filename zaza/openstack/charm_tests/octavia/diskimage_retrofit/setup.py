@@ -18,6 +18,7 @@ import logging
 import tenacity
 
 import zaza.model
+import zaza.openstack.utilities.openstack as openstack_utils
 
 
 def retrofit_amphora_image(unit='octavia-diskimage-retrofit/0',
@@ -35,6 +36,15 @@ def retrofit_amphora_image(unit='octavia-diskimage-retrofit/0',
     """
     logging.info('Running `retrofit-image` action on {}'.format(unit))
     params = {}
+
+    keystone_session = openstack_utils.get_overcloud_keystone_session()
+    glance_client = openstack_utils.get_glance_session_client(keystone_session)
+    imgs = [img for img in glance_client.images.list() if
+            img.name.startswith("amphora-haproxy-")]
+    if imgs:
+        logging.info('Using existing amphora vm image "{}"'.format(imgs[0]))
+        return
+
     if force:
         params.update({'force': force})
     if image_id:
