@@ -27,6 +27,13 @@ import zaza.openstack.utilities.generic
 import zaza.openstack.utilities.exceptions as zaza_exceptions
 import zaza.utilities.juju as juju_utils
 
+GET_CSR_FAIL_MSG = """
+This action will invalidate this intermediate CA chain until the signed csr is
+uploaded. During this time no new certificate requests will be processed. If
+you are sure you want to go ahead with this then please run the action with
+force=True
+""".strip().replace('\n', ' ')
+
 
 def get_cacert_file():
     """Retrieve CA cert used for vault endpoints and write to file.
@@ -162,19 +169,25 @@ def auto_initialize(cacert=None, validation_application='keystone', wait=True,
     basic_setup(cacert=cacert, unseal_and_authorize=True)
 
     action = vault_utils.run_get_csr()
-    intermediate_csr = action.data['results']['output']
-    (cakey, cacertificate) = zaza.openstack.utilities.cert.generate_cert(
-        'DivineAuthority',
-        generate_ca=True)
-    intermediate_cert = zaza.openstack.utilities.cert.sign_csr(
-        intermediate_csr,
-        cakey.decode(),
-        cacertificate.decode(),
-        generate_ca=True)
-    action = vault_utils.run_upload_signed_csr(
-        pem=intermediate_cert,
-        root_ca=cacertificate,
-        allowed_domains='openstack.local')
+    if (action.data['status'] == 'failed' and
+            action.data['message'] == GET_CSR_FAIL_MSG):
+        logging.info("vault get_csr() failed with force=False so assuming it "
+                     "has already been run successfully - skipping")
+        cacertificate = None
+    else:
+        intermediate_csr = action.data['results']['output']
+        (cakey, cacertificate) = zaza.openstack.utilities.cert.generate_cert(
+            'DivineAuthority',
+            generate_ca=True)
+        intermediate_cert = zaza.openstack.utilities.cert.sign_csr(
+            intermediate_csr,
+            cakey.decode(),
+            cacertificate.decode(),
+            generate_ca=True)
+        action = vault_utils.run_upload_signed_csr(
+            pem=intermediate_cert,
+            root_ca=cacertificate,
+            allowed_domains='openstack.local')
 
     if wait:
         zaza.model.wait_for_agent_status()
@@ -183,7 +196,7 @@ def auto_initialize(cacert=None, validation_application='keystone', wait=True,
             states=test_config.get('target_deploy_status', {}),
             timeout=7200)
 
-    if validation_application:
+    if validation_application and cacertificate:
         validate_ca(cacertificate, application=validation_application)
         # Once validation has completed restart nova-compute to work around
         # bug #1826382
