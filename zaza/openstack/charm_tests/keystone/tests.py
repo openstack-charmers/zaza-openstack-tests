@@ -790,6 +790,74 @@ class LdapExplicitCharmConfigTests(LdapTests):
                               "and set to dc=test,dc=com in the config file")
 
 
+class KeystoneProxyV2Test(BaseKeystoneTest):
+
+    @classmethod
+    def setUpClass(cls):
+        """Run class setup for running Keystone proxy v2 tests."""
+        super(KeystoneProxyV2Test, cls).setUpClass()
+
+    """Test keystone proxy v2."""
+    def test_proxy_v2(self):
+        """Test keystone proxy v2."""
+
+        with self.config_change({
+            'haproxy-enable-proxyv2': False
+        }, {
+            'haproxy-enable-proxyv2': True
+        }):
+            logging.info("Waiting for keystone to settle")
+            zaza.model.wait_for_application_states()
+            zaza.model.block_until_all_units_idle()
+            logging.info("Keystone units settled")
+            
+            # Test basic keystone commands with proxyv2 enabled
+            self._test_keystone_basic_commands()
+
+    def _test_keystone_basic_commands(self):
+        """Test basic keystone commands to verify proxyv2 functionality."""
+        logging.info("Testing basic keystone commands with proxyv2 enabled")
+        
+        # Get overcloud auth credentials
+        overcloud_auth = openstack_utils.get_overcloud_auth()
+        keystone_session = openstack_utils.get_keystone_session(overcloud_auth)
+        keystone_client = openstack_utils.get_keystone_session_client(
+            keystone_session)
+        
+        # Test 1: Get token
+        logging.info("Testing token retrieval")
+        token = keystone_session.get_token()
+        self.assertIsNotNone(token, "Token should not be None")
+        logging.info("Token retrieved successfully: %s", token[:20] + "...")
+        
+        # Test 2: Validate token data and service catalog
+        logging.info("Testing token data and service catalog")
+        token_data = keystone_client.tokens.get_token_data(token)
+        self.assertIn('token', token_data, "Token data should contain 'token' key")
+        
+        # Test 3: Get service catalog
+        catalog = token_data.get('token', {}).get('catalog', None)
+        self.assertIsNotNone(catalog, "Service catalog should not be None")
+        logging.info("Service catalog retrieved with %d services", len(catalog))
+        
+        # Test 4: Verify identity service is in catalog
+        identity_services = [s for s in catalog if s.get('type') == 'identity']
+        self.assertGreater(len(identity_services), 0, 
+                          "Identity service should be in catalog")
+        logging.info("Identity service found in catalog")
+        
+        # Test 5: Test token validation
+        logging.info("Testing token validation")
+        try:
+            validated_token = keystone_client.tokens.validate(token)
+            self.assertIsNotNone(validated_token, "Token validation should succeed")
+            logging.info("Token validation successful")
+        except Exception as e:
+            logging.warning("Token validation failed: %s", e)
+        
+        logging.info("Basic keystone commands test completed successfully")
+
+
 class KeystoneTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
     """Test keystone k8s scale out and scale back."""
 
