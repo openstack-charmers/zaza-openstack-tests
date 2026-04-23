@@ -173,21 +173,21 @@ def auto_initialize(cacert=None, validation_application='keystone', wait=True,
             action.data['message'] == GET_CSR_FAIL_MSG):
         logging.info("vault get_csr() failed with force=False so assuming it "
                      "has already been run successfully - skipping")
-        cacertificate = None
-    else:
-        intermediate_csr = action.data['results']['output']
-        (cakey, cacertificate) = zaza.openstack.utilities.cert.generate_cert(
-            'DivineAuthority',
-            generate_ca=True)
-        intermediate_cert = zaza.openstack.utilities.cert.sign_csr(
-            intermediate_csr,
-            cakey.decode(),
-            cacertificate.decode(),
-            generate_ca=True)
-        action = vault_utils.run_upload_signed_csr(
-            pem=intermediate_cert,
-            root_ca=cacertificate,
-            allowed_domains='openstack.local')
+        return
+
+    intermediate_csr = action.data['results']['output']
+    (cakey, cacertificate) = zaza.openstack.utilities.cert.generate_cert(
+        'DivineAuthority',
+        generate_ca=True)
+    intermediate_cert = zaza.openstack.utilities.cert.sign_csr(
+        intermediate_csr,
+        cakey.decode(),
+        cacertificate.decode(),
+        generate_ca=True)
+    action = vault_utils.run_upload_signed_csr(
+        pem=intermediate_cert,
+        root_ca=cacertificate,
+        allowed_domains='openstack.local')
 
     if wait:
         zaza.model.wait_for_agent_status()
@@ -196,7 +196,7 @@ def auto_initialize(cacert=None, validation_application='keystone', wait=True,
             states=test_config.get('target_deploy_status', {}),
             timeout=7200)
 
-    if validation_application and cacertificate:
+    if validation_application:
         validate_ca(cacertificate, application=validation_application)
         # Once validation has completed restart nova-compute to work around
         # bug #1826382
