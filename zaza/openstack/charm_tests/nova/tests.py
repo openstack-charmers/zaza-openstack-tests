@@ -24,6 +24,8 @@ import tempfile
 import tenacity
 import unittest
 import urllib
+import uuid
+import yaml
 from configparser import ConfigParser
 from time import sleep
 
@@ -539,6 +541,87 @@ class NovaCompute(NovaCommonTests):
                 'virsh net-dumpxml default',
                 model_name=self.model_name)
             self.assertFalse(int(run['Code']) == 0)
+
+    COMPUTE_ID_FILE = '/var/lib/nova/compute_id'
+    NOVA_ANTELOPE_VERSION = '3:27.0.0'
+
+    def _get_compute_id(self, unit_name):
+        """Return compute_id from file or None if missing."""
+        result = zaza.model.run_on_unit(
+            unit_name,
+            'cat {} 2>/dev/null || true'.format(self.COMPUTE_ID_FILE),
+            model_name=self.model_name)
+        compute_id = result.get('Stdout', '').strip()
+        return compute_id if compute_id else None
+
+    @tenacity.retry(
+        wait=tenacity.wait_fixed(5),
+        stop=tenacity.stop_after_attempt(10),
+        retry=tenacity.retry_if_result(lambda x: x is None))
+    def _wait_for_compute_id(self, unit_name):
+        """Poll until compute_id file appears on unit."""
+        return self._get_compute_id(unit_name)
+
+    @test_utils.skipUntilVersion('nova-compute', 'nova-common',
+                                 NOVA_ANTELOPE_VERSION)
+    def test_940_compute_id_file_exists(self):
+        """Verify compute_id file exists and contains a valid UUID."""
+        for unit in zaza.model.get_units('nova-compute',
+                                         model_name=self.model_name):
+            logging.info('Checking compute_id on {}'.format(unit.entity_id))
+            compute_id = self._get_compute_id(unit.entity_id)
+            self.assertIsNotNone(
+                compute_id,
+                '{} not found on {}'.format(
+                    self.COMPUTE_ID_FILE, unit.entity_id))
+            uuid.UUID(compute_id)
+
+    @test_utils.skipUntilVersion('nova-compute', 'nova-common',
+                                 NOVA_ANTELOPE_VERSION)
+    def test_941_compute_id_restored_after_refresh(self):
+        """Verify compute_id is restored from Nova DB after charm refresh.
+
+        Deletes the compute_id file on a nova-compute unit, then triggers
+        a charm refresh to invoke the upgrade-charm hook.  The charm stops
+        nova-compute before apt operations when compute_id is missing,
+        then calls _sync_compute_id_from_nova() which queries the Nova API
+        and recreates the file.  See LP bug #2051011.
+        """
+        target_unit = zaza.model.get_units(
+            'nova-compute', model_name=self.model_name)[0]
+        target_unit_name = target_unit.entity_id
+        logging.info('Target unit: %s', target_unit_name)
+
+        original_compute_id = self._get_compute_id(target_unit_name)
+        self.assertIsNotNone(
+            original_compute_id,
+            '{} not found on {}'.format(
+                self.COMPUTE_ID_FILE, target_unit_name))
+        logging.info('Original compute_id: %s', original_compute_id)
+
+        # Delete compute_id file.
+        logging.info('Deleting compute_id file on %s', target_unit_name)
+        zaza.model.run_on_unit(
+            target_unit_name,
+            'sudo rm -f {}'.format(self.COMPUTE_ID_FILE),
+            model_name=self.model_name)
+        self.assertIsNone(self._get_compute_id(target_unit_name))
+
+        # Refresh the charm to trigger upgrade-charm hook.
+        # The charm itself stops nova-compute when compute_id is missing,
+        # syncs from Nova DB, then starts the service again.
+        logging.info('Refreshing nova-compute charm')
+        charm_path = os.getcwd() + '/nova-compute.charm'
+        zaza.model.upgrade_charm(
+            'nova-compute', path=charm_path,
+            model_name=self.model_name)
+        zaza.model.block_until_all_units_idle(
+            model_name=self.model_name)
+
+        # Verify compute_id was restored.
+        restored_id = self._wait_for_compute_id(target_unit_name)
+        self.assertEqual(restored_id, original_compute_id)
+        logging.info('compute_id restored: %s', restored_id)
 
 
 class NovaComputeActionTest(test_utils.OpenStackBaseTest):
