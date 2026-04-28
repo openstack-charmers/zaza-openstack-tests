@@ -40,8 +40,7 @@ import unittest
 import zipfile
 
 from octaviaclient.api.v2 import octavia as octaviaclient
-import barbicanclient.client as barbican_client
-import barbicanclient.exceptions as barbican_exceptions
+import barbicanclient.exceptions
 import cinderclient.exceptions
 import heatclient.exc
 import glanceclient.common.exceptions
@@ -740,15 +739,10 @@ class BarbicanTests(BasePolicydSpecialization):
         :type ip: str
         :raises: PolicydOperationFailedException if operation fails.
         """
-        keystone_session = self.get_keystone_session_admin_user(ip)
-        keystone_client = openstack_utils.get_keystone_session_client(
-            keystone_session)
-        barbican_endpoint = keystone_client.service_catalog.url_for(
-            service_type='key-manager', interface='publicURL')
-        barbican = barbican_client.Client(
-            session=keystone_session, endpoint=barbican_endpoint)
+        barbican = openstack_utils.get_barbican_session_client(
+            self.get_keystone_session_admin_user(ip))
         try:
             barbican.secrets.list()
-        except (barbican_exceptions.HTTPClientError,
+        except (barbicanclient.exceptions.HTTPClientError,
                 keystoneauth1.exceptions.http.Forbidden):
             raise PolicydOperationFailedException()

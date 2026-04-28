@@ -53,6 +53,7 @@ from .os_versions import (
 from openstack import connection
 
 from aodhclient.v2 import client as aodh_client
+from barbicanclient import client as barbicanclient
 from cinderclient import client as cinderclient
 from heatclient import client as heatclient
 from magnumclient import client as magnumclient
@@ -448,6 +449,17 @@ def get_octavia_session_client(session, service_type='load-balancer',
     return octaviaclient.OctaviaAPI(session=session,
                                     service_type=service_type,
                                     endpoint=endpoint.url)
+
+
+def get_barbican_session_client(session):
+    """Return barbicanclient authenticated by keystone session.
+
+    :param session: Keystone session object
+    :type session: keystoneauth1.session.Session object
+    :returns: Authenticated barbicanclient
+    :rtype: barbicanclient.client.Client object
+    """
+    return barbicanclient.Client(session=session)
 
 
 def get_heat_session_client(session, version=1):
