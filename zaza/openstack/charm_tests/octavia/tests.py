@@ -27,6 +27,7 @@ import osc_lib.exceptions
 import zaza.model
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.openstack as openstack_utils
+from zaza.openstack.configure.guest import get_default_userdata
 
 from zaza.openstack.utilities import generic as generic_utils
 from zaza.openstack.utilities import ObjectRetrierWraps
@@ -455,7 +456,7 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         return subprocess.check_output(
             ['wget', '-O', '-',
              'http://{}/'.format(ip)],
-            universal_newlines=True)
+            universal_newlines=True, env={'no_proxy': ip})
 
     def create_loadbalancer(self, ensure_volume_backed=False):
         """Create load balancer."""
@@ -475,7 +476,7 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         # Then we request two Ubuntu instances with the Apache web server
         # installed
         instance_1, instance_2 = self.launch_guests(
-            userdata='#cloud-config\npackages:\n - apache2\n')
+            userdata=get_default_userdata() + 'packages:\n - apache2\n')
 
         # Get IP of the prepared payload instances
         payload_ips = []
