@@ -23,6 +23,7 @@ import time
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.utilities.exceptions as openstack_exceptions
+import zaza.utilities.deployment_env as deployment_env
 
 from tenacity import (
     RetryError,
@@ -30,6 +31,22 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential,
 )
+
+
+DEFAULT_USER_DATA = """#cloud-config
+apt:
+  http_proxy: {http_proxy}
+
+write_files:
+  - path: /etc/environment
+    content: |
+      http_proxy={http_proxy}
+      https_proxy={https_proxy}
+      no_proxy={no_proxy}
+    append: true
+
+"""
+
 
 boot_tests = {
     'cirros': {
@@ -89,6 +106,20 @@ def launch_instance_retryer(instance_key, **kwargs):
         **kwargs
     )
     return instance
+
+
+def get_default_userdata():
+    """
+    Get default guest vm userdata.
+
+    If http proxy settings are available create a userdata file to enable them
+    inside launched guest vms.
+    """
+    deploy_env = deployment_env.get_deployment_context()
+    return DEFAULT_USER_DATA.format(
+        http_proxy=deploy_env.get('TEST_HTTP_PROXY'),
+        https_proxy=deploy_env.get('TEST_HTTP_PROXY'),
+        no_proxy=deploy_env.get('TEST_NO_PROXY'))
 
 
 def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
@@ -188,7 +219,7 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
         key_name=nova_utils.KEYPAIR_NAME,
         meta=meta,
         nics=nics,
-        userdata=userdata,
+        userdata=userdata or get_default_userdata(),
         host=host,
     )
 
