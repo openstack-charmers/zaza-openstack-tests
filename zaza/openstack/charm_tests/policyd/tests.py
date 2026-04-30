@@ -40,6 +40,7 @@ import unittest
 import zipfile
 
 from octaviaclient.api.v2 import octavia as octaviaclient
+import barbicanclient.exceptions
 import cinderclient.exceptions
 import heatclient.exc
 import glanceclient.common.exceptions
@@ -713,5 +714,35 @@ class OctaviaTests(BasePolicydSpecialization):
             octavia_client.provider_list()
             self.run_resource_cleanup = True
         except (octaviaclient.OctaviaClientException,
+                keystoneauth1.exceptions.http.Forbidden):
+            raise PolicydOperationFailedException()
+
+
+class BarbicanTests(BasePolicydSpecialization):
+    """Test the policyd override using the barbican client."""
+
+    _rule = {'rule.yaml': "{'secrets:get': '!'}"}
+
+    @classmethod
+    def setUpClass(cls, application_name=None):
+        """Run class setup for running BarbicanTests charm operation tests."""
+        super(BarbicanTests, cls).setUpClass(application_name="barbican")
+        cls.application_name = "barbican"
+
+    def get_client_and_attempt_operation(self, ip):
+        """Attempt to list secrets as a policyd override.
+
+        This operation should pass normally, and fail when
+        the rule has been overriden (see the `rule` class variable).
+
+        :param ip: the IP address to get the session against.
+        :type ip: str
+        :raises: PolicydOperationFailedException if operation fails.
+        """
+        barbican = openstack_utils.get_barbican_session_client(
+            self.get_keystone_session_admin_user(ip))
+        try:
+            barbican.secrets.list()
+        except (barbicanclient.exceptions.HTTPClientError,
                 keystoneauth1.exceptions.http.Forbidden):
             raise PolicydOperationFailedException()
