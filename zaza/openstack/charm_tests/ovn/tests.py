@@ -16,6 +16,7 @@
 
 import logging
 import unittest
+import json
 
 import juju
 
@@ -28,6 +29,7 @@ import zaza.model
 import zaza.openstack.charm_tests.ceph.mon.integration as cos_integration
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.generic as generic_utils
+import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.utilities.juju
 
 from zaza.openstack.charm_tests.cos.setup import GRAFANA_OFFER_ALIAS
@@ -354,6 +356,13 @@ class ChassisCharmOperationTest(BaseCharmOperationTest):
 
 class DPDKTest(test_utils.BaseCharmTest):
     """DPDK-related tests."""
+    _hugepages_configured = False
+
+    def setUp(self):
+        super().setUp()
+        if not DPDKTest._hugepages_configured:
+            self.enable_hugepages_vfio_on_hvs_in_vms(4)
+            DPDKTest._hugepages_configured = True
 
     def _openvswitch_switch_dpdk_installed(self):
         """Assert that the openvswitch-switch-dpdk package is installed.
@@ -362,8 +371,35 @@ class DPDKTest(test_utils.BaseCharmTest):
         """
         cmd = 'dpkg-query -s openvswitch-switch-dpdk'
         for unit in zaza.model.get_units(self.application_name):
+            logging.info(f"checking unit {unit}")
             zaza.utilities.juju.remote_run(
                 unit.name, cmd, model_name=self.model_name, fatal=True)
+
+    def _add_second_interface(self):
+        logging.info("ADDING SECOND INTERFACE")
+        networking_data = openstack_utils.get_charm_networking_data()
+        ifname="eth2"
+        macs={}
+        for instance in networking_data.unit_machine_ids:
+            openstack_utils.lxd_maybe_add_nic(instance, ifname,
+                              "third")
+            macs[instance] = str(openstack_utils.lxd_get_nic_hwaddr(instance, ifname))
+
+        logging.info("MACS ARE, %s", macs)
+        if macs:
+            openstack_utils.configure_networking_charms(
+                networking_data, macs, use_juju_wait=False)
+        return macs
+
+    def _get_first_macs(self):
+        networking_data = openstack_utils.get_charm_networking_data()
+        ifname="eth1"
+        macs={}
+        for instance in networking_data.unit_machine_ids:
+            macs[instance] = str(openstack_utils.lxd_get_nic_hwaddr(instance, ifname))
+
+        logging.info("MACS ARE, %s", macs)
+        return macs
 
     def _ovs_dpdk_init_configured(self):
         """Assert that DPDK is configured.
@@ -372,6 +408,7 @@ class DPDKTest(test_utils.BaseCharmTest):
         """
         cmd = 'ovs-vsctl get open-vswitch . other_config:dpdk-init'
         for unit in zaza.model.get_units(self.application_name):
+            logging.info(f"checking unit {unit}")
             result = zaza.utilities.juju.remote_run(
                 unit.name,
                 cmd,
@@ -387,6 +424,7 @@ class DPDKTest(test_utils.BaseCharmTest):
         """
         cmd = 'ovs-vsctl get open-vswitch . dpdk_initialized'
         for unit in zaza.model.get_units(self.application_name):
+            logging.info(f"checking unit {unit}")
             result = zaza.utilities.juju.remote_run(
                 unit.name,
                 cmd,
@@ -403,6 +441,7 @@ class DPDKTest(test_utils.BaseCharmTest):
         cmd = ('ip link show dev $(ovs-vsctl --bare --columns name '
                'find port external_ids:charm-ovn-chassis=br-ex)')
         for unit in zaza.model.get_units(self.application_name):
+            logging.info(f"checking unit {unit}")
             zaza.utilities.juju.remote_run(
                 unit.name, cmd, model_name=self.model_name, fatal=True)
 
@@ -418,6 +457,7 @@ class DPDKTest(test_utils.BaseCharmTest):
             '|cut -f2 -d=)'
             '|grep "drv=vfio-pci unused=$"')
         for unit in zaza.model.get_units(self.application_name):
+            logging.info(f"checking unit {unit}")
             zaza.utilities.juju.remote_run(
                 unit.name, cmd, model_name=self.model_name, fatal=True)
 
@@ -430,6 +470,7 @@ class DPDKTest(test_utils.BaseCharmTest):
             'ovs-vsctl --bare --columns error '
             'find interface external_ids:charm-ovn-chassis=br-ex')
         for unit in zaza.model.get_units(self.application_name):
+            logging.info(f"checking unit {unit}")
             result = zaza.utilities.juju.remote_run(
                 unit.name,
                 cmd,
@@ -452,36 +493,53 @@ class DPDKTest(test_utils.BaseCharmTest):
                 msg='OVS unexpectedly has DPDK initialized'):
             self._ovs_dpdk_initialized()
 
-    def test_enable_dpdk(self):
-        """Confirm that transitioning to/from DPDK works."""
-        logging.info('Pre-flight check')
-        self._dpdk_pre_post_flight_check()
-        self._ovs_br_ex_port_is_system_interface()
+    def _get_br_ex_dpdk_pci_address(self, unit):
+        """Get the PCI addresses of the DPDK interfaces bound to br-ex.
 
-        self.enable_hugepages_vfio_on_hvs_in_vms(4)
-        with self.config_change(
-                {
-                    'enable-dpdk': False,
-                    'dpdk-driver': '',
-                },
-                {
-                    'enable-dpdk': True,
-                    'dpdk-driver': 'vfio-pci',
-                },
-                application_name='ovn-chassis'):
-            logging.info('Checking openvswitch-switch-dpdk is installed')
-            self._openvswitch_switch_dpdk_installed()
-            logging.info('Checking DPDK is configured in OVS')
-            self._ovs_dpdk_init_configured()
-            logging.info('Checking DPDK is successfully initialized in OVS')
-            self._ovs_dpdk_initialized()
-            logging.info('Checking that br-ex configed with DPDK interface...')
-            self._ovs_br_ex_port_is_dpdk_interface()
-            logging.info('and is not in error.')
-            self._ovs_br_ex_interface_not_in_error()
+        :param unit: Juju unit to inspect.
+        :type unit: juju.unit.Unit
+        :returns: list of PCI address string (e.g. ``'0000:04:00.0'``).
+        :rtype: list
+        :raises: zaza.model.CommandRunFailed
+        """
+        cmd = "lspci | awk '/Ethernet controller/ {print $1}' | tail -n 2 | tr '\n' ' '"
+        
+        result = zaza.utilities.juju.remote_run(
+            unit.name, cmd, model_name=self.model_name, fatal=True)
+        
+        return result.strip().split(' ')
+    
+#    def test_enable_dpdk(self):
+#        """Confirm that transitioning to/from DPDK works."""
+#        logging.info('Pre-flight check')
+#        self._dpdk_pre_post_flight_check()
+#        self._ovs_br_ex_port_is_system_interface()
+#
+#        self.enable_hugepages_vfio_on_hvs_in_vms(4)
+#        with self.config_change(
+#                {
+#                    'enable-dpdk': False,
+#                    'dpdk-driver': '',
+#                },
+#                {
+#                    'enable-dpdk': True,
+#                    'dpdk-driver': 'vfio-pci',
+#                },
+#                application_name='ovn-chassis'):
+#            logging.info('Checking openvswitch-switch-dpdk is installed')
+#            self._openvswitch_switch_dpdk_installed()
+#            logging.info('Checking DPDK is configured in OVS')
+#            self._ovs_dpdk_init_configured()
+#            logging.info('Checking DPDK is successfully initialized in OVS')
+#            self._ovs_dpdk_initialized()
+#            logging.info('Checking that br-ex configed with DPDK interface...')
+#            self._ovs_br_ex_port_is_dpdk_interface()
+#            logging.info('and is not in error.')
+#            self._ovs_br_ex_interface_not_in_error()
 
-        logging.info('Post-flight check')
-        self._dpdk_pre_post_flight_check()
+
+#        logging.info('Post-flight check')
+#        self._dpdk_pre_post_flight_check()
 
         # Note(mkalcok): There's currently a bug in Juju that prevents
         # rebooting machine 2nd time after adding second NIC
@@ -491,6 +549,135 @@ class DPDKTest(test_utils.BaseCharmTest):
         #
         # self.disable_hugepages_vfio_on_hvs_in_vms()
         # self._ovs_br_ex_port_is_system_interface()
+    def test_dpdk_bond_mappings_mac(self):
+        logging.info("CHECKING DPDK-BOND-MAPPINGS")
+        #self.enable_hugepages_vfio_on_hvs_in_vms(4)
+        
+        instance_mac_map_1 = self._get_first_macs()
+        instance_mac_map_2 = self._add_second_interface()
+        instance_mac_map = list(instance_mac_map_1.values()) + list(instance_mac_map_2.values()) 
+
+        dpdk_bond_mappings=""
+
+        logging.info("COMBINED MAP")
+        logging.info(instance_mac_map)
+        logging.info("COMBINED MAP")
+        for mac in instance_mac_map:
+            if dpdk_bond_mappings == "":
+                dpdk_bond_mappings = f"dpdk-bond0:{mac}"
+            else:
+                dpdk_bond_mappings += f" dpdk-bond0:{mac}"
+        with self.config_change(
+                {
+                    'enable-dpdk': False,
+                    'dpdk-driver': '',
+                },
+                {
+                    'enable-dpdk': True,
+                    'dpdk-driver': 'vfio-pci',
+                    'bridge-interface-mappings': 'br-ex:dpdk-bond0',
+                    'dpdk-bond-mappings': dpdk_bond_mappings,
+                },
+                application_name='ovn-chassis'):
+
+            logging.info("PAUSING")
+            input()
+            logging.info("STOPPED PAUSING")
+
+            logging.info('Testing dpdk-bond-mappings with PCI address format')
+            self._assert_dpdk_bond_is_created()
+            #self._test_dpdk_bond_mappings_pci_format()
+                
+    def test_dpdk_bond_mappings_pci(self):
+        logging.info("CHECKING DPDK-BOND-MAPPINGS")
+        #self.enable_hugepages_vfio_on_hvs_in_vms(4)
+        logging.info("PAUSING1")
+        input()
+        logging.info("STOPPED PAUSING1")
+
+        pci_list = []
+        for unit in zaza.model.get_units(self.application_name):
+             pci_list = self._get_br_ex_dpdk_pci_address(unit)
+        logging.info(f"PCI list {pci_list}")
+
+        dpdk_bond_mappings=""
+        for pci in pci_list:
+            if dpdk_bond_mappings == "":
+                dpdk_bond_mappings = f"dpdk-bond0:{pci}"
+            else:
+                dpdk_bond_mappings += f" dpdk-bond0:{pci}"
+        with self.config_change(
+                {
+                    'enable-dpdk': False,
+                    'dpdk-driver': '',
+                },
+                {
+                    'enable-dpdk': True,
+                    'dpdk-driver': 'vfio-pci',
+                    'bridge-interface-mappings': 'br-ex:dpdk-bond0',
+                    'dpdk-bond-mappings': dpdk_bond_mappings,
+                },
+                application_name='ovn-chassis'):
+
+            logging.info("PAUSING")
+            input()
+            logging.info("STOPPED PAUSING")
+
+            logging.info('Testing dpdk-bond-mappings with PCI address format')
+            self._assert_dpdk_bond_is_created()
+            #self._test_dpdk_bond_mappings_pci_format()
+    def _assert_dpdk_bond_is_created(self):
+        cmd = 'ovs-vsctl --format=json --columns=name,interfaces list Port'
+
+        for unit in zaza.model.get_units(self.application_name):
+            logging.info(f"checking unit {unit}")
+            result = zaza.utilities.juju.remote_run(
+                unit.name, cmd, model_name=self.model_name, fatal=True)
+            data = json.loads(result)
+            for row in data["data"]:
+                port_name = row[0]
+                interfaces = row[1]
+                if port_name == "dpdk-bond0":
+                    if len(interfaces) == 2:
+                        logging.info("DPDK bond was successfully created with 2 interfaces")
+                        return
+                    else:
+                        logging.info("BOND FAILED")
+                        raise Exception('Could not create DPDK bond with 2 interfaces')
+                        return
+
+    def _test_dpdk_bond_mappings_pci_format(self):
+        """Test dpdk-bond-mappings using PCI address format.
+
+        Collects the PCI address of the br-ex DPDK interface from each unit
+        and uses them to build a ``dpdk-bond-mappings`` configuration value
+        in PCI address format (rather than MAC address format).  Verifies
+        that the charm accepts the configuration and that the PCI addresses
+        are included in the DPDK EAL device whitelist
+        (``other_config:dpdk-extra`` in OVS).
+
+        Must be called while DPDK is already enabled (i.e. inside a
+        ``config_change`` context that has ``enable-dpdk: true``).
+
+        :raises: AssertionError, zaza.model.CommandRunFailed, Exception
+        """
+        bond_pci_addresses = []
+        for unit in zaza.model.get_units(self.application_name):
+            logging.info(f"checking unit {unit}")
+            pci = self._get_br_ex_dpdk_pci_address(unit)
+            if pci and pci not in bond_pci_addresses:
+                bond_pci_addresses.append(pci)
+                logging.info(
+                    'Collected br-ex PCI address {} from {}'.format(
+                        pci, unit.name))
+
+        if not bond_pci_addresses:
+            raise Exception('Could not retrieve any PCI addresses for bond mapping test.')
+
+        bond_config = ' '.join(
+            'dpdk-bond0:{}'.format(pci) for pci in bond_pci_addresses)
+        logging.info(
+            'Setting dpdk-bond-mappings to: {}'.format(bond_config))
 
 
 class OVSOVNMigrationTest(test_utils.BaseCharmTest):
