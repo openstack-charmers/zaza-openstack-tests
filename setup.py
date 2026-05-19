@@ -66,8 +66,7 @@ install_require = [
     'python-ceilometerclient',
     'python-cinderclient<6.0.0',
     'python-swiftclient<3.9.0',
-    # 'zaza@git+https://github.com/openstack-charmers/zaza.git#egg=zaza',
-    'zaza',
+    'zaza==2024.*',
 ]
 
 tests_require = [
