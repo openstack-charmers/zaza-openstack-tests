@@ -47,7 +47,6 @@ install_require = [
     'lxml',
     'PyYAML',
     'tenacity',
-    'openstacksdk<=0.61',  # needed for py36
     'oslo.config<6.12.0',
     'pyparsing<3.0.0',  # pin for aodhclient which is held for py35
     'osc-lib<4.0.0',  # needed for py38
@@ -67,7 +66,7 @@ install_require = [
     'python-ceilometerclient',
     'python-cinderclient<6.0.0',
     'python-swiftclient<3.9.0',
-    'zaza@git+https://github.com/openstack-charmers/zaza.git@stable/ussuri#egg=zaza',
+    'zaza==2024.*',
 ]
 
 tests_require = [
