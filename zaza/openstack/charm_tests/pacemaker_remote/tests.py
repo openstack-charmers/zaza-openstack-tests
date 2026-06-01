@@ -18,7 +18,10 @@
 
 import unittest
 
+import tenacity
+import zaza.model
 import zaza.openstack.configure.hacluster
+import zaza.openstack.utilities.generic as generic_utils
 
 
 class PacemakerRemoteTest(unittest.TestCase):
@@ -26,8 +29,30 @@ class PacemakerRemoteTest(unittest.TestCase):
 
     def test_check_nodes_online(self):
         """Test that all nodes are online."""
+        for attempt in tenacity.Retrying(
+            reraise=True,
+            stop=tenacity.stop_after_attempt(5),
+            wait=tenacity.wait_fixed(5),
+        ):
+            with attempt:
+                zaza.openstack.configure.hacluster.check_all_nodes_online(
+                    'api'
+                )
+        units = zaza.model.get_units('pacemaker-remote')
+        last_unit = units[-1]
+        node_names = generic_utils.get_unit_hostnames(units)
+        node_name = node_names[last_unit.entity_id]
         zaza.openstack.configure.hacluster.remove_node(
             'api',
-            'node1')
-        self.assertTrue(
-            zaza.openstack.configure.hacluster.check_all_nodes_online('api'))
+            node_name)
+        for attempt in tenacity.Retrying(
+            reraise=True,
+            stop=tenacity.stop_after_attempt(5),
+            wait=tenacity.wait_fixed(5),
+        ):
+            with attempt:
+                self.assertTrue(
+                    zaza.openstack.configure.hacluster.check_all_nodes_online(
+                        'api'
+                    )
+                )
