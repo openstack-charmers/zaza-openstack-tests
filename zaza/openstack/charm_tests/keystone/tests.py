@@ -18,7 +18,10 @@ import configparser
 import json
 import logging
 import pprint
+import uuid
+import requests
 import tenacity
+import urllib3
 import keystoneauth1
 from keystoneauth1.exceptions.connection import ConnectFailure
 
@@ -245,6 +248,53 @@ class CharmOperationTest(BaseKeystoneTest):
         glance_client = openstack_utils.get_glance_session_client(
             self.admin_keystone_session)
         glance_client.images.list()
+
+    @tenacity.retry(wait=tenacity.wait_fixed(2),
+                    stop=tenacity.stop_after_attempt(10), reraise=True)
+    def _logged_client_ip(self, log, field, marker):
+        """Return the client IP apache logged for the marked request."""
+        cmd = "sudo grep -h -- '{}' {}".format(marker, log)
+        for unit in zaza.model.get_units(self.application_name):
+            res = zaza.model.run_on_unit(unit.entity_id, cmd)
+            hits = [ln for ln in (res.get('Stdout') or '').splitlines()
+                    if marker in ln]
+            if hits:
+                return hits[-1].split()[field]
+        raise AssertionError('no log entry for {}'.format(marker))
+
+    def test_proxy_protocol_preserves_client_ip(self):
+        """Real client IP is logged only with proxy protocol enabled.
+
+        Without TLS apache logs the client as %h in keystone_access.log.
+        With TLS the https frontend terminates the connection and proxies
+        over localhost, so the real IP lands in other_vhosts_access.log
+        (field 2 of vhost_combined) instead.
+        """
+        endpoint = self.admin_keystone_client.session.get_endpoint(
+            service_type='identity', interface='public',
+            region_name='RegionOne')
+        if endpoint.startswith('https'):
+            log, field = '/var/log/apache2/other_vhosts_access.log', 1
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        else:
+            log, field = '/var/log/apache2/keystone_access.log', 0
+
+        opt = 'haproxy-enable-proxy-protocol'
+        on = 'zaza-pp-on-{}'.format(uuid.uuid4())
+        off = 'zaza-pp-off-{}'.format(uuid.uuid4())
+        with self.config_change({opt: False}, {opt: True}):
+            requests.get(endpoint, headers={'User-Agent': on},
+                         verify=False, timeout=60)
+            ip_on = self._logged_client_ip(log, field, on)
+        requests.get(endpoint, headers={'User-Agent': off},
+                     verify=False, timeout=60)
+        ip_off = self._logged_client_ip(log, field, off)
+
+        logging.info('client IP with proxy protocol on=%s off=%s',
+                     ip_on, ip_off)
+        self.assertNotEqual(ip_on, ip_off)
+        self.assertNotIn(ip_on, set(self.keystone_ips) | {
+            '127.0.0.1', '::1', ip_off})
 
 
 class AuthenticationAuthorizationTest(BaseKeystoneTest):
