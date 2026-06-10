@@ -1499,9 +1499,13 @@ def plug_subnet_into_router(neutron_client, router, network, subnet):
         logging.error('Unable to locate provider router %s', router)
         sys.exit(1)
     else:
+        device_owner = 'network:router_interface'
+        if dvr_enabled():
+            device_owner = f'{device_owner}_distributed'
+
         # Check to see if subnet already plugged into router
         ports = neutron_client.list_ports(
-            device_owner='network:router_interface',
+            device_owner=device_owner,
             network_id=network['id'])
         if len(ports['ports']) == 0:
             logging.info('Adding interface from subnet to %s' % (router))
