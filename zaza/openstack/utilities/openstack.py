@@ -2327,15 +2327,27 @@ def get_urllib_opener():
     via TEST_HTTP_PROXY rather than http_proxy so a ProxyHandler is needed
     explicitly stating the proxies.
 
+    Both http and https proxies are configured: some image downloads are
+    served over http but redirect to https (cirros now redirects to
+    github.com), so an http-only proxy would let the https request bypass
+    the proxy and fail where external access is proxy-only.
+
     :returns: An opener which opens URLs via BaseHandlers chained together
     :rtype: urllib.request.OpenerDirector
     """
     deploy_env = deployment_env.get_deployment_context()
     http_proxy = deploy_env.get('TEST_HTTP_PROXY')
-    logging.debug('TEST_HTTP_PROXY: {}'.format(http_proxy))
+    https_proxy = deploy_env.get('TEST_HTTPS_PROXY') or http_proxy
+    logging.debug('TEST_HTTP_PROXY: {} TEST_HTTPS_PROXY: {}'.format(
+        http_proxy, https_proxy))
 
+    proxies = {}
     if http_proxy:
-        handler = urllib.request.ProxyHandler({'http': http_proxy})
+        proxies['http'] = http_proxy
+    if https_proxy:
+        proxies['https'] = https_proxy
+    if proxies:
+        handler = urllib.request.ProxyHandler(proxies)
     else:
         handler = urllib.request.HTTPHandler()
     return urllib.request.build_opener(handler)
