@@ -327,7 +327,8 @@ class TestOpenStackUtils(ut_utils.BaseTestCase):
         self.ProxyHandler.return_value = ProxyHandler_mock
         openstack_utils.get_urllib_opener()
         self.build_opener.assert_called_once_with(ProxyHandler_mock)
-        self.ProxyHandler.assert_called_once_with({'http': 'http://squidy'})
+        self.ProxyHandler.assert_called_once_with(
+            {'http': 'http://squidy', 'https': 'http://squidy'})
 
     def test_get_images_by_name(self):
         image_mock1 = mock.MagicMock()
