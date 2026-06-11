@@ -217,6 +217,7 @@ class TestBaseCharmTest(ut_utils.BaseTestCase):
         self.patch_object(test_utils.zaza.utilities.machine_os,
                           'enable_vfio_unsafe_noiommu_mode')
         self.patch_object(test_utils.model, 'wait_for_application_states')
+        self.patch_target('_wait_for_juju_symlinks_after_reboot')
 
         nr_hugepages = 4
         unit = mock.MagicMock()
@@ -239,6 +240,8 @@ class TestBaseCharmTest(ut_utils.BaseTestCase):
             unit,
             nr_hugepages,
             model_name=self.target.model_name)
+        self._wait_for_juju_symlinks_after_reboot.assert_called_once_with(
+            unit.name)
         self.enable_vfio_unsafe_noiommu_mode.assert_called_once_with(
             unit,
             model_name=self.target.model_name)
@@ -256,6 +259,7 @@ class TestBaseCharmTest(ut_utils.BaseTestCase):
         self.patch_object(test_utils.zaza.utilities.machine_os,
                           'enable_vfio_unsafe_noiommu_mode')
         self.patch_object(test_utils.model, 'wait_for_application_states')
+        self.patch_target('_wait_for_juju_symlinks_after_reboot')
 
         nr_hugepages = 4
         unit = mock.MagicMock()
@@ -286,6 +290,8 @@ class TestBaseCharmTest(ut_utils.BaseTestCase):
             unit,
             nr_hugepages,
             model_name=self.target.model_name)
+        self._wait_for_juju_symlinks_after_reboot.assert_called_once_with(
+            unit.name)
         self.enable_vfio_unsafe_noiommu_mode.assert_called_once_with(
             unit,
             model_name=self.target.model_name)
@@ -310,6 +316,7 @@ class TestBaseCharmTest(ut_utils.BaseTestCase):
                           'enable_vfio_unsafe_noiommu_mode')
         self.patch_object(test_utils.model, 'wait_for_application_states')
         self.patch_object(test_utils.model, 'resolve_units')
+        self.patch_target('_wait_for_juju_symlinks_after_reboot')
 
         nr_hugepages = 4
         unit = mock.MagicMock()
@@ -349,6 +356,37 @@ class TestBaseCharmTest(ut_utils.BaseTestCase):
                 mock.call(model_name=self.target.model_name, states={})
             ]
         )
+
+    def test_wait_for_juju_symlinks_after_reboot(self):
+        """Test waiting for Juju symlink recreation after reboot."""
+        self.patch_object(test_utils.zaza.utilities.juju, 'remote_run')
+        self.target.model_name = 'zaza-123'
+
+        self.target._wait_for_juju_symlinks_after_reboot('ovn-chassis/0')
+
+        escaped_unit = 'ovn-chassis-0'
+        expected_cmd = (
+            "grep -qPz '(?s)Reboot.*?\\n.*?symlinks.*{}' "
+            "/var/log/juju/machine-*.log".format(escaped_unit))
+        self.remote_run.assert_called_once_with(
+            'ovn-chassis/0',
+            expected_cmd,
+            model_name='zaza-123',
+            fatal=True)
+
+    def test_wait_for_juju_symlinks_after_reboot_retries(self):
+        """Test that waiting for symlinks retries on failure."""
+        self.patch_object(test_utils.zaza.utilities.juju, 'remote_run')
+        self.target.model_name = 'zaza-123'
+
+        self.remote_run.side_effect = [
+            test_utils.zaza.model.CommandRunFailed('grep', {'Code': '1'}),
+            None,
+        ]
+
+        self.target._wait_for_juju_symlinks_after_reboot('ovn-chassis/0')
+
+        self.assertEqual(self.remote_run.call_count, 2)
 
 
 class TestOpenStackBaseTest(ut_utils.BaseTestCase):
