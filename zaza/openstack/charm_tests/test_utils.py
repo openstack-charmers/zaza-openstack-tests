@@ -719,6 +719,39 @@ class BaseCharmTest(unittest.TestCase):
                     mbtotal,
                     self.assert_unit_cpu_topology.__doc__))
 
+    def _wait_for_juju_symlinks_after_reboot(self, unit_name):
+        """Wait for Juju to recreate tool symlinks after a machine reboot.
+
+        After a reboot triggered by Juju, symlinks for unit tools may not be
+        recreated until slightly after the reboot completes. Interacting with
+        a unit before symlink recreation finishes may cause the unit to enter
+        an error state (ref: https://launchpad.net/bugs/2077936).
+
+        This function monitors the Juju machine log on the unit for evidence
+        that both the reboot and subsequent symlink recreation for the given
+        unit have been recorded, indicating it is safe to continue.
+
+        :param unit_name: Name of the unit to wait for (e.g. 'ovn-chassis/0')
+        :type unit_name: str
+        """
+        escaped_unit = unit_name.replace('/', '-')
+        grep_cmd = (
+            'grep -qPz \'(?s)Reboot.*?\\n.*?symlinks.*{}\' '
+            '/var/log/juju/machine-*.log'.format(escaped_unit))
+        logging.info(
+            'Waiting for Juju reboot and symlink recreation to be '
+            'logged for {}'.format(unit_name))
+        for attempt in tenacity.Retrying(
+                stop=tenacity.stop_after_attempt(30),
+                wait=tenacity.wait_exponential(multiplier=1, min=2, max=30)):
+            with attempt:
+                zaza.utilities.juju.remote_run(
+                    unit_name, grep_cmd,
+                    model_name=self.model_name, fatal=True)
+        logging.info(
+            'Juju reboot and symlink recreation confirmed '
+            'for {}'.format(unit_name))
+
     def enable_hugepages_vfio_on_hvs_in_vms(self, nr_1g_hugepages):
         """Enable hugepages and unsafe VFIO NOIOMMU on virtual hypervisors."""
         for unit in model.get_units(
@@ -755,12 +788,14 @@ class BaseCharmTest(unittest.TestCase):
             try:
                 zaza.utilities.machine_os.enable_hugepages(
                     unit, nr_1g_hugepages, model_name=self.model_name)
+                self._wait_for_juju_symlinks_after_reboot(unit.name)
             except zaza.model.UnitError:
                 logging.warn(f'Unit {unit.name} went into error state during'
                              ' huge pages enablement. Attempting to recover.'
                              ' Possible cause:'
                              ' https://bugs.launchpad.net/juju/+bug/2077936')
                 zaza.model.resolve_units()
+                self._wait_for_juju_symlinks_after_reboot(unit.name)
 
             try:
                 logging.info('Enabling unsafe VFIO NOIOMMU mode on {}'
