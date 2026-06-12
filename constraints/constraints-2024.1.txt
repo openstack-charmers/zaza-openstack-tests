@@ -11,3 +11,7 @@ juju>=2.9.0,<3.0.0
 # netaddr>=1.0.0 has incompatible changes, see
 # https://netaddr.readthedocs.io/en/latest/changes.html#release-1-0-0
 netaddr<1.0.0
+
+# setuptools>=82 removes deprecated pkg_resources.declare_namespace(),
+# breaking several OpenStack client libraries.
+setuptools<82
