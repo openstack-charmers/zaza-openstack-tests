@@ -492,6 +492,9 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         else:
             vip_subnet_id = subnet_id
         for provider in self.get_lb_providers(self.octavia_client).keys():
+            if ensure_volume_backed and provider != 'amphora':
+                continue
+
             logging.info('Creating loadbalancer with provider {}'
                          .format(provider))
             final_exc = None
