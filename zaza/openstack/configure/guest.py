@@ -24,6 +24,7 @@ import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.nova.utils as nova_utils
 import zaza.openstack.utilities.exceptions as openstack_exceptions
 import zaza.utilities.deployment_env as deployment_env
+from zaza.openstack.charm_tests.neutron.setup import OVERCLOUD_NETWORK_CONFIG
 
 from tenacity import (
     RetryError,
@@ -116,10 +117,15 @@ def get_default_userdata():
     inside launched guest vms.
     """
     deploy_env = deployment_env.get_deployment_context()
+    no_proxy = deploy_env.get('TEST_NO_PROXY') or ''
+    subnetpool = OVERCLOUD_NETWORK_CONFIG.get('subnetpool_prefix', '')
+
+    if subnetpool and subnetpool not in no_proxy:
+        no_proxy = '{},{}'.format(no_proxy, subnetpool) if no_proxy else subnetpool
     return DEFAULT_USER_DATA.format(
         http_proxy=deploy_env.get('TEST_HTTP_PROXY'),
         https_proxy=deploy_env.get('TEST_HTTP_PROXY'),
-        no_proxy=deploy_env.get('TEST_NO_PROXY'))
+        no_proxy=no_proxy)
 
 
 def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
