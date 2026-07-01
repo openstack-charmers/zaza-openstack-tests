@@ -1001,6 +1001,7 @@ def create_additional_port_for_machines(novaclient, neutronclient, net_id,
                     "name": ext_port_name,
                     "network_id": net_id,
                     "port_security_enabled": False,
+                    "fixed_ips": [],
                 }
             }
             port = neutronclient.create_port(body=body_value)
