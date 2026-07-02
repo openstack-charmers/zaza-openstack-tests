@@ -64,6 +64,7 @@ from designateclient.client import Client as DesignateClient
 from keystoneclient.v2_0 import client as keystoneclient_v2
 from keystoneclient.v3 import client as keystoneclient_v3
 from keystoneauth1 import session
+from keystoneauth1.exceptions.connection import ConnectTimeout
 from keystoneauth1.identity import (
     v3,
     v2,
@@ -982,6 +983,9 @@ def get_charm_networking_data(limit_gws=None):
         other_config)
 
 
+@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
+                reraise=True, stop=tenacity.stop_after_attempt(10),
+                retry=tenacity.retry_if_exception_type(ConnectTimeout))
 def create_additional_port_for_machines(novaclient, neutronclient, net_id,
                                         unit_machine_ids,
                                         add_dataport_to_netplan=False):
