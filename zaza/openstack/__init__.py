@@ -18,6 +18,16 @@ import os
 import tempfile
 
 
+def _set_proxy_vars():
+    # Set proxy vars if provided so that all code gets to use it.
+    for key, val in os.environ.items():
+        if not key.startswith('TEST_') or 'PROXY' not in key:
+            continue
+
+        _key = key.partition('TEST_')[2]
+        os.environ[_key.lower()] = val
+
+
 # The temporary directory can't be used when juju's snap is installed in strict
 # mode, so zaza-openstack-tests changes the default tmp directory to the
 # directory referenced by TEST_TMPDIR otherwise a directory is created under
@@ -34,4 +44,5 @@ def _set_tmpdir():
         tempfile.tempdir = tmpdir
 
 
+_set_proxy_vars()
 _set_tmpdir()
