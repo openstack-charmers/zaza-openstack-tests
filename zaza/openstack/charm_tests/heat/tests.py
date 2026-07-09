@@ -192,18 +192,17 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
             "--format json "
             "grep auth_encryption_key /etc/heat/heat.conf")
         if ret:
-            msg = "juju run error: ret: {}, output: {}".format(ret, output)
+            msg = "juju exec error: ret: {}, output: {}".format(ret, output)
             self.assertEqual(ret, 0, msg)
         output = json.loads(output)
         keys = {}
-        for r in output:
-            k = r['Stdout'].split('=')[1].strip()
-            keys[r['UnitId']] = k
+        for unit_id, result in output.items():
+            stdout = result['results']['stdout']
+            keys[unit_id] = stdout.split('=')[1].strip()
         # see if keys are different
         ks = set(keys.values())
         self.assertEqual(len(ks), 1, "'auth_encryption_key' is not identical "
-                         "on every unit: {}".format("{}={}".format(k, v)
-                                                    for k, v in keys.items()))
+                         "on every unit: {}".format(keys))
 
     @staticmethod
     def _run_arbitrary(command, timeout=300):
@@ -219,7 +218,7 @@ class HeatBasicDeployment(test_utils.OpenStackBaseTest):
         :returns: A pair containing the output of the command and exit value
         :rtype: (str, int)
         """
-        cmd = ['juju', 'run', '--timeout', "{}s".format(timeout),
+        cmd = ['juju', 'exec', '--wait', "{}s".format(timeout),
                ] + command.split()
         p = subprocess.Popen(
             cmd,
