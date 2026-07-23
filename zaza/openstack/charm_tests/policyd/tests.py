@@ -45,6 +45,7 @@ import cinderclient.exceptions
 import heatclient.exc
 import glanceclient.common.exceptions
 import keystoneauth1
+import manilaclient.common.apiclient.exceptions
 
 import zaza.model as zaza_model
 
@@ -744,5 +745,35 @@ class BarbicanTests(BasePolicydSpecialization):
         try:
             barbican.secrets.list()
         except (barbicanclient.exceptions.HTTPClientError,
+                keystoneauth1.exceptions.http.Forbidden):
+            raise PolicydOperationFailedException()
+
+
+class ManilaTests(BasePolicydSpecialization):
+    """Test the policyd override using the manila client."""
+
+    _rule = {'rule.yaml': "{'share:get_all': '!'}"}
+
+    @classmethod
+    def setUpClass(cls, application_name=None):
+        """Run class setup for running ManilaTests charm operation tests."""
+        super(ManilaTests, cls).setUpClass(application_name="manila")
+        cls.application_name = "manila"
+
+    def get_client_and_attempt_operation(self, ip):
+        """Attempt to list shares as a policyd override.
+
+        This operation should pass normally, and fail when
+        the rule has been overriden (see the `rule` class variable).
+
+        :param ip: the IP address to get the session against.
+        :type ip: str
+        :raises: PolicydOperationFailedException if operation fails.
+        """
+        manila_client = openstack_utils.get_manila_session_client(
+            self.get_keystone_session_admin_user(ip))
+        try:
+            manila_client.shares.list()
+        except (manilaclient.common.apiclient.exceptions.Forbidden,
                 keystoneauth1.exceptions.http.Forbidden):
             raise PolicydOperationFailedException()
