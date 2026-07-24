@@ -121,10 +121,7 @@ class ManilaBaseTest(test_utils.OpenStackBaseTest):
 
     RESOURCE_PREFIX = 'zaza-manilatests'
     INSTANCE_KEY = 'bionic'
-    INSTANCE_USERDATA = """#cloud-config
-packages:
-- nfs-common
-"""
+    INSTANCE_PACKAGES = ['nfs-common']
 
     @classmethod
     def setUpClass(cls):
@@ -334,13 +331,14 @@ packages:
         6. Profit
         """
         # Spawn Servers
+        userdata = guest.get_default_userdata(packages=self.INSTANCE_PACKAGES)
         instance_1 = self.launch_guest(
             guest_name='ins-1',
-            userdata=self.INSTANCE_USERDATA,
+            userdata=userdata,
             instance_key=self.INSTANCE_KEY)
         instance_2 = self.launch_guest(
             guest_name='ins-2',
-            userdata=self.INSTANCE_USERDATA,
+            userdata=userdata,
             instance_key=self.INSTANCE_KEY)
 
         fip_1 = neutron_tests.floating_ips_from_instance(instance_1)[0]
