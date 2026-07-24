@@ -482,7 +482,7 @@ class LBAASv2Test(test_utils.OpenStackBaseTest):
         # Then we request two Ubuntu instances with the Apache web server
         # installed
         instance_1, instance_2 = self.launch_guests(
-            userdata=get_default_userdata() + 'packages:\n - apache2\n')
+            userdata=get_default_userdata(packages=['apache2']))
 
         # Get IP of the prepared payload instances
         payload_ips = []
