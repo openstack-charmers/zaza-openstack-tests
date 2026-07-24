@@ -16,6 +16,7 @@
 
 import logging
 import unittest
+import json
 
 import juju
 
@@ -26,8 +27,10 @@ import zaza
 
 import zaza.model
 import zaza.openstack.charm_tests.ceph.mon.integration as cos_integration
+import zaza.openstack.charm_tests.neutron.setup as neutron_setup
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.generic as generic_utils
+import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.utilities.juju
 
 from zaza.openstack.charm_tests.cos.setup import GRAFANA_OFFER_ALIAS
@@ -355,6 +358,12 @@ class ChassisCharmOperationTest(BaseCharmOperationTest):
 class DPDKTest(test_utils.BaseCharmTest):
     """DPDK-related tests."""
 
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        obj = cls()
+        obj.enable_hugepages_vfio_on_hvs_in_vms(4)
+
     def _openvswitch_switch_dpdk_installed(self):
         """Assert that the openvswitch-switch-dpdk package is installed.
 
@@ -364,6 +373,20 @@ class DPDKTest(test_utils.BaseCharmTest):
         for unit in zaza.model.get_units(self.application_name):
             zaza.utilities.juju.remote_run(
                 unit.name, cmd, model_name=self.model_name, fatal=True)
+
+    def _get_first_macs(self):
+        """Retrieve macs related to interface eth1 in networking charm units.
+
+        :returns: list of mac addresses(represented as strings).
+        """
+
+        networking_data = openstack_utils.get_charm_networking_data()
+        ifname="eth1"
+        macs=[]
+        for instance in networking_data.unit_machine_ids:
+            macs.append(str(openstack_utils.lxd_get_nic_hwaddr(instance, ifname)))
+
+        return macs
 
     def _ovs_dpdk_init_configured(self):
         """Assert that DPDK is configured.
@@ -452,13 +475,28 @@ class DPDKTest(test_utils.BaseCharmTest):
                 msg='OVS unexpectedly has DPDK initialized'):
             self._ovs_dpdk_initialized()
 
+    def _get_br_ex_dpdk_pci_address(self, unit):
+        """Get the PCI addresses of the DPDK interfaces bound to br-ex.
+
+        :param unit: Juju unit to inspect.
+        :type unit: juju.unit.Unit
+        :returns: list of PCI address string (e.g. ``'0000:04:00.0'``).
+        :rtype: list
+        :raises: zaza.model.CommandRunFailed
+        """
+        cmd = "lspci | awk '/Ethernet controller/ {print $1}' | tail -n 2 | tr '\n' ' '"
+        
+        result = zaza.utilities.juju.remote_run(
+            unit.name, cmd, model_name=self.model_name, fatal=True)
+        
+        return result.strip().split(' ')
+    
     def test_enable_dpdk(self):
         """Confirm that transitioning to/from DPDK works."""
         logging.info('Pre-flight check')
         self._dpdk_pre_post_flight_check()
         self._ovs_br_ex_port_is_system_interface()
 
-        self.enable_hugepages_vfio_on_hvs_in_vms(4)
         with self.config_change(
                 {
                     'enable-dpdk': False,
@@ -492,6 +530,89 @@ class DPDKTest(test_utils.BaseCharmTest):
         # self.disable_hugepages_vfio_on_hvs_in_vms()
         # self._ovs_br_ex_port_is_system_interface()
 
+    def test_mac_dpdk_bond_mappings(self):
+        """Confirm that dpdk-bond-mappings config option, produces a dpdk bond,
+        in the case of mac definition.
+        """
+        
+        instance_macs_1 = self._get_first_macs()
+        instance_macs_2 = neutron_setup.add_third_interface_lxd()
+        instance_macs = instance_macs_1 + instance_macs_2 
+
+        dpdk_bond_mappings=""
+
+        for mac in instance_macs:
+            if dpdk_bond_mappings == "":
+                dpdk_bond_mappings = f"dpdk-bond0:{mac}"
+            else:
+                dpdk_bond_mappings += f" dpdk-bond0:{mac}"
+
+        with self.config_change(
+                {
+                    'enable-dpdk': False,
+                    'dpdk-driver': '',
+                    'bridge-interface-mappings': '',
+                    'dpdk-bond-mappings': '',
+                },
+                {
+                    'enable-dpdk': True,
+                    'dpdk-driver': 'vfio-pci',
+                    'bridge-interface-mappings': 'br-ex:dpdk-bond0',
+                    'dpdk-bond-mappings': dpdk_bond_mappings,
+                },
+                application_name='ovn-chassis'):
+
+            self._assert_dpdk_bond_is_created()
+                
+    def test_pci_dpdk_bond_mappings(self):
+        """Confirm that dpdk-bond-mappings config option, produces a dpdk bond,
+        in the case of pci definition.
+        """
+
+        pci_list = []
+        for unit in zaza.model.get_units(self.application_name):
+             #pci addresses are the same in each unit so no need to create a set
+             # a break in the first unit is sufficient
+             pci_list = self._get_br_ex_dpdk_pci_address(unit)
+             break
+
+        dpdk_bond_mappings=""
+        for pci in pci_list:
+            if dpdk_bond_mappings == "":
+                dpdk_bond_mappings = f"dpdk-bond0:{pci}"
+            else:
+                dpdk_bond_mappings += f" dpdk-bond0:{pci}"
+        with self.config_change(
+                {
+                    'enable-dpdk': False,
+                    'dpdk-driver': '',
+                    'bridge-interface-mappings': '',
+                    'dpdk-bond-mappings': '',
+                },
+                {
+                    'enable-dpdk': True,
+                    'dpdk-driver': 'vfio-pci',
+                    'bridge-interface-mappings': 'br-ex:dpdk-bond0',
+                    'dpdk-bond-mappings': dpdk_bond_mappings,
+                },
+                application_name='ovn-chassis'):
+
+            self._assert_dpdk_bond_is_created()
+
+    def _assert_dpdk_bond_is_created(self):
+        cmd = 'ovs-vsctl --format=json --columns=name,interfaces list Port'
+
+        for unit in zaza.model.get_units(self.application_name):
+            result = zaza.utilities.juju.remote_run(
+                unit.name, cmd, model_name=self.model_name, fatal=True)
+            data = json.loads(result)
+            for row in data["data"]:
+                port_name = row[0]
+                interfaces = row[1]
+                if port_name == "dpdk-bond0":
+                    self.assertEqual(len(interfaces),2)
+                    logging.info("DPDK bond was successfully created with 2 interfaces")
+                    return
 
 class OVSOVNMigrationTest(test_utils.BaseCharmTest):
     """OVS to OVN migration tests."""
