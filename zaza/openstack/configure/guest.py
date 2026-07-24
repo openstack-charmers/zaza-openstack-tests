@@ -45,7 +45,7 @@ write_files:
       no_proxy={no_proxy}
     append: true
 
-"""
+{packages_section}"""
 
 
 boot_tests = {
@@ -67,18 +67,27 @@ boot_tests = {
         'bootstring': 'finished at'}}
 
 
-def get_default_userdata():
+def get_default_userdata(packages=None):
     """
     Get default guest vm userdata.
 
     If http proxy settings are available create a userdata file to enable them
     inside launched guest vms.
+
+    :param packages: Optional list of packages to install via cloud-init.
+    :type packages: Optional[list[str]]
     """
     deploy_env = deployment_env.get_deployment_context()
+    packages_section = ""
+    if packages:
+        packages_section = "packages:\n"
+        packages_section += "\n".join("- {}".format(p) for p in packages)
+        packages_section += "\n"
     return DEFAULT_USER_DATA.format(
         http_proxy=deploy_env.get('TEST_HTTP_PROXY'),
         https_proxy=deploy_env.get('TEST_HTTP_PROXY'),
-        no_proxy=deploy_env.get('TEST_NO_PROXY'))
+        no_proxy=deploy_env.get('TEST_NO_PROXY'),
+        packages_section=packages_section)
 
 
 def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
