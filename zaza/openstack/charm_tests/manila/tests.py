@@ -121,10 +121,6 @@ class ManilaBaseTest(test_utils.OpenStackBaseTest):
 
     RESOURCE_PREFIX = 'zaza-manilatests'
     INSTANCE_KEY = 'jammy'
-    INSTANCE_USERDATA = """#cloud-config
-packages:
-- nfs-common
-"""
 
     @classmethod
     def setUpClass(cls):
@@ -212,6 +208,7 @@ packages:
         :type share_path: string
         """
         ssh_cmd = (
+            'sudo apt-get install -y nfs-common && '
             'sudo mkdir -p {0} && '
             'sudo mount -t {1} -o {2} {3} {0}'.format(
                 self.mount_dir,
@@ -336,11 +333,9 @@ packages:
         # Spawn Servers
         instance_1 = self.launch_guest(
             guest_name='ins-1',
-            userdata=self.INSTANCE_USERDATA,
             instance_key=self.INSTANCE_KEY)
         instance_2 = self.launch_guest(
             guest_name='ins-2',
-            userdata=self.INSTANCE_USERDATA,
             instance_key=self.INSTANCE_KEY)
 
         fip_1 = neutron_tests.floating_ips_from_instance(instance_1)[0]
