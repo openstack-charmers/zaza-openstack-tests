@@ -154,16 +154,31 @@ class MasakariTest(test_utils.OpenStackBaseTest):
             logging.info('Checking {} is {}'.format(attr, required_state))
             assert getattr(guest, attr) == required_state
 
+    @tenacity.retry(wait=tenacity.wait_exponential(multiplier=2, max=60),
+                    reraise=True, stop=tenacity.stop_after_attempt(5))
+    def wait_for_all_nodes_online(self):
+        """Wait for all pacemaker nodes to report online.
+
+        After a node is removed the cluster needs a moment to settle. Retry
+        until all remaining nodes are online, covering both a False result
+        (a node still offline) and a ValueError (crm status not yet
+        complete) while the cluster settles.
+
+        :raises: AssertionError
+        :raises: ValueError
+        """
+        assert zaza.openstack.configure.hacluster.check_all_nodes_online(
+            'masakari')
+
     def test_instance_failover(self):
         """Test masakari managed guest migration."""
         # Workaround for Bug #1874719
         zaza.openstack.configure.hacluster.remove_node(
             'masakari',
             'node1')
-        # Launch guest
-        self.assertTrue(
-            zaza.openstack.configure.hacluster.check_all_nodes_online(
-                'masakari'))
+        # Wait for Pacemaker to remove the node from its membership and
+        # report all remaining nodes online before launching the guest.
+        self.wait_for_all_nodes_online()
         vm_name = 'zaza-test-instance-failover'
         self.ensure_guest(vm_name)
 
