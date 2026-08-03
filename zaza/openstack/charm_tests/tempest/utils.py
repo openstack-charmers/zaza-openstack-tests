@@ -15,6 +15,7 @@
 """Utility code for working with tempest workspaces."""
 
 import jinja2
+import logging
 import os
 from pathlib import Path
 import shutil
@@ -26,6 +27,7 @@ import zaza.utilities.deployment_env as deployment_env
 import zaza.openstack.utilities.juju as juju_utils
 import zaza.openstack.utilities.openstack as openstack_utils
 import zaza.openstack.charm_tests.glance.setup as glance_setup
+import zaza.openstack.charm_tests.magnum.setup as magnum_setup
 
 SETUP_ENV_VARS = {
     'neutron': ['TEST_GATEWAY', 'TEST_CIDR_EXT', 'TEST_FIP_RANGE',
@@ -143,7 +145,9 @@ def _get_tempest_context(workspace_path):
         'neutron': _add_neutron_config,
         'glance': _add_glance_config,
         'cinder': _add_cinder_config,
-        'keystone': _add_keystone_config}
+        'keystone': _add_keystone_config,
+        'magnum': _add_magnum_config,
+    }
     ctxt['enabled_services'] = _get_service_list(keystone_session)
     if set(['cinderv2', 'cinderv3']) \
             .intersection(set(ctxt['enabled_services'])):
@@ -264,16 +268,37 @@ def _add_glance_config(ctxt, keystone_session):
     :returns: None
     :rtype: None
     """
+    _add_image_id(ctxt, keystone_session,
+                  glance_setup.CIRROS_IMAGE_NAME, 'image_id')
+    _add_image_id(ctxt, keystone_session,
+                  glance_setup.CIRROS_ALT_IMAGE_NAME, 'image_alt_id')
+
+
+def _add_image_id(ctxt, keystone_session, image_name, ctxt_key,
+                  missing_fatal=True):
+    """Add an image id to the context.
+
+    :param ctxt: Context dictionary
+    :type ctxt: dict
+    :param keystone_session: keystoneauth1.session.Session object
+    :type: keystoneauth1.session.Session
+    :param image_name: Image's name to search in glance.
+    :type image_name: str
+    :param ctxt_key: key to use when adding the image id to the context.
+    :type ctxt_key: str
+    :param missing_fatal: Raise an exception if a resource is missing
+    :type missing_fatal: bool
+    """
     glance_client = openstack_utils.get_glance_session_client(
         keystone_session)
-    image = openstack_utils.get_images_by_name(
-        glance_client, glance_setup.CIRROS_IMAGE_NAME)
-    image_alt = openstack_utils.get_images_by_name(
-        glance_client, glance_setup.CIRROS_ALT_IMAGE_NAME)
+    image = openstack_utils.get_images_by_name(glance_client, image_name)
     if image:
-        ctxt['image_id'] = image[0].id
-    if image_alt:
-        ctxt['image_alt_id'] = image_alt[0].id
+        ctxt[ctxt_key] = image[0].id
+    else:
+        msg = 'Image %s not found' % image_name
+        logging.warning(msg)
+        if missing_fatal:
+            raise Exception(msg)
 
 
 def _add_cinder_config(ctxt, keystone_session):
@@ -332,6 +357,27 @@ def _add_octavia_config(ctxt):
         'chmod', '+x',
         "{}/test_server.bin".format(ctxt['workspace_path'])
     ])
+
+
+def _add_magnum_config(ctxt, keystone_session, missing_fatal=True):
+    """Add magnum config to context.
+
+    :param ctxt: Context dictionary
+    :type ctxt: dict
+    :param missing_fatal: Raise an exception if a resource is missing
+    :type missing_fatal: bool
+    :returns: None
+    :rtype: None
+    :raises: subprocess.CalledProcessError
+    """
+    _add_image_id(ctxt, keystone_session,
+                  magnum_setup.IMAGE_NAME, 'fedora_coreos_id',
+                  missing_fatal)
+    test_registry_prefix = os.environ.get('TEST_REGISTRY_PREFIX')
+    if test_registry_prefix:
+        ctxt['test_registry_prefix'] = test_registry_prefix
+    else:
+        logging.warning('Environment variable TEST_REGISTRY_PREFIX not found')
 
 
 def _add_environment_var_config(ctxt, services):
