@@ -24,6 +24,7 @@ import tenacity
 import novaclient
 
 import zaza.model
+import zaza.openstack.charm_tests.tempest.tests as tempest_tests
 import zaza.openstack.charm_tests.test_utils as test_utils
 import zaza.openstack.utilities.juju as juju_utils
 import zaza.openstack.utilities.openstack as openstack_utils
@@ -228,3 +229,9 @@ class MasakariTest(test_utils.OpenStackBaseTest):
         logging.info('{} pid is now {}'.format(vm_name, new_guest_pid))
         assert new_guest_pid and new_guest_pid != guest_pid, (
             "Restart failed or never happened")
+
+
+class MasakariTempestTestK8S(tempest_tests.TempestTestScaleK8SBase):
+    """Test masakari-k8s scale out and scale back."""
+
+    application_name = "masakari"
