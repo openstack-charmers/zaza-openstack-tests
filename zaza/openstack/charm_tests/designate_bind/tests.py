@@ -24,6 +24,7 @@ from tenacity import (
 )
 
 import zaza.model as zaza_model
+import zaza.charm_lifecycle.utils as lifecycle_utils
 import zaza.openstack.charm_tests.test_utils as test_utils
 
 
@@ -44,26 +45,32 @@ class DesignateBindServiceIPsTest(test_utils.OpenStackBaseTest):
     def test_configure_ips(self):
         """Configure and un-configure 'service_ips' option."""
         config = {"service_ips": self.VIP}
+        test_config = lifecycle_utils.get_charm_config(fatal=False)
+        states = test_config.get("target_deploy_status", {})
 
         logging.info("Configuring %s as a Service IP for %s unit.",
                      self.VIP, self.UNIT)
         zaza_model.set_application_config(self.APPLICATION, config)
-        zaza_model.wait_for_application_states()
+        zaza_model.wait_for_application_states(states=states)
 
         for attempt in Retrying(wait=wait_fixed(2),
                                 retry=retry_if_exception_type(AssertionError),
                                 reraise=True,
                                 stop=stop_after_attempt(10)):
             with attempt:
-                configured_ips = zaza_model.run_on_unit(self.UNIT,
-                                                        "ip addr")
+                configured_ips = zaza_model.run_on_unit(self.UNIT, "ip addr")
                 self.assertIn(self.VIP, configured_ips["Stdout"])
 
         logging.info("Removing service IP configuration from %s unit.",
                      self.UNIT)
         config["service_ips"] = ""
         zaza_model.set_application_config(self.APPLICATION, config)
-        zaza_model.wait_for_application_states()
+        zaza_model.wait_for_application_states(states=states)
 
-        configured_ips = zaza_model.run_on_unit(self.UNIT, "ip addr")
-        self.assertNotIn(self.VIP, configured_ips["Stdout"])
+        for attempt in Retrying(wait=wait_fixed(2),
+                                retry=retry_if_exception_type(AssertionError),
+                                reraise=True,
+                                stop=stop_after_attempt(10)):
+            with attempt:
+                configured_ips = zaza_model.run_on_unit(self.UNIT, "ip addr")
+                self.assertNotIn(self.VIP, configured_ips["Stdout"])
