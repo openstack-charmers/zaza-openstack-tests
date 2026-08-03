@@ -274,6 +274,7 @@ PACKAGE_CODENAMES = {
         ('15', 'ussuri'),    # octopus
         ('16', 'victoria'),  # pacific
         ('17', 'yoga'),      # quincy
+        ('18', 'zed'),       # reef
     ]),
     'placement-common': OrderedDict([
         ('2', 'train'),
