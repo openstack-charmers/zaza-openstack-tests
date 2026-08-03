@@ -1077,7 +1077,10 @@ def network_name_from_instance(instance):
     :returns: Name of primary network the instance is attached to.
     :rtype: str
     """
-    return next(iter(instance.addresses))
+    try:
+        return next(iter(instance.addresses))
+    except StopIteration:
+        return None
 
 
 def ips_from_instance(instance, ip_type):
@@ -1096,10 +1099,14 @@ def ips_from_instance(instance, ip_type):
         raise RuntimeError(
             "Only 'floating' and 'fixed' are valid IP types to search for"
         )
-    return list([
-        ip['addr'] for ip in instance.addresses[
-            network_name_from_instance(instance)]
-        if ip['OS-EXT-IPS:type'] == ip_type])
+    net_name = network_name_from_instance(instance)
+    if net_name:
+        return list([
+            ip['addr'] for ip in instance.addresses[net_name]
+            if ip['OS-EXT-IPS:type'] == ip_type])
+    else:
+        # the instance is not attached to a network.
+        return []
 
 
 class NeutronNetworkingTest(NeutronNetworkingBase):
