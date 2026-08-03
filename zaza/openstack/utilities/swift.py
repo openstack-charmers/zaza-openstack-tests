@@ -366,4 +366,8 @@ def is_ring_synced(proxy_app, ring, expected_hosts, model_name=None):
     result = zaza.model.run_on_leader(proxy_app, cmd, model_name=model_name)
     expected = ('{num}/{num} hosts matched, 0 error[s] while checking hosts.'
                 ''.format(num=expected_hosts))
+    logging.info('Cmd: %s', str(cmd))
+    logging.info('Stdout: %s', result['Stdout'])
+    logging.info('Stderr: %s', result.get('Stderr', ''))
+    logging.info('Expected: %s', expected)
     return bool(result['Stdout'].strip('\n') == expected)
