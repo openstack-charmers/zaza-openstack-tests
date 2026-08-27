@@ -98,7 +98,7 @@ OPENSTACK_RELEASES_PAIRS = [
     'kinetic_zed', 'jammy_antelope', 'lunar_antelope',
     'jammy_bobcat', 'mantic_bobcat',
     'jammy_caracal', 'noble_caracal',
-    'noble_dalmatian', 'noble_epoxy',
+    'noble_dalmatian', 'noble_epoxy', 'noble_flamingo',
     'questing_flamingo', 'resolute_gazpacho',
 ]
 
