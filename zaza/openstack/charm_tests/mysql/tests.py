@@ -920,6 +920,7 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
         cls.application = "mysql-innodb-cluster"
         cls.test_config = lifecycle_utils.get_charm_config(fatal=False)
         cls.states = cls.test_config.get("target_deploy_status", {})
+        cls.removed_leader_unit_ip = None
 
     def test_800_remove_leader(self):
         """Remove leader node.
@@ -932,6 +933,7 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
             self.application_name)
         leader_unit = zaza.model.get_unit_from_name(leader)
         leader_unit_ip = zaza.model.get_unit_public_address(leader_unit)
+        type(self).removed_leader_unit_ip = leader_unit_ip
 
         # Wait until we are idle in the hopes clients are not running
         # update-status hooks
@@ -962,7 +964,41 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
             "Remove instance action failed: No results: {}"
             .format(action.data))
 
-    def test_801_add_unit(self):
+    def test_801_remove_leader_idempotent(self):
+        """Remove leader node a second time to test idempotency.
+
+        The remove-instance action should succeed even when called a second
+        time with the same address, since the instance is no longer present
+        in the cluster metadata. This validates the guard added to
+        remove_instance() that checks instance_in_cluster_metadata() before
+        attempting removal (LP2157341 race on cluster-relation-departed).
+        """
+        logging.info("Scale in idempotent test: remove leader again")
+        assert self.removed_leader_unit_ip is not None, (
+            "test_800_remove_leader must run before this test")
+        leader, _ = generic_utils.get_leaders_and_non_leaders(
+            self.application_name)
+
+        logging.info("Wait till model is idle ...")
+        zaza.model.block_until_all_units_idle()
+
+        # The leader was already removed in test_800. Calling remove-instance
+        # again should succeed because the instance is not in metadata.
+        logging.info(
+            "Calling remove-instance a second time on {} "
+            .format(self.removed_leader_unit_ip))
+        action = zaza.model.run_action(
+            leader,
+            "remove-instance",
+            action_params={
+                "address": self.removed_leader_unit_ip,
+                "force": True})
+        assert "Success" in action.data.get("results", {}).get(
+            "outcome", ""), (
+            "Remove instance action should succeed on second call "
+            "(idempotent), but got: {}".format(action.data))
+
+    def test_802_add_unit(self):
         """Add mysql-innodb-cluster node.
 
         We start with two node cluster in waiting, add one, back to a full
@@ -980,7 +1016,7 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
         logging.info("Wait for application states ...")
         zaza.model.wait_for_application_states(states=self.states)
 
-    def test_802_add_unit(self):
+    def test_803_add_unit(self):
         """Add another mysql-innodb-cluster node.
 
         We start with a three node full cluster, add another, up to a four node
@@ -998,7 +1034,7 @@ class MySQLInnoDBClusterScaleTest(MySQLBaseTest):
         logging.info("Wait for application states ...")
         zaza.model.wait_for_application_states(states=self.states)
 
-    def test_803_remove_fourth(self):
+    def test_804_remove_fourth(self):
         """Remove mysql-innodb-cluster node.
 
         We start with a four node full cluster, remove one, down to a three
