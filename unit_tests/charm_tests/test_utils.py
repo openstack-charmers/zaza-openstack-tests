@@ -42,8 +42,8 @@ class TestBaseCharmTest(ut_utils.BaseTestCase):
                 return self.get_my_tests_options('aKey', 'aDefault')
 
         f = FakeTest()
-        self.assertEquals(f.method({}), 'aDefault')
-        self.assertEquals(f.method({
+        self.assertEqual(f.method({}), 'aDefault')
+        self.assertEqual(f.method({
             'tests_options': {
                 'unit_tests.charm_tests.test_utils.'
                 'FakeTest.method.aKey': 'aValue',

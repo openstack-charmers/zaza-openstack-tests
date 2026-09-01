@@ -127,7 +127,7 @@ class TestCephUtils(ut_utils.BaseTestCase):
                 '{"op": "create-pool", "name": "cinder-ceph", '
                 '"compression-mode": "aggressive"}]}'),
         }
-        self.assertEquals(
+        self.assertEqual(
             ceph_utils.get_pools_from_broker_req(
                 'anApplication', 'aModelName'),
             ['cinder-ceph'])
