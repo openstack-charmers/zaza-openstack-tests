@@ -141,7 +141,8 @@ def configure_keystone_openidc():
     cfg = {'oidc-client-id': DEFAULT_CLIENT_ID,
            'oidc-client-secret': DEFAULT_CLIENT_SECRET,
            'oidc-provider-metadata-url': url.format(ip=ip,
-                                                    realm=DEFAULT_REALM)}
+                                                    realm=DEFAULT_REALM),
+           'idp_id': IDP}
     zaza.model.set_application_config(APP_NAME, cfg)
     zaza.model.wait_for_agent_status()
     test_config = lifecycle_utils.get_charm_config(fatal=False)
