@@ -310,6 +310,41 @@ class TrilioBaseTest(test_utils.OpenStackBaseTest):
             cls.keystone_session
         )
 
+    def test_001_license_check(self):
+        """Validate trilio license is registered."""
+        relation_data = juju_utils.get_relation_from_unit(
+            'trilio-wlm',
+            'keystone',
+            'identity-service')
+        cmd = [
+            "workloadmgr",
+            "--os-username", "workloadmgr",
+            "--os-password", relation_data['service_password'],
+            "--os-auth-url",
+            "{}://{}:{}/v3".format(
+                relation_data['service_protocol'],
+                relation_data['service_host'],
+                relation_data['internal_port'],
+            ),
+            "--os-user-domain-name", "service_domain",
+            "--os-project-domain-id", relation_data['service_domain_id'],
+            "--os-project-id", relation_data['service_tenant_id'],
+            "--os-project-name", relation_data['service_tenant'],
+            "--os-region-name", "RegionOne",
+            "license-check"
+        ]
+        self.trilio_wlm_unit = zaza_model.get_first_unit_name(
+            "trilio-wlm"
+        )
+        license_status = juju_utils.remote_run(
+            self.trilio_wlm_unit,
+            remote_cmd=' '.join(cmd),
+            timeout=180,
+            fatal=True,
+        ).strip()
+        logging.info("License status: {}".format(license_status))
+        self.assertIn("Number of compute nodes deployed", license_status)
+
     def test_restart_on_config_change(self):
         """Check restart happens on config change.
 
