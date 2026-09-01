@@ -350,6 +350,30 @@ class VaultTest(BaseVaultTest):
         lead_client = vault_utils.extract_lead_unit_client(self.clients)
         self.assertTrue(lead_client.hvac_client.seal_status['sealed'])
 
+    def test_vault_refresh_snap(self):
+        """Refresh Vault snap to different channel and reload service."""
+        vault_config = zaza.model.get_application_config("vault")
+        channel = vault_config["channel"]["value"]
+        logging.info("current vault channel %s", channel)
+        if "stable" in channel:
+            new_channel = channel.replace("stable", "edge")
+        elif "edge" in channel:
+            new_channel = channel.replace("edge", "stable")
+        else:
+            logging.info("skipping test due unknow channnel %s", channel)
+            return
+
+        logging.info("changing vault channel to %s", new_channel)
+        zaza.model.set_application_config("vault", {"channel": new_channel})
+        # add cleaning function to change channel back to original
+        self.addCleanup(
+            zaza.model.set_application_config, "vault", {"channel": channel}
+        )
+        zaza.model.wait_for_application_states(states={"vault": {
+            "workload-status": "blocked",
+            "workload-status-message-prefix": "Unit is sealed",
+        }})
+
 
 class VaultCacheTest(BaseVaultTest):
     """Encapsulate vault tests."""
