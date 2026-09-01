@@ -26,6 +26,8 @@ import zaza.openstack.utilities.openstack as openstack_utils
 TEST_SWIFT_IP = os.environ.get('TEST_SWIFT_IP')
 IMAGE_NAME = 'fedora-coreos'
 
+DISCOVERYSERVER_APP = "discoveryserver"
+DISCOVERYSERVER_FMT = "https://{ip}/new?size=%(size)d"
 # https://docs.openstack.org/magnum/latest/user/index.html#supported-versions
 # List of published image available at:
 # https://builds.coreos.fedoraproject.org/browser?stream=stable&arch=x86_64
@@ -102,3 +104,15 @@ def add_image(image_url=None):
             }
             openstack_utils.create_image(glance_client, image_url, IMAGE_NAME,
                                          properties=image_properties)
+
+
+def configure_discoveryserver():
+    """Configure discoveryserver IP addresss."""
+    units = zaza.model.get_units(DISCOVERYSERVER_APP)
+    if len(units) > 0:
+        ip = zaza.model.get_unit_public_address(units[0])
+        logging.info('Discoveryserver found at %s', ip)
+        zaza.model.set_application_config(
+            "magnum",
+            {'discovery-service': DISCOVERYSERVER_FMT.format(ip=ip)},
+        )
