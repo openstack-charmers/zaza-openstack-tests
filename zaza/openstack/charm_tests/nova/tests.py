@@ -391,6 +391,28 @@ class CloudActions(test_utils.OpenStackBaseTest):
 class NovaCompute(NovaCommonTests):
     """Run nova-compute specific tests."""
 
+    def test_305_encrypted_ephemeral_fstab_options(self):
+        """Verify encrypted ephemeral storage has a device timeout."""
+        config = zaza.model.get_application_config(
+            'nova-compute', model_name=self.model_name)
+        if not config['encrypt']['value']:
+            self.skipTest('Encrypted ephemeral storage is not enabled')
+
+        device_timeout = config['encrypt-device-timeout']['value']
+        command = (
+            "awk '$2 == \"/var/lib/nova/instances\" && "
+            "$4 ~ /comment=vaultlocker/ && "
+            "$4 ~ /x-systemd.device-timeout={}s/ {{found = 1}} "
+            "END {{exit !found}}' /etc/fstab".format(device_timeout))
+        for unit in zaza.model.get_units('nova-compute',
+                                         model_name=self.model_name):
+            result = zaza.model.run_on_unit(
+                unit.entity_id, command, model_name=self.model_name)
+            self.assertEqual(
+                int(result['Code']), 0,
+                'Missing vaultlocker timeout in /etc/fstab on {}: {}'.format(
+                    unit.entity_id, result['Stderr']))
+
     def test_311_pci_alias_config_compute(self):
         """Verify that the pci alias data is rendered properly.
 
