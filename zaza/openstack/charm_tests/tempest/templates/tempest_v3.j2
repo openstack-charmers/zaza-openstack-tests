@@ -44,7 +44,7 @@ attach_encrypted_volume = false
 uri = {{ proto }}://{{ keystone }}:5000/v2.0
 uri_v3 = {{ proto }}://{{ keystone }}:5000/v3
 auth_version = v3
-admin_role = Admin
+admin_role = {{ admin_role }}
 region = RegionOne
 default_domain_id = {{ default_domain_id }}
 {% if admin_domain_scope is defined -%}
@@ -143,7 +143,7 @@ test_server_path = {{ workspace_path }}/test_server.bin
 provider = amphora
 octavia_svc_username = octavia
 member_role = load-balancer_member
-admin_role = Admin
+admin_role = {{ admin_role }}
 RBAC_test_type = none
 log_user_roles = False
 {% endif %}

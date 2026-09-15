@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import os
+import tempfile
 import unittest
 
 from unittest import mock
@@ -22,6 +23,90 @@ import zaza.openstack.charm_tests.tempest.utils as tempest_utils
 
 class TestTempestUtils(unittest.TestCase):
     """Test class to encapsulate testing Tempest test utils."""
+
+    @staticmethod
+    def _role(name):
+        role = mock.Mock()
+        role.name = name
+        return role
+
+    @mock.patch.object(
+        tempest_utils.openstack_utils, 'get_keystone_session_client')
+    def test_add_keystone_config_uses_legacy_admin_role(
+            self, get_keystone_session_client):
+        keystone_client = get_keystone_session_client.return_value
+        keystone_client.domains.find.return_value.id = 'admin-domain-id'
+        keystone_client.roles.list.return_value = [
+            self._role('admin'),
+            self._role('Admin'),
+        ]
+        ctxt = {}
+
+        tempest_utils._add_keystone_config(ctxt, mock.sentinel.session)
+
+        self.assertEqual(ctxt['admin_role'], 'Admin')
+
+    @mock.patch.object(
+        tempest_utils.openstack_utils, 'get_keystone_session_client')
+    def test_add_keystone_config_supports_lowercase_admin_role(
+            self, get_keystone_session_client):
+        keystone_client = get_keystone_session_client.return_value
+        keystone_client.domains.find.return_value.id = 'admin-domain-id'
+        keystone_client.roles.list.return_value = [
+            self._role('member'),
+            self._role('admin'),
+        ]
+        ctxt = {}
+
+        tempest_utils._add_keystone_config(ctxt, mock.sentinel.session)
+
+        self.assertEqual(ctxt['admin_role'], 'admin')
+
+    @mock.patch.object(
+        tempest_utils.openstack_utils, 'get_keystone_session_client')
+    def test_add_keystone_config_defaults_to_legacy_admin_role(
+            self, get_keystone_session_client):
+        keystone_client = get_keystone_session_client.return_value
+        keystone_client.domains.find.return_value.id = 'admin-domain-id'
+        keystone_client.roles.list.return_value = [self._role('member')]
+        ctxt = {}
+
+        tempest_utils._add_keystone_config(ctxt, mock.sentinel.session)
+
+        self.assertEqual(ctxt['admin_role'], 'Admin')
+
+    def test_tempest_v3_template_uses_admin_role_from_context(self):
+        ctxt = {
+            'admin_role': 'admin',
+            'disabled_services': [],
+            'enabled_services': ['keystone', 'octavia'],
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target = os.path.join(tmpdir, 'tempest.conf')
+            tempest_utils._render_tempest_config(
+                target, ctxt, 'tempest_v3.j2')
+            with open(target) as config:
+                rendered = config.read()
+
+        self.assertEqual(rendered.count('admin_role = admin'), 2)
+
+    def test_tempest_v2_template_uses_admin_role_from_context(self):
+        ctxt = {
+            'admin_role': 'admin',
+            'disabled_services': [],
+            'enabled_services': ['heat', 'keystone'],
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target = os.path.join(tmpdir, 'tempest.conf')
+            tempest_utils._render_tempest_config(
+                target, ctxt, 'tempest_v2.j2')
+            with open(target) as config:
+                rendered = config.read()
+
+        self.assertIn('admin_role = admin', rendered)
+        self.assertIn('stack_owner_role = admin', rendered)
 
     def test_add_environment_var_config_with_missing_variable(self):
         ctxt = {}

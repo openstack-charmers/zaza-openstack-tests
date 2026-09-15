@@ -36,7 +36,7 @@ attach_encrypted_volume = false
 [identity]
 uri = {{ proto }}://{{ keystone }}:5000/v2.0
 auth_version = v2
-admin_role = Admin
+admin_role = {{ admin_role }}
 region = RegionOne
 disable_ssl_certificate_validation = true
 
@@ -65,7 +65,7 @@ ipv6 = false
 
 {% if 'heat' in enabled_services %}
 [orchestration]
-stack_owner_role = Admin
+stack_owner_role = {{ admin_role }}
 instance_type = m1.small
 keypair_name = testkey
 {% endif %}
