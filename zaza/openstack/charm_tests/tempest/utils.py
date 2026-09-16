@@ -49,6 +49,7 @@ TEMPEST_SVC_LIST = ['ceilometer', 'cinder', 'glance', 'heat', 'horizon',
 SUPPORTS_ENFORCE_SCOPE = ['barbican', 'cinder', 'designate', 'glance',
                           'ironic', 'keystone', 'nova', 'magnum',
                           'manila', 'neutron', 'octavia', 'placement']
+ADMIN_ROLE_NAMES = ('Admin', 'admin')
 
 
 def render_tempest_config_keystone_v2():
@@ -392,6 +393,11 @@ def _add_keystone_config(ctxt, keystone_session, missing_fatal=True):
         keystone_session)
     domain = keystone_client.domains.find(name="admin_domain")
     ctxt['default_domain_id'] = domain.id
+    role_names = {role.name for role in keystone_client.roles.list()}
+    ctxt['admin_role'] = next(
+        (role_name for role_name in ADMIN_ROLE_NAMES
+         if role_name in role_names),
+        ADMIN_ROLE_NAMES[0])
     # note(gboutry): Enable admin_domain_scope if new RBAC is not used
     ctxt['admin_domain_scope'] = 'keystone' not in ctxt.get('enforce_scopes',
                                                             [])
