@@ -187,6 +187,26 @@ def vlan_provider_overcloud_network():
     network.setup_sdn_provider_vlan(network_config,
                                     keystone_session=keystone_session)
 
+def add_third_interface_lxd():
+    """Add a third interface eth2 to networking charm units.
+
+    :returns: list of mac addresses(represented as strings).
+    """
+
+    networking_data = openstack_utils.get_charm_networking_data()
+    ifname="eth2"
+    macs=[]
+    for instance in networking_data.unit_machine_ids:
+        openstack_utils.lxd_maybe_add_nic(instance, ifname,
+                          "third")
+        macs.append(str(openstack_utils.lxd_get_nic_hwaddr(instance, ifname)))
+
+    if macs:
+        openstack_utils.configure_networking_charms(
+            networking_data, macs, use_juju_wait=False)
+    return macs
+
+
 
 # Configure function to get one gateway with external network
 overcloud_network_one_gw = functools.partial(
