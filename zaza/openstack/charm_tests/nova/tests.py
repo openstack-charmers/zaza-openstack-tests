@@ -165,6 +165,7 @@ class NovaCommonTests(test_utils.OpenStackBaseTest):
     BIONIC_QUEENS = openstack_utils.get_os_release('bionic_queens')
     BIONIC_ROCKY = openstack_utils.get_os_release('bionic_rocky')
     BIONIC_TRAIN = openstack_utils.get_os_release('bionic_train')
+    RESOLUTE_GAZPACHO = openstack_utils.get_os_release('resolute_gazpacho')
 
     @classmethod
     def setUpClass(cls):
@@ -1045,6 +1046,19 @@ class NovaCloudController(NovaCommonTests):
             'nova-cloud-controller', '/etc/nova/api-paste.ini', {
                 'filter:legacy_ratelimit': {
                     'limits': ["( POST, '*', .*, 9999, MINUTE );"]}})
+
+    def test_303_wsgi_heartbeat_in_pthread(self):
+        """Check heartbeat_in_pthread is set for the nova WSGI apps."""
+        if not (self.BIONIC_TRAIN <= self.current_release <
+                self.RESOLUTE_GAZPACHO):
+            raise unittest.SkipTest(
+                'Only effective from Train up to 2025.2')
+        logging.info('Checking mod_wsgi oslo.messaging config file data...')
+        zaza.model.block_until_oslo_config_entries_match(
+            'nova-cloud-controller',
+            '/etc/nova/mod_wsgi.conf.d/oslo-messaging-rabbit.conf', {
+                'oslo_messaging_rabbit': {
+                    'heartbeat_in_pthread': ['True']}})
 
     def test_310_pci_alias_config_ncc(self):
         """Verify that the pci alias data is rendered properly.
