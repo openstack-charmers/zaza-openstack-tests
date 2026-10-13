@@ -1046,6 +1046,17 @@ class NovaCloudController(NovaCommonTests):
                 'filter:legacy_ratelimit': {
                     'limits': ["( POST, '*', .*, 9999, MINUTE );"]}})
 
+    def test_303_wsgi_heartbeat_in_pthread(self):
+        """Check heartbeat_in_pthread is set for the nova WSGI apps."""
+        if self.current_release < self.BIONIC_TRAIN:
+            raise unittest.SkipTest('Only effective from Train')
+        logging.info('Checking mod_wsgi oslo.messaging config file data...')
+        zaza.model.block_until_oslo_config_entries_match(
+            'nova-cloud-controller',
+            '/etc/nova/mod_wsgi.conf.d/oslo-messaging-rabbit.conf', {
+                'oslo_messaging_rabbit': {
+                    'heartbeat_in_pthread': ['True']}})
+
     def test_310_pci_alias_config_ncc(self):
         """Verify that the pci alias data is rendered properly.
 
