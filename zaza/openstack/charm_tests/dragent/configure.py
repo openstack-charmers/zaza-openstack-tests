@@ -43,7 +43,7 @@ def setup():
     """
     # Reuse the existing network configuration code but ask for a separate
     # service subnet to be created for FIPs.
-    basic_overcloud_network(use_separate_fip_subnet=True)
+    network_config = basic_overcloud_network(use_separate_fip_subnet=True)
 
     # Get a keystone session
     keystone_session = openstack_utils.get_overcloud_keystone_session()
@@ -55,6 +55,12 @@ def setup():
                     "setting up BGP.")
     for unit in zaza.model.get_units("neutron-dynamic-routing"):
         generic_utils.systemctl(unit, "neutron-bgp-dragent", command="restart")
+
+    # NDR advertises tenant prefixes with a next hop on the external network,
+    # so the peer needs that next hop to be on-link.
+    bgp_speaker.attach_peer_to_external_network(
+        peer_application_name=DEFAULT_PEER_APPLICATION_NAME,
+        network_config=network_config)
 
     # Configure BGP
     bgp_speaker.setup_bgp_speaker(

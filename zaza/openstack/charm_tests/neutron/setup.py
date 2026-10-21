@@ -141,6 +141,8 @@ def basic_overcloud_network(limit_gws=None, use_separate_fip_subnet=False):
                                     ips instead of relying on the external
                                     network subnet for FIP allocations.
     :type use_separate_fip_subnet: bool
+    :returns: The network configuration used for the setup
+    :rtype: dict
     """
     cli_utils.setup_logging()
 
@@ -165,6 +167,7 @@ def basic_overcloud_network(limit_gws=None, use_separate_fip_subnet=False):
 
     # Configure the overcloud network
     network.setup_sdn(network_config, keystone_session=keystone_session)
+    return network_config
 
 
 def vlan_provider_overcloud_network():
