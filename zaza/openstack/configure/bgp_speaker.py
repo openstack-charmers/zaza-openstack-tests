@@ -17,10 +17,14 @@
 """Module to setup BGP speaker configuration."""
 
 import argparse
+import ipaddress
+import json
 import logging
 import sys
 import tenacity
 import zaza.model
+
+from neutronclient.common import exceptions as neutron_exc
 
 from zaza.openstack.utilities import (
     cli as cli_utils,
@@ -30,6 +34,7 @@ from zaza.openstack.utilities import (
 
 
 NDR_TEST_FIP = "NDR_TEST_FIP"
+PEER_PORT_NAME_SUFFIX = "_bgp-port"
 
 
 @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
@@ -43,6 +48,122 @@ def _assert_speaker_added(local_as):
     # Usually we only have one unit in test bundles but let's be generic.
     for unit in zaza.model.get_units("neutron-dynamic-routing"):
         juju_utils.remote_run(unit.name, fatal=True, remote_cmd=grep_cmd)
+
+
+@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, max=60),
+                reraise=True, stop=tenacity.stop_after_attempt(10))
+def _configure_peer_interface(unit_name, mac_address, address):
+    logging.info(f"Attaching {unit_name} to external network as {address}")
+    links = json.loads(
+        juju_utils.remote_run(unit_name, fatal=True, remote_cmd="ip -j link"))
+    ifname = next(link["ifname"] for link in links
+                  if link["address"] == mac_address)
+    juju_utils.remote_run(
+        unit_name, fatal=True,
+        remote_cmd=f"ip addr replace {address} dev {ifname} && "
+                   f"ip link set {ifname} up")
+
+
+def attach_peer_to_external_network(peer_application_name: str,
+                                    network_config: dict) -> None:
+    """Attach the BGP peer to the external network.
+
+    :param peer_application_name: String name of BGP peer application
+    :type peer_application_name: string
+    :param network_config: Network configuration of overcloud
+    :type network_config: dict
+    :returns None:
+    :rtype None:
+    """
+    if (provider_type := juju_utils.get_provider_type()) != "openstack":
+        logging.warning(
+            f"Juju provider type {provider_type} has no undercloud, not "
+            "attaching the BGP peer to the external network")
+        return
+
+    session = openstack_utils.get_undercloud_keystone_session()
+    nova_client = openstack_utils.get_nova_session_client(session)
+    neutron_client = openstack_utils.get_neutron_session_client(session)
+
+    # Setup ensures that this CIDR is on the provider network
+    # Adding an undercloud port from this subnet to the peer
+    # ensures that the peer is on-link with the overcloud external network
+    external_cidr = ipaddress.ip_network(network_config["external_net_cidr"])
+    undercloud_subnets = neutron_client.list_subnets(
+        ip_version=4, cidr=str(external_cidr))["subnets"]
+    if not undercloud_subnets:
+        logging.warning(
+            f"No undercloud subnet for {external_cidr}, not attaching the "
+            "BGP peer to the external network")
+        return
+
+    undercloud_subnet = undercloud_subnets[0]
+
+    # Neutron will hand out the gateway or a floating IP address if asked, so
+    # only ask for addresses outside those.
+    fip_start = ipaddress.ip_address(network_config["start_floating_ip"])
+    fip_end = ipaddress.ip_address(network_config["end_floating_ip"])
+    addresses = [
+        str(ip) for ip in external_cidr.hosts()
+        if not fip_start <= ip <= fip_end
+        if str(ip) != network_config["default_gateway"]
+    ]
+
+    for unit in zaza.model.get_units(peer_application_name):
+        instance_id = unit.machine.instance_id
+        openstack_utils.create_additional_port_for_machines(
+            nova_client,
+            neutron_client,
+            # Given assumptions made in the neutron config
+            # this should be net_id, but since we need the undercloud
+            # subnet anyway we look it up from that
+            undercloud_subnet["network_id"],
+            [instance_id],
+            port_name_suffix=PEER_PORT_NAME_SUFFIX,
+        )
+
+        # reconstruct port name the same way that
+        # openstack_utils.create_additional_port_for_machines
+        # does
+        server = nova_client.servers.get(instance_id)
+        ext_port_name = "{}{}".format(server.name, PEER_PORT_NAME_SUFFIX)
+
+        ports = neutron_client.list_ports(
+            name=ext_port_name,
+            device_id=instance_id,
+            network_id=undercloud_subnet["network_id"],
+        )["ports"]
+
+        if not ports:
+            raise RuntimeError(
+                f"No ports found with name {ext_port_name}"
+                " for instance {instance_id}"
+            )
+        if len(ports) > 1:
+            raise RuntimeError(
+                f"Multiple ports found with name {ext_port_name}"
+                " for instance {instance_id}"
+            )
+        port = ports[0]
+
+        # Reuse an address from a previous run so reruns are idempotent.
+        existing = [fixed_ip["ip_address"] for fixed_ip in port["fixed_ips"]
+                    if fixed_ip["subnet_id"] == undercloud_subnet["id"]]
+        for ip_address in existing + addresses:
+            try:
+                neutron_client.update_port(
+                    port["id"], {"port": {"fixed_ips": [{
+                        "subnet_id": undercloud_subnet["id"],
+                        "ip_address": ip_address}]}})
+                break
+            except neutron_exc.Conflict:
+                continue
+        else:
+            raise RuntimeError(
+                f"No free address on subnet {undercloud_subnet['id']}")
+
+        address = f"{ip_address}/{external_cidr.prefixlen}"
+        _configure_peer_interface(unit.name, port["mac_address"], address)
 
 
 def setup_bgp_speaker(peer_application_name, keystone_session=None):
