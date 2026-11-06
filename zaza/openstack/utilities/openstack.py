@@ -984,7 +984,8 @@ def get_charm_networking_data(limit_gws=None):
 
 def create_additional_port_for_machines(novaclient, neutronclient, net_id,
                                         unit_machine_ids,
-                                        add_dataport_to_netplan=False):
+                                        add_dataport_to_netplan=False,
+                                        port_name_suffix='_ext-port'):
     """Create additional port for machines for use with external networking.
 
     :param novaclient: Undercloud Authenticated novaclient.
@@ -1000,6 +1001,8 @@ def create_additional_port_for_machines(novaclient, neutronclient, net_id,
                                     added to instance system configuration so
                                     that it is brought up on instance reboot.
     :type add_dataport_to_netplan: Optional[bool]
+    :param port_name_suffix: Suffix for the additional port name.
+    :type port_name_suffix: Optional[str]
     :returns: List of MAC addresses for created ports.
     :rtype: List[str]
     :raises: RuntimeError
@@ -1008,7 +1011,7 @@ def create_additional_port_for_machines(novaclient, neutronclient, net_id,
     for uuid in unit_machine_ids:
         eligible_machines += 1
         server = novaclient.servers.get(uuid)
-        ext_port_name = "{}_ext-port".format(server.name)
+        ext_port_name = "{}{}".format(server.name, port_name_suffix)
         for port in neutronclient.list_ports(device_id=server.id)['ports']:
             if port['name'] == ext_port_name:
                 logging.warning(
@@ -1046,7 +1049,7 @@ def create_additional_port_for_machines(novaclient, neutronclient, net_id,
     return [
         port['mac_address']
         for port in neutronclient.list_ports(network_id=net_id)['ports']
-        if 'ext-port' in port['name']
+        if port_name_suffix in port['name']
     ]
 
 
