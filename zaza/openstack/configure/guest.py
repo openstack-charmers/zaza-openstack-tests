@@ -135,7 +135,9 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
                     private_network_name=None, image_name=None,
                     flavor_name=None, external_network_name=None, meta=None,
                     userdata=None, attach_to_external_network=False,
-                    keystone_session=None):
+                    keystone_session=None, perform_connectivity_check=True,
+                    host=None, nova_api_version=None
+                    ):
     """Launch an instance.
 
     :param instance_key: Key to collect associated config data with.
@@ -163,13 +165,22 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
     :type attach_to_external_network: bool
     :param keystone_session: Keystone session to use.
     :type keystone_session: Optional[keystoneauth1.session.Session]
+    :param perform_connectivity_check: Whether to perform a connectivity check.
+    :type perform_connectivity_check: bool
+    :param host: Requested host to create servers
+    :type host: str
+    :param nova_api_version: Nova API version to use
+    :type nova_api_version: str | None
     :returns: the created instance
     :rtype: novaclient.Server
     """
     if not keystone_session:
         keystone_session = openstack_utils.get_overcloud_keystone_session()
 
-    nova_client = openstack_utils.get_nova_session_client(keystone_session)
+    nova_client = openstack_utils.get_nova_session_client(
+        keystone_session,
+        version=nova_api_version,
+    )
     neutron_client = openstack_utils.get_neutron_session_client(
         keystone_session)
 
@@ -218,6 +229,7 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
         meta=meta,
         nics=nics,
         userdata=userdata or get_default_userdata(),
+        host=host,
     )
 
     # Test Instance is ready.
@@ -229,7 +241,10 @@ def launch_instance(instance_key, use_boot_volume=False, vm_name=None,
         # NOTE(lourot): in some models this may sometimes take more than 15
         # minutes. See lp:1945991
         wait_iteration_max_time=120,
-        stop_after_attempt=16)
+        stop_after_attempt=16,
+        stop_status='ERROR',
+        msg='instance',
+    )
 
     logging.info('Checking cloud init is complete')
     openstack_utils.cloud_init_complete(
